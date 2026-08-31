@@ -296,8 +296,8 @@
 - 已完成：工作区规则、开发工作流和阶段计划。
 - 已批准：[ADR 0001](adr/0001-windows-client-foundation.md) 采用 C# + .NET 10 LTS + WPF + Win32 作为 Phase 1 首选原型基础；Windows 10 22H2 为项目实测兼容目标，Godot 4 为第一备选。
 - 仍待 Spike 决策：最终渲染后端与桌面承载方式。
-- 下一项可选工作：Phase 1 桌面宿主/渲染 Spike 详细设计，或服务端候选技术栈调研。
-- 尚未开始：代码脚手架、服务端技术栈调研和 Phase 1 详细设计。
+- 当前专项：[服务端技术栈调研](research/2026-08-31-server-stack-comparison.md)，推荐 ASP.NET Core 10、SignalR、PostgreSQL 18、EF Core/Npgsql、Caddy 与 Docker Compose，等待用户批准。
+- 尚未开始：代码脚手架、动画与渲染专项调研和 Phase 1 详细设计。
 
 ## 11. 后续路线
 
