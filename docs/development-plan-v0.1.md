@@ -298,9 +298,9 @@
 - 已批准：[ADR 0002](adr/0002-server-foundation-and-scaling.md) 采用 ASP.NET Core 10、SignalR、PostgreSQL 18、EF Core/Npgsql、Caddy 与 Docker Compose，并以 `roomId` 分区、单房间单一权威和可替换运行时目录保留扩展空间。
 - 已批准：[ADR 0003](adr/0003-animation-assets-and-rendering-validation.md) 采用分层位图混合动画、独立资产包与动作协议，并按 WPF 基线、1/6/12 只团子压力样本和失败后后端比较进行验证。
 - 已批准：[Phase 1 桌面生命感原型详细设计](phase-1-desktop-life-prototype-design.md) 覆盖宿主对比、场景与资产边界、性能门槛和分层验收。
-- 已批准：[Phase 1 实施计划](phase-1-implementation-plan.md) 先以 P0-001 补齐工作区脚手架，再按 P1-001–P1-007 实施桌面原型，并定义失败停止点和阶段检查点。
+- 已批准：[Phase 1 实施计划](phase-1-implementation-plan.md) 先以 P0-000 核验并锁定环境、P0-001 补齐工作区脚手架，再按 P1-001–P1-007 实施桌面原型，并定义失败停止点和阶段检查点。
 - 仍待 Spike 决策：最终渲染后端与桌面承载方式。
-- 尚未开始：需在独立 Codex 对话执行 P0-001，随后完成 Phase 0 阶段验收。
+- 尚未开始：需在独立 Codex 对话顺序执行 P0-000 与 P0-001，随后完成 Phase 0 阶段验收。
 
 ## 11. 后续路线
 

@@ -15,7 +15,7 @@
 - [开发工作流 v0.1](docs/development-workflow-v0.1.md)：任务、分支、Worktree、提交和验收流程。
 - [分阶段开发计划 v0.1](docs/development-plan-v0.1.md)：Phase 0–5 的范围、交付物与阶段门禁。
 - [Phase 1 桌面生命感原型详细设计](docs/phase-1-desktop-life-prototype-design.md)：已批准的桌面宿主对比、场景与资产边界、性能门槛和分层验收。
-- [Phase 1 实施计划](docs/phase-1-implementation-plan.md)：已批准的 P0-001 工作区脚手架与 P1-001–P1-007 顺序任务、失败停止点、分支策略和阶段检查点。
+- [Phase 1 实施计划](docs/phase-1-implementation-plan.md)：已批准的 P0-000 环境准备、P0-001 工作区脚手架与 P1-001–P1-007 顺序任务、失败停止点、分支策略和阶段检查点。
 - [架构决策记录](docs/adr/README.md)：已批准的重要技术决策、后果与重新评估条件。
 
 ## 当前调研
