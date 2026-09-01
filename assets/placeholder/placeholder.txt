@@ -1,0 +1,1 @@
+This file is a non-visual Phase 0 placeholder used to verify the asset manifest entry point.

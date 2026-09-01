@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dango.local/schemas/placeholder-manifest.json",
+  "title": "Dango Phase 0 placeholder manifest",
+  "type": "object",
+  "required": ["manifestVersion", "purpose", "files"],
+  "properties": {
+    "manifestVersion": {
+      "const": 1
+    },
+    "purpose": {
+      "type": "string",
+      "minLength": 1
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["path", "source", "license"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "license": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

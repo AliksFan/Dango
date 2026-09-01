@@ -1,0 +1,12 @@
+{
+  "$schema": "./manifest.schema.json",
+  "manifestVersion": 1,
+  "purpose": "Phase 0 workspace validation only",
+  "files": [
+    {
+      "path": "placeholder.txt",
+      "source": "Created for the Dango repository",
+      "license": "MIT"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+<Project>
+
+  <Target Name="ValidatePlaceholderAssets"
+          BeforeTargets="BeforeBuild"
+          Condition="'$(MSBuildProjectName)' == 'Dango.Core'">
+    <Exec Command="pwsh -NoProfile -NonInteractive -File &quot;$(MSBuildThisFileDirectory)eng\Validate-PlaceholderAssets.ps1&quot;" />
+  </Target>
+
+</Project>

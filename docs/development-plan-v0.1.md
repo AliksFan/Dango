@@ -299,8 +299,10 @@
 - 已批准：[ADR 0003](adr/0003-animation-assets-and-rendering-validation.md) 采用分层位图混合动画、独立资产包与动作协议，并按 WPF 基线、1/6/12 只团子压力样本和失败后后端比较进行验证。
 - 已批准：[Phase 1 桌面生命感原型详细设计](phase-1-desktop-life-prototype-design.md) 覆盖宿主对比、场景与资产边界、性能门槛和分层验收。
 - 已批准：[Phase 1 实施计划](phase-1-implementation-plan.md) 先以 P0-000 核验并锁定环境、P0-001 补齐工作区脚手架，再按 P1-001–P1-007 实施桌面原型，并定义失败停止点和阶段检查点。
+- 已完成：P0-000 环境预检与版本锁定；仓库使用 .NET SDK `10.0.300` feature band 的 `latestPatch` 稳定补丁策略。
+- 已完成：P0-001 最小 .NET 10/WPF 工作区、Core/Desktop/测试项目、格式/构建/资产校验入口与 win-x64 self-contained 空壳发布验证。
 - 仍待 Spike 决策：最终渲染后端与桌面承载方式。
-- 尚未开始：需在独立 Codex 对话顺序执行 P0-000 与 P0-001，随后完成 Phase 0 阶段验收。
+- 待完成：形成 Phase 0 阶段记录，完成用户人工验收；未经单独授权不得合并 `main` 或开始 P1-001。
 
 ## 11. 后续路线
 

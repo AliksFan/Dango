@@ -4,7 +4,20 @@
 
 项目希望让每位用户拥有一只代表自己的“团子”。团子平时生活在 Windows 桌面上；当好友进入同一房间后，多只团子会在一个持续存在的共享空间中相遇、陪伴并自动互动。
 
-当前阶段为产品企划、产品设计与技术验证规划，尚未进入正式开发。
+当前处于 Phase 0 工作区与技术基线实施阶段，尚未开始团子、悬浮岛、桌面宿主、动画或多人功能。
+
+## 构建与验证
+
+开发机要求和 SDK 锁定策略见 [开发环境](docs/development-environment.md)。从仓库根运行：
+
+```powershell
+pwsh -NoProfile -File .\eng\Validate-PlaceholderAssets.ps1
+dotnet format --verify-no-changes
+dotnet build -c Release
+dotnet test -c Release --no-build
+```
+
+Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](docs/verification/README.md)。当前 WPF 程序只是用于验证工具链的空壳，不代表 Phase 1 桌面宿主或体验已经实现。
 
 ## 当前文档
 
