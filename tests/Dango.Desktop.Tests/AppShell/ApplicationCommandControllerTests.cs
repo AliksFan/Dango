@@ -1,0 +1,116 @@
+using Dango.Desktop.AppShell;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+namespace Dango.Desktop.Tests.AppShell;
+
+[TestClass]
+public sealed class ApplicationCommandControllerTests
+{
+    [TestMethod]
+    public void VisibilityIsAppliedOnlyAfterTheHostConfirmsIt()
+    {
+        var host = new FakeDesktopHost(isVisible: true, isInteractionEnabled: true);
+        var controller = new ApplicationCommandController(host);
+
+        var result = controller.SetVisibility(isVisible: false);
+
+        Assert.AreEqual(CommandApplicationState.Applied, result.State);
+        Assert.IsFalse(result.Snapshot.IsVisible);
+        Assert.IsNull(result.Error);
+    }
+
+    [TestMethod]
+    public void UnconfirmedCommandReturnsFailureAndKeepsObservedState()
+    {
+        var host = new FakeDesktopHost(isVisible: false, isInteractionEnabled: true)
+        {
+            IgnoreVisibilityRequests = true,
+        };
+        var controller = new ApplicationCommandController(host);
+
+        var result = controller.SetVisibility(isVisible: true);
+
+        Assert.AreEqual(CommandApplicationState.Failed, result.State);
+        Assert.IsFalse(result.Snapshot.IsVisible);
+        StringAssert.Contains(result.Error, "未确认");
+    }
+
+    [TestMethod]
+    public void HostExceptionIsReportedWithoutInventingAStateChange()
+    {
+        var host = new FakeDesktopHost(isVisible: true, isInteractionEnabled: true)
+        {
+            ThrowOnInteractionRequest = true,
+        };
+        var controller = new ApplicationCommandController(host);
+
+        var result = controller.SetInteractionEnabled(isEnabled: false);
+
+        Assert.AreEqual(CommandApplicationState.Failed, result.State);
+        Assert.IsTrue(result.Snapshot.IsInteractionEnabled);
+        StringAssert.Contains(result.Error, "无法应用");
+    }
+
+    [TestMethod]
+    public void PartialHostChangeIsRolledBackAfterAnException()
+    {
+        var host = new FakeDesktopHost(isVisible: true, isInteractionEnabled: true)
+        {
+            ThrowAfterNextInteractionChange = true,
+        };
+        var controller = new ApplicationCommandController(host);
+
+        var result = controller.SetInteractionEnabled(isEnabled: false);
+
+        Assert.AreEqual(CommandApplicationState.Failed, result.State);
+        Assert.IsTrue(result.Snapshot.IsInteractionEnabled, "失败命令必须恢复原有交互状态。");
+    }
+
+    private sealed class FakeDesktopHost : IDesktopHostControl
+    {
+        private DesktopHostSnapshot snapshot;
+
+        public FakeDesktopHost(bool isVisible, bool isInteractionEnabled)
+        {
+            snapshot = new DesktopHostSnapshot(
+                "Overlay",
+                isVisible,
+                isInteractionEnabled,
+                "尚未完成人工验收",
+                null);
+        }
+
+        public bool IgnoreVisibilityRequests { get; init; }
+
+        public bool ThrowOnInteractionRequest { get; init; }
+
+        public bool ThrowAfterNextInteractionChange { get; set; }
+
+        public DesktopHostSnapshot GetSnapshot() => snapshot;
+
+        public void SetVisibility(bool isVisible)
+        {
+            if (!IgnoreVisibilityRequests)
+            {
+                snapshot = snapshot with { IsVisible = isVisible };
+            }
+        }
+
+        public void SetInteractionEnabled(bool isEnabled)
+        {
+            if (ThrowOnInteractionRequest)
+            {
+                throw new InvalidOperationException("simulated host failure");
+            }
+
+            snapshot = snapshot with { IsInteractionEnabled = isEnabled };
+            if (ThrowAfterNextInteractionChange)
+            {
+                ThrowAfterNextInteractionChange = false;
+                throw new InvalidOperationException("simulated partial host failure");
+            }
+        }
+
+        public string CreateDiagnosticSummary() => "safe diagnostics";
+    }
+}

@@ -6,7 +6,10 @@ namespace Dango.Desktop.DesktopHost.Overlay;
 
 internal static class OverlayHostDiagnostics
 {
-    public static string CreateSummary(Window window, OverlayInteractionController interactionController)
+    public static string CreateSummary(
+        Window window,
+        OverlayInteractionController interactionController,
+        bool isInteractionEnabled)
     {
         ArgumentNullException.ThrowIfNull(window);
         ArgumentNullException.ThrowIfNull(interactionController);
@@ -20,6 +23,8 @@ internal static class OverlayHostDiagnostics
             $"进程架构：{RuntimeInformation.ProcessArchitecture}",
             $"窗口逻辑尺寸：{window.ActualWidth:F0} × {window.ActualHeight:F0}",
             $"DPI 比例：{dpi.DpiScaleX:F2} × {dpi.DpiScaleY:F2}",
+            $"桌面显示：{window.IsVisible}",
+            $"允许交互：{isInteractionEnabled}",
             $"拖动中：{interactionController.IsDragging}",
             $"最后取消原因：{interactionController.LastCancellationReason?.ToString() ?? "无"}");
     }

@@ -3,21 +3,24 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
 using Dango.Core.Coordinates;
+using Dango.Desktop.AppShell;
 using Dango.Desktop.DesktopHost.Win32;
 using WpfCanvas = System.Windows.Controls.Canvas;
 
 namespace Dango.Desktop.DesktopHost.Overlay;
 
-public partial class OverlayWindow : Window
+public partial class OverlayWindow : Window, IDesktopHostControl
 {
     private const int WmMouseActivate = 0x0021;
+    private const int WmNcHitTest = 0x0084;
     private const int MaNoActivate = 3;
+    private const int HtTransparent = -1;
     private readonly OverlayInteractionController interactionController = new();
     private OverlayHitTestPolicy hitTestPolicy = new([]);
-    private OverlayTrayIcon? trayIcon;
     private System.Windows.Point dragPointerOrigin;
     private double dragVisualLeft;
     private double dragVisualTop;
+    private bool isInteractionEnabled = true;
 
     public OverlayWindow()
     {
@@ -26,7 +29,6 @@ public partial class OverlayWindow : Window
         Loaded += OnLoaded;
         Deactivated += OnDeactivated;
         Closing += OnClosing;
-        Closed += OnClosed;
         KeyDown += OnKeyDown;
     }
 
@@ -42,7 +44,6 @@ public partial class OverlayWindow : Window
         Left = SystemParameters.WorkArea.Right - Width - 24;
         Top = SystemParameters.WorkArea.Bottom - Height - 24;
         RebuildHitTestPolicy();
-        trayIcon ??= new OverlayTrayIcon(this, interactionController, Close);
     }
 
     private nint WindowMessageHook(
@@ -52,6 +53,12 @@ public partial class OverlayWindow : Window
         nint longParameter,
         ref bool handled)
     {
+        if (message == WmNcHitTest && !isInteractionEnabled)
+        {
+            handled = true;
+            return HtTransparent;
+        }
+
         if (message != WmMouseActivate)
         {
             return 0;
@@ -134,11 +141,48 @@ public partial class OverlayWindow : Window
     private void OnClosing(object? sender, CancelEventArgs e)
     {
         CancelDrag(DragCancellationReason.WindowClosing);
-        trayIcon?.Dispose();
-        trayIcon = null;
     }
 
-    private void OnClosed(object? sender, EventArgs e) => System.Windows.Application.Current.Shutdown();
+    public DesktopHostSnapshot GetSnapshot() =>
+        new(
+            "Overlay",
+            IsVisible,
+            isInteractionEnabled,
+            "尚未完成人工验收",
+            null);
+
+    public void SetVisibility(bool isVisible)
+    {
+        if (isVisible)
+        {
+            Show();
+        }
+        else
+        {
+            CancelDrag(DragCancellationReason.WindowDeactivated);
+            Hide();
+        }
+    }
+
+    public void SetInteractionEnabled(bool isEnabled)
+    {
+        if (isInteractionEnabled == isEnabled)
+        {
+            return;
+        }
+
+        if (!isEnabled)
+        {
+            CancelDrag(DragCancellationReason.WindowDeactivated);
+        }
+
+        isInteractionEnabled = isEnabled;
+        DangoVisual.IsHitTestVisible = isEnabled;
+        IslandVisual.IsHitTestVisible = isEnabled;
+    }
+
+    public string CreateDiagnosticSummary() =>
+        OverlayHostDiagnostics.CreateSummary(this, interactionController, isInteractionEnabled);
 
     private void CancelDrag(DragCancellationReason reason)
     {
