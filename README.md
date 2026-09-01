@@ -37,7 +37,8 @@ dotnet run --project .\src\Dango.Desktop\Dango.Desktop.csproj -c Release
 - [开发工作流 v0.1](docs/development-workflow-v0.1.md)：任务、分支、Worktree、提交和验收流程。
 - [分阶段开发计划 v0.1](docs/development-plan-v0.1.md)：Phase 0–5 的范围、交付物与阶段门禁。
 - [Phase 1 桌面生命感原型详细设计](docs/phase-1-desktop-life-prototype-design.md)：已批准的桌面宿主对比、场景与资产边界、性能门槛和分层验收。
-- [Phase 1 实施计划](docs/phase-1-implementation-plan.md)：已批准的 P0-000 环境准备、P0-001 工作区脚手架与 P1-001–P1-007 顺序任务、失败停止点、分支策略和阶段检查点。
+- [Phase 1 实施计划](docs/phase-1-implementation-plan.md)：已批准的 P0-000 环境准备、P0-001 工作区脚手架与 P1 系列顺序任务；P1-002A 在 P1-003 前实现控制中心和图形化验收入口。
+- [Dango 控制中心 UI 设计](docs/phase-1-control-center-ui-design.md)：已批准的正式控制中心、Phase 1 图形化验收入口和未来扩展边界；尚未授权实施。
 - [架构决策记录](docs/adr/README.md)：已批准的重要技术决策、后果与重新评估条件。
 
 ## 当前调研

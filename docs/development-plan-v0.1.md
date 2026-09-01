@@ -298,12 +298,13 @@
 - 已批准：[ADR 0002](adr/0002-server-foundation-and-scaling.md) 采用 ASP.NET Core 10、SignalR、PostgreSQL 18、EF Core/Npgsql、Caddy 与 Docker Compose，并以 `roomId` 分区、单房间单一权威和可替换运行时目录保留扩展空间。
 - 已批准：[ADR 0003](adr/0003-animation-assets-and-rendering-validation.md) 采用分层位图混合动画、独立资产包与动作协议，并按 WPF 基线、1/6/12 只团子压力样本和失败后后端比较进行验证。
 - 已批准：[Phase 1 桌面生命感原型详细设计](phase-1-desktop-life-prototype-design.md) 覆盖宿主对比、场景与资产边界、性能门槛和分层验收。
-- 已批准：[Phase 1 实施计划](phase-1-implementation-plan.md) 先以 P0-000 核验并锁定环境、P0-001 补齐工作区脚手架，再按 P1-001–P1-007 实施桌面原型，并定义失败停止点和阶段检查点。
+- 已批准：[Phase 1 实施计划](phase-1-implementation-plan.md) 先以 P0-000 核验并锁定环境、P0-001 补齐工作区脚手架，再按 P1-001、P1-002、P1-002A、P1-003 至 P1-007 实施桌面原型，并定义失败停止点和阶段检查点。
 - 已完成：P0-000 环境预检与版本锁定；仓库使用 .NET SDK `10.0.300` feature band 的 `latestPatch` 稳定补丁策略。
 - 已完成：P0-001 最小 .NET 10/WPF 工作区、Core/Desktop/测试项目、格式/构建/资产校验入口与 win-x64 self-contained 空壳发布验证。
 - 已完成：[Phase 0 阶段记录](verification/phase-0-stage-result.md)，自动门禁通过；用户已于 2026-09-01 批准阶段结束，状态为“已验收”。
 - 已完成：P1-001 无 UI 场景与资产契约；Core 包含逻辑坐标、显示器工作区、确定性场景快照、简化碰撞、动作状态机和版本化占位资产解析校验，不包含窗口、WPF 初始化或桌面宿主实现。
 - P1-002：透明覆盖层宿主实现与自动测试已完成，真实桌面输入、焦点、DPI 和人工验收待用户按验证记录执行；未将候选标记为通过。
+- 已批准：[Dango 控制中心 UI 设计](phase-1-control-center-ui-design.md) 将正式控制中心与 Phase 1 图形化验收入口合并设计；P1-002A 已登记在 P1-003 前，当前尚未授权开始 UI 实现。
 - 仍待 Spike 决策：最终渲染后端与桌面承载方式。
 - 未授权：将 Phase 1 分支合并到 `main`、推送、部署或开始计划外工作。
 
