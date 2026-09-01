@@ -21,7 +21,7 @@
 | 阶段 | 名称 | 核心问题 | 当前状态 |
 |---|---|---|---|
 | Phase 0 | 工作区与技术基线 | 如何让后续开发可重复、可验证、可治理？ | 已验收 |
-| Phase 1 | 桌面生命感原型 | 团子能否自然、稳定且不打扰地生活在 Windows 桌面？ | 未开始 |
+| Phase 1 | 桌面生命感原型 | 团子能否自然、稳定且不打扰地生活在 Windows 桌面？ | 实施中 |
 | Phase 2 | 共享房间同步原型 | 多台电脑能否可信地看到同一房间和同一批团子？ | 未开始 |
 | Phase 3 | 社交领域闭环 | 好友、情侣、房间、家和权限能否形成完整闭环？ | 未开始 |
 | Phase 4 | 首版内容整合 | 原型和领域功能能否组成可持续使用的作品？ | 未开始 |
@@ -292,7 +292,7 @@
 
 ### 当前工作
 
-- 分支：`phase/0-workspace-foundation`
+- 分支：`phase/1-desktop-life-prototype`，从已验收 Phase 0 的 `60ec200` 起步。
 - 已完成：工作区规则、开发工作流和阶段计划。
 - 已批准：[ADR 0001](adr/0001-windows-client-foundation.md) 采用 C# + .NET 10 LTS + WPF + Win32 作为 Phase 1 首选原型基础；Windows 10 22H2 为项目实测兼容目标，Godot 4 为第一备选。
 - 已批准：[ADR 0002](adr/0002-server-foundation-and-scaling.md) 采用 ASP.NET Core 10、SignalR、PostgreSQL 18、EF Core/Npgsql、Caddy 与 Docker Compose，并以 `roomId` 分区、单房间单一权威和可替换运行时目录保留扩展空间。
@@ -302,8 +302,9 @@
 - 已完成：P0-000 环境预检与版本锁定；仓库使用 .NET SDK `10.0.300` feature band 的 `latestPatch` 稳定补丁策略。
 - 已完成：P0-001 最小 .NET 10/WPF 工作区、Core/Desktop/测试项目、格式/构建/资产校验入口与 win-x64 self-contained 空壳发布验证。
 - 已完成：[Phase 0 阶段记录](verification/phase-0-stage-result.md)，自动门禁通过；用户已于 2026-09-01 批准阶段结束，状态为“已验收”。
+- 已完成：P1-001 无 UI 场景与资产契约；Core 包含逻辑坐标、显示器工作区、确定性场景快照、简化碰撞、动作状态机和版本化占位资产解析校验，不包含窗口、WPF 初始化或桌面宿主实现。
 - 仍待 Spike 决策：最终渲染后端与桌面承载方式。
-- 未授权：将 Phase 0 分支合并到 `main`、创建 Phase 1 分支或开始 P1-001；这些动作仍需用户分别明确授权。
+- 未授权：将 Phase 1 分支合并到 `main`、推送、部署或开始计划外工作。
 
 ## 11. 后续路线
 
