@@ -16,3 +16,4 @@
 | ADR | 状态 | 日期 | 决策 |
 |---|---|---|---|
 | [0001](0001-windows-client-foundation.md) | Accepted | 2026-08-31 | Phase 1 Windows 客户端基础技术选择 |
+| [0002](0002-server-foundation-and-scaling.md) | Accepted | 2026-09-01 | 首版服务端基础技术与扩展边界 |

@@ -1,6 +1,6 @@
 # Dango 服务端技术栈专项调研
 
-> 状态：提案，等待用户批准
+> 状态：已批准，决策见 [ADR 0002](../adr/0002-server-foundation-and-scaling.md)
 >
 > 日期：2026-08-31
 >
@@ -16,7 +16,7 @@
 - PostgreSQL 应通过何种数据访问方案接入？
 - 怎样保持单机部署简单，同时不给未来多实例扩容制造障碍？
 
-本轮只做调研和推荐，不创建服务端脚手架，不部署服务器，不修改已冻结的服务端设计基线，也不把提案写成已批准 ADR。
+本轮只做调研和推荐，不创建服务端脚手架，不部署服务器。推荐结论已于 2026-09-01 获用户批准，并由 ADR 0002 固化。
 
 ## 2. 已确认约束
 
@@ -292,9 +292,10 @@ Protocol.Contracts     版本化请求、快照、事件和错误定义
 - [Caddy Automatic HTTPS](https://caddyserver.com/docs/automatic-https)
 - [Docker Compose](https://docs.docker.com/compose/)
 
-## 12. 等待批准的问题
+## 12. 批准结果
 
-1. 是否批准 C# + .NET 10 LTS + ASP.NET Core 作为首版服务端应用栈？
-2. 是否批准 SignalR + WSS/WebSocket + JSON 作为首轮实时传输，并保持 Dango 领域协议独立？
-3. 是否批准 PostgreSQL 18 + EF Core 10 + Npgsql 10.x 作为首版数据栈？
-4. 是否批准 Caddy + Docker Compose 作为单机部署首选，并继续把 Redis 延期到多实例阶段？
+1. 已批准 C# + .NET 10 LTS + ASP.NET Core 作为首版服务端应用栈。
+2. 已批准 SignalR + WSS/WebSocket + JSON 作为首轮实时传输，并保持 Dango 领域协议独立。
+3. 已批准 PostgreSQL 18 + EF Core 10 + Npgsql 10.x 作为首版数据栈。
+4. 已批准 Caddy + Docker Compose 作为单机部署首选，并继续把 Redis 延期到多实例阶段。
+5. 已确认项目希望保留做大空间；房间分区、实例所有权和分阶段扩容约束见 ADR 0002。

@@ -295,8 +295,8 @@
 - 分支：`phase/0-workspace-foundation`
 - 已完成：工作区规则、开发工作流和阶段计划。
 - 已批准：[ADR 0001](adr/0001-windows-client-foundation.md) 采用 C# + .NET 10 LTS + WPF + Win32 作为 Phase 1 首选原型基础；Windows 10 22H2 为项目实测兼容目标，Godot 4 为第一备选。
+- 已批准：[ADR 0002](adr/0002-server-foundation-and-scaling.md) 采用 ASP.NET Core 10、SignalR、PostgreSQL 18、EF Core/Npgsql、Caddy 与 Docker Compose，并以 `roomId` 分区、单房间单一权威和可替换运行时目录保留扩展空间。
 - 仍待 Spike 决策：最终渲染后端与桌面承载方式。
-- 当前专项：[服务端技术栈调研](research/2026-08-31-server-stack-comparison.md)，推荐 ASP.NET Core 10、SignalR、PostgreSQL 18、EF Core/Npgsql、Caddy 与 Docker Compose，等待用户批准。
 - 尚未开始：代码脚手架、动画与渲染专项调研和 Phase 1 详细设计。
 
 ## 11. 后续路线
