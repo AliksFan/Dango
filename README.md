@@ -4,7 +4,7 @@
 
 项目希望让每位用户拥有一只代表自己的“团子”。团子平时生活在 Windows 桌面上；当好友进入同一房间后，多只团子会在一个持续存在的共享空间中相遇、陪伴并自动互动。
 
-Phase 0 工作区与技术基线已通过自动门禁并由用户验收，当前状态为“已验收”；尚未开始团子、悬浮岛、桌面宿主、动画或多人功能。阶段证据见 [Phase 0 阶段记录](docs/verification/phase-0-stage-result.md)。
+Phase 0 工作区与技术基线已通过自动门禁并由用户验收。Phase 1 正在实施：P1-001 已固化无 UI 的场景与资产契约，P1-002 透明覆盖层宿主已进入人工验收；WorkerW、正式动画和多人功能尚未实现。阶段证据见 [Phase 0 阶段记录](docs/verification/phase-0-stage-result.md)。
 
 ## 构建与验证
 
@@ -17,7 +17,15 @@ dotnet build -c Release
 dotnet test -c Release --no-build
 ```
 
-Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](docs/verification/README.md)。当前 WPF 程序只是用于验证工具链的空壳，不代表 Phase 1 桌面宿主或体验已经实现。
+Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](docs/verification/README.md)。当前 WPF 程序是 P1-002 透明覆盖层候选 Spike，不包含 WorkerW、正式动画或完整 Phase 1 体验。
+
+运行当前透明覆盖层 Spike：
+
+```powershell
+dotnet run --project .\src\Dango.Desktop\Dango.Desktop.csproj -c Release
+```
+
+覆盖层只显示静态占位团子和悬浮岛；通过托盘菜单可以显示/隐藏、查看不含隐私信息的本地诊断摘要或退出。其人工验收清单见 [P1-002 透明覆盖层宿主验证记录](docs/verification/phase-1-p1-002-overlay-host.md)。这不代表桌面承载方案已经最终选定。
 
 ## 当前文档
 
