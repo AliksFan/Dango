@@ -1,6 +1,6 @@
 # Dango 动画与渲染管线专项调研
 
-> 状态：提案，等待用户批准
+> 状态：已批准，决策见 [ADR 0003](../adr/0003-animation-assets-and-rendering-validation.md)
 >
 > 日期：2026-09-01
 >
@@ -17,7 +17,7 @@
 - WPF 渲染不合格时，SkiaSharp、Direct2D 和 Godot 应如何比较？
 - Spine、Live2D、Rive 等动画运行时是否值得在首版引入？
 
-本轮只做调研和推荐，不确定最终美术风格、团子造型或成品分辨率，不创建正式美术资产、动画工程或客户端代码，也不改变 [ADR 0001](../adr/0001-windows-client-foundation.md) 已确定的 Phase 1 原型顺序。
+本轮只做调研和推荐，不确定最终美术风格、团子造型或成品分辨率，不创建正式美术资产、动画工程或客户端代码。推荐结论已于 2026-09-01 获用户批准，并由 ADR 0003 固化；最终渲染后端仍按 [ADR 0001](../adr/0001-windows-client-foundation.md) 等待 Phase 1 Spike。
 
 ## 2. 已确认约束
 
@@ -394,10 +394,10 @@ Phase 1 详细设计应在确定参考设备后锁定数值预算。本调研不
 - [Live2D Cubism SDK Release License](https://www.live2d.com/en/sdk/license/)
 - [Rive Runtimes](https://rive.app/docs/runtimes)
 
-## 13. 等待批准的问题
+## 13. 批准结果
 
-1. 是否批准“分层位图 + 少量逐帧 + Transform/缓动 + 轻量程序化二次运动”作为首版动画方向？
-2. 是否批准建立独立、版本化的资产包与动作协议，不把 WPF/Godot/专有编辑器对象作为唯一运行时格式？
-3. 是否批准 Phase 1 按 WPF 基线 → 1/6/12 只团子压力样本 → 失败后比较 SkiaSharp 与 Godot 的顺序进行？
-4. 是否同意 Godot 保持第一完整客户端备选，SkiaSharp 只作为保留原生宿主的渲染层候选，Direct2D/Vortice 延后？
-5. 是否同意首版暂不购买或绑定 Spine、Live2D、Rive，只有原型证明需要骨骼、网格或矢量状态机后再立项？
+1. 已批准“分层位图 + 少量逐帧 + Transform/缓动 + 轻量程序化二次运动”作为首版动画方向。
+2. 已批准建立独立、版本化的资产包与动作协议，不把 WPF、Godot 或专有编辑器对象作为唯一运行时格式。
+3. 已批准 Phase 1 按 WPF 基线 → 1/6/12 只团子压力样本 → 失败后比较 SkiaSharp 与 Godot 的顺序进行。
+4. 已确认 Godot 保持第一完整客户端备选，SkiaSharp 只作为保留原生宿主的渲染层候选，Direct2D/Vortice 延后。
+5. 已确认首版暂不购买或绑定 Spine、Live2D、Rive，只有原型证明需要骨骼、网格或矢量状态机后再立项。
