@@ -1,6 +1,6 @@
 # Phase 1 团子视觉基准候选
 
-> 状态：Candidate v4 — A 方向极简版，等待人工视觉确认
+> 状态：Approved for AP-004 — A 方向极简版，不代表运行时或正式美术验收
 >
 > 日期：2026-09-02
 
@@ -75,4 +75,5 @@
 - 源文件位于 `assets/preproduction/phase-1-dango/source/direction-a/`，统一使用 `viewBox="0 0 160 120"`。
 - 图层职责收敛为 `body`、`eyes`、`hat`；`preview-default` 仅用于组合预览。
 - 身体使用单一纯色、无外描边，底部为一条连续圆弧；叶芽帽为独立纯色配饰。
-- 导出位于 `assets/preproduction/phase-1-dango/export/direction-a/`，状态为 `candidate`，等待用户确认造型比例、脸部位置和叶芽帽观感。
+- 导出位于 `assets/preproduction/phase-1-dango/export/direction-a/`，产物分类仍为 `candidate`，不会因视觉方向确认而自动升级为运行时资产。
+- 用户已于 2026-09-02 确认该极简候选，允许作为 AP-004 三类动作样本的视觉输入；该确认不覆盖动作姿势、WPF 播放或真实桌面体验验收。

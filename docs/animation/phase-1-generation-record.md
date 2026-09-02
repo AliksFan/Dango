@@ -152,3 +152,16 @@ Avoid: all lighting and shading, highlights, gradients, glow, texture, 3D volume
 - SVG 禁用效果扫描未发现 `linearGradient`、`radialGradient`、`filter`、`opacity` 或内联 `style`。
 - 静态自审确认主体为无描边连续轮廓，没有脚或地面阴影；最终比例、脸部位置和叶芽帽气质仍需用户人工确认。
 - 未验证：WPF 解析与播放、真实 Windows 桌面表现、动作重量和干扰程度。
+
+## 6. AP-004 极简动作样本
+
+- 用户于 2026-09-02 确认无嘴、无腮红的 A 方向候选，授权进入 `Idle`、`Landing`、`ClimbUp` 三类样本。
+- 样本源、时序与挂点表位于 `assets/preproduction/phase-1-dango/motion-samples/`。
+- 共导出 15 个运行时分层 PNG：12 个身体轮廓帧、睁眼/闭眼 2 个共享表情帧、叶芽帽 1 个共享配饰帧。
+- 组合审查板位于 `motion-samples/review/phase-1-motion-samples.png`，仅用于静态视觉审查，不是运行时图层。
+- `Idle` 证明底部稳定的轻微呼吸与独立眨眼；`Landing` 记录首次接触、压缩、回弹和恢复；`ClimbUp` 以连续身体轮廓的宽接触形变表达抓边和重量转移。
+- 自审修正：首版 `Landing/fall` 离接地线过近且帽子顶部裁切，已在候选提交前上移轮廓并修正帽子挂点。
+- 动作语义校验覆盖三类动作、严格递增时序、必需接触事件、图层白名单和文件引用；4 个测试通过，实际清单错误数为 0。
+- 资产预检检查 15 个 PNG，统一画布为 160 × 120，错误数为 0；连续两次重新导出的 PNG 与审查板均逐字节一致。
+- 当前状态：`candidate`；等待用户对三行动作静态关键姿势进行检查点 A4 人工确认。
+- 未验证：逐帧播放、缓动、真实岛边遮挡、WPF 解析、真实桌面表现和最终体验。

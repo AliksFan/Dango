@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=920,height=500">
+  <title>Dango AP-004 motion samples</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 920px; height: 500px; overflow: hidden; }
+    body { background: #f4f1eb; color: #302b28; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; padding: 16px 20px; }
+    h1 { margin: 0 0 4px; font-size: 20px; font-weight: 650; }
+    .subtitle { margin: 0 0 10px; color: #726a64; font-size: 12px; }
+    .row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
+    .row-title { width: 76px; padding-top: 8px; font-size: 14px; font-weight: 650; }
+    .cards { display: flex; gap: 8px; }
+    .card { width: 150px; padding: 6px; border: 1px solid #ded8ce; border-radius: 10px; background: #fffdfa; }
+    .stage { position: relative; width: 136px; height: 88px; overflow: hidden; border-radius: 7px; background: #ffffff; }
+    .stage img { position: absolute; left: 4px; top: -4px; width: 128px; height: 96px; object-fit: fill; }
+    .label { display: flex; justify-content: space-between; margin-top: 4px; font-size: 11px; }
+    .time { color: #8b827a; }
+    .event { color: #2f7d4a; font-weight: 650; }
+    .ground::after { content: ""; position: absolute; left: 18px; right: 18px; top: 87px; border-top: 1px dashed #a9a29a; }
+    .grab::after { content: ""; position: absolute; left: 100px; top: 24px; width: 1px; height: 62px; border-left: 2px solid #8f8a84; }
+    .grab::before { content: "island edge"; position: absolute; left: 73px; top: 8px; color: #8f8a84; font-size: 9px; z-index: 4; }
+  </style>
+</head>
+<body>
+  <h1>Dango AP-004 极简动作关键姿势</h1>
+  <p class="subtitle">候选静态审查板｜仅身体、眼睛、帽子｜无嘴、腮红、阴影和四肢</p>
+
+  <section class="row">
+    <div class="row-title">Idle</div>
+    <div class="cards">
+      <div class="card"><div class="stage ground"><img src="../export/idle/body-rest.png"><img src="../export/shared/eyes-open.png"><img src="../export/shared/hat-sprout.png"></div><div class="label"><span>rest</span><span class="time">0 ms</span></div></div>
+      <div class="card"><div class="stage ground"><img src="../export/idle/body-inhale.png"><img src="../export/shared/eyes-open.png" style="transform:translate(0,-2px)"><img src="../export/shared/hat-sprout.png" style="transform:translate(0,-4px)"></div><div class="label"><span>inhale</span><span class="time">1000 ms</span></div></div>
+      <div class="card"><div class="stage ground"><img src="../export/idle/body-rest.png"><img src="../export/shared/eyes-closed.png"><img src="../export/shared/hat-sprout.png"></div><div class="label"><span>blink</span><span class="time">2100 ms</span></div></div>
+    </div>
+  </section>
+
+  <section class="row">
+    <div class="row-title">Landing</div>
+    <div class="cards">
+      <div class="card"><div class="stage ground"><img src="../export/landing/body-fall.png"><img src="../export/shared/eyes-open.png" style="transform:translate(0,-6px)"><img src="../export/shared/hat-sprout.png" style="transform:translate(0,-4px)"></div><div class="label"><span>fall</span><span class="time">0 ms</span></div></div>
+      <div class="card"><div class="stage ground"><img src="../export/landing/body-contact.png"><img src="../export/shared/eyes-open.png" style="transform:translate(0,2px)"><img src="../export/shared/hat-sprout.png" style="transform:translate(0,4px)"></div><div class="label"><span>contact</span><span class="event">landed</span></div></div>
+      <div class="card"><div class="stage ground"><img src="../export/landing/body-compress.png"><img src="../export/shared/eyes-open.png" style="transform:translate(0,16px)"><img src="../export/shared/hat-sprout.png" style="transform:translate(0,32px)"></div><div class="label"><span>compress</span><span class="time">180 ms</span></div></div>
+      <div class="card"><div class="stage ground"><img src="../export/landing/body-rebound.png"><img src="../export/shared/eyes-open.png" style="transform:translate(0,-4px)"><img src="../export/shared/hat-sprout.png" style="transform:translate(0,-6px)"></div><div class="label"><span>rebound</span><span class="time">280 ms</span></div></div>
+      <div class="card"><div class="stage ground"><img src="../export/landing/body-settle.png"><img src="../export/shared/eyes-open.png"><img src="../export/shared/hat-sprout.png"></div><div class="label"><span>settle</span><span class="time">420 ms</span></div></div>
+    </div>
+  </section>
+
+  <section class="row">
+    <div class="row-title">ClimbUp</div>
+    <div class="cards">
+      <div class="card"><div class="stage"><img src="../export/climb-up/body-approach.png"><img src="../export/shared/eyes-open.png" style="transform:translate(-8px,12px)"><img src="../export/shared/hat-sprout.png" style="transform:translate(-10px,14px)"></div><div class="label"><span>approach</span><span class="time">0 ms</span></div></div>
+      <div class="card"><div class="stage grab"><img src="../export/climb-up/body-grab.png"><img src="../export/shared/eyes-open.png" style="transform:translate(7px,-2px)"><img src="../export/shared/hat-sprout.png" style="transform:translate(-8px,5px)"></div><div class="label"><span>grab</span><span class="event">island-grabbed</span></div></div>
+      <div class="card"><div class="stage"><img src="../export/climb-up/body-transfer.png"><img src="../export/shared/eyes-open.png" style="transform:translate(11px,4px)"><img src="../export/shared/hat-sprout.png" style="transform:translate(6px,8px)"></div><div class="label"><span>transfer</span><span class="time">320 ms</span></div></div>
+      <div class="card"><div class="stage"><img src="../export/climb-up/body-cross.png"><img src="../export/shared/eyes-open.png" style="transform:translate(3px,17px)"><img src="../export/shared/hat-sprout.png" style="transform:translate(3px,20px)"></div><div class="label"><span>cross</span><span class="time">500 ms</span></div></div>
+      <div class="card"><div class="stage ground"><img src="../export/climb-up/body-stand.png"><img src="../export/shared/eyes-open.png"><img src="../export/shared/hat-sprout.png"></div><div class="label"><span>stand</span><span class="time">720 ms</span></div></div>
+    </div>
+  </section>
+</body>
+</html>
