@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Dango.Desktop.DesktopHost;
 using Dango.Desktop.Verification;
 using Forms = System.Windows.Forms;
 
@@ -140,6 +141,19 @@ public partial class ControlCenterWindow : Window
         ApplyCommand(commandController.SetInteractionEnabled(InteractionCheckBox.IsChecked.Value));
     }
 
+    private void OnHostModeChanged(object sender, RoutedEventArgs e)
+    {
+        if (refreshingHostState)
+        {
+            return;
+        }
+
+        var mode = WorkerWHostRadioButton.IsChecked == true
+            ? DesktopHostMode.WorkerW
+            : DesktopHostMode.Overlay;
+        ApplyCommand(commandController.SetHostMode(mode));
+    }
+
     private void OnVerificationOutcomeChanged(object sender, SelectionChangedEventArgs e) =>
         RefreshVerificationSummary();
 
@@ -195,7 +209,7 @@ public partial class ControlCenterWindow : Window
             {
                 AddExtension = true,
                 DefaultExt = ".md",
-                FileName = $"dango-p1-002-verification-{DateTime.Now:yyyyMMdd-HHmm}.md",
+                FileName = $"dango-{verificationDefinition.Id}-verification-{DateTime.Now:yyyyMMdd-HHmm}.md",
                 Filter = "Markdown 文档 (*.md)|*.md",
                 Title = "导出 Dango 人工验收报告",
             };
@@ -246,8 +260,10 @@ public partial class ControlCenterWindow : Window
             OverviewVisibilityText.Text = snapshot.IsVisible ? "已开启" : "已隐藏";
             OverviewVisibilityButton.Content = snapshot.IsVisible ? "隐藏桌面团子" : "显示桌面团子";
             OverviewInteractionText.Text = snapshot.IsInteractionEnabled ? "已开启" : "已关闭";
+            OverlayHostRadioButton.IsChecked = string.Equals(snapshot.Mode, "Overlay", StringComparison.Ordinal);
+            WorkerWHostRadioButton.IsChecked = string.Equals(snapshot.Mode, "WorkerW", StringComparison.Ordinal);
             OverviewHostStatusText.Text =
-                $"透明覆盖层 · {(snapshot.IsVisible ? "正在运行" : "已隐藏")} · {snapshot.VerificationStatus}";
+                $"{snapshot.Mode} · {(snapshot.IsVisible ? "正在运行" : "已隐藏")} · {snapshot.VerificationStatus}";
         }
         finally
         {
@@ -301,7 +317,7 @@ public partial class ControlCenterWindow : Window
         return new VerificationEnvironmentSnapshot(
             version,
             informationalVersion,
-            "Overlay",
+            commandController.GetSnapshot().Mode,
             Environment.OSVersion.Version.Build.ToString(System.Globalization.CultureInfo.InvariantCulture),
             displaySummary);
     }
@@ -315,7 +331,7 @@ public partial class ControlCenterWindow : Window
             .ToArray();
         VerificationItemsControl.ItemsSource = verificationItems;
         VerificationEnvironmentText.Text =
-            $"透明覆盖层 / Windows Build {session.Environment.OsBuild} / {session.Environment.DisplaySummary}";
+            $"{session.Environment.HostMode} / Windows Build {session.Environment.OsBuild} / {session.Environment.DisplaySummary}";
         RefreshVerificationSummary();
         if (SystemParameters.HighContrast)
         {

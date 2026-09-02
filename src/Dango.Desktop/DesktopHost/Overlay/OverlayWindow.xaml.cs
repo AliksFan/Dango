@@ -148,7 +148,7 @@ public partial class OverlayWindow : Window, IDesktopHostControl
             "Overlay",
             IsVisible,
             isInteractionEnabled,
-            "尚未完成人工验收",
+            "已通过 P1-002 人工验收",
             null);
 
     public void SetVisibility(bool isVisible)

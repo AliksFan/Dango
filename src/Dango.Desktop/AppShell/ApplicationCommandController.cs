@@ -1,3 +1,5 @@
+using Dango.Desktop.DesktopHost;
+
 namespace Dango.Desktop.AppShell;
 
 public sealed record DesktopHostSnapshot(
@@ -55,6 +57,39 @@ public sealed class ApplicationCommandController
             host.SetInteractionEnabled,
             isEnabled,
             "交互模式");
+
+    public HostCommandResult SetHostMode(DesktopHostMode mode)
+    {
+        if (host is not IDesktopHostModeControl modeControl)
+        {
+            return new HostCommandResult(
+                CommandApplicationState.Failed,
+                host.GetSnapshot(),
+                "当前宿主控制器不支持候选切换。");
+        }
+
+        try
+        {
+            modeControl.SetMode(mode);
+            var snapshot = host.GetSnapshot();
+            if (string.Equals(snapshot.Mode, mode.ToString(), StringComparison.Ordinal))
+            {
+                return new HostCommandResult(CommandApplicationState.Applied, snapshot, null);
+            }
+
+            return new HostCommandResult(
+                CommandApplicationState.Failed,
+                snapshot,
+                "宿主模式未确认，仍保留当前观测状态。");
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return new HostCommandResult(
+                CommandApplicationState.Failed,
+                host.GetSnapshot(),
+                $"宿主模式无法切换：{SafeError(exception)}");
+        }
+    }
 
     private HostCommandResult Apply(
         Func<DesktopHostSnapshot, bool> readValue,

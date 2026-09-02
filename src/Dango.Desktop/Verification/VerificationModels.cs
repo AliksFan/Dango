@@ -54,6 +54,36 @@ public sealed record VerificationDefinition(
                 Item("dpi-high", "DPI 与显示器", "较高 DPI", "在例如 1440p、150% 缩放环境执行关键操作。", "控制中心不截断，覆盖层行为有明确记录。")
             ]);
 
+    public static VerificationDefinition CreateP1003WorkerW() =>
+        new(
+            CurrentSchemaVersion,
+            "p1-003-workerw",
+            "P1-003 WorkerW/Shell 壁纸层人工验收",
+            [
+                Item("workerw-attached", "Shell 挂载", "位于桌面图标之后", "切换到 WorkerW 宿主并观察桌面。", "团子和岛位于桌面图标之后，不显示为普通窗口或置顶层。"),
+                Item("transparent-click-through", "输入与焦点", "透明区域单击穿透", "在 WorkerW 场景矩形内、团子和岛之外单击桌面。", "点击到达桌面目标，WorkerW 不持续抢焦点。"),
+                Item("transparent-desktop-actions", "输入与焦点", "透明区域桌面操作", "在透明区域右键、双击并拖出桌面框选。", "桌面空白区域保持正常行为。"),
+                Item("desktop-icons", "桌面操作", "桌面图标和框选", "操作桌面图标单击、双击、右键和框选。", "桌面图标与空白区域操作正常，WorkerW 不阻断系统行为。"),
+                Item("system-ui", "桌面操作", "任务栏与开始菜单", "操作任务栏、开始菜单和普通窗口。", "系统 UI 与普通窗口行为正常。"),
+                Item("dango-hit", "输入与焦点", "团子区域命中", "单击占位团子。", "团子区域接收输入，透明区规则不改变。"),
+                Item("island-hit", "输入与焦点", "悬浮岛区域命中", "单击悬浮岛并继续操作桌面。", "岛参与命中，随后桌面仍可正常操作。"),
+                Item("drag-release", "拖动与取消", "拖动并释放", "从团子内部开始拖动并释放。", "仅团子被移动，释放后不再捕获鼠标。"),
+                Item("drag-escape", "拖动与取消", "Esc 取消拖动", "拖动中按 Esc。", "拖动立即取消，鼠标捕获释放。"),
+                Item("drag-lost-capture", "拖动与取消", "失去捕获取消", "拖动中切换到其他窗口或造成捕获丢失。", "拖动取消，其他窗口可正常操作。"),
+                Item("focus", "输入与焦点", "不持续抢焦点", "与团子交互后立即操作其他应用。", "其他应用可以继续正常接收输入。"),
+                Item("fullscreen-layer", "桌面操作", "全屏应用层级", "打开并退出一个全屏应用。", "WorkerW 保持在桌面背景层，不覆盖全屏应用。"),
+                Item("explorer-restart", "Shell 恢复", "Explorer 正常重启", "保持 Dango 运行并正常重启 Windows Explorer。", "宿主检测旧句柄失效，重新挂载到新 WorkerW，控制中心和托盘仍可用。"),
+                Item("safe-recovery-failure", "Shell 恢复", "恢复失败安全隐藏", "在诊断中观察无法重新发现 WorkerW 的状态，或记录当前环境无法执行。", "Dango 有界重试后安全隐藏，不置顶、不无限重试且仍可退出。"),
+                Item("visibility", "生命周期", "隐藏与恢复", "隐藏桌面团子，再重新显示。", "隐藏时不残留场景；显示时重新校验并挂载有效 WorkerW。"),
+                Item("single-instance", "生命周期", "再次启动", "保持 Dango 运行，再次启动同一程序。", "只保留一个宿主、一个控制中心和一个托盘图标。"),
+                Item("tray-control-center", "生命周期", "托盘打开控制中心", "使用托盘菜单和双击托盘图标分别打开控制中心。", "两种入口都激活同一个普通任务栏窗口。"),
+                Item("tray-exit", "生命周期", "安全退出", "从托盘或控制中心退出 Dango。", "WorkerW 子窗口、控制中心、托盘和进程全部退出。"),
+                Item("repeat-lifecycle", "生命周期", "重复生命周期", "重复启动、切换宿主、隐藏、显示和退出 3 次。", "无窗口、托盘、计时器或进程残留。"),
+                Item("diagnostics-privacy", "诊断", "诊断摘要隐私", "打开诊断页并检查字段。", "只显示 Dango、系统、句柄状态和显示摘要，不包含窗口标题、桌面内容或用户输入。"),
+                Item("dpi-100", "DPI 与显示器", "1080p 100%", "在 1080p、100% 缩放环境执行关键操作。", "WorkerW 场景和控制中心无不可恢复的布局问题。"),
+                Item("dpi-high", "DPI 与显示器", "较高 DPI", "在较高 DPI 环境执行关键操作。", "WorkerW 场景坐标与控制中心保持可用。")
+            ]);
+
     private static VerificationItemDefinition Item(
         string id,
         string category,

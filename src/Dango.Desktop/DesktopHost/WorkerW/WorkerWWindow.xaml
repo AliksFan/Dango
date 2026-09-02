@@ -1,0 +1,63 @@
+<Window x:Class="Dango.Desktop.DesktopHost.WorkerW.WorkerWWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Dango P1-003 WorkerW Spike"
+        Width="520"
+        Height="320"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Focusable="True"
+        Opacity="0"
+        ResizeMode="NoResize"
+        ShowActivated="False"
+        ShowInTaskbar="False"
+        Topmost="False"
+        WindowStartupLocation="Manual"
+        WindowStyle="None">
+    <Canvas x:Name="SceneCanvas">
+        <Border x:Name="IslandVisual"
+                Canvas.Left="80"
+                Canvas.Top="190"
+                Width="360"
+                Height="100"
+                Background="#E8D7B891"
+                BorderBrush="#FF6E5A3C"
+                BorderThickness="3"
+                CornerRadius="50">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="8"
+                                  Direction="270"
+                                  Opacity="0.2"
+                                  ShadowDepth="3" />
+            </Border.Effect>
+            <TextBlock HorizontalAlignment="Center"
+                       Margin="0,18,0,0"
+                       VerticalAlignment="Top"
+                       FontSize="14"
+                       Foreground="#FF4B3D2A"
+                       Text="P1-003 静态悬浮岛" />
+        </Border>
+
+        <Border x:Name="DangoVisual"
+                Canvas.Left="185"
+                Canvas.Top="55"
+                Width="150"
+                Height="135"
+                Background="#FFF2C94C"
+                BorderBrush="#FF6E5A3C"
+                BorderThickness="3"
+                CornerRadius="72"
+                Cursor="Hand"
+                MouseLeftButtonDown="OnDangoMouseLeftButtonDown"
+                MouseLeftButtonUp="OnDangoMouseLeftButtonUp"
+                MouseMove="OnDangoMouseMove"
+                LostMouseCapture="OnDangoLostMouseCapture">
+            <Grid>
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock HorizontalAlignment="Center" FontSize="25" Text="●  ●" />
+                    <TextBlock HorizontalAlignment="Center" Margin="0,8,0,0" FontSize="13" Text="占位团子" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Canvas>
+</Window>

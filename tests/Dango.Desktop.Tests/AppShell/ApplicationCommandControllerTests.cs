@@ -1,4 +1,5 @@
 using Dango.Desktop.AppShell;
+using Dango.Desktop.DesktopHost;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Dango.Desktop.Tests.AppShell;
@@ -66,6 +67,31 @@ public sealed class ApplicationCommandControllerTests
         Assert.IsTrue(result.Snapshot.IsInteractionEnabled, "失败命令必须恢复原有交互状态。");
     }
 
+    [TestMethod]
+    public void HostModeIsAppliedOnlyAfterCoordinatorConfirmation()
+    {
+        var host = new FakeModeHost();
+        var controller = new ApplicationCommandController(host);
+
+        var result = controller.SetHostMode(DesktopHostMode.WorkerW);
+
+        Assert.AreEqual(CommandApplicationState.Applied, result.State);
+        Assert.AreEqual("WorkerW", result.Snapshot.Mode);
+    }
+
+    [TestMethod]
+    public void UnsupportedHostModeSwitchReturnsFailure()
+    {
+        var controller = new ApplicationCommandController(
+            new FakeDesktopHost(isVisible: true, isInteractionEnabled: true));
+
+        var result = controller.SetHostMode(DesktopHostMode.WorkerW);
+
+        Assert.AreEqual(CommandApplicationState.Failed, result.State);
+        Assert.AreEqual("Overlay", result.Snapshot.Mode);
+        StringAssert.Contains(result.Error, "不支持");
+    }
+
     private sealed class FakeDesktopHost : IDesktopHostControl
     {
         private DesktopHostSnapshot snapshot;
@@ -112,5 +138,21 @@ public sealed class ApplicationCommandControllerTests
         }
 
         public string CreateDiagnosticSummary() => "safe diagnostics";
+    }
+
+    private sealed class FakeModeHost : IDesktopHostControl, IDesktopHostModeControl
+    {
+        private DesktopHostSnapshot snapshot = new("Overlay", true, true, "测试", null);
+
+        public DesktopHostSnapshot GetSnapshot() => snapshot;
+
+        public void SetMode(DesktopHostMode mode) => snapshot = snapshot with { Mode = mode.ToString() };
+
+        public void SetVisibility(bool isVisible) => snapshot = snapshot with { IsVisible = isVisible };
+
+        public void SetInteractionEnabled(bool isEnabled) =>
+            snapshot = snapshot with { IsInteractionEnabled = isEnabled };
+
+        public string CreateDiagnosticSummary() => snapshot.Mode;
     }
 }

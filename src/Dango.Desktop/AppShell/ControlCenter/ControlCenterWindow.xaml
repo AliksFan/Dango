@@ -215,7 +215,7 @@
                                           Unchecked="OnVisibilityCheckedChanged" />
                                 <TextBlock Margin="24,6,0,18"
                                            Foreground="{StaticResource MutedTextBrush}"
-                                           Text="关闭后停止覆盖层显示，托盘与控制中心仍保留。" />
+                                           Text="关闭后停止当前桌面宿主显示，托盘与控制中心仍保留。" />
                                 <CheckBox x:Name="InteractionCheckBox"
                                           AutomationProperties.Name="允许与团子互动"
                                           Checked="OnInteractionCheckedChanged"
@@ -236,11 +236,17 @@
                         <Border Margin="0,16,0,0" Style="{StaticResource CardStyle}">
                             <StackPanel>
                                 <TextBlock FontSize="17" FontWeight="SemiBold" Text="实验宿主" />
-                                <RadioButton Margin="0,14,0,6"
-                                             IsChecked="True"
-                                             IsEnabled="False"
-                                             Content="透明覆盖层 · 尚未完成人工验收" />
-                                <RadioButton IsEnabled="False" Content="WorkerW 尚未实现" />
+                                <RadioButton x:Name="OverlayHostRadioButton"
+                                             Margin="0,14,0,6"
+                                             AutomationProperties.Name="切换到透明覆盖层"
+                                             Checked="OnHostModeChanged"
+                                             Content="透明覆盖层 · P1-002 已通过人工验收"
+                                             GroupName="DesktopHost" />
+                                <RadioButton x:Name="WorkerWHostRadioButton"
+                                             AutomationProperties.Name="切换到 WorkerW 壁纸层"
+                                             Checked="OnHostModeChanged"
+                                             Content="WorkerW/Shell 壁纸层 · P1-003 待人工验收"
+                                             GroupName="DesktopHost" />
                             </StackPanel>
                         </Border>
 

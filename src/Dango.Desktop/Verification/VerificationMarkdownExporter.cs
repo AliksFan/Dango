@@ -12,11 +12,12 @@ public static class VerificationMarkdownExporter
         var failed = session.Results.Count(result => result.Outcome == ManualVerificationOutcome.Failed);
         var unable = session.Results.Count(result => result.Outcome == ManualVerificationOutcome.UnableToRun);
         var builder = new StringBuilder();
-        builder.AppendLine("# P1-002 人工验收记录");
+        var taskId = definition.Title.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries)[0];
+        builder.AppendLine($"# {definition.Title}记录");
         builder.AppendLine();
         builder.AppendLine($"> 会话：`{EscapeInline(session.SessionId)}`");
         builder.AppendLine($"> 开始时间：{session.StartedAt:yyyy-MM-dd HH:mm:ss zzz}");
-        builder.AppendLine($"> 结论：人工失败 {failed} 项，未验证 {unverified} 项，无法执行 {unable} 项；本文不代表 P1-002 自动通过。");
+        builder.AppendLine($"> 结论：人工失败 {failed} 项，未验证 {unverified} 项，无法执行 {unable} 项；本文不代表 {taskId} 自动通过。");
         builder.AppendLine();
         builder.AppendLine("## 环境摘要");
         builder.AppendLine();

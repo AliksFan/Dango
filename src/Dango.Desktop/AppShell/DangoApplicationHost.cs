@@ -2,7 +2,9 @@ using System.IO;
 using System.Windows;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.AppShell.Tray;
+using Dango.Desktop.DesktopHost;
 using Dango.Desktop.DesktopHost.Overlay;
+using Dango.Desktop.DesktopHost.WorkerW;
 using Dango.Desktop.Verification;
 
 namespace Dango.Desktop.AppShell;
@@ -10,6 +12,8 @@ namespace Dango.Desktop.AppShell;
 internal sealed class DangoApplicationHost : IDisposable
 {
     private readonly OverlayWindow overlayWindow;
+    private readonly WorkerWWindow workerWWindow;
+    private readonly DesktopHostCoordinator desktopHost;
     private readonly ApplicationCommandController commandController;
     private readonly VerificationDefinition verificationDefinition;
     private ControlCenterWindow? controlCenterWindow;
@@ -19,8 +23,10 @@ internal sealed class DangoApplicationHost : IDisposable
     public DangoApplicationHost()
     {
         overlayWindow = new OverlayWindow();
-        commandController = new ApplicationCommandController(overlayWindow);
-        verificationDefinition = VerificationDefinition.CreateP1002Overlay();
+        workerWWindow = new WorkerWWindow();
+        desktopHost = new DesktopHostCoordinator(overlayWindow, workerWWindow);
+        commandController = new ApplicationCommandController(desktopHost);
+        verificationDefinition = VerificationDefinition.CreateP1003WorkerW();
     }
 
     public void Start()
@@ -89,6 +95,7 @@ internal sealed class DangoApplicationHost : IDisposable
         }
 
         overlayWindow.Close();
+        workerWWindow.Close();
     }
 
     private ControlCenterWindow GetOrCreateControlCenter()
@@ -99,7 +106,7 @@ internal sealed class DangoApplicationHost : IDisposable
         }
 
         var localData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var draftPath = Path.Combine(localData, "Dango", "verification", "p1-002-draft.json");
+        var draftPath = Path.Combine(localData, "Dango", "verification", "p1-003-draft.json");
         var settingsPath = Path.Combine(localData, "Dango", "settings.json");
         controlCenterWindow = new ControlCenterWindow(
             commandController,

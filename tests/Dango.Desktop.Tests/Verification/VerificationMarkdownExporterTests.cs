@@ -42,6 +42,22 @@ public sealed class VerificationMarkdownExporterTests
         Assert.IsFalse(markdown.Contains("P1-002 已通过", StringComparison.Ordinal));
     }
 
+    [TestMethod]
+    public void WorkerWReportUsesP1003IdentityWithoutClaimingAutomaticSuccess()
+    {
+        var definition = VerificationDefinition.CreateP1003WorkerW();
+        var session = VerificationSession.Create(
+            definition,
+            new VerificationEnvironmentSnapshot("1.0.0", "test", "WorkerW", "26100", "1 display / 125%"),
+            new DateTimeOffset(2026, 9, 2, 10, 0, 0, TimeSpan.FromHours(8)));
+
+        var markdown = VerificationMarkdownExporter.Export(definition, session);
+
+        StringAssert.Contains(markdown, "# P1-003 WorkerW/Shell 壁纸层人工验收记录");
+        StringAssert.Contains(markdown, "本文不代表 P1-003 自动通过");
+        Assert.IsFalse(markdown.Contains("P1-003 已通过", StringComparison.Ordinal));
+    }
+
     private static VerificationSession CreateSession(VerificationDefinition definition) =>
         VerificationSession.Create(
             definition,
