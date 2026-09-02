@@ -4,7 +4,7 @@
 
 项目希望让每位用户拥有一只代表自己的“团子”。团子平时生活在 Windows 桌面上；当好友进入同一房间后，多只团子会在一个持续存在的共享空间中相遇、陪伴并自动互动。
 
-Phase 0 工作区与技术基线已通过自动门禁并由用户验收。Phase 1 正在实施：P1-001 已固化无 UI 的场景与资产契约，P1-002 透明覆盖层与 P1-002A 图形化控制中心已于 2026-09-02 通过人工验收；WorkerW、正式动画和多人功能尚未实现。阶段证据见 [Phase 0 阶段记录](docs/verification/phase-0-stage-result.md)。
+Phase 0 工作区与技术基线已通过自动门禁并由用户验收。Phase 1 正在实施：P1-001 已固化无 UI 的场景与资产契约，P1-002 透明覆盖层与 P1-002A 图形化控制中心已于 2026-09-02 通过人工验收；P1-003 WorkerW 候选已完成实现与自动门禁，真实桌面和人工验收尚未执行；正式动画和多人功能尚未实现。阶段证据见 [Phase 0 阶段记录](docs/verification/phase-0-stage-result.md)。
 
 ## 构建与验证
 
@@ -17,7 +17,7 @@ dotnet build -c Release
 dotnet test -c Release --no-build
 ```
 
-Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](docs/verification/README.md)。当前 WPF 程序包含 P1-002 透明覆盖层候选 Spike 与 P1-002A 控制中心，不包含 WorkerW、正式动画或完整 Phase 1 体验。
+Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](docs/verification/README.md)。当前 WPF 程序包含 P1-002 透明覆盖层、P1-003 WorkerW 候选与统一控制中心；默认仍使用 Overlay，WorkerW 需在控制中心显式选择。程序不包含正式动画或完整 Phase 1 体验。
 
 运行当前透明覆盖层 Spike：
 
@@ -25,7 +25,7 @@ Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](d
 dotnet run --project .\src\Dango.Desktop\Dango.Desktop.csproj -c Release
 ```
 
-覆盖层只显示静态占位团子和悬浮岛。通过托盘菜单或双击托盘图标可以打开“Dango 控制中心”，其中提供显示/隐藏、交互控制、图形化人工清单、本地草稿、隐私安全诊断和 Markdown 导出；关闭控制中心后 Dango 继续在托盘运行。宿主人工清单见 [P1-002 验证记录](docs/verification/phase-1-p1-002-overlay-host.md)，控制中心人工清单见 [P1-002A 验证记录](docs/verification/phase-1-p1-002a-control-center.md)。这些实现不代表桌面承载方案已经最终选定。
+两个候选只显示相同的静态占位团子和悬浮岛。通过托盘菜单或双击托盘图标可以打开“Dango 控制中心”，其中提供宿主切换、显示/隐藏、交互控制、图形化人工清单、本地草稿、隐私安全诊断和 Markdown 导出；关闭控制中心后 Dango 继续在托盘运行。验证见 [P1-002 Overlay](docs/verification/phase-1-p1-002-overlay-host.md)、[P1-002A 控制中心](docs/verification/phase-1-p1-002a-control-center.md)与 [P1-003 WorkerW](docs/verification/phase-1-p1-003-workerw-host.md)。这些实现不代表桌面承载方案已经最终选定。
 
 ## 当前文档
 

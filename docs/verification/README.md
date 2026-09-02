@@ -7,6 +7,7 @@
 - [Phase 0 工作区与技术基线阶段记录](phase-0-stage-result.md)：自动门禁、实时空壳启动、延期项和人工验收状态。
 - [P1-002 透明覆盖层宿主验证记录](phase-1-p1-002-overlay-host.md)：覆盖层输入、焦点、拖动取消、托盘、DPI 和进程回收已通过人工验收。
 - [P1-002A Dango 控制中心验证记录](phase-1-p1-002a-control-center.md)：控制中心入口、图形化验收、诊断、隐私和 DPI 已通过人工验收。
+- [P1-003 WorkerW/Shell 壁纸层宿主验证记录](phase-1-p1-003-workerw-host.md)：实现与自动门禁已完成；真实挂载、Explorer 恢复和人工清单尚未验证。
 - [2026-09-02 P1-002 人工验收导出](evidence/p1-002-manual-acceptance-2026-09-02.md)：用户导出的 20/20 项人工通过原始记录。
 
 ## Phase 0 公共命令
