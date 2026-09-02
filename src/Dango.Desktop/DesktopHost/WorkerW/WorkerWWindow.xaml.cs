@@ -104,7 +104,10 @@ public partial class WorkerWWindow : Window, IDesktopHostControl
 
         Opacity = 0;
         Show();
-        BeginAttachment();
+        if (recoveryState.State is WorkerWRecoveryState.Detached or WorkerWRecoveryState.SafeHidden)
+        {
+            BeginAttachment();
+        }
     }
 
     public void SetInteractionEnabled(bool isEnabled)
@@ -168,7 +171,7 @@ public partial class WorkerWWindow : Window, IDesktopHostControl
         var workerW = NativeMethods.FindWorkerW();
         if (!NativeMethods.IsValidWindow(workerW))
         {
-            lastError = "尚未发现有效 WorkerW，正在有界重试。";
+            lastError = "未发现兼容的 WorkerW 桌面层，已恢复透明覆盖层。";
             return;
         }
 

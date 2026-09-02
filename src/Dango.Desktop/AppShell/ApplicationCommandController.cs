@@ -82,6 +82,13 @@ public sealed class ApplicationCommandController
                 snapshot,
                 "宿主模式未确认，仍保留当前观测状态。");
         }
+        catch (DesktopHostSwitchException exception)
+        {
+            return new HostCommandResult(
+                CommandApplicationState.Failed,
+                host.GetSnapshot(),
+                $"宿主模式无法切换：{exception.SafeReason}");
+        }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             return new HostCommandResult(

@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Text;
+using Dango.Desktop.DesktopHost.WorkerW;
 
 namespace Dango.Desktop.DesktopHost.Win32;
 
@@ -30,21 +32,7 @@ internal static partial class NativeMethods
                 out _);
         }
 
-        nint workerW = nint.Zero;
-        _ = EnumWindows(
-            (topLevelWindow, _) =>
-            {
-                var shellView = FindWindowEx(topLevelWindow, nint.Zero, "SHELLDLL_DefView", null);
-                if (shellView == nint.Zero)
-                {
-                    return true;
-                }
-
-                workerW = FindWindowEx(nint.Zero, topLevelWindow, "WorkerW", null);
-                return workerW == nint.Zero;
-            },
-            nint.Zero);
-        return workerW;
+        return WorkerWTargetSelector.Select(CaptureShellCandidates());
     }
 
     public static bool IsValidWindow(nint windowHandle) =>
@@ -124,6 +112,93 @@ internal static partial class NativeMethods
         }
     }
 
+    private static IReadOnlyList<ShellWindowCandidate> CaptureShellCandidates()
+    {
+        var candidates = new List<ShellWindowCandidate>();
+        var zOrder = 0;
+        _ = EnumWindows(
+            (topLevelWindow, _) =>
+            {
+                var className = GetWindowClassName(topLevelWindow);
+                if (string.Equals(className, "Progman", StringComparison.Ordinal) ||
+                    string.Equals(className, "WorkerW", StringComparison.Ordinal))
+                {
+                    candidates.Add(
+                        CaptureCandidate(
+                            topLevelWindow,
+                            nint.Zero,
+                            zOrder,
+                            className,
+                            FindWindowEx(
+                                topLevelWindow,
+                                nint.Zero,
+                                "SHELLDLL_DefView",
+                                null) != nint.Zero));
+                }
+
+                zOrder++;
+                return true;
+            },
+            nint.Zero);
+
+        var shellHosts = candidates.Where(candidate => candidate.HasShellView).ToArray();
+        foreach (var shellHost in shellHosts)
+        {
+            var child = nint.Zero;
+            while ((child = FindWindowEx(shellHost.Handle, child, null, null)) != nint.Zero)
+            {
+                var className = GetWindowClassName(child);
+                if (string.Equals(className, "WorkerW", StringComparison.Ordinal))
+                {
+                    candidates.Add(
+                        CaptureCandidate(
+                            child,
+                            shellHost.Handle,
+                            zOrder: 0,
+                            className,
+                            hasShellView: false));
+                }
+            }
+        }
+
+        return candidates;
+    }
+
+    private static ShellWindowCandidate CaptureCandidate(
+        nint windowHandle,
+        nint parentHandle,
+        int zOrder,
+        string className,
+        bool hasShellView)
+    {
+        _ = GetWindowThreadProcessId(windowHandle, out var processId);
+        var width = 0;
+        var height = 0;
+        if (GetWindowRect(windowHandle, out var bounds))
+        {
+            width = Math.Max(0, bounds.Right - bounds.Left);
+            height = Math.Max(0, bounds.Bottom - bounds.Top);
+        }
+
+        return new ShellWindowCandidate(
+            windowHandle,
+            parentHandle,
+            unchecked((int)processId),
+            zOrder,
+            className,
+            IsWindowVisible(windowHandle),
+            width,
+            height,
+            hasShellView);
+    }
+
+    private static string GetWindowClassName(nint windowHandle)
+    {
+        var className = new StringBuilder(256);
+        _ = GetClassName(windowHandle, className, className.Capacity);
+        return className.ToString();
+    }
+
     private delegate bool EnumWindowsCallback(nint windowHandle, nint parameter);
 
     [StructLayout(LayoutKind.Sequential)]
@@ -165,6 +240,23 @@ internal static partial class NativeMethods
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindow(nint windowHandle);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int GetClassName(
+        nint windowHandle,
+        StringBuilder className,
+        int maximumCount);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint GetWindowThreadProcessId(nint windowHandle, out uint processId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(nint windowHandle);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(nint windowHandle, out NativeRect rectangle);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

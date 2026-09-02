@@ -33,9 +33,10 @@ public sealed class DesktopHostCoordinatorTests
         };
         var coordinator = new DesktopHostCoordinator(overlay, workerW);
 
-        Assert.ThrowsExactly<InvalidOperationException>(
+        var exception = Assert.ThrowsExactly<DesktopHostSwitchException>(
             () => coordinator.SetMode(DesktopHostMode.WorkerW));
 
+        Assert.AreEqual("目标宿主未确认切换后的显示或交互状态。", exception.SafeReason);
         Assert.AreEqual("Overlay", coordinator.GetSnapshot().Mode);
         Assert.IsTrue(overlay.GetSnapshot().IsVisible);
         Assert.IsFalse(workerW.GetSnapshot().IsVisible);

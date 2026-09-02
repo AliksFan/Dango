@@ -13,6 +13,18 @@ public interface IDesktopHostModeControl
     void SetMode(DesktopHostMode mode);
 }
 
+public sealed class DesktopHostSwitchException : InvalidOperationException
+{
+    public DesktopHostSwitchException(string safeReason, Exception? innerException = null)
+        : base("桌面宿主切换失败。", innerException)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(safeReason);
+        SafeReason = safeReason;
+    }
+
+    public string SafeReason { get; }
+}
+
 public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopHostModeControl
 {
     private readonly IDesktopHostControl overlay;
@@ -55,7 +67,8 @@ public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopHostMo
             if (candidateSnapshot.IsVisible != previousSnapshot.IsVisible ||
                 candidateSnapshot.IsInteractionEnabled != previousSnapshot.IsInteractionEnabled)
             {
-                throw new InvalidOperationException("目标宿主未确认切换后的显示或交互状态。");
+                throw new DesktopHostSwitchException(
+                    candidateSnapshot.LastError ?? "目标宿主未确认切换后的显示或交互状态。");
             }
 
             active = candidate;
@@ -77,7 +90,10 @@ public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopHostMo
 
             active = previous;
             activeMode = previousMode;
-            throw new InvalidOperationException("桌面宿主切换失败，已恢复原宿主。", exception);
+            var safeReason = exception is DesktopHostSwitchException switchException
+                ? switchException.SafeReason
+                : "目标宿主发生内部错误，已恢复原宿主。";
+            throw new DesktopHostSwitchException(safeReason, exception);
         }
     }
 }
