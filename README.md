@@ -4,7 +4,7 @@
 
 项目希望让每位用户拥有一只代表自己的“团子”。团子平时生活在 Windows 桌面上；当好友进入同一房间后，多只团子会在一个持续存在的共享空间中相遇、陪伴并自动互动。
 
-Phase 0 工作区与技术基线已通过自动门禁并由用户验收。Phase 1 正在实施：P1-001 已固化无 UI 的场景与资产契约，P1-002 透明覆盖层与 P1-002A 图形化控制中心已进入人工验收；WorkerW、正式动画和多人功能尚未实现。阶段证据见 [Phase 0 阶段记录](docs/verification/phase-0-stage-result.md)。
+Phase 0 工作区与技术基线已通过自动门禁并由用户验收。Phase 1 正在实施：P1-001 已固化无 UI 的场景与资产契约，P1-002 透明覆盖层与 P1-002A 图形化控制中心已于 2026-09-02 通过人工验收；WorkerW、正式动画和多人功能尚未实现。阶段证据见 [Phase 0 阶段记录](docs/verification/phase-0-stage-result.md)。
 
 ## 构建与验证
 
@@ -38,7 +38,7 @@ dotnet run --project .\src\Dango.Desktop\Dango.Desktop.csproj -c Release
 - [分阶段开发计划 v0.1](docs/development-plan-v0.1.md)：Phase 0–5 的范围、交付物与阶段门禁。
 - [Phase 1 桌面生命感原型详细设计](docs/phase-1-desktop-life-prototype-design.md)：已批准的桌面宿主对比、场景与资产边界、性能门槛和分层验收。
 - [Phase 1 实施计划](docs/phase-1-implementation-plan.md)：已批准的 P0-000 环境准备、P0-001 工作区脚手架与 P1 系列顺序任务；P1-002A 在 P1-003 前实现控制中心和图形化验收入口。
-- [Dango 控制中心 UI 设计](docs/phase-1-control-center-ui-design.md)：已批准并完成实现的正式控制中心、Phase 1 图形化验收入口和未来扩展边界；待人工验收。
+- [Dango 控制中心 UI 设计](docs/phase-1-control-center-ui-design.md)：已批准、完成实现并通过人工验收的正式控制中心、Phase 1 图形化验收入口和未来扩展边界。
 - [架构决策记录](docs/adr/README.md)：已批准的重要技术决策、后果与重新评估条件。
 
 ## 当前调研
