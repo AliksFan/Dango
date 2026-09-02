@@ -382,6 +382,12 @@ git diff --check
 
 未通过检查点时，只修复当前检查点或更新设计；不得用增加生成次数、伪造占位数据或提前写 WPF 代码掩盖失败。
 
+**当前进度（2026-09-02）**
+
+- A0–A4 已完成：接口、项目 skill、资产预检、A 极简视觉方向和三类静态动作样本均已有对应证据。
+- 下一步是 AP-005 / A5：补齐 `Wander`、`ApproachIsland`、`OnIsland`、`ClimbDown`、`Dragged`、`Falling` 和 `Reacting`，并组装独立候选资产包。
+- P1-004 WPF 播放与轻量软体 Spike 仍受 P1-003/C3 门禁约束，不因 A4 通过而提前开始。
+
 ## 8. 费用与外部资源停止规则
 
 - 内置 `imagegen` 是本计划唯一默认生成能力；不要求 API Key，也不自动改用 CLI/API 付费路径。
