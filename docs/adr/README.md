@@ -18,3 +18,4 @@
 | [0001](0001-windows-client-foundation.md) | Accepted | 2026-08-31 | Phase 1 Windows 客户端基础技术选择 |
 | [0002](0002-server-foundation-and-scaling.md) | Accepted | 2026-09-01 | 首版服务端基础技术与扩展边界 |
 | [0003](0003-animation-assets-and-rendering-validation.md) | Accepted | 2026-09-01 | 首版动画资产管线与渲染验证路线 |
+| [0004](0004-lightweight-soft-body-secondary-motion.md) | Accepted | 2026-09-02 | 手工关键姿势与轻量软体二次运动组合方案 |
