@@ -10,6 +10,8 @@ Use these terms to make animation choices reviewable. They describe Phase 1 inte
 - **Quietness:** long calm intervals, low amplitude, and no perpetual attention-seeking bounce, sparkle, or screen crossing.
 - **Readability:** start, contact, transfer, and settle poses remain distinguishable at desktop-pet scale.
 - **Spatial contact:** grabbing the island and landing on the ground use stable semantic anchors; the body must appear to touch rather than float beside the surface.
+- **Flat modularity:** customizable body fill, expression parts, and hat remain independent solid-color layers through every pose. Eyes belong to expression animation, not face customization. Motion cannot rely on highlights, gradients, lighting, or baked combinations.
+- **Limbless silhouette:** the Dango has no legs, feet, paws, or arms. Keep one continuous rounded base; express locomotion and climbing through center-of-mass shift, squash/stretch, and contact deformation rather than limb-like bumps.
 
 ## Timing pattern
 
@@ -48,4 +50,7 @@ Show approach, reach, `island-grabbed` contact, weight transfer, body lift, edge
 - motion that moves the ground contact without a state reason;
 - high-frequency facial changes or surprise reactions during idle;
 - effects that dominate the desktop or make transparency edges obvious;
+- shading, highlights, gradients, glow, or texture used to fake volume;
+- expression or hat variants baked into every body color;
+- feet, legs, paws, arms, or paired bottom protrusions that read as feet;
 - animations whose visual result depends on private desktop content.

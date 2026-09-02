@@ -24,6 +24,7 @@ BIT_DEPTHS_BY_COLOR_TYPE = {
 }
 SOURCE_TYPES = {
     "project-created",
+    "ai-draft",
     "ai-draft-human-reviewed",
     "project-code-generated",
 }

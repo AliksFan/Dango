@@ -26,6 +26,7 @@
           "sourceType": {
             "enum": [
               "project-created",
+              "ai-draft",
               "ai-draft-human-reviewed",
               "project-code-generated"
             ]

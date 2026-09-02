@@ -5,7 +5,7 @@ Run the sections that match the artifact status. A draft may fail candidate chec
 ## Source and provenance
 
 - Every selected file has a package-relative path and a provenance entry.
-- Source type is project-created, AI draft with human review, or project-code generated.
+- Source type is project-created, unreviewed AI draft, AI draft with human review, or project-code generated.
 - Tool, date, prompt or creation note, modifications, and license are recorded.
 - No third-party character, existing IP, sensitive desktop content, watermark, or unknown source remains.
 - Discarded generations, caches, backups, and temporary frames are not committed.
@@ -16,6 +16,9 @@ Run the sections that match the artifact status. A draft may fail candidate chec
 - Transparent background is real, not a checkerboard baked into pixels.
 - No obvious white/black fringe, dirty transparent pixels, cropped outline, or atlas bleed.
 - Body, face, blush, shadow, and accessory boundaries match the approved layer plan.
+- Body color and hat options remain independently replaceable; expression eyes remain separate but are not presented as customization presets.
+- Fills are solid: no lighting, highlight, gradient, glow, texture, or shaded volume is present.
+- The body has one continuous rounded lower silhouette with no feet, legs, paws, arms, or limb-like protrusions.
 - Small-size preview remains readable without fine texture noise.
 
 ## Continuity and contact

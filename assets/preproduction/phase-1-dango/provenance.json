@@ -1,5 +1,16 @@
 {
   "$schema": "./provenance.schema.json",
   "version": 1,
-  "files": []
+  "files": [
+    {
+      "path": "drafts/direction-a-selected-v2.png",
+      "sourceType": "ai-draft",
+      "source": "Generated from the user-selected outline-free rounded direction A",
+      "license": "OpenAI generated output; project use subject to applicable OpenAI terms",
+      "tool": "Codex built-in imagegen",
+      "createdOn": "2026-09-02",
+      "promptRecord": "docs/animation/phase-1-generation-record.md",
+      "modifications": "Targeted regeneration removed feet and eye customization options; gradients remain and require correction"
+    }
+  ]
 }

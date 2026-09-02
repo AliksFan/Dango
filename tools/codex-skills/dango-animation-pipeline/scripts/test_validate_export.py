@@ -149,6 +149,19 @@ class ValidateExportTests(unittest.TestCase):
 
             self.assertTrue(any("unsupported sourceType" in error for error in result["errors"]))
 
+    def test_unreviewed_ai_draft_source_type_is_supported(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_png(root / "draft.png")
+            draft_entry = entry("draft.png")
+            draft_entry["sourceType"] = "ai-draft"
+            provenance = root / "provenance.json"
+            write_provenance(provenance, [draft_entry])
+
+            result = validate(root, provenance)
+
+            self.assertEqual([], result["errors"])
+
     def test_provenance_outside_asset_directory_fails(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

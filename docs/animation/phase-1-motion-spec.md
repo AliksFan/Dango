@@ -32,7 +32,10 @@
 
 ## 3. 图层与语义点
 
-- 必需图层职责：`shadow`、`body`、`face`、`blush`、`accessory`。
+- 用户确认的首版资产兼容要求：身体纯色和帽子是两个独立可配置类别；眼睛属于表情/动画层，不进入捏脸预设。
+- 团子没有脚、腿、爪或手臂，主体底部保持连续圆弧；移动、落地和爬岛通过整体重心、轮廓形变与接触面表达。
+- 必需图层职责：`shadow`、`body`、`eyes`、`mouth`、`blush`、`hat`；运行时仍需映射到当前 `body`、`face`、`shadow`、`accessory` slot。
+- 所有视觉只使用纯色，不包含光照、高光、渐变或材质明暗；暂保留可选的单色接触影用于落地点提示，等待用户最终确认。
 - 当前 slot：`body`、`face`、`shadow`、`accessory`。
 - 当前 anchor：`ground-contact`、`click`、`island-grab`、`island-stand`。
 - 当前 hit shape 用途：Click、Drag、Collision。
@@ -48,6 +51,9 @@
 - `ClimbUp` 轮廓帧数量、抓边接触区域和遮挡变化；
 - 每个轮廓帧是否需要独立 accessory anchor；
 - 脸部是否需要独立于身体 clip 的附加轨道；
+- 当前 Schema 如何表达身体调色和帽子资源集；
+- 表情动画中的眼睛与嘴是否需要从当前单一 `face` slot 拆分；
+- 帽子逐帧挂点如何随轮廓形变更新；
 - 降低动画模式的刷新频率和次级运动删减规则。
 
 这些问题暴露 Schema 缺口时记录为 P1-004 TODO，不在预生产中滥用字段。

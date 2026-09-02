@@ -57,4 +57,6 @@ The current sample canvas is 160 by 120 logical units with origin `(0, 0)` and p
 
 The current Schema stores slots and anchors once per package, not per frame. It also has one frame layer list rather than independent facial sub-clips. If selected art proves that outline frames need per-frame accessory anchors, changing occlusion, or independent facial timing, record the gap for P1-004. Do not encode new meanings into unrelated fields.
 
+The approved preproduction input also requires a simple first-release customization model with replaceable solid body color and hat categories. Eyes belong to expression animation and are not a customization preset. Contract version 1 has no explicit tint parameter, variant set, or per-frame hat anchor. During preproduction, keep body, expression, and hat parts visually separate and document the missing runtime representation; do not silently implement UI, persistence, networking, or overload existing fields.
+
 Candidate assets stay under `assets/preproduction/phase-1-dango/` and are not loaded by the app by default. Moving selected exports into `assets/placeholder/` is a separate integration action.
