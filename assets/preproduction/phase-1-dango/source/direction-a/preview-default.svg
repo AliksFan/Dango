@@ -7,13 +7,6 @@
     <circle cx="61" cy="65" r="6" fill="#2B201E" />
     <circle cx="99" cy="65" r="6" fill="#2B201E" />
   </g>
-  <g id="mouth">
-    <path d="M72 76C73 84 78 87 80 87C82 87 87 84 88 76" fill="none" stroke="#2B201E" stroke-width="4" stroke-linecap="round" />
-  </g>
-  <g id="blush">
-    <circle cx="45" cy="80" r="7" fill="#F58FAA" />
-    <circle cx="115" cy="80" r="7" fill="#F58FAA" />
-  </g>
   <g id="hat">
     <path d="M77 25C77 20 78 16 80 12C83 16 84 21 83 26Z" fill="#67B84E" />
     <path d="M80 15C71 15 64 11 62 4C70 2 77 5 80 15Z" fill="#78C85A" />

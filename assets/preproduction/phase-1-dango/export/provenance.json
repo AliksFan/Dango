@@ -21,24 +21,6 @@
       "modifications": "Transparent 160 by 120 raster export"
     },
     {
-      "path": "direction-a/mouth-default.png",
-      "sourceType": "project-code-generated",
-      "source": "source/direction-a/mouth-default.svg",
-      "license": "Dango project-owned original; no third-party source",
-      "tool": "Microsoft Edge headless via source/direction-a/export-svg.ps1",
-      "createdOn": "2026-09-02",
-      "modifications": "Transparent 160 by 120 raster export"
-    },
-    {
-      "path": "direction-a/blush-default.png",
-      "sourceType": "project-code-generated",
-      "source": "source/direction-a/blush-default.svg",
-      "license": "Dango project-owned original; no third-party source",
-      "tool": "Microsoft Edge headless via source/direction-a/export-svg.ps1",
-      "createdOn": "2026-09-02",
-      "modifications": "Transparent 160 by 120 raster export"
-    },
-    {
       "path": "direction-a/hat-sprout.png",
       "sourceType": "project-code-generated",
       "source": "source/direction-a/hat-sprout.svg",

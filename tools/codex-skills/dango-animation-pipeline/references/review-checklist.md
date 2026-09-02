@@ -15,7 +15,7 @@ Run the sections that match the artifact status. A draft may fail candidate chec
 - PNG files decode, use the same canvas dimensions, and contain Alpha.
 - Transparent background is real, not a checkerboard baked into pixels.
 - No obvious white/black fringe, dirty transparent pixels, cropped outline, or atlas bleed.
-- Body, eyes, mouth, blush, and hat boundaries match the approved layer plan; no contact or ground shadow is present.
+- Body, eyes, and hat boundaries match the approved layer plan; no mouth, blush, contact shadow, or ground shadow is present.
 - Body color and hat options remain independently replaceable; expression eyes remain separate but are not presented as customization presets.
 - Fills are solid: no lighting, highlight, gradient, glow, texture, or shaded volume is present.
 - The body has one continuous rounded lower silhouette with no feet, legs, paws, arms, or limb-like protrusions.

@@ -107,7 +107,7 @@ Avoid: all lighting and shading, highlights, gradients, glow, texture, 3D volume
 
 - 用户选择 A 的无描边柔圆风格。
 - 眼睛视为表情的一部分，暂不进入捏脸预设。
-- 首版预生产的可配置类别收敛为身体纯色和帽子；眼睛、嘴和腮红继续独立分层以支持表情动画，但不生成捏脸眼型选项。
+- 首版预生产的可配置类别收敛为身体纯色和帽子；眼睛独立分层以支持表情动画，但不生成捏脸眼型选项。
 - 下一次定向修正保留 A 的主体轮廓语言，移除选项区中的眼睛列表，并强制去除渐变、光晕和背景。
 
 ### A 定向修正第 1 轮
@@ -137,16 +137,17 @@ Avoid: all lighting and shading, highlights, gradients, glow, texture, 3D volume
 - 源文件：`assets/preproduction/phase-1-dango/source/direction-a/`。
 - 导出文件：`assets/preproduction/phase-1-dango/export/direction-a/`。
 - 生产方式：项目原创几何 SVG，通过仓库内 `export-svg.ps1` 调用本机 Microsoft Edge headless 导出；不再调用图像生成器。
-- 分层：`body`、`eyes-default`、`mouth-default`、`blush-default`、`hat-sprout`；`preview-default` 是仅供审查的组合图。
+- 分层：`body`、`eyes-default`、`hat-sprout`；`preview-default` 是仅供审查的组合图。
 - 画布：全部为 160 × 120；没有地面阴影或接触影。
 - 视觉硬约束：SVG 中没有渐变、滤镜、光照、纹理或透明度效果；身体底部连续且无脚、腿、爪、手臂或肢体状凸起。
 - 资产状态：`candidate`，尚未成为已验收美术或运行时资产。
 
 ### 确定性检查结果
 
-- `export-svg.ps1` 在本机 Microsoft Edge 完成 6 个文件的重复导出。
-- 连续两次导出的 6 个文件 SHA-256 均保持一致，当前环境中得到逐字节一致结果。
-- 导出预检检查 6 个 PNG，统一画布为 160 × 120，错误数为 0；每个文件同时具有真实透明像素和可见像素。
+- 用户人工预审后要求进一步极简化：删除嘴和腮红；相关 SVG、PNG、导出清单和来源记录均移除。
+- `export-svg.ps1` 在本机 Microsoft Edge 完成 4 个文件的重复导出。
+- 连续两次导出的 4 个文件 SHA-256 均保持一致，当前环境中得到逐字节一致结果。
+- 导出预检检查 4 个 PNG，统一画布为 160 × 120，错误数为 0；每个文件同时具有真实透明像素和可见像素。
 - 预检单元测试共 13 项通过，包括损坏 PNG、错误像素流、无 Alpha、RGBA 全不透明、RGBA 全透明、尺寸不一致、危险路径和来源缺失等失败样本。
 - SVG 禁用效果扫描未发现 `linearGradient`、`radialGradient`、`filter`、`opacity` 或内联 `style`。
 - 静态自审确认主体为无描边连续轮廓，没有脚或地面阴影；最终比例、脸部位置和叶芽帽气质仍需用户人工确认。

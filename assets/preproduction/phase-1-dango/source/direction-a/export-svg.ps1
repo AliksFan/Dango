@@ -29,8 +29,6 @@ if (-not $resolvedProfileDirectory.StartsWith($resolvedTempDirectory, [System.St
 $sourceNames = @(
     'body',
     'eyes-default',
-    'mouth-default',
-    'blush-default',
     'hat-sprout',
     'preview-default'
 )

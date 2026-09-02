@@ -21,24 +21,6 @@
       "modifications": "Kept separate from customization and body color"
     },
     {
-      "path": "mouth-default.svg",
-      "sourceType": "project-created",
-      "source": "Original deterministic vector construction for the default expression",
-      "license": "Dango project-owned original; no third-party source",
-      "tool": "Codex apply_patch",
-      "createdOn": "2026-09-02",
-      "modifications": "Kept as a standalone expression layer"
-    },
-    {
-      "path": "blush-default.svg",
-      "sourceType": "project-created",
-      "source": "Original deterministic vector construction for the default expression",
-      "license": "Dango project-owned original; no third-party source",
-      "tool": "Codex apply_patch",
-      "createdOn": "2026-09-02",
-      "modifications": "Kept as a standalone expression layer"
-    },
-    {
       "path": "hat-sprout.svg",
       "sourceType": "project-created",
       "source": "Original deterministic vector construction based on the selected sprout-hat motif",
