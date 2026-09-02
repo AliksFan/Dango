@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dango.local/schemas/animation-provenance-v1.json",
+  "title": "Dango animation asset provenance",
+  "type": "object",
+  "required": ["version", "files"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "const": 1
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "sourceType", "source", "license"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sourceType": {
+            "enum": [
+              "project-created",
+              "ai-draft-human-reviewed",
+              "project-code-generated"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "license": {
+            "type": "string",
+            "minLength": 1
+          },
+          "tool": {
+            "type": "string"
+          },
+          "createdOn": {
+            "type": "string",
+            "format": "date"
+          },
+          "promptRecord": {
+            "type": "string"
+          },
+          "modifications": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
