@@ -1,0 +1,69 @@
+{
+  "$schema": "../../provenance.schema.json",
+  "version": 1,
+  "files": [
+    {
+      "path": "body.svg",
+      "sourceType": "project-created",
+      "source": "Original deterministic vector construction based on the user-selected direction A silhouette",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Created as a solid-color, outline-free, limbless body layer"
+    },
+    {
+      "path": "eyes-default.svg",
+      "sourceType": "project-created",
+      "source": "Original deterministic vector construction for the default expression",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Kept separate from customization and body color"
+    },
+    {
+      "path": "mouth-default.svg",
+      "sourceType": "project-created",
+      "source": "Original deterministic vector construction for the default expression",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Kept as a standalone expression layer"
+    },
+    {
+      "path": "blush-default.svg",
+      "sourceType": "project-created",
+      "source": "Original deterministic vector construction for the default expression",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Kept as a standalone expression layer"
+    },
+    {
+      "path": "hat-sprout.svg",
+      "sourceType": "project-created",
+      "source": "Original deterministic vector construction based on the selected sprout-hat motif",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Created as a removable solid-color hat layer"
+    },
+    {
+      "path": "preview-default.svg",
+      "sourceType": "project-code-generated",
+      "source": "Composite review view assembled from the project-created direction A layers",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Review-only composite; not a runtime layer"
+    },
+    {
+      "path": "export-svg.ps1",
+      "sourceType": "project-code-generated",
+      "source": "Project export helper for deterministic SVG-to-PNG conversion",
+      "license": "Dango project-owned source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Uses local Microsoft Edge with a transparent background and fixed 160 by 120 viewport"
+    }
+  ]
+}

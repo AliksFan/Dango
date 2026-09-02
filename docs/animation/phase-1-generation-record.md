@@ -1,6 +1,6 @@
 # Phase 1 团子图像生成记录
 
-> 状态：AP-003 进行中
+> 状态：AP-003 确定性候选待人工确认
 >
 > 日期：2026-09-02
 
@@ -130,4 +130,24 @@ Avoid: all lighting and shading, highlights, gradients, glow, texture, 3D volume
 - 用户已选择 A 的无描边柔圆风格、无脚连续轮廓。
 - 首版捏脸预生产只保留身体纯色和帽子，眼睛归入表情动画。
 - 内置生成器适合提供轮廓方向参考，但两轮修正仍不能稳定满足纯色和真实 Alpha，不能直接生产候选资产。
-- 建议下一步改用确定性 SVG 分层源文件表达同一 A 方向，再以可重复方式导出透明 PNG；这是生产方式调整，执行前等待用户确认。
+- 用户已批准改用确定性 SVG 分层源文件表达同一 A 方向，再以可重复方式导出透明 PNG。
+
+### 确定性 SVG 候选
+
+- 源文件：`assets/preproduction/phase-1-dango/source/direction-a/`。
+- 导出文件：`assets/preproduction/phase-1-dango/export/direction-a/`。
+- 生产方式：项目原创几何 SVG，通过仓库内 `export-svg.ps1` 调用本机 Microsoft Edge headless 导出；不再调用图像生成器。
+- 分层：`body`、`eyes-default`、`mouth-default`、`blush-default`、`hat-sprout`；`preview-default` 是仅供审查的组合图。
+- 画布：全部为 160 × 120；没有地面阴影或接触影。
+- 视觉硬约束：SVG 中没有渐变、滤镜、光照、纹理或透明度效果；身体底部连续且无脚、腿、爪、手臂或肢体状凸起。
+- 资产状态：`candidate`，尚未成为已验收美术或运行时资产。
+
+### 确定性检查结果
+
+- `export-svg.ps1` 在本机 Microsoft Edge 完成 6 个文件的重复导出。
+- 连续两次导出的 6 个文件 SHA-256 均保持一致，当前环境中得到逐字节一致结果。
+- 导出预检检查 6 个 PNG，统一画布为 160 × 120，错误数为 0；每个文件同时具有真实透明像素和可见像素。
+- 预检单元测试共 13 项通过，包括损坏 PNG、错误像素流、无 Alpha、RGBA 全不透明、RGBA 全透明、尺寸不一致、危险路径和来源缺失等失败样本。
+- SVG 禁用效果扫描未发现 `linearGradient`、`radialGradient`、`filter`、`opacity` 或内联 `style`。
+- 静态自审确认主体为无描边连续轮廓，没有脚或地面阴影；最终比例、脸部位置和叶芽帽气质仍需用户人工确认。
+- 未验证：WPF 解析与播放、真实 Windows 桌面表现、动作重量和干扰程度。

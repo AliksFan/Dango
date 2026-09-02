@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" width="160" height="120">
+  <title>Dango direction A default mouth layer</title>
+  <path
+    id="mouth"
+    d="M72 76C73 84 78 87 80 87C82 87 87 84 88 76"
+    fill="none"
+    stroke="#2B201E"
+    stroke-width="4"
+    stroke-linecap="round" />
+</svg>

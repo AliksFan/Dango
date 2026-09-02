@@ -35,6 +35,74 @@ class PngInfo:
     width: int
     height: int
     has_alpha: bool
+    has_transparent_pixels: bool
+    has_visible_pixels: bool
+
+
+def paeth_predictor(left: int, above: int, upper_left: int) -> int:
+    estimate = left + above - upper_left
+    left_distance = abs(estimate - left)
+    above_distance = abs(estimate - above)
+    upper_left_distance = abs(estimate - upper_left)
+    if left_distance <= above_distance and left_distance <= upper_left_distance:
+        return left
+    if above_distance <= upper_left_distance:
+        return above
+    return upper_left
+
+
+def alpha_coverage(
+    raw_pixels: bytes,
+    width: int,
+    height: int,
+    bit_depth: int,
+    color_type: int,
+) -> tuple[bool, bool]:
+    if color_type not in ALPHA_COLOR_TYPES or bit_depth not in {8, 16}:
+        return False, False
+
+    channels = CHANNELS_BY_COLOR_TYPE[color_type]
+    bytes_per_sample = bit_depth // 8
+    bytes_per_pixel = channels * bytes_per_sample
+    row_bytes = width * bytes_per_pixel
+    previous = bytearray(row_bytes)
+    has_transparent = False
+    has_visible = False
+
+    for row_index in range(height):
+        row_start = row_index * (row_bytes + 1)
+        filter_type = raw_pixels[row_start]
+        encoded = raw_pixels[row_start + 1 : row_start + 1 + row_bytes]
+        decoded = bytearray(row_bytes)
+        for index, value in enumerate(encoded):
+            left = decoded[index - bytes_per_pixel] if index >= bytes_per_pixel else 0
+            above = previous[index]
+            upper_left = previous[index - bytes_per_pixel] if index >= bytes_per_pixel else 0
+            if filter_type == 0:
+                predictor = 0
+            elif filter_type == 1:
+                predictor = left
+            elif filter_type == 2:
+                predictor = above
+            elif filter_type == 3:
+                predictor = (left + above) // 2
+            else:
+                predictor = paeth_predictor(left, above, upper_left)
+            decoded[index] = (value + predictor) & 0xFF
+
+        alpha_offset = (channels - 1) * bytes_per_sample
+        for pixel_start in range(0, row_bytes, bytes_per_pixel):
+            alpha_start = pixel_start + alpha_offset
+            alpha = int.from_bytes(
+                decoded[alpha_start : alpha_start + bytes_per_sample],
+                byteorder="big",
+            )
+            maximum_alpha = (1 << bit_depth) - 1
+            has_transparent |= alpha < maximum_alpha
+            has_visible |= alpha > 0
+        previous = decoded
+
+    return has_transparent, has_visible
 
 
 def read_png(path: Path) -> PngInfo:
@@ -81,7 +149,7 @@ def read_png(path: Path) -> PngInfo:
                 raise ValueError("unsupported PNG header")
             if bit_depth not in {1, 2, 4, 8, 16}:
                 raise ValueError("invalid bit depth")
-            ihdr = PngInfo(width, height, color_type in ALPHA_COLOR_TYPES)
+            ihdr = PngInfo(width, height, color_type in ALPHA_COLOR_TYPES, False, False)
             pixel_shape = (width, height, bit_depth, color_type)
         elif chunk_type == b"tRNS":
             has_trns = True
@@ -111,7 +179,20 @@ def read_png(path: Path) -> PngInfo:
     for row_start in range(0, expected_length, row_bytes + 1):
         if raw_pixels[row_start] not in range(5):
             raise ValueError("decoded pixel stream uses an invalid filter")
-    return PngInfo(ihdr.width, ihdr.height, ihdr.has_alpha or has_trns)
+    has_transparent_pixels, has_visible_pixels = alpha_coverage(
+        raw_pixels,
+        width,
+        height,
+        bit_depth,
+        color_type,
+    )
+    return PngInfo(
+        ihdr.width,
+        ihdr.height,
+        ihdr.has_alpha or has_trns,
+        has_transparent_pixels or has_trns,
+        has_visible_pixels or has_trns,
+    )
 
 
 def safe_relative_path(value: object) -> str | None:
@@ -197,6 +278,10 @@ def validate(asset_dir: Path, provenance_path: Path) -> dict[str, object]:
         checked += 1
         if not info.has_alpha:
             errors.append(f"{relative}: PNG has no alpha channel or transparency chunk")
+        elif not info.has_transparent_pixels:
+            errors.append(f"{relative}: PNG has no transparent pixels")
+        elif not info.has_visible_pixels:
+            errors.append(f"{relative}: PNG has no visible pixels")
         size = (info.width, info.height)
         if expected_size is None:
             expected_size = size

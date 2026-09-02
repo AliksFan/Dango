@@ -7,8 +7,8 @@
 ## 1. 接口基线
 
 - 动画预生产分支基线：`d6df4ca`，设计与计划提交：`a5792e7`。
-- 核对时 Phase 1 阶段分支：`70d42dd`。
-- `d6df4ca..70d42dd` 范围内，`Dango.Core` 动画/资产模型、`assets/placeholder` 和 Core 资产测试没有差异。
+- 最近核对的 Phase 1 阶段分支：`0e199d6`。
+- 动画分支与 `0e199d6` 之间，`Dango.Core` 动画/资产模型、`assets/placeholder` 和 Core 资产测试没有差异。
 - 当前运行时资产版本为 `1`，样例逻辑画布为 160 × 120、原点 `(0, 0)`、像素密度 `1`。
 - Core 解析器是语义事实来源；JSON Schema 只描述结构。
 
@@ -34,9 +34,10 @@
 
 - 用户确认的首版资产兼容要求：身体纯色和帽子是两个独立可配置类别；眼睛属于表情/动画层，不进入捏脸预设。
 - 团子没有脚、腿、爪或手臂，主体底部保持连续圆弧；移动、落地和爬岛通过整体重心、轮廓形变与接触面表达。
-- 必需图层职责：`shadow`、`body`、`eyes`、`mouth`、`blush`、`hat`；运行时仍需映射到当前 `body`、`face`、`shadow`、`accessory` slot。
-- 所有视觉只使用纯色，不包含光照、高光、渐变或材质明暗；暂保留可选的单色接触影用于落地点提示，等待用户最终确认。
+- 必需图层职责：`body`、`eyes`、`mouth`、`blush`、`hat`；运行时需映射到当前 `body`、`face`、`accessory` slot，眼睛、嘴和腮红在源文件中继续独立。
+- 所有视觉只使用纯色，不包含光照、高光、渐变、材质明暗、接触影或地面阴影。
 - 当前 slot：`body`、`face`、`shadow`、`accessory`。
+- 当前契约仍定义 `shadow` slot，但预生产候选不提供对应图层；P1-004 接入时不得用空白假图制造阴影资产完成的假象。
 - 当前 anchor：`ground-contact`、`click`、`island-grab`、`island-stand`。
 - 当前 hit shape 用途：Click、Drag、Collision。
 - 首批候选不增加睡眠、醒来、贴贴、群体或情侣动作。

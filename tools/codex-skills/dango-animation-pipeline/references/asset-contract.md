@@ -8,7 +8,7 @@ Read the live repository files before relying on this snapshot:
 - `assets/placeholder/phase-1.asset.json`
 - `assets/placeholder/phase-1.asset.schema.json`
 
-This reference records the AP-000 baseline at animation branch commit `a5792e7`. The Phase 1 branch had advanced to `70d42dd`, with no changes under the Core asset/animation model, placeholder package, or Core asset tests relative to the animation branch base.
+This reference records the AP-000 baseline at animation branch commit `a5792e7`. The Phase 1 branch was most recently checked at `0e199d6`, with no changes under the Core asset/animation model, placeholder package, or Core asset tests relative to the animation branch.
 
 ## Runtime concepts
 
@@ -58,5 +58,7 @@ The current sample canvas is 160 by 120 logical units with origin `(0, 0)` and p
 The current Schema stores slots and anchors once per package, not per frame. It also has one frame layer list rather than independent facial sub-clips. If selected art proves that outline frames need per-frame accessory anchors, changing occlusion, or independent facial timing, record the gap for P1-004. Do not encode new meanings into unrelated fields.
 
 The approved preproduction input also requires a simple first-release customization model with replaceable solid body color and hat categories. Eyes belong to expression animation and are not a customization preset. Contract version 1 has no explicit tint parameter, variant set, or per-frame hat anchor. During preproduction, keep body, expression, and hat parts visually separate and document the missing runtime representation; do not silently implement UI, persistence, networking, or overload existing fields.
+
+The selected visual direction has no contact or ground shadow. Contract version 1 still exposes a `shadow` slot, but a preproduction candidate may leave it unused; do not create a blank or fake shadow layer merely to occupy the slot.
 
 Candidate assets stay under `assets/preproduction/phase-1-dango/` and are not loaded by the app by default. Moving selected exports into `assets/placeholder/` is a separate integration action.

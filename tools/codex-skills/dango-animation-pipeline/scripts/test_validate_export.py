@@ -18,9 +18,19 @@ def png_chunk(chunk_type: bytes, data: bytes) -> bytes:
     return struct.pack(">I", len(data)) + chunk_type + data + struct.pack(">I", crc)
 
 
-def write_png(path: Path, width: int = 2, height: int = 2, color_type: int = 6) -> None:
+def write_png(
+    path: Path,
+    width: int = 2,
+    height: int = 2,
+    color_type: int = 6,
+    alpha_value: int = 128,
+) -> None:
     channels = 4 if color_type == 6 else 3
-    raw = b"".join(b"\x00" + bytes([128] * width * channels) for _ in range(height))
+    if color_type == 6:
+        pixels = bytes([128, 128, 128, alpha_value] * width)
+    else:
+        pixels = bytes([128] * width * channels)
+    raw = b"".join(b"\x00" + pixels for _ in range(height))
     header = struct.pack(">IIBBBBB", width, height, 8, color_type, 0, 0, 0)
     payload = (
         b"\x89PNG\r\n\x1a\n"
@@ -111,6 +121,28 @@ class ValidateExportTests(unittest.TestCase):
             result = validate(root, provenance)
 
             self.assertTrue(any("no alpha" in error for error in result["errors"]))
+
+    def test_opaque_rgba_without_transparent_pixels_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_png(root / "opaque.png", alpha_value=255)
+            provenance = root / "provenance.json"
+            write_provenance(provenance, [entry("opaque.png")])
+
+            result = validate(root, provenance)
+
+            self.assertTrue(any("no transparent pixels" in error for error in result["errors"]))
+
+    def test_fully_transparent_rgba_without_visible_pixels_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_png(root / "empty.png", alpha_value=0)
+            provenance = root / "provenance.json"
+            write_provenance(provenance, [entry("empty.png")])
+
+            result = validate(root, provenance)
+
+            self.assertTrue(any("no visible pixels" in error for error in result["errors"]))
 
     def test_mismatched_canvas_fails(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
