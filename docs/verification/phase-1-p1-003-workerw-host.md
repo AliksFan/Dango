@@ -1,10 +1,10 @@
 # P1-003 WorkerW/Shell 壁纸层宿主验证记录
 
-> 状态：实现与自动门禁完成，真实桌面及人工验收未验证
+> 状态：Windows 11 WorkerW 发现缺陷已修复并通过自动门禁，新候选待人工复验
 >
 > 验收对象：基于 Windows Shell 观测行为的 WorkerW 候选，不代表正式接口保证或最终宿主决策
 >
-> 实现提交：`e45d226`
+> 实现提交：`e45d226`；Windows 11 兼容修复：`ae775d6`
 >
 > 日期：2026-09-02
 
@@ -25,13 +25,24 @@
 WorkerW 不是面向应用公开承诺的正式宿主接口。本候选只记录当前系统上的可观测行为：
 
 1. 向 Progman 发送实验性消息，请求 Shell 准备相应桌面层；
-2. 只按窗口类名查找包含 `SHELLDLL_DefView` 的层级及其后续 WorkerW，不读取窗口标题或桌面内容；
+2. 只按窗口类名、父子关系、Explorer 进程、可见性和尺寸查找桌面层，不读取窗口标题或桌面内容；
 3. 挂载前后验证句柄，句柄失效后进入有界恢复；
 4. 恢复窗口为 8 秒且最多 8 次尝试，重复失效通知不会重启窗口；
 5. 恢复超时或次数耗尽后脱离父窗口并安全隐藏，托盘和控制中心仍应可退出；
 6. 初次切换未得到可见 WorkerW 确认时，宿主协调器恢复原 Overlay。
 
 这些行为必须在实际 Explorer 和 Windows 版本上验收，不能由单元测试提升为真实 Shell 通过。
+
+### 2.1 Windows 11 Build 26100 兼容修复
+
+首个候选 `e45d226` 只实现了旧式“包含 `SHELLDLL_DefView` 的顶层窗口之后寻找 WorkerW”。用户实际点击 WorkerW 后切换失败并安全回滚到 Overlay。只读诊断确认当前系统结构为：
+
+- Progman 为 1536×960，包含直接子 `SHELLDLL_DefView`；
+- 同一 Progman 下另有一个可见的 1536×960 直接子 WorkerW；
+- 多个顶层 WorkerW 均为不可见的 136×38 或无效尺寸窗口；
+- Progman 之后的顶层 WorkerW 查找结果为零。
+
+修复后优先选择与 Shell 宿主同 Explorer 进程、可见且尺寸至少达到宿主 75% 的直接子 WorkerW；没有该结构时再使用旧式顶层后继 WorkerW。不同进程、不可见或过小候选会被拒绝。初次发现失败时，控制中心现在显示安全的具体原因，不再只显示 `InvalidOperationException`。
 
 ## 3. 先失败后实现
 
@@ -47,6 +58,8 @@ WorkerW 不是面向应用公开承诺的正式宿主接口。本候选只记录
 - 两宿主切换保留已确认的显示和交互状态；
 - WorkerW 窗口不置顶、不进入任务栏并复用相同占位场景契约；
 - P1-003 导出不能自行声明自动通过。
+- Windows 11 Progman 直接子 WorkerW 与旧式顶层后继 WorkerW 均能被确定性选择；不同进程、不可见和过小窗口被拒绝。
+- 宿主切换错误只显示受控原因，不暴露异常正文。
 
 ## 4. 自动门禁
 
@@ -54,22 +67,24 @@ WorkerW 不是面向应用公开承诺的正式宿主接口。本候选只记录
 |---|---|
 | `dotnet format .\Dango.slnx --verify-no-changes --no-restore` | 通过 |
 | `dotnet build .\Dango.slnx -c Release --no-restore` | 通过，0 警告、0 错误 |
-| `dotnet test .\Dango.slnx -c Release --no-build --no-restore` | 通过，Core 19/19、Desktop 44/44，共 63/63 |
+| `dotnet test .\Dango.slnx -c Release --no-build --no-restore` | 通过，Core 19/19、Desktop 48/48，共 67/67 |
 | `dotnet publish`，`win-x64` self-contained | 通过 |
 | 发布物 `--smoke-test` | 退出码 0；只证明 App/Dispatcher 可启动退出，不证明 WorkerW 挂载 |
 | `git diff --check` | 通过 |
 
 候选发布物：
 
-- 本地目录：`artifacts/publish/Dango.Desktop-e45d226-win-x64/`
-- 产品版本：`1.0.0+e45d2262e56785abc1d5b4381cda6b57d7971a26`
-- `Dango.Desktop.exe` SHA-256：`5D24744DADB1E8AE619DA334D479E091773C085B6F5884192E6BD801C6E1F7A9`
+- 本地目录：`artifacts/publish/Dango.Desktop-ae775d6-win-x64/`
+- 产品版本：`1.0.0+ae775d699a8ad50ee11fd5cbf285415554c52d89`
+- `Dango.Desktop.exe` SHA-256：`BF6DF8333EB2683C751CA644DBCB80813A1124C4AC4015805BE77A9835E64443`
 
 该目录是未提交的本地构建产物。P1-002 已验收发布物及现有桌面快捷方式未被替换。
 
 ## 5. 真实 Windows 与人工验收
 
-真实 GUI 自动化未执行：Windows 应用控制安全审查认为用户此前已明确将桌面操作留给人工验收，“继续”只授权实现，不能代替用户操作 GUI。以下项目均保持**未验证**：
+首个候选 `e45d226` 已取得真实失败证据：在 Windows 11 Build 26100 点击 WorkerW 后没有切换，控制中心显示宿主返回 `InvalidOperationException`；根因是该候选无法发现 Progman 的直接子 WorkerW。安全回滚正常，桌面仍保留 Overlay。
+
+兼容修复候选 `ae775d6` 尚未执行 GUI 复验。以下项目对新候选均保持**未验证**：
 
 - WorkerW 是否成功位于桌面图标之后；
 - 透明区域、桌面图标、右键、双击、框选、任务栏、开始菜单和普通窗口；
@@ -84,11 +99,11 @@ WorkerW 不是面向应用公开承诺的正式宿主接口。本候选只记录
 
 ## 6. 分层结论
 
-- **静态门禁**：通过；格式、构建、63 项测试、self-contained 发布和 smoke test 均有真实输出。
+- **静态门禁**：通过；格式、构建、67 项测试、self-contained 发布和 smoke test 均有真实输出。
 - **集成门禁**：本任务没有网络、数据库或服务端集成，不适用，不记为通过。
-- **实时行为**：未验证；smoke test 没有创建桌面宿主。
-- **人工验收**：未验证；留给用户通过图形化入口执行。
-- **交付状态**：实现已创建本地提交 `e45d226`；验证文档随后单独提交。未合并、未推送、未部署，未修改现有快捷方式。
+- **实时行为**：旧候选切换失败并安全回滚；新候选修复后的 WorkerW 挂载未验证。smoke test 没有创建桌面宿主。
+- **人工验收**：新候选未验证；留给用户通过图形化入口复验。
+- **交付状态**：初始实现提交 `e45d226`，Windows 11 兼容修复提交 `ae775d6`；验证文档随后单独提交。未合并、未推送、未部署，未修改现有快捷方式。
 - **下一任务**：P1-004 未开始且未获授权。只有 P1-003 真实与人工结果明确后，才形成 C3 宿主可行性检查点结论。
 
 目前只能称为“P1-003 实现与自动门禁完成”，不能称为“WorkerW 候选通过”或“最终宿主已选定”。
