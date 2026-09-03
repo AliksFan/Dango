@@ -30,4 +30,12 @@ public sealed class OverlayHitTestPolicyTests
             OverlayHitTarget.PassThrough,
             policy.HitTest(new LogicalPoint(20, 20)));
     }
+
+    [TestMethod]
+    public void CollapsedOrUnarrangedVisualDoesNotCreateAnInvalidRegion()
+    {
+        Assert.IsNull(OverlayHitRegionFactory.TryCreate(OverlayHitTarget.Dango, 10, 20, 0, 135));
+        Assert.IsNull(OverlayHitRegionFactory.TryCreate(OverlayHitTarget.Island, 10, 20, 360, 0));
+        Assert.IsNotNull(OverlayHitRegionFactory.TryCreate(OverlayHitTarget.Dango, 10, 20, 150, 135));
+    }
 }

@@ -27,6 +27,29 @@ public sealed record OverlayHitRegion
     public LogicalRect Bounds { get; }
 }
 
+public static class OverlayHitRegionFactory
+{
+    public static OverlayHitRegion? TryCreate(
+        OverlayHitTarget target,
+        double x,
+        double y,
+        double width,
+        double height)
+    {
+        if (!double.IsFinite(x) ||
+            !double.IsFinite(y) ||
+            !double.IsFinite(width) ||
+            !double.IsFinite(height) ||
+            width <= 0 ||
+            height <= 0)
+        {
+            return null;
+        }
+
+        return new OverlayHitRegion(target, new LogicalRect(x, y, width, height));
+    }
+}
+
 public sealed class OverlayHitTestPolicy
 {
     private readonly IReadOnlyList<OverlayHitRegion> regions;

@@ -44,6 +44,46 @@ public sealed class ApplicationCommandController
 
     public string CreateDiagnosticSummary() => host.CreateDiagnosticSummary();
 
+    public DesktopLayeringSettings GetLayeringSettings() =>
+        host is IDesktopLayeringControl layeringControl
+            ? layeringControl.GetLayeringSettings()
+            : DesktopLayeringSettings.CreateDefault();
+
+    public HostCommandResult ApplyLayeringSettings(DesktopLayeringSettings settings)
+    {
+        if (host is not IDesktopLayeringControl layeringControl)
+        {
+            return new HostCommandResult(
+                CommandApplicationState.Failed,
+                host.GetSnapshot(),
+                "当前宿主控制器不支持对象分层设置。");
+        }
+
+        var before = layeringControl.GetLayeringSettings();
+        try
+        {
+            layeringControl.ApplyLayeringSettings(settings);
+            return new HostCommandResult(CommandApplicationState.Applied, host.GetSnapshot(), null);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            try
+            {
+                layeringControl.ApplyLayeringSettings(before);
+            }
+            catch (Exception rollbackException) when (rollbackException is not OutOfMemoryException)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"Unable to roll back object layering: {rollbackException.GetType().Name}");
+            }
+
+            return new HostCommandResult(
+                CommandApplicationState.Failed,
+                host.GetSnapshot(),
+                $"对象层级无法应用：{SafeError(exception)}");
+        }
+    }
+
     public HostCommandResult SetVisibility(bool isVisible) =>
         Apply(
             snapshot => snapshot.IsVisible,

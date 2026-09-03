@@ -1,0 +1,27 @@
+<Window x:Class="Dango.Desktop.DesktopHost.WorkerW.IslandOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Dango P1-003 Topmost Island"
+        Width="360"
+        Height="100"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Focusable="False"
+        ResizeMode="NoResize"
+        ShowActivated="False"
+        ShowInTaskbar="False"
+        Topmost="True"
+        WindowStartupLocation="Manual"
+        WindowStyle="None">
+    <Border Background="#E8D7B891"
+            BorderBrush="#FF6E5A3C"
+            BorderThickness="3"
+            CornerRadius="50">
+        <TextBlock HorizontalAlignment="Center"
+                   Margin="0,18,0,0"
+                   VerticalAlignment="Top"
+                   FontSize="14"
+                   Foreground="#FF4B3D2A"
+                   Text="P1-003 特殊悬浮岛" />
+    </Border>
+</Window>

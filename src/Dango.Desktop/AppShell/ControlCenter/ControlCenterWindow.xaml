@@ -235,6 +235,50 @@
 
                         <Border Margin="0,16,0,0" Style="{StaticResource CardStyle}">
                             <StackPanel>
+                                <TextBlock FontSize="17" FontWeight="SemiBold" Text="对象层级（实验）" />
+                                <TextBlock Margin="0,6,0,14"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           Text="仅用于验证技术能力，规则可能调整；选择会保存在本机。" />
+
+                                <TextBlock FontWeight="SemiBold" Text="团子层级" />
+                                <StackPanel Margin="0,6,0,14" Orientation="Horizontal">
+                                    <RadioButton x:Name="DangoBelowIconsRadioButton"
+                                                 AutomationProperties.Name="团子位于图标之下"
+                                                 Checked="OnObjectLayerChanged"
+                                                 Content="图标之下"
+                                                 GroupName="DangoLayer" />
+                                    <RadioButton x:Name="DangoAboveIconsRadioButton"
+                                                 Margin="20,0,0,0"
+                                                 AutomationProperties.Name="团子位于图标之上"
+                                                 Checked="OnObjectLayerChanged"
+                                                 Content="图标之上"
+                                                 GroupName="DangoLayer" />
+                                </StackPanel>
+
+                                <TextBlock FontWeight="SemiBold" Text="占位软垫" />
+                                <StackPanel Margin="0,6,0,14" Orientation="Horizontal">
+                                    <RadioButton x:Name="CushionBelowIconsRadioButton"
+                                                 AutomationProperties.Name="占位软垫位于图标之下"
+                                                 Checked="OnObjectLayerChanged"
+                                                 Content="图标之下"
+                                                 GroupName="CushionLayer" />
+                                    <RadioButton x:Name="CushionAboveIconsRadioButton"
+                                                 Margin="20,0,0,0"
+                                                 AutomationProperties.Name="占位软垫位于图标之上"
+                                                 Checked="OnObjectLayerChanged"
+                                                 Content="图标之上"
+                                                 GroupName="CushionLayer" />
+                                </StackPanel>
+
+                                <TextBlock FontWeight="SemiBold" Text="特殊悬浮岛" />
+                                <TextBlock Margin="0,6,0,0"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           Text="所有界面之上；全屏时隐藏" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Margin="0,16,0,0" Style="{StaticResource CardStyle}">
+                            <StackPanel>
                                 <TextBlock FontSize="17" FontWeight="SemiBold" Text="实验宿主" />
                                 <RadioButton x:Name="OverlayHostRadioButton"
                                              Margin="0,14,0,6"
@@ -245,7 +289,7 @@
                                 <RadioButton x:Name="WorkerWHostRadioButton"
                                              AutomationProperties.Name="切换到 WorkerW 壁纸层"
                                              Checked="OnHostModeChanged"
-                                             Content="WorkerW/Shell 壁纸层 · P1-003 待人工验收"
+                                             Content="WorkerW/Shell 壁纸层 · P1-003 已通过人工验收"
                                              GroupName="DesktopHost" />
                             </StackPanel>
                         </Border>

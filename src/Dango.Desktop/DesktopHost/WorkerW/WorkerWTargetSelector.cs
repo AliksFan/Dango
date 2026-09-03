@@ -9,26 +9,43 @@ public sealed record ShellWindowCandidate(
     bool IsVisible,
     int Width,
     int Height,
-    bool HasShellView);
+    bool HasShellView,
+    nint ShellViewHandle,
+    bool HasNoRedirectionBitmap);
+
+public sealed record WorkerWDesktopTarget(
+    nint ParentHandle,
+    nint WallpaperLayerHandle,
+    nint InsertAfterHandle,
+    nint ShellViewHandle,
+    bool IsRaisedDesktop);
 
 public static class WorkerWTargetSelector
 {
-    public static nint Select(IEnumerable<ShellWindowCandidate> windows)
+    public static WorkerWDesktopTarget? Select(IEnumerable<ShellWindowCandidate> windows)
     {
         ArgumentNullException.ThrowIfNull(windows);
         var candidates = windows.ToArray();
         foreach (var shellHost in candidates.Where(candidate => candidate.HasShellView))
         {
-            var directChild = candidates
-                .Where(candidate =>
-                    IsWorkerW(candidate) &&
-                    candidate.ParentHandle == shellHost.Handle &&
-                    IsCompatibleDesktopLayer(shellHost, candidate))
-                .OrderByDescending(candidate => (long)candidate.Width * candidate.Height)
-                .FirstOrDefault();
-            if (directChild is not null)
+            if (shellHost.HasNoRedirectionBitmap && shellHost.ShellViewHandle != nint.Zero)
             {
-                return directChild.Handle;
+                var directChild = candidates
+                    .Where(candidate =>
+                        IsWorkerW(candidate) &&
+                        candidate.ParentHandle == shellHost.Handle &&
+                        IsCompatibleDesktopLayer(shellHost, candidate))
+                    .OrderByDescending(candidate => (long)candidate.Width * candidate.Height)
+                    .FirstOrDefault();
+                if (directChild is not null)
+                {
+                    return new WorkerWDesktopTarget(
+                        shellHost.Handle,
+                        directChild.Handle,
+                        shellHost.ShellViewHandle,
+                        shellHost.ShellViewHandle,
+                        IsRaisedDesktop: true);
+                }
             }
 
             var legacyTopLevel = candidates
@@ -41,11 +58,16 @@ public static class WorkerWTargetSelector
                 .FirstOrDefault();
             if (legacyTopLevel is not null)
             {
-                return legacyTopLevel.Handle;
+                return new WorkerWDesktopTarget(
+                    legacyTopLevel.Handle,
+                    legacyTopLevel.Handle,
+                    nint.Zero,
+                    shellHost.ShellViewHandle,
+                    IsRaisedDesktop: false);
             }
         }
 
-        return nint.Zero;
+        return null;
     }
 
     private static bool IsWorkerW(ShellWindowCandidate candidate) =>

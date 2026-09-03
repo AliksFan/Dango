@@ -25,7 +25,7 @@ public sealed class DesktopHostSwitchException : InvalidOperationException
     public string SafeReason { get; }
 }
 
-public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopHostModeControl
+public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopHostModeControl, IDesktopLayeringControl
 {
     private readonly IDesktopHostControl overlay;
     private readonly IDesktopHostControl workerW;
@@ -46,6 +46,21 @@ public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopHostMo
     public void SetInteractionEnabled(bool isEnabled) => active.SetInteractionEnabled(isEnabled);
 
     public string CreateDiagnosticSummary() => active.CreateDiagnosticSummary();
+
+    public DesktopLayeringSettings GetLayeringSettings() =>
+        workerW is IDesktopLayeringControl layeringControl
+            ? layeringControl.GetLayeringSettings()
+            : DesktopLayeringSettings.CreateDefault();
+
+    public void ApplyLayeringSettings(DesktopLayeringSettings settings)
+    {
+        if (workerW is not IDesktopLayeringControl layeringControl)
+        {
+            throw new NotSupportedException("WorkerW 宿主不支持对象分层设置。");
+        }
+
+        layeringControl.ApplyLayeringSettings(settings);
+    }
 
     public void SetMode(DesktopHostMode mode)
     {

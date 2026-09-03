@@ -7,7 +7,7 @@ namespace Dango.Desktop.Tests.DesktopHost.WorkerW;
 public sealed class WorkerWHostConfigurationTests
 {
     [TestMethod]
-    public void WorkerWWindowIsNotTopmostOrShownInTaskbar()
+    public void WorkerWUsesNativeSystemLayeredHostWithSameProcessWpfChild()
     {
         var path = Path.Combine(
             TestRepository.Root,
@@ -16,14 +16,52 @@ public sealed class WorkerWHostConfigurationTests
             "DesktopHost",
             "WorkerW",
             "WorkerWWindow.xaml");
-        Assert.IsTrue(File.Exists(path), $"缺少 WorkerW 窗口：{path}");
-        var window = XDocument.Load(path).Root;
-        Assert.IsNotNull(window);
+        Assert.IsTrue(File.Exists(path), $"缺少 WorkerW 场景：{path}");
+        var scene = XDocument.Load(path).Root;
+        Assert.IsNotNull(scene);
+        Assert.AreEqual("UserControl", scene.Name.LocalName);
+        Assert.AreEqual("#FFEAF4FF", Attribute(scene, "Background"), ignoreCase: true);
+        Assert.IsNull(scene.Attribute("AllowsTransparency"));
 
-        Assert.AreEqual("False", Attribute(window, "Topmost"), ignoreCase: true);
-        Assert.AreEqual("False", Attribute(window, "ShowInTaskbar"), ignoreCase: true);
-        Assert.AreEqual("None", Attribute(window, "WindowStyle"));
-        Assert.AreEqual("Transparent", Attribute(window, "Background"));
+        var codeBehind = File.ReadAllText(path + ".cs");
+        StringAssert.Contains(codeBehind, "new WorkerWNativeHost(target)");
+        StringAssert.Contains(codeBehind, "ParentWindow = nativeHost.Handle");
+        StringAssert.Contains(codeBehind, "UsesPerPixelTransparency = false");
+        StringAssert.Contains(codeBehind, "WindowStyle = WsChild | WsVisible");
+        Assert.IsFalse(codeBehind.Contains("SetParent(", StringComparison.Ordinal));
+
+        var nativeHost = File.ReadAllText(Path.Combine(Path.GetDirectoryName(path)!, "WorkerWNativeHost.cs"));
+        StringAssert.Contains(nativeHost, "WsExLayered");
+        StringAssert.Contains(nativeHost, "WsPopup");
+        StringAssert.Contains(nativeHost, "Parent = nint.Zero");
+        StringAssert.Contains(nativeHost, "CreateHandle");
+        StringAssert.Contains(nativeHost, "AttachWorkerWLayeredHost");
+
+        var inputProxy = File.ReadAllText(Path.Combine(Path.GetDirectoryName(path)!, "WorkerWInputProxy.cs"));
+        StringAssert.Contains(inputProxy, "AttachWorkerWInputProxy");
+        StringAssert.Contains(inputProxy, "WmLeftButtonDown");
+        StringAssert.Contains(inputProxy, "SetCapture");
+        StringAssert.Contains(inputProxy, "SetEnabled");
+        StringAssert.Contains(inputProxy, "inputPriorityTimer");
+        StringAssert.Contains(inputProxy, "ShouldShowInputProxy");
+        Assert.IsFalse(
+            inputProxy.Contains("message.Result = HtTransparent", StringComparison.Ordinal),
+            "跨进程 HTTRANSPARENT 不能可靠地把点击交还 Explorer。");
+        StringAssert.Contains(codeBehind, "new WorkerWInputProxy");
+        StringAssert.Contains(codeBehind, "UpdateInputProxyBounds");
+        StringAssert.Contains(codeBehind, "DesktopLayeringSettings.PrototypeCushionId");
+        StringAssert.Contains(codeBehind, "DesktopObjectLayer.AboveDesktopIcons");
+        StringAssert.Contains(codeBehind, "islandOverlayWindow.SetDesiredVisibility");
+
+        var islandPath = Path.Combine(Path.GetDirectoryName(path)!, "IslandOverlayWindow.xaml");
+        var island = XDocument.Load(islandPath).Root;
+        Assert.IsNotNull(island);
+        Assert.AreEqual("True", Attribute(island, "Topmost"), ignoreCase: true);
+
+        var objectOverlay = File.ReadAllText(Path.Combine(Path.GetDirectoryName(path)!, "DesktopObjectOverlayWindow.cs"));
+        StringAssert.Contains(objectOverlay, "Topmost = false");
+        StringAssert.Contains(objectOverlay, "interactionEnabled ? HtClient : HtTransparent");
+        StringAssert.Contains(objectOverlay, "NativeMethods.SetCapture(windowHandle)");
     }
 
     [TestMethod]
@@ -38,6 +76,27 @@ public sealed class WorkerWHostConfigurationTests
             StringAssert.Contains(overlay, marker);
             StringAssert.Contains(workerW, marker);
         }
+    }
+
+    [TestMethod]
+    public void InputProxyAppliesLayeredAlphaAfterCrossProcessReparenting()
+    {
+        var nativeMethods = File.ReadAllText(
+            Path.Combine(
+                TestRepository.Root,
+                "src",
+                "Dango.Desktop",
+                "DesktopHost",
+                "Win32",
+                "NativeMethods.cs"));
+        var methodStart = nativeMethods.IndexOf("public static void AttachWorkerWInputProxy", StringComparison.Ordinal);
+        var methodEnd = nativeMethods.IndexOf("public static void PositionWorkerWInputProxy", methodStart, StringComparison.Ordinal);
+        Assert.IsTrue(methodStart >= 0 && methodEnd > methodStart);
+        var method = nativeMethods[methodStart..methodEnd];
+
+        var reparent = method.IndexOf("SetParent(proxyWindow", StringComparison.Ordinal);
+        var alpha = method.IndexOf("ApplyInputProxyTransparency(proxyWindow)", StringComparison.Ordinal);
+        Assert.IsTrue(reparent >= 0 && alpha > reparent, "透明属性必须在跨进程 SetParent 完成后应用。");
     }
 
     private static string? Attribute(XElement element, string name) =>

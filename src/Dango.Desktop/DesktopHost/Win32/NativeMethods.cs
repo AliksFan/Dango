@@ -10,14 +10,28 @@ internal static partial class NativeMethods
     private const int GwlStyle = -16;
     private const int GwlExStyle = -20;
     private const uint SmtoNormal = 0x0000;
+    private const uint SmtoAbortIfHung = 0x0002;
     private const uint SwpFrameChanged = 0x0020;
     private const uint SwpNoActivate = 0x0010;
+    private const uint SwpNoZOrder = 0x0004;
+    private const uint SwpShowWindow = 0x0040;
+    private const uint LwaAlpha = 0x00000002;
     private const nint WsChild = 0x40000000;
-    private const nint WsExToolWindow = 0x00000080;
     private static readonly nint WsPopup = unchecked((nint)0x80000000);
+    private const nint WsExNoRedirectionBitmap = 0x00200000;
+    private const nint WsExToolWindow = 0x00000080;
     private const uint WorkerWSpawnMessage = 0x052C;
+    private const uint MonitorDefaultToNearest = 0x00000002;
+    private const uint ProcessVmOperation = 0x0008;
+    private const uint ProcessVmRead = 0x0010;
+    private const uint ProcessVmWrite = 0x0020;
+    private const uint MemCommit = 0x1000;
+    private const uint MemReserve = 0x2000;
+    private const uint MemRelease = 0x8000;
+    private const uint PageReadWrite = 0x04;
+    private const uint LvmHitTest = 0x1012;
 
-    public static nint FindWorkerW()
+    public static WorkerWDesktopTarget? FindWorkerW()
     {
         var programManager = FindWindow("Progman", null);
         if (programManager != nint.Zero)
@@ -38,55 +52,232 @@ internal static partial class NativeMethods
     public static bool IsValidWindow(nint windowHandle) =>
         windowHandle != nint.Zero && IsWindow(windowHandle);
 
-    public static void AttachToWorkerW(nint childWindow, nint workerW)
+    public static bool IsValidDesktopTarget(WorkerWDesktopTarget? target) =>
+        target is not null &&
+        IsValidWindow(target.ParentHandle) &&
+        IsValidWindow(target.WallpaperLayerHandle) &&
+        (!target.IsRaisedDesktop || IsValidWindow(target.InsertAfterHandle));
+
+    public static bool IsForegroundFullscreen()
     {
-        if (!IsValidWindow(childWindow) || !IsValidWindow(workerW))
+        var foreground = GetForegroundWindow();
+        if (!IsValidWindow(foreground) || !IsWindowVisible(foreground))
+        {
+            return false;
+        }
+
+        _ = GetWindowThreadProcessId(foreground, out var processId);
+        if (processId == Environment.ProcessId)
+        {
+            return false;
+        }
+
+        var className = GetWindowClassName(foreground);
+        if (className is "Progman" or "WorkerW" or "Shell_TrayWnd")
+        {
+            return false;
+        }
+
+        var monitor = MonitorFromWindow(foreground, MonitorDefaultToNearest);
+        var monitorInfo = new MonitorInfo { Size = (uint)Marshal.SizeOf<MonitorInfo>() };
+        if (monitor == nint.Zero ||
+            !GetMonitorInfo(monitor, ref monitorInfo) ||
+            !GetWindowRect(foreground, out var windowRect))
+        {
+            return false;
+        }
+
+        return FullscreenGeometryClassifier.IsFullscreen(
+            new DesktopPixelRect(windowRect.Left, windowRect.Top, windowRect.Right, windowRect.Bottom),
+            new DesktopPixelRect(
+                monitorInfo.Monitor.Left,
+                monitorInfo.Monitor.Top,
+                monitorInfo.Monitor.Right,
+                monitorInfo.Monitor.Bottom));
+    }
+
+    public static bool TryIsDesktopIconAtPoint(
+        WorkerWDesktopTarget target,
+        int screenX,
+        int screenY,
+        out bool iconHit)
+    {
+        iconHit = false;
+        if (!IsValidWindow(target.ShellViewHandle))
+        {
+            return false;
+        }
+
+        var listView = FindDescendantWindowByClass(target.ShellViewHandle, "SysListView32");
+        var point = new NativePoint { X = screenX, Y = screenY };
+        if (!IsValidWindow(listView) || !ScreenToClient(listView, ref point))
+        {
+            return false;
+        }
+
+        _ = GetWindowThreadProcessId(listView, out var processId);
+        var process = OpenProcess(ProcessVmOperation | ProcessVmRead | ProcessVmWrite, false, processId);
+        if (process == nint.Zero)
+        {
+            return false;
+        }
+
+        nint remoteBuffer = nint.Zero;
+        try
+        {
+            var hitTest = new ListViewHitTestInfo { Point = point, ItemIndex = -1 };
+            var size = (nuint)Marshal.SizeOf<ListViewHitTestInfo>();
+            remoteBuffer = VirtualAllocEx(process, nint.Zero, size, MemCommit | MemReserve, PageReadWrite);
+            if (remoteBuffer == nint.Zero ||
+                !WriteProcessMemory(process, remoteBuffer, ref hitTest, size, out var bytesWritten) ||
+                bytesWritten != size)
+            {
+                return false;
+            }
+
+            if (SendMessageTimeout(
+                    listView,
+                    LvmHitTest,
+                    nint.Zero,
+                    remoteBuffer,
+                    SmtoAbortIfHung,
+                    75,
+                    out var hitTestResult) == nint.Zero)
+            {
+                return false;
+            }
+
+            iconHit = hitTestResult.ToInt64() >= 0;
+            return true;
+        }
+        finally
+        {
+            if (remoteBuffer != nint.Zero)
+            {
+                _ = VirtualFreeEx(process, remoteBuffer, 0, MemRelease);
+            }
+
+            _ = CloseHandle(process);
+        }
+    }
+
+    public static (int Width, int Height) AttachWorkerWLayeredHost(
+        nint hostWindow,
+        WorkerWDesktopTarget target)
+    {
+        if (!IsValidWindow(hostWindow) || !IsValidDesktopTarget(target))
         {
             throw new InvalidOperationException("WorkerW 挂载句柄无效。");
         }
 
-        var style = GetWindowLongPtr(childWindow, GwlStyle);
-        SetWindowStyle(childWindow, (style & ~WsPopup) | WsChild);
-        Marshal.SetLastPInvokeError(0);
-        var previousParent = SetParent(childWindow, workerW);
-        var error = Marshal.GetLastPInvokeError();
-        if (previousParent == nint.Zero && error != 0)
+        if (!SetLayeredWindowAttributes(hostWindow, 0, byte.MaxValue, LwaAlpha))
         {
-            throw new Win32Exception(error, "无法把 Dango 挂载到 WorkerW。");
+            throw new Win32Exception(Marshal.GetLastPInvokeError(), "无法启用系统管理的桌面分层宿主。");
         }
 
-        if (!GetClientRect(workerW, out var bounds))
+        var style = GetWindowLongPtr(hostWindow, GwlStyle);
+        SetWindowStyle(hostWindow, (style & ~WsPopup) | WsChild);
+        Marshal.SetLastPInvokeError(0);
+        var previousParent = SetParent(hostWindow, target.ParentHandle);
+        var parentError = Marshal.GetLastPInvokeError();
+        if (previousParent == nint.Zero && parentError != 0)
+        {
+            throw new Win32Exception(parentError, "无法把原生分层宿主挂到桌面父窗口。");
+        }
+
+        if (GetParent(hostWindow) != target.ParentHandle)
+        {
+            throw new InvalidOperationException("原生分层宿主挂载后父窗口不匹配。");
+        }
+
+        if (!GetClientRect(target.ParentHandle, out var bounds))
         {
             throw new Win32Exception(Marshal.GetLastPInvokeError(), "无法读取 WorkerW 客户区。");
         }
 
-        const int width = 520;
-        const int height = 320;
-        var x = Math.Max(24, bounds.Right - width - 24);
-        var y = Math.Max(24, bounds.Bottom - height - 24);
+        var width = Math.Max(1, bounds.Right - bounds.Left);
+        var height = Math.Max(1, bounds.Bottom - bounds.Top);
+        var positionFlags = SwpNoActivate | SwpFrameChanged;
+        if (!target.IsRaisedDesktop)
+        {
+            positionFlags |= SwpNoZOrder;
+        }
+
         if (!SetWindowPos(
-                childWindow,
-                nint.Zero,
-                x,
-                y,
+                hostWindow,
+                target.InsertAfterHandle,
+                0,
+                0,
                 width,
                 height,
-                SwpNoActivate | SwpFrameChanged))
+                positionFlags))
         {
             throw new Win32Exception(Marshal.GetLastPInvokeError(), "无法设置 WorkerW 子窗口位置。");
         }
+
+        return (width, height);
     }
 
-    public static void DetachFromWorkerW(nint childWindow)
+    public static void AttachWorkerWInputProxy(nint proxyWindow, WorkerWDesktopTarget target)
     {
-        if (!IsValidWindow(childWindow))
+        if (!IsValidWindow(proxyWindow) || !IsValidDesktopTarget(target))
         {
-            return;
+            throw new InvalidOperationException("WorkerW 输入代理句柄无效。");
         }
 
-        _ = SetParent(childWindow, nint.Zero);
-        var style = GetWindowLongPtr(childWindow, GwlStyle);
-        SetWindowStyle(childWindow, (style & ~WsChild) | WsPopup);
+        var style = GetWindowLongPtr(proxyWindow, GwlStyle);
+        SetWindowStyle(proxyWindow, (style & ~WsPopup) | WsChild);
+        Marshal.SetLastPInvokeError(0);
+        var previousParent = SetParent(proxyWindow, target.ParentHandle);
+        var parentError = Marshal.GetLastPInvokeError();
+        if (previousParent == nint.Zero && parentError != 0)
+        {
+            throw new Win32Exception(parentError, "无法把输入代理挂到桌面父窗口。");
+        }
+
+        if (GetParent(proxyWindow) != target.ParentHandle)
+        {
+            throw new InvalidOperationException("输入代理挂载后父窗口不匹配。");
+        }
+
+        ApplyInputProxyTransparency(proxyWindow);
+    }
+
+    public static void PositionWorkerWInputProxy(
+        nint proxyWindow,
+        int x,
+        int y,
+        int width,
+        int height,
+        bool showWindow)
+    {
+        var flags = SwpNoActivate;
+        if (showWindow)
+        {
+            flags |= SwpShowWindow;
+        }
+
+        if (!SetWindowPos(
+                proxyWindow,
+                nint.Zero,
+                x,
+                y,
+                Math.Max(1, width),
+                Math.Max(1, height),
+                flags))
+        {
+            throw new Win32Exception(Marshal.GetLastPInvokeError(), "无法定位 WorkerW 输入代理。");
+        }
+
+        ApplyInputProxyTransparency(proxyWindow);
+    }
+
+    private static void ApplyInputProxyTransparency(nint proxyWindow)
+    {
+        if (!SetLayeredWindowAttributes(proxyWindow, 0, 1, LwaAlpha))
+        {
+            throw new Win32Exception(Marshal.GetLastPInvokeError(), "无法启用 WorkerW 透明输入代理。");
+        }
     }
 
     public static void ApplyToolWindowStyle(nint windowHandle)
@@ -101,6 +292,13 @@ internal static partial class NativeMethods
         }
     }
 
+    public static bool IsPointWithinWindow(nint windowHandle, int screenX, int screenY) =>
+        GetWindowRect(windowHandle, out var bounds) &&
+        screenX >= bounds.Left &&
+        screenX < bounds.Right &&
+        screenY >= bounds.Top &&
+        screenY < bounds.Bottom;
+
     private static void SetWindowStyle(nint windowHandle, nint style)
     {
         Marshal.SetLastPInvokeError(0);
@@ -108,7 +306,7 @@ internal static partial class NativeMethods
         var error = Marshal.GetLastPInvokeError();
         if (previousStyle == nint.Zero && error != 0)
         {
-            throw new Win32Exception(error, "无法更新 Dango 窗口样式。");
+            throw new Win32Exception(error, "无法把原生分层宿主转换为桌面子窗口。");
         }
     }
 
@@ -123,17 +321,20 @@ internal static partial class NativeMethods
                 if (string.Equals(className, "Progman", StringComparison.Ordinal) ||
                     string.Equals(className, "WorkerW", StringComparison.Ordinal))
                 {
+                    var shellView = FindWindowEx(
+                        topLevelWindow,
+                        nint.Zero,
+                        "SHELLDLL_DefView",
+                        null);
                     candidates.Add(
                         CaptureCandidate(
                             topLevelWindow,
                             nint.Zero,
                             zOrder,
                             className,
-                            FindWindowEx(
-                                topLevelWindow,
-                                nint.Zero,
-                                "SHELLDLL_DefView",
-                                null) != nint.Zero));
+                            shellView != nint.Zero,
+                            shellView,
+                            HasExtendedStyle(topLevelWindow, WsExNoRedirectionBitmap)));
                 }
 
                 zOrder++;
@@ -156,7 +357,9 @@ internal static partial class NativeMethods
                             shellHost.Handle,
                             zOrder: 0,
                             className,
-                            hasShellView: false));
+                            hasShellView: false,
+                            shellViewHandle: nint.Zero,
+                            hasNoRedirectionBitmap: false));
                 }
             }
         }
@@ -169,7 +372,9 @@ internal static partial class NativeMethods
         nint parentHandle,
         int zOrder,
         string className,
-        bool hasShellView)
+        bool hasShellView,
+        nint shellViewHandle,
+        bool hasNoRedirectionBitmap)
     {
         _ = GetWindowThreadProcessId(windowHandle, out var processId);
         var width = 0;
@@ -189,7 +394,32 @@ internal static partial class NativeMethods
             IsWindowVisible(windowHandle),
             width,
             height,
-            hasShellView);
+            hasShellView,
+            shellViewHandle,
+            hasNoRedirectionBitmap);
+    }
+
+    private static bool HasExtendedStyle(nint windowHandle, nint style) =>
+        (GetWindowLongPtr(windowHandle, GwlExStyle) & style) == style;
+
+    private static nint FindDescendantWindowByClass(nint parentWindow, string className)
+    {
+        var child = nint.Zero;
+        while ((child = FindWindowEx(parentWindow, child, null, null)) != nint.Zero)
+        {
+            if (string.Equals(GetWindowClassName(child), className, StringComparison.Ordinal))
+            {
+                return child;
+            }
+
+            var descendant = FindDescendantWindowByClass(child, className);
+            if (descendant != nint.Zero)
+            {
+                return descendant;
+            }
+        }
+
+        return nint.Zero;
     }
 
     private static string GetWindowClassName(nint windowHandle)
@@ -210,8 +440,44 @@ internal static partial class NativeMethods
         public int Bottom;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        public uint Size;
+        public NativeRect Monitor;
+        public NativeRect WorkArea;
+        public uint Flags;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ListViewHitTestInfo
+    {
+        public NativePoint Point;
+        public uint Flags;
+        public int ItemIndex;
+        public int SubItemIndex;
+        public int GroupIndex;
+    }
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern nint FindWindow(string? className, string? windowName);
+
+    [DllImport("user32.dll")]
+    private static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern nint MonitorFromWindow(nint windowHandle, uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfo(nint monitor, ref MonitorInfo monitorInfo);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern nint FindWindowEx(
@@ -234,8 +500,19 @@ internal static partial class NativeMethods
         uint timeoutMilliseconds,
         out nint result);
 
+    [DllImport("user32.dll")]
+    private static extern nint GetParent(nint childWindow);
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern nint SetParent(nint childWindow, nint newParentWindow);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetLayeredWindowAttributes(
+        nint windowHandle,
+        uint colorKey,
+        byte alpha,
+        uint flags);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -272,6 +549,56 @@ internal static partial class NativeMethods
         int width,
         int height,
         uint flags);
+
+    [DllImport("user32.dll")]
+    internal static extern nint SetCapture(nint windowHandle);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool ReleaseCapture();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetCursorPos(out NativePoint point);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ScreenToClient(nint windowHandle, ref NativePoint point);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool ShowWindow(nint windowHandle, int command);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern nint OpenProcess(
+        uint desiredAccess,
+        [MarshalAs(UnmanagedType.Bool)] bool inheritHandle,
+        uint processId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern nint VirtualAllocEx(
+        nint process,
+        nint address,
+        nuint size,
+        uint allocationType,
+        uint protection);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool WriteProcessMemory(
+        nint process,
+        nint baseAddress,
+        ref ListViewHitTestInfo buffer,
+        nuint size,
+        out nuint bytesWritten);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool VirtualFreeEx(nint process, nint address, nuint size, uint freeType);
+
+    [DllImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(nint handle);
 
     [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
     private static partial nint GetWindowLongPtr(nint windowHandle, int index);

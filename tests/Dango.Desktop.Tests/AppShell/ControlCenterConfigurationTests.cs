@@ -34,7 +34,11 @@ public sealed class ControlCenterConfigurationTests
         StringAssert.Contains(text, "实验与验收");
         StringAssert.Contains(text, "诊断");
         StringAssert.Contains(text, "P1-002 已通过人工验收");
-        StringAssert.Contains(text, "WorkerW/Shell 壁纸层 · P1-003 待人工验收");
+        StringAssert.Contains(text, "WorkerW/Shell 壁纸层 · P1-003 已通过人工验收");
+        StringAssert.Contains(text, "对象层级（实验）");
+        StringAssert.Contains(text, "团子层级");
+        StringAssert.Contains(text, "占位软垫");
+        StringAssert.Contains(text, "所有界面之上；全屏时隐藏");
         StringAssert.Contains(text, "AutomationProperties");
 
         var codeBehind = File.ReadAllText(Path.ChangeExtension(path, ".xaml.cs"));

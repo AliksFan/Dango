@@ -154,6 +154,34 @@ public partial class ControlCenterWindow : Window
         ApplyCommand(commandController.SetHostMode(mode));
     }
 
+    private void OnObjectLayerChanged(object sender, RoutedEventArgs e)
+    {
+        if (refreshingHostState ||
+            DangoBelowIconsRadioButton.IsChecked is null ||
+            CushionBelowIconsRadioButton.IsChecked is null)
+        {
+            return;
+        }
+
+        var settings = new DesktopLayeringSettings(
+            DangoAboveIconsRadioButton.IsChecked == true
+                ? DesktopObjectLayer.AboveDesktopIcons
+                : DesktopObjectLayer.BelowDesktopIcons,
+            new Dictionary<string, DesktopObjectLayer>(StringComparer.Ordinal)
+            {
+                [DesktopLayeringSettings.PrototypeCushionId] =
+                    CushionAboveIconsRadioButton.IsChecked == true
+                        ? DesktopObjectLayer.AboveDesktopIcons
+                        : DesktopObjectLayer.BelowDesktopIcons,
+            });
+        var result = commandController.ApplyLayeringSettings(settings);
+        ApplyCommand(result);
+        if (result.State == CommandApplicationState.Applied)
+        {
+            SaveWindowSettings();
+        }
+    }
+
     private void OnVerificationOutcomeChanged(object sender, SelectionChangedEventArgs e) =>
         RefreshVerificationSummary();
 
@@ -257,6 +285,15 @@ public partial class ControlCenterWindow : Window
         {
             VisibilityCheckBox.IsChecked = snapshot.IsVisible;
             InteractionCheckBox.IsChecked = snapshot.IsInteractionEnabled;
+            var layering = commandController.GetLayeringSettings();
+            DangoBelowIconsRadioButton.IsChecked = layering.DangoLayer == DesktopObjectLayer.BelowDesktopIcons;
+            DangoAboveIconsRadioButton.IsChecked = layering.DangoLayer == DesktopObjectLayer.AboveDesktopIcons;
+            CushionBelowIconsRadioButton.IsChecked =
+                layering.GetFurnitureLayer(DesktopLayeringSettings.PrototypeCushionId) ==
+                DesktopObjectLayer.BelowDesktopIcons;
+            CushionAboveIconsRadioButton.IsChecked =
+                layering.GetFurnitureLayer(DesktopLayeringSettings.PrototypeCushionId) ==
+                DesktopObjectLayer.AboveDesktopIcons;
             OverviewVisibilityText.Text = snapshot.IsVisible ? "已开启" : "已隐藏";
             OverviewVisibilityButton.Content = snapshot.IsVisible ? "隐藏桌面团子" : "显示桌面团子";
             OverviewInteractionText.Text = snapshot.IsInteractionEnabled ? "已开启" : "已关闭";
@@ -378,6 +415,7 @@ public partial class ControlCenterWindow : Window
             var settings = windowSettingsStore.Load(settingsPath);
             Width = settings.Width;
             Height = settings.Height;
+            _ = commandController.ApplyLayeringSettings(settings.DesktopLayeringExperiment);
         }
         catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
         {
@@ -399,7 +437,11 @@ public partial class ControlCenterWindow : Window
                 : RestoreBounds;
             windowSettingsStore.Save(
                 settingsPath,
-                new ControlCenterWindowSettings(bounds.Width, bounds.Height));
+                new ControlCenterWindowSettings(
+                    bounds.Width,
+                    bounds.Height,
+                    schemaVersion: 1,
+                    commandController.GetLayeringSettings()));
         }
         catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
         {

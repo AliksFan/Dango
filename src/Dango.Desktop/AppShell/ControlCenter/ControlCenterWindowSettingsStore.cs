@@ -1,11 +1,34 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Dango.Desktop.DesktopHost;
 using Dango.Desktop.Verification;
 
 namespace Dango.Desktop.AppShell.ControlCenter;
 
-public sealed record ControlCenterWindowSettings(double Width, double Height);
+public sealed record ControlCenterWindowSettings
+{
+    [JsonConstructor]
+    public ControlCenterWindowSettings(
+        double width,
+        double height,
+        int schemaVersion = 1,
+        DesktopLayeringSettings? desktopLayeringExperiment = null)
+    {
+        Width = width;
+        Height = height;
+        SchemaVersion = schemaVersion == 0 ? 1 : schemaVersion;
+        DesktopLayeringExperiment = desktopLayeringExperiment ?? DesktopLayeringSettings.CreateDefault();
+    }
+
+    public double Width { get; }
+
+    public double Height { get; }
+
+    public int SchemaVersion { get; }
+
+    public DesktopLayeringSettings DesktopLayeringExperiment { get; }
+}
 
 public static class ControlCenterWindowSettingsValidator
 {
@@ -26,6 +49,13 @@ public static class ControlCenterWindowSettingsValidator
         {
             throw new InvalidDataException("控制中心窗口尺寸超出安全范围。");
         }
+
+        if (settings.SchemaVersion != 1)
+        {
+            throw new InvalidDataException("控制中心设置版本不受支持。");
+        }
+
+        DesktopLayeringSettingsValidator.Validate(settings.DesktopLayeringExperiment);
     }
 }
 
@@ -37,6 +67,11 @@ public sealed class ControlCenterWindowSettingsStore
         WriteIndented = true,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     };
+
+    static ControlCenterWindowSettingsStore()
+    {
+        SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    }
 
     private readonly IAtomicTextWriter writer;
 
