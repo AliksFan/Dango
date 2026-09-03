@@ -12,7 +12,7 @@ Use these terms to make animation choices reviewable. They describe Phase 1 inte
 - **Spatial contact:** grabbing the island and landing on the ground use stable semantic anchors; the body must appear to touch rather than float beside the surface.
 - **Flat modularity:** customizable body fill, expression parts, and hat remain independent solid-color layers through every pose. Eyes belong to expression animation, not face customization. Motion cannot rely on highlights, gradients, lighting, or baked combinations.
 - **Limbless silhouette:** the Dango has no legs, feet, paws, or arms. Keep one continuous rounded base; express locomotion and climbing through center-of-mass shift, squash/stretch, and contact deformation rather than limb-like bumps.
-- **Authored semantics, simulated feel:** authored poses and events decide what the action means. A bounded spring-damper layer may add contact compression, decay, and secondary lag, but never decide position, collision, permissions, or the interaction result.
+- **Authored semantics, physical feel:** authored poses and events decide what the action means. The approved Box2D presentation rig may simulate mass, collision, spring joints, contact compression, decay, and secondary lag, but never decides Core position, collision, permissions, or the interaction result.
 
 ## Timing pattern
 
@@ -44,16 +44,16 @@ Show fall anticipation, first contact, short compression, smaller rebound, and s
 
 Show approach, reach, `island-grabbed` contact, weight transfer, body lift, edge crossing, and stable island stance. The handless round body still needs an unambiguous contact patch or deformation. Reduced motion may shorten secondary deformation but cannot remove the semantic grab and transfer.
 
-## Lightweight secondary motion
+## Box2D visual soft-body motion
 
 - Express each contact in one interaction coordinate system with a semantic anchor, contact normal, strength, shared start time, parameter version, and deterministic seed.
-- Combine axial compression along the normal with limited transverse compensation, a hard deformation cap, and damped recovery. Treat all numeric values as Spike candidates until measured on the real desktop host.
+- Build each Dango from a kinematic Core anchor and an ordered ring of Box2D dynamic nodes with perimeter and radial spring joints. Treat node count, mass, gravity, joint frequency, damping, substeps, and deformation limits as Spike candidates until measured on the real desktop host.
 - Keep authored poses as the fallback and the source of semantic events. Never integrate visual spring state back into Core position or collision.
 - Make eyes follow the locally deformed body while expression remains an independent track. Drive the hat from a dynamic attachment point; a small capped lag is allowed, drift and body penetration are not.
 - For two-Dango contact, use one interaction director to emit a paired constraint and complementary deformation. Do not let both characters independently solve the same contact.
-- Sample simulation on a fixed step. The same intent, participants, authoritative time, contact data, parameter version, and seed must reproduce the same result; render interpolation may not change it.
-- Reduced motion removes delayed oscillation and nonessential secondary sway, lowers deformation, and may lower the target refresh rate while keeping contact events and the final pose.
-- If the renderer or performance budget cannot support this layer, disable it and use the authored key poses. Never substitute a full physics engine without a new approved ADR.
+- Sample simulation on a fixed step with bounded catch-up. The same Windows build, intent, participants, authoritative time, contact data, parameter version, and seed must reproduce within the approved tolerance; cross-device vertex identity is not a shared semantic requirement.
+- Reduced motion defaults to authored key poses without continuous soft-body stepping. It must keep contact events and the final pose.
+- If native loading, simulation validity, renderer consumption, or the performance budget fails, destroy the affected physics instance and use authored key poses. Do not switch engines or renderers without an approved design change.
 
 ## Avoid
 

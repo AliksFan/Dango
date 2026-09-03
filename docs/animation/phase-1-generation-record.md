@@ -174,3 +174,10 @@ Avoid: all lighting and shading, highlights, gradients, glow, texture, 3D volume
 - 不引入完整物理引擎；视觉形变不裁定 Core 位置、碰撞、权限、状态或互动结果，性能不足时回退到手工关键姿势。
 - 网络只同步动作意图、参与者、权威时间、接触方向或锚点、参数版本与种子，不同步逐帧弹簧、顶点或缩放状态。
 - 本轮只完成文档、动作语言和 P1-004 Spike 门禁，未实现 WPF 求解器；详细决策见 [ADR 0004](../adr/0004-lightweight-soft-body-secondary-motion.md)。
+
+## 8. Box2D 视觉软体方向批准
+
+- 用户于 2026-09-03 将方案 2 从自有轻量弹簧—阻尼升级为真实二维物理内核，并选择“物理只负责视觉、Core/服务端继续权威”的边界。
+- 已批准使用官方 Box2D 3.x C API 构造运动学核心锚点、动态节点环和弹簧关节；Box2D 输出只用于身体轮廓、眼睛/帽子挂点和本地诊断。
+- 手工关键姿势继续负责动作语义、降低动画、资源缺失和异常 fallback；既有 A 极简视觉硬约束不变。
+- ADR 0005 取代 ADR 0004 的“不引入 Box2D”选择；新的 [实施计划](../phase-1-box2d-soft-body-implementation-plan.md) 在用户批准前不授权依赖或代码接入。

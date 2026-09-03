@@ -25,7 +25,7 @@ Prepare Dango animation assets without confusing visual drafts, runtime structur
 ## Project invariants
 
 - The runtime truth is a versioned, editor-neutral asset package; WPF controls, Storyboards, Godot NodePaths, Figma nodes, or proprietary editor objects cannot be the only source of truth.
-- Use layered bitmaps, a small number of outline-changing frames, runtime transforms, and limited secondary motion. Do not make every motion an overall sine-wave scale.
+- Use authored key poses for semantic timing and fallback. The approved P1-004 runtime direction may use a Box2D soft-body presentation rig for continuous deformation, but physics output never decides Core state, position, collision, permissions, or interaction results. Do not make every motion an overall sine-wave scale.
 - Shared semantics use stable action/clip IDs, events, anchors, timing, and fallbacks. Local breathing or blinking cannot change shared pose, occupancy, or interaction results.
 - Do not add sleep, cuddling, group, couple, multiplayer, or formal content unless the current approved scope explicitly includes it.
 - Do not buy, install, subscribe to, upload to, or bind the project to an external tool without separate authorization.

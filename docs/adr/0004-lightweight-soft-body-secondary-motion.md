@@ -1,6 +1,6 @@
 # ADR 0004：轻量软体二次运动
 
-> 状态：Accepted
+> 状态：Superseded by [ADR 0005](0005-box2d-visual-soft-body-presentation.md)
 >
 > 决策日期：2026-09-02
 >
