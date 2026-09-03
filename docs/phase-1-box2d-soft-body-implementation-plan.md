@@ -1,8 +1,10 @@
 # Dango Phase 1 Box2D 视觉软体实施计划
 
-> 状态：Draft for Review
+> 状态：Approved
 >
 > 日期：2026-09-03
+>
+> 批准日期：2026-09-03
 >
 > 已批准设计：[ADR 0005](adr/0005-box2d-visual-soft-body-presentation.md)
 >
