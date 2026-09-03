@@ -82,7 +82,10 @@ public static class Box2DNativeLoader
                 !TryResolve(handle, "dango_box2d_get_version_major", out GetIntegerDelegate getMajor) ||
                 !TryResolve(handle, "dango_box2d_get_version_minor", out GetIntegerDelegate getMinor) ||
                 !TryResolve(handle, "dango_box2d_get_version_revision", out GetIntegerDelegate getRevision) ||
-                !TryResolve(handle, "dango_box2d_run_lifecycle_probe", out LifecycleProbeDelegate runProbe))
+                !TryResolve(handle, "dango_box2d_run_lifecycle_probe", out LifecycleProbeDelegate runProbe) ||
+                !TryResolve(handle, "dango_box2d_soft_body_create", out SoftBodyCreateDelegate createSoftBody) ||
+                !TryResolve(handle, "dango_box2d_soft_body_step", out SoftBodyStepDelegate stepSoftBody) ||
+                !TryResolve(handle, "dango_box2d_soft_body_destroy", out SoftBodyDestroyDelegate destroySoftBody))
             {
                 failure = new(
                     Box2DNativeLoadFailureKind.MissingExport,
@@ -108,7 +111,13 @@ public static class Box2DNativeLoader
                 return false;
             }
 
-            session = new Box2DNativeSession(handle, actualVersion, runProbe);
+            session = new Box2DNativeSession(
+                handle,
+                actualVersion,
+                runProbe,
+                createSoftBody,
+                stepSoftBody,
+                destroySoftBody);
             handle = 0;
             failure = Box2DNativeLoadFailure.None;
             return true;
@@ -207,21 +216,55 @@ public static class Box2DNativeLoader
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate int LifecycleProbeDelegate(int stepCount, out int outstandingBytes);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate int SoftBodyCreateDelegate(int nodeCount, int substepCount, out nint softBodyHandle);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate int SoftBodyStepDelegate(
+        nint softBodyHandle,
+        float timeStep,
+        int cue,
+        float anchorX,
+        float anchorY,
+        float strength,
+        [Out] float[] points,
+        int pointCapacity,
+        out int pointCount,
+        out float signedArea,
+        out float centroidX,
+        out float centroidY,
+        out float maximumRadius,
+        out float maximumSpeed,
+        out float energyProxy,
+        out int sleeping);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate int SoftBodyDestroyDelegate(nint softBodyHandle, out int outstandingBytes);
 }
 
 public sealed class Box2DNativeSession : IDisposable
 {
     private nint _handle;
     private readonly Box2DNativeLoader.LifecycleProbeDelegate _runProbe;
+    private readonly Box2DNativeLoader.SoftBodyCreateDelegate _createSoftBody;
+    private readonly Box2DNativeLoader.SoftBodyStepDelegate _stepSoftBody;
+    private readonly Box2DNativeLoader.SoftBodyDestroyDelegate _destroySoftBody;
 
     internal Box2DNativeSession(
         nint handle,
         Box2DNativeVersion box2DVersion,
-        Box2DNativeLoader.LifecycleProbeDelegate runProbe)
+        Box2DNativeLoader.LifecycleProbeDelegate runProbe,
+        Box2DNativeLoader.SoftBodyCreateDelegate createSoftBody,
+        Box2DNativeLoader.SoftBodyStepDelegate stepSoftBody,
+        Box2DNativeLoader.SoftBodyDestroyDelegate destroySoftBody)
     {
         _handle = handle;
         Box2DVersion = box2DVersion;
         _runProbe = runProbe;
+        _createSoftBody = createSoftBody;
+        _stepSoftBody = stepSoftBody;
+        _destroySoftBody = destroySoftBody;
     }
 
     public Box2DNativeVersion Box2DVersion { get; }
@@ -244,6 +287,28 @@ public sealed class Box2DNativeSession : IDisposable
                 $"Box2D create/step/destroy probe failed with native code {errorCode} and {outstandingBytes} outstanding bytes.");
     }
 
+    internal bool TryCreateSoftBody(
+        int nodeCount,
+        int substepCount,
+        out Box2DSoftBodyNativeSession? softBody,
+        out int errorCode)
+    {
+        ObjectDisposedException.ThrowIf(_handle == 0, this);
+        errorCode = _createSoftBody(nodeCount, substepCount, out var softBodyHandle);
+        if (errorCode != 0 || softBodyHandle == 0)
+        {
+            softBody = null;
+            return false;
+        }
+
+        softBody = new Box2DSoftBodyNativeSession(
+            softBodyHandle,
+            nodeCount,
+            _stepSoftBody,
+            _destroySoftBody);
+        return true;
+    }
+
     public void Dispose()
     {
         Dispose(true);
@@ -257,5 +322,94 @@ public sealed class Box2DNativeSession : IDisposable
         {
             NativeLibrary.Free(handle);
         }
+    }
+}
+
+internal readonly record struct Box2DSoftBodyNativeFrame(
+    bool Succeeded,
+    int ErrorCode,
+    float[] Points,
+    int PointCount,
+    float SignedArea,
+    float CentroidX,
+    float CentroidY,
+    float MaximumRadius,
+    float MaximumSpeed,
+    float EnergyProxy,
+    bool IsSleeping);
+
+internal sealed class Box2DSoftBodyNativeSession : IDisposable
+{
+    private nint _handle;
+    private readonly int _nodeCount;
+    private readonly Box2DNativeLoader.SoftBodyStepDelegate _step;
+    private readonly Box2DNativeLoader.SoftBodyDestroyDelegate _destroy;
+
+    public Box2DSoftBodyNativeSession(
+        nint handle,
+        int nodeCount,
+        Box2DNativeLoader.SoftBodyStepDelegate step,
+        Box2DNativeLoader.SoftBodyDestroyDelegate destroy)
+    {
+        _handle = handle;
+        _nodeCount = nodeCount;
+        _step = step;
+        _destroy = destroy;
+    }
+
+    public Box2DSoftBodyNativeFrame Step(
+        TimeSpan fixedStep,
+        int cue,
+        float anchorX,
+        float anchorY,
+        float strength)
+    {
+        ObjectDisposedException.ThrowIf(_handle == 0, this);
+        var points = new float[_nodeCount * 2];
+        var errorCode = _step(
+            _handle,
+            (float)fixedStep.TotalSeconds,
+            cue,
+            anchorX,
+            anchorY,
+            strength,
+            points,
+            _nodeCount,
+            out var pointCount,
+            out var signedArea,
+            out var centroidX,
+            out var centroidY,
+            out var maximumRadius,
+            out var maximumSpeed,
+            out var energyProxy,
+            out var sleeping);
+        return new(
+            errorCode == 0,
+            errorCode,
+            points,
+            pointCount,
+            signedArea,
+            centroidX,
+            centroidY,
+            maximumRadius,
+            maximumSpeed,
+            energyProxy,
+            sleeping != 0);
+    }
+
+    public void Dispose()
+    {
+        var handle = Interlocked.Exchange(ref _handle, 0);
+        if (handle != 0)
+        {
+            var errorCode = _destroy(handle, out var outstandingBytes);
+            if (errorCode != 0 || outstandingBytes != 0)
+            {
+                throw new InvalidOperationException(
+                    $"Box2D soft-body cleanup failed with native code {errorCode} and {outstandingBytes} outstanding bytes.");
+            }
+        }
+
+        GC.SuppressFinalize(this);
     }
 }

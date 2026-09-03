@@ -34,7 +34,8 @@ internal static class AuthoredPoseSampler
 
     public static PhysicsPresentationFrame CreateFallback(
         PhysicsPresentationInput input,
-        PhysicsPresentationFallbackReason reason) =>
+        PhysicsPresentationFallbackReason reason,
+        int nativeErrorCode = 0) =>
         new(
             reason != PhysicsPresentationFallbackReason.Hidden,
             reason == PhysicsPresentationFallbackReason.Hidden ? [] : CreateContour(input),
@@ -44,7 +45,24 @@ internal static class AuthoredPoseSampler
             new PhysicsPresentationDiagnostics(
                 PhysicsPresentationBackend.AuthoredFallback,
                 0,
-                PhysicsPresentationDiagnosticCode.Fallback));
+                PhysicsPresentationDiagnosticCode.Fallback,
+                NativeErrorCode: nativeErrorCode));
+
+    public static PhysicsPresentationFrame CreateSoftBodyActive(
+        IReadOnlyList<PresentationPoint> contour,
+        int simulatedStepCount,
+        SoftBodyMetrics metrics) =>
+        new(
+            true,
+            contour,
+            new PresentationAttachment(new PresentationPoint(0, -0.05), 0),
+            new PresentationAttachment(new PresentationPoint(0, -0.82), 0),
+            PhysicsPresentationFallbackReason.None,
+            new PhysicsPresentationDiagnostics(
+                PhysicsPresentationBackend.Box2D,
+                simulatedStepCount,
+                PhysicsPresentationDiagnosticCode.SoftBodyActive,
+                metrics));
 
     private static IReadOnlyList<PresentationPoint> CreateContour(PhysicsPresentationInput input)
     {

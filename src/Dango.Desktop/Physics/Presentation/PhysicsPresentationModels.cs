@@ -19,6 +19,7 @@ public enum PhysicsPresentationFallbackReason
     HostUnavailable,
     NativeUnavailable,
     NativeProbeFailed,
+    SimulationUnstable,
 }
 
 public enum PhysicsPresentationWorldState
@@ -33,8 +34,53 @@ public enum PhysicsPresentationDiagnosticCode
 {
     FakeActive,
     Box2DContractProbe,
+    SoftBodyActive,
     Fallback,
 }
+
+public readonly record struct SoftBodyConfiguration
+{
+    public SoftBodyConfiguration(int nodeCount, int subStepCount)
+    {
+        if (nodeCount is not (12 or 16))
+        {
+            throw new ArgumentOutOfRangeException(nameof(nodeCount), "软体节点数仅允许 12 或 16。");
+        }
+        if (subStepCount is not (2 or 4))
+        {
+            throw new ArgumentOutOfRangeException(nameof(subStepCount), "Box2D 子步数仅允许 2 或 4。");
+        }
+
+        NodeCount = nodeCount;
+        SubStepCount = subStepCount;
+    }
+
+    public int NodeCount { get; }
+
+    public int SubStepCount { get; }
+
+    public override string ToString() => $"{NodeCount} nodes / {SubStepCount} substeps";
+}
+
+public static class SoftBodyStabilityLimits
+{
+    public const double MinimumSignedArea = 0.45;
+    public const double MaximumRadius = 0.98;
+    public const double MaximumNodeSpeed = 8;
+    public const double MaximumCentroidOffset = 0.25;
+    public const double MaximumEnergyPerNode = MaximumNodeSpeed * MaximumNodeSpeed;
+    public const double ReplayTolerance = 0.00001;
+}
+
+public sealed record SoftBodyMetrics(
+    SoftBodyConfiguration Configuration,
+    double SignedArea,
+    PresentationPoint Centroid,
+    double MaximumRadius,
+    double MaximumNodeSpeed,
+    double EnergyProxy,
+    bool IsOrientationValid,
+    bool IsSleeping);
 
 public readonly record struct PresentationPoint
 {
@@ -75,7 +121,9 @@ public readonly record struct PresentationAttachment
 public sealed record PhysicsPresentationDiagnostics(
     PhysicsPresentationBackend Backend,
     int SimulatedStepCount,
-    PhysicsPresentationDiagnosticCode Code);
+    PhysicsPresentationDiagnosticCode Code,
+    SoftBodyMetrics? SoftBody = null,
+    int NativeErrorCode = 0);
 
 public sealed record PhysicsPresentationFrame
 {

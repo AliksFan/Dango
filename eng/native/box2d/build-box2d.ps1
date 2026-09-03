@@ -116,7 +116,10 @@ $manifest = [ordered]@{
             'dango_box2d_get_version_major',
             'dango_box2d_get_version_minor',
             'dango_box2d_get_version_revision',
-            'dango_box2d_run_lifecycle_probe'
+            'dango_box2d_run_lifecycle_probe',
+            'dango_box2d_soft_body_create',
+            'dango_box2d_soft_body_step',
+            'dango_box2d_soft_body_destroy'
         )
     }
 }

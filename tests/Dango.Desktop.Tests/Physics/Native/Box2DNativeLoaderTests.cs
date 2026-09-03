@@ -139,6 +139,18 @@ public sealed class Box2DNativeLoaderTests
         Assert.AreEqual("3.1.1", root.GetProperty("version").GetString());
         Assert.AreEqual("8c661469c9507d3ad6fbd2fea3f1aa71669c2fe3", root.GetProperty("commit").GetString());
         Assert.AreEqual("win-x64", root.GetProperty("native").GetProperty("rid").GetString());
+        var exports = root.GetProperty("native").GetProperty("exports")
+            .EnumerateArray()
+            .Select(item => item.GetString())
+            .ToArray();
+        CollectionAssert.IsSubsetOf(
+            new[]
+            {
+                "dango_box2d_soft_body_create",
+                "dango_box2d_soft_body_step",
+                "dango_box2d_soft_body_destroy",
+            },
+            exports);
         AssertHashMatches(root.GetProperty("license"), Path.GetDirectoryName(manifestPath)!);
         AssertHashMatches(root.GetProperty("native"), TestRepository.Root);
         Assert.IsTrue(File.Exists(Path.Combine(AppContext.BaseDirectory, "licenses", "Box2D-LICENSE.txt")));

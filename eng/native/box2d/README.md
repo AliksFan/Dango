@@ -40,9 +40,20 @@ pwsh -NoProfile -File .\eng\native\box2d\build-box2d.ps1 `
 
 自定义源码目录必须是 Git checkout 且 HEAD 精确匹配固定 commit。构建脚本不会安装工具、修改系统环境或在运行时联网。
 
-## 探针
+## Bridge 能力
 
-bridge 只暴露版本、ABI 和 `create → body/joint → step → destroy` 生命周期探针。它尚未实现软体环或 WPF 渲染。
+bridge 暴露版本、ABI、`create → body/joint → step → destroy` 生命周期探针，以及 P2D-004 的 opaque soft-body 会话：
+
+- 12/16 个动态外圈节点；
+- 运动学核心、相邻弹簧和径向弹簧；
+- 只与外圈节点碰撞的静态接地代理；
+- 2/4 个 Box2D 子步；
+- 有限数、正向面积、半径、质心和速度/能量上限；
+- 销毁时检查 Box2D 分配回到创建前基线。
+
+.NET 不接收 Box2D ID、body、joint 或 world 类型，只持有 bridge opaque handle 并采样局部轮廓。WPF 动态渲染仍未实现。
+
+## 生命周期探针
 
 self-contained 发布后可运行无窗口探针：
 
