@@ -1,22 +1,38 @@
 #!/usr/bin/env python3
-"""Validate AP-004 motion-sample semantics and file references."""
+"""Validate the AP-005 authored fallback pack and file references."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path, PurePosixPath
 
 
 EXPECTED_POSES = {
     "idle": ["rest-start", "inhale", "rest-return", "blink", "rest-end"],
-    "landing": ["fall", "contact", "compress", "rebound", "settle"],
+    "wander": ["rest", "lean", "compress", "glide", "settle"],
+    "approach-island": ["travel", "slow", "lower", "align"],
     "climb-up": ["approach", "grab", "transfer", "cross", "stand"],
+    "on-island": ["rest-start", "breathe", "rest-end"],
+    "climb-down": ["stand", "peer", "edge-contact", "release", "fall"],
+    "dragged": ["grabbed", "suspend", "follow"],
+    "falling": ["fall-start", "stretch", "pre-contact"],
+    "landing": ["fall", "contact", "compress", "rebound", "settle"],
+    "reacting": ["rest", "compress", "lift", "settle"],
 }
+EXPECTED_ACTIONS = list(EXPECTED_POSES)
+LOOPING_ACTIONS = {"idle", "wander", "on-island", "dragged"}
 EXPECTED_EVENTS = {
     "landing": ("landed", "contact", "ground-contact"),
     "climb-up": ("island-grabbed", "grab", "island-grab"),
+    "climb-down": ("island-released", "release", "island-grab"),
+}
+EXPECTED_FINAL_ANCHORS = {
+    "climb-up": "island-stand",
+    "climb-down": "ground-contact",
+    "landing": "ground-contact",
 }
 
 
@@ -70,8 +86,13 @@ def validate_document(document: object, root: Path) -> list[str]:
     if not isinstance(actions, list):
         return errors + ["actions must be an array"]
     action_ids = [action.get("id") for action in actions if isinstance(action, dict)]
-    if action_ids != ["idle", "landing", "climb-up"]:
-        errors.append("actions must contain idle, landing, climb-up in order")
+    if action_ids != EXPECTED_ACTIONS:
+        missing = [action_id for action_id in EXPECTED_ACTIONS if action_id not in action_ids]
+        unexpected = [action_id for action_id in action_ids if action_id not in EXPECTED_ACTIONS]
+        errors.append(
+            "actions must contain all visible Core actions in order"
+            f"; missing={missing}; unexpected={unexpected}"
+        )
 
     for action in actions:
         if not isinstance(action, dict):
@@ -84,7 +105,7 @@ def validate_document(document: object, root: Path) -> list[str]:
         if not isinstance(duration, int) or duration <= 0:
             errors.append(f"{action_id}: durationMilliseconds must be a positive integer")
             continue
-        if action.get("loop") is not (action_id == "idle"):
+        if action.get("loop") is not (action_id in LOOPING_ACTIONS):
             errors.append(f"{action_id}: loop flag is incorrect")
 
         poses = action.get("poses")
@@ -141,6 +162,73 @@ def validate_document(document: object, root: Path) -> list[str]:
             elif not valid_point(matching[0].get("point"), width, height):
                 errors.append(f"{action_id}: event point is invalid")
 
+        if action_id in EXPECTED_FINAL_ANCHORS:
+            final_anchor = action.get("finalAnchor")
+            if not isinstance(final_anchor, dict) or final_anchor.get("name") != EXPECTED_FINAL_ANCHORS[action_id]:
+                errors.append(f"{action_id}: required final anchor is missing or incorrect")
+            elif not valid_point(final_anchor.get("point"), width, height):
+                errors.append(f"{action_id}: final anchor point is invalid")
+
+    return errors
+
+
+def provenance_paths(path: Path) -> tuple[set[str], list[str]]:
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        return set(), [f"{path.name}: provenance cannot be read: {exc}"]
+    files = document.get("files") if isinstance(document, dict) else None
+    if not isinstance(files, list):
+        return set(), [f"{path.name}: provenance files must be an array"]
+    values = {entry.get("path") for entry in files if isinstance(entry, dict)}
+    return {value for value in values if isinstance(value, str)}, []
+
+
+def validate_source_assets(document: object, root: Path) -> list[str]:
+    if not isinstance(document, dict) or not isinstance(document.get("actions"), list):
+        return []
+    errors: list[str] = []
+    source_entries, source_errors = provenance_paths(root / "provenance.json")
+    export_entries, export_errors = provenance_paths(root / "export" / "provenance.json")
+    errors.extend(source_errors)
+    errors.extend(export_errors)
+    required_sources = {"motion-samples.json", "export-motion-samples.ps1", "build_ap005_source_pack.py"}
+    required_exports: set[str] = set()
+
+    for action in document["actions"]:
+        if not isinstance(action, dict) or not isinstance(action.get("poses"), list):
+            continue
+        for pose in action["poses"]:
+            if not isinstance(pose, dict):
+                continue
+            for layer in ("body", "eyes", "hat"):
+                value = pose.get(layer)
+                if isinstance(value, str) and value.startswith("export/"):
+                    required_exports.add(value.removeprefix("export/"))
+            body = pose.get("body")
+            if not isinstance(body, str) or not body.startswith("export/") or not body.endswith(".png"):
+                continue
+            source_relative = "source/" + body.removeprefix("export/").removesuffix(".png") + ".svg"
+            required_sources.add(source_relative)
+            source_path = root / Path(*PurePosixPath(source_relative).parts)
+            try:
+                svg = source_path.read_text(encoding="utf-8")
+            except (OSError, UnicodeError) as exc:
+                errors.append(f"{source_relative}: source SVG cannot be read: {exc}")
+                continue
+            lowered = svg.lower()
+            for forbidden in ("lineargradient", "radialgradient", "<filter", "opacity", "<style", "mouth", "blush", "shadow"):
+                if forbidden in lowered:
+                    errors.append(f"{source_relative}: forbidden SVG feature {forbidden}")
+            if svg.count("<path ") != 1 or re.search(r"<(ellipse|circle|rect|line|polyline|polygon)\b", svg, re.IGNORECASE):
+                errors.append(f"{source_relative}: body must be one continuous path without limb primitives")
+            if len(re.findall(r'fill="#[0-9A-Fa-f]{6}"', svg)) != 1:
+                errors.append(f"{source_relative}: body must have exactly one solid hex fill")
+
+    for missing in sorted(required_sources - source_entries):
+        errors.append(f"source provenance is missing {missing}")
+    for missing in sorted(required_exports - export_entries):
+        errors.append(f"export provenance is missing {missing}")
     return errors
 
 
@@ -154,7 +242,9 @@ def main() -> int:
         print(json.dumps({"errors": [f"manifest cannot be read: {exc}"]}, ensure_ascii=False, indent=2))
         return 1
     errors = validate_document(document, args.manifest.parent)
-    print(json.dumps({"actions": 3, "errors": errors}, ensure_ascii=False, indent=2))
+    errors.extend(validate_source_assets(document, args.manifest.parent))
+    action_count = len(document.get("actions", [])) if isinstance(document, dict) else 0
+    print(json.dumps({"actions": action_count, "errors": errors}, ensure_ascii=False, indent=2))
     return 0 if not errors else 1
 
 

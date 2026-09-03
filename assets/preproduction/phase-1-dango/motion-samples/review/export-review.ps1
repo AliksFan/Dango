@@ -13,8 +13,8 @@ if (-not $EdgePath -or -not (Test-Path -LiteralPath $EdgePath)) {
 }
 
 $reviewRoot = $PSScriptRoot
-$sourcePath = Join-Path $reviewRoot 'phase-1-motion-samples.html'
-$outputPath = Join-Path $reviewRoot 'phase-1-motion-samples.png'
+$sourcePath = Join-Path $reviewRoot 'phase-1-authored-fallback-pack.html'
+$outputPath = Join-Path $reviewRoot 'phase-1-authored-fallback-pack.png'
 $profilePath = Join-Path ([System.IO.Path]::GetTempPath()) ('dango-motion-review-' + [guid]::NewGuid().ToString('N'))
 $resolvedTempRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd('\') + '\'
 $resolvedProfilePath = [System.IO.Path]::GetFullPath($profilePath)
@@ -28,7 +28,7 @@ try {
     $arguments = @(
         '--headless=new', '--disable-gpu', '--disable-background-networking', '--disable-component-update',
         '--disable-extensions', '--hide-scrollbars', '--no-default-browser-check', '--no-first-run',
-        '--allow-file-access-from-files', '--force-device-scale-factor=1', '--window-size=920,500',
+        '--allow-file-access-from-files', '--force-device-scale-factor=1', '--window-size=1200,2500',
         ('--user-data-dir=' + $resolvedProfilePath), ('--screenshot=' + $outputPath),
         ([uri]$sourcePath).AbsoluteUri
     )
@@ -50,4 +50,4 @@ finally {
         catch { if ($attempt -eq 19) { throw }; Start-Sleep -Milliseconds 200 }
     }
 }
-Write-Output "Exported AP-004 review board to $outputPath"
+Write-Output "Exported AP-005 review board to $outputPath"

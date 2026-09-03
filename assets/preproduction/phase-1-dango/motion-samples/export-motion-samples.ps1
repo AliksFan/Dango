@@ -103,10 +103,10 @@ $sourceEntries = @(
     [ordered]@{
         path = 'motion-samples.json'
         sourceType = 'project-created'
-        source = 'Approved AP-004 timing, layer, anchor, and pose mapping'
+        source = 'Approved AP-004 inputs extended by the AP-005 authored fallback mapping'
         license = 'Dango project-owned source'
         tool = 'Codex apply_patch'
-        createdOn = '2026-09-02'
+        createdOn = '2026-09-03'
         modifications = 'Uses only body, eyes, and hat layers'
     },
     [ordered]@{
@@ -117,17 +117,27 @@ $sourceEntries = @(
         tool = 'Codex apply_patch'
         createdOn = '2026-09-02'
         modifications = 'Exports fixed 160 by 120 transparent PNG files with local Microsoft Edge'
+    },
+    [ordered]@{
+        path = 'build_ap005_source_pack.py'
+        sourceType = 'project-code-generated'
+        source = 'Deterministic AP-005 vector, manifest, runtime-candidate, and review-layout generator'
+        license = 'Dango project-owned source'
+        tool = 'Codex apply_patch'
+        createdOn = '2026-09-03'
+        modifications = 'Generates only flat body silhouettes and editor-neutral metadata; no physics fields'
     }
 )
 foreach ($sourceFile in $sourceFiles) {
     $relative = 'source/' + $sourceFile.FullName.Substring($sourceRoot.Length + 1).Replace('\', '/')
+    $createdOn = if ($relative -match '^source/(idle|landing|climb-up|shared)/') { '2026-09-02' } else { '2026-09-03' }
     $sourceEntries += [ordered]@{
         path = $relative
         sourceType = 'project-created'
         source = 'Original deterministic vector key pose for the approved direction A'
         license = 'Dango project-owned original; no third-party source'
         tool = 'Codex apply_patch'
-        createdOn = '2026-09-02'
+        createdOn = $createdOn
         modifications = 'Solid-color editor-neutral SVG with no mouth, blush, shadow, or limbs'
     }
 }
@@ -139,13 +149,14 @@ $exportEntries = @()
 foreach ($export in $exports) {
     $relativeOutput = $export.Output.Substring($exportRoot.Length + 1).Replace('\', '/')
     $relativeSource = 'source/' + $export.Source.FullName.Substring($sourceRoot.Length + 1).Replace('\', '/')
+    $createdOn = if ($relativeSource -match '^source/(idle|landing|climb-up|shared)/') { '2026-09-02' } else { '2026-09-03' }
     $exportEntries += [ordered]@{
         path = $relativeOutput
         sourceType = 'project-code-generated'
         source = $relativeSource
         license = 'Dango project-owned original; no third-party source'
         tool = 'Microsoft Edge headless via export-motion-samples.ps1'
-        createdOn = '2026-09-02'
+        createdOn = $createdOn
         modifications = 'Transparent 160 by 120 raster export'
     }
 }
@@ -153,4 +164,4 @@ $exportProvenance = [ordered]@{ '$schema' = '../../provenance.schema.json'; vers
 $exportJson = ($exportProvenance | ConvertTo-Json -Depth 5) -replace "`r`n", "`n"
 [System.IO.File]::WriteAllText((Join-Path $exportRoot 'provenance.json'), $exportJson + "`n", [System.Text.UTF8Encoding]::new($false))
 
-Write-Output "Exported $($exports.Count) AP-004 PNG files to $exportRoot"
+Write-Output "Exported $($exports.Count) AP-005 PNG files to $exportRoot"

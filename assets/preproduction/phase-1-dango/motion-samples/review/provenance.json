@@ -18,7 +18,7 @@
       "license": "Dango project-owned source",
       "tool": "Codex apply_patch",
       "createdOn": "2026-09-02",
-      "modifications": "Uses local Microsoft Edge and an isolated temporary profile"
+      "modifications": "Extended on 2026-09-03 to export the AP-005 review board with local Microsoft Edge and an isolated temporary profile"
     },
     {
       "path": "phase-1-motion-samples.png",
@@ -28,6 +28,24 @@
       "tool": "Microsoft Edge headless via export-review.ps1",
       "createdOn": "2026-09-02",
       "modifications": "Review-only contact sheet; not a runtime asset"
+    },
+    {
+      "path": "phase-1-authored-fallback-pack.html",
+      "sourceType": "project-code-generated",
+      "source": "AP-005 motion-samples.json and project-owned layered exports",
+      "license": "Dango project-owned source",
+      "tool": "build_ap005_source_pack.py",
+      "createdOn": "2026-09-03",
+      "modifications": "Static A5 review layout for all ten visible actions"
+    },
+    {
+      "path": "phase-1-authored-fallback-pack.png",
+      "sourceType": "project-code-generated",
+      "source": "phase-1-authored-fallback-pack.html and the AP-005 layered PNG exports",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Microsoft Edge headless via export-review.ps1",
+      "createdOn": "2026-09-03",
+      "modifications": "Static A5 review-only contact sheet; not WPF playback or a runtime asset"
     }
   ]
 }

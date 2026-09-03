@@ -1,6 +1,6 @@
 # Phase 1 动画动作规格
 
-> 状态：AP-004 静态样本基线；Box2D 视觉软体参数待 P1-004 Spike 验证
+> 状态：AP-005 全动作手工 fallback 候选；等待 A5 人工静态预审
 >
 > 日期：2026-09-02
 
@@ -136,3 +136,38 @@ Spike 必须检查 native 加载/回收、非有限数、持续抖动、节点�
 - 身体轮廓帧、共享眼睛帧与共享帽子帧分别记录来源，组合审查板不得冒充运行时单层素材。
 - 所有时刻严格递增且位于 clip duration 内；`landed` 和 `island-grabbed` 必须绑定上述接触姿势。
 - 当前 Schema 没有逐帧帽子挂点；本样本用挂点表暴露该缺口，不把坐标塞进无关字段。
+
+## 7. AP-005 全动作手工 fallback 候选
+
+> 状态：`candidate`。本节补齐其余七个可见 Core 状态；`Hidden` 仍不生成可见 clip。
+
+| Clip | 关键姿势顺序 | 周期 / 循环 | 可打断点 |
+|---|---|---:|---|
+| `wander` | `rest → lean → compress → glide → settle` | 960 ms / 是 | `rest`、`settle` |
+| `approach-island` | `travel → slow → lower → align` | 640 ms / 否 | `travel`、`align` |
+| `on-island` | `rest-start → breathe → rest-end` | 2200 ms / 是 | 两个 rest |
+| `climb-down` | `stand → peer → edge-contact → release → fall` | 680 ms / 否 | `stand`、`fall` |
+| `dragged` | `grabbed → suspend → follow` | 480 ms / 是 | `grabbed`、`follow` |
+| `falling` | `fall-start → stretch → pre-contact` | 360 ms / 否 | `pre-contact` |
+| `reacting` | `rest → compress → lift → settle` | 520 ms / 否 | `rest`、`settle` |
+
+- `wander` 只表达重心偏移和压缩；位移结果仍由 Core 场景决定。
+- `approach-island` 结束于对齐姿势，不触发登岛结果。
+- `on-island` 使用比地面待机更紧凑的稳定轮廓，不引入新养成状态。
+- `climb-down` 在 460 ms 的 `release` 触发非权威视觉事件 `island-released`，随后进入 `Falling`；最终地面接触只用于 fallback 对齐，不代表已经落地。
+- `dragged` 不记录真实鼠标轨迹；三姿势只表现抓取、悬空与跟随。
+- `falling` 不决定落点，`Landing` 的 `landed` 仍是首次接触事件。
+- `reacting` 保持克制且回退到 `idle`，不加入嘴、腮红或高频表情。
+
+### 7.1 候选包和降级规则
+
+- `assets/preproduction/phase-1-dango/candidate.asset.json` 使用当前 runtime contract v1，并由真实 `AssetPackageParser` 解析；应用默认仍加载 `assets/placeholder`，候选不会自动接入桌面宿主。
+- 十个可见动作全部映射到同名 clip；除 `idle` 外的 clip 均可无环回退到 `idle`，保证没有物理时仍有静态手工姿势。
+- 降低动画模式使用每类动作的关键接触与最终姿势，不运行连续软体步进，但不得删除 `landed`、`island-grabbed` 或 `island-released` 语义时点。
+- 候选不创建 shadow layer，也不伪造 `Hidden` clip；身体、眼睛、帽子分别映射到 `body`、`face`、`accessory` slot。
+
+### 7.2 已暴露但不在 P2D-001 修改的契约缺口
+
+- runtime contract v1 仍不能表达身体纯色 tint、帽子 variant set、逐帧帽子挂点、独立眼睛附加轨道或 Box2D profile/软体拓扑。
+- P2D-001 只用现有 layer、frame、transform、event、anchor 与 fallback 字段形成可解析候选，没有将物理参数塞入无关字段，也没有提升 `assetVersion`。
+- 这些缺口进入后续 P2D-002/P2D-003 的最小版本化提案；在 Spike 证明真实需要前不改正式 Schema。

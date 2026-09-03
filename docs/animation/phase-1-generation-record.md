@@ -181,3 +181,14 @@ Avoid: all lighting and shading, highlights, gradients, glow, texture, 3D volume
 - 已批准使用官方 Box2D 3.x C API 构造运动学核心锚点、动态节点环和弹簧关节；Box2D 输出只用于身体轮廓、眼睛/帽子挂点和本地诊断。
 - 手工关键姿势继续负责动作语义、降低动画、资源缺失和异常 fallback；既有 A 极简视觉硬约束不变。
 - ADR 0005 取代 ADR 0004 的“不引入 Box2D”选择；新的 [实施计划](../phase-1-box2d-soft-body-implementation-plan.md) 在用户批准前不授权依赖或代码接入。
+
+## 9. AP-005 全动作手工 fallback 候选
+
+- 日期：2026-09-03；模式：项目原创确定性 SVG 与本地 Edge 导出，没有调用 imagegen、上传素材或引入第三方角色资产。
+- 在 AP-004 的 `Idle`、`Landing`、`ClimbUp` 基础上新增 `Wander`、`ApproachIsland`、`OnIsland`、`ClimbDown`、`Dragged`、`Falling`、`Reacting`，共补充 27 个身体关键姿势源文件。
+- `build_ap005_source_pack.py` 生成新 SVG、十动作语义 manifest、当前 contract v1 的 `candidate.asset.json` 以及静态审查布局；`export-motion-samples.ps1` 继续负责透明 PNG 导出与来源记录。
+- 当前候选共 42 个 160 × 120 分层 PNG：39 个身体轮廓、睁眼/闭眼两个共享表情层和一个共享叶芽帽层。身体、眼睛、帽子没有烘焙为单图。
+- 视觉硬约束保持不变：无描边、纯色、无光影/渐变/纹理，无嘴、无腮红、无阴影、无脚或其他肢体状凸起；每个身体源只包含一个连续 SVG path。
+- `candidate.asset.json` 映射十个可见 Core 状态，明确不提供 `Hidden` clip；保留 `island-grabbed`、`landed`，新增 `island-released` 视觉时点，fallback 无环且不改变 Core 权威结果。
+- 静态审查板：`motion-samples/review/phase-1-authored-fallback-pack.png`。它只证明候选姿势可供 A5 预审，不证明逐帧缓动、WPF 播放、Box2D、真实岛边遮挡或桌面体验。
+- 当前 runtime contract v1 不表达 tint、帽子资源集、逐帧帽子挂点、独立眼睛附加轨道和 Box2D profile；本检查点只记录缺口，没有改 Schema 或复用无关字段。

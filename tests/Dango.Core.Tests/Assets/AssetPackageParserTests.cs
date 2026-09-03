@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Dango.Core.Animation;
 using Dango.Core.Assets;
 using Dango.Core.Coordinates;
 using Dango.Core.Scene;
@@ -9,6 +10,43 @@ namespace Dango.Core.Tests.Assets;
 [TestClass]
 public sealed class AssetPackageParserTests
 {
+    [TestMethod]
+    public void AuthoredFallbackCandidateCoversEveryVisibleActionWithoutReplacingPlaceholder()
+    {
+        var candidatePath = Path.Combine(
+            TestRepository.Root,
+            "assets",
+            "preproduction",
+            "phase-1-dango",
+            "candidate.asset.json");
+        var candidateRoot = Path.GetDirectoryName(candidatePath)!;
+        var package = AssetPackageParser.Parse(File.ReadAllText(candidatePath));
+
+        var visibleStates = Enum.GetValues<DangoActionState>()
+            .Where(state => state != DangoActionState.Hidden)
+            .ToArray();
+
+        CollectionAssert.AreEquivalent(visibleStates, package.Actions.Keys.ToArray());
+        Assert.IsFalse(package.Actions.ContainsKey(DangoActionState.Hidden));
+        Assert.IsTrue(package.Layers.All(layer =>
+            File.Exists(Path.Combine(candidateRoot, layer.Source.Replace('/', Path.DirectorySeparatorChar)))));
+        Assert.IsFalse(package.Layers.Any(layer => layer.SlotId == "shadow"));
+
+        foreach (var start in package.Fallbacks.Keys)
+        {
+            var visited = new HashSet<string>(StringComparer.Ordinal);
+            var current = start;
+            while (package.Fallbacks.TryGetValue(current, out var next))
+            {
+                Assert.IsTrue(visited.Add(current), $"Fallback cycle starts at {start}.");
+                current = next;
+            }
+        }
+
+        var placeholder = AssetPackageParser.Parse(ValidAssetJson());
+        Assert.AreEqual("placeholder.txt", placeholder.Layers.Single().Source);
+    }
+
     [TestMethod]
     public void RejectsAnUnsupportedAssetVersion()
     {
