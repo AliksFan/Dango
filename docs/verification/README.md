@@ -8,6 +8,7 @@
 - [P1-002 透明覆盖层宿主验证记录](phase-1-p1-002-overlay-host.md)：覆盖层输入、焦点、拖动取消、托盘、DPI 和进程回收已通过人工验收。
 - [P1-002A Dango 控制中心验证记录](phase-1-p1-002a-control-center.md)：控制中心入口、图形化验收、诊断、隐私和 DPI 已通过人工验收。
 - [P1-003 WorkerW/Shell 壁纸层宿主验证记录](phase-1-p1-003-workerw-host.md)：保留透明 WPF 候选失败证据；经批准的原生分层增量已完成自动门禁及 Windows 11 Build 26100 人工验收。
+- [P2D-000 最新基线与动画资产集成预检](phase-1-p2d-000-integration-preflight.md)：P1-003/C3 后继基线与动画预生产历史无冲突集成，格式、构建、84 项 .NET 测试和动画门禁通过。
 - [2026-09-02 P1-002 人工验收导出](evidence/p1-002-manual-acceptance-2026-09-02.md)：用户导出的 20/20 项人工通过原始记录。
 
 ## Phase 0 公共命令
