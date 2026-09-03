@@ -1,0 +1,141 @@
+{
+  "$schema": "../../provenance.schema.json",
+  "version": 1,
+  "files": [
+    {
+      "path": "climb-up/body-approach.png",
+      "sourceType": "project-code-generated",
+      "source": "source/climb-up/body-approach.svg",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Microsoft Edge headless via export-motion-samples.ps1",
+      "createdOn": "2026-09-02",
+      "modifications": "Transparent 160 by 120 raster export"
+    },
+    {
+      "path": "climb-up/body-cross.png",
+      "sourceType": "project-code-generated",
+      "source": "source/climb-up/body-cross.svg",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Microsoft Edge headless via export-motion-samples.ps1",
+      "createdOn": "2026-09-02",
+      "modifications": "Transparent 160 by 120 raster export"
+    },
+    {
+      "path": "climb-up/body-grab.png",
+      "sourceType": "project-code-generated",
+      "source": "source/climb-up/body-grab.svg",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Microsoft Edge headless via export-motion-samples.ps1",
+      "createdOn": "2026-09-02",
+      "modifications": "Transparent 160 by 120 raster export"
+    },
+    {
+      "path": "climb-up/body-stand.png",
+      "sourceType": "project-code-generated",
+      "source": "source/climb-up/body-stand.svg",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Microsoft Edge headless via export-motion-samples.ps1",
+      "createdOn": "2026-09-02",
+      "modifications": "Transparent 160 by 120 raster export"
+    },
+    {
+      "path": "climb-up/body-transfer.png",
+      "sourceType": "project-code-generated",
+      "source": "source/climb-up/body-transfer.svg",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Microsoft Edge headless via export-motion-samples.ps1",
+      "createdOn": "2026-09-02",
+      "modifications": "Transparent 160 by 120 raster export"
+    },
+    {
+      "path": "idle/body-inhale.png",
+      "sourceType": "project-code-generated",
+      "source": "source/idle/body-inhale.svg",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Microsoft Edge headless via export-motion-samples.ps1",
+      "createdOn": "2026-09-02",
+      "modifications": "Transparent 160 by 120 raster export"
+    },
+    {
+      "path": "idle/body-rest.png",
+      "sourceType": "project-code-generated",
+      "source": "source/idle/body-rest.svg",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Microsoft Edge headless via export-motion-samples.ps1",
+      "createdOn": "2026-09-02",
+      "modifications": "Transparent 160 by 120 raster export"
+    },
+    {
+      "path": "landing/body-compress.png",
+      "sourceType": "project-code-generated",
+      "source": "source/landing/body-compress.svg",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Microsoft Edge headless via export-motion-samples.ps1",
+      "createdOn": "2026-09-02",
+      "modifications": "Transparent 160 by 120 raster export"
+    },
+    {
+      "path": "landing/body-contact.png",
+      "sourceType": "project-code-generated",
+      "source": "source/landing/body-contact.svg",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Microsoft Edge headless via export-motion-samples.ps1",
+      "createdOn": "2026-09-02",
+      "modifications": "Transparent 160 by 120 raster export"
+    },
+    {
+      "path": "landing/body-fall.png",
+      "sourceType": "project-code-generated",
+      "source": "source/landing/body-fall.svg",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Microsoft Edge headless via export-motion-samples.ps1",
+      "createdOn": "2026-09-02",
+      "modifications": "Transparent 160 by 120 raster export"
+    },
+    {
+      "path": "landing/body-rebound.png",
+      "sourceType": "project-code-generated",
+      "source": "source/landing/body-rebound.svg",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Microsoft Edge headless via export-motion-samples.ps1",
+      "createdOn": "2026-09-02",
+      "modifications": "Transparent 160 by 120 raster export"
+    },
+    {
+      "path": "landing/body-settle.png",
+      "sourceType": "project-code-generated",
+      "source": "source/landing/body-settle.svg",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Microsoft Edge headless via export-motion-samples.ps1",
+      "createdOn": "2026-09-02",
+      "modifications": "Transparent 160 by 120 raster export"
+    },
+    {
+      "path": "shared/eyes-closed.png",
+      "sourceType": "project-code-generated",
+      "source": "source/shared/eyes-closed.svg",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Microsoft Edge headless via export-motion-samples.ps1",
+      "createdOn": "2026-09-02",
+      "modifications": "Transparent 160 by 120 raster export"
+    },
+    {
+      "path": "shared/eyes-open.png",
+      "sourceType": "project-code-generated",
+      "source": "source/shared/eyes-open.svg",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Microsoft Edge headless via export-motion-samples.ps1",
+      "createdOn": "2026-09-02",
+      "modifications": "Transparent 160 by 120 raster export"
+    },
+    {
+      "path": "shared/hat-sprout.png",
+      "sourceType": "project-code-generated",
+      "source": "source/shared/hat-sprout.svg",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Microsoft Edge headless via export-motion-samples.ps1",
+      "createdOn": "2026-09-02",
+      "modifications": "Transparent 160 by 120 raster export"
+    }
+  ]
+}

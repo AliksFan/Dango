@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "status": "candidate",
+  "canvas": { "width": 160, "height": 120 },
+  "layers": ["body", "eyes", "hat"],
+  "forbiddenLayers": ["mouth", "blush", "shadow"],
+  "actions": [
+    {
+      "id": "idle",
+      "durationMilliseconds": 2400,
+      "loop": true,
+      "poses": [
+        { "id": "rest-start", "timeMilliseconds": 0, "body": "export/idle/body-rest.png", "eyes": "export/shared/eyes-open.png", "hat": "export/shared/hat-sprout.png", "eyesTranslation": [0, 0], "hatTranslation": [0, 0], "hatAnchor": [80, 16] },
+        { "id": "inhale", "timeMilliseconds": 1000, "body": "export/idle/body-inhale.png", "eyes": "export/shared/eyes-open.png", "hat": "export/shared/hat-sprout.png", "eyesTranslation": [0, -2], "hatTranslation": [0, -4], "hatAnchor": [80, 12] },
+        { "id": "rest-return", "timeMilliseconds": 1800, "body": "export/idle/body-rest.png", "eyes": "export/shared/eyes-open.png", "hat": "export/shared/hat-sprout.png", "eyesTranslation": [0, 0], "hatTranslation": [0, 0], "hatAnchor": [80, 16] },
+        { "id": "blink", "timeMilliseconds": 2100, "body": "export/idle/body-rest.png", "eyes": "export/shared/eyes-closed.png", "hat": "export/shared/hat-sprout.png", "eyesTranslation": [0, 0], "hatTranslation": [0, 0], "hatAnchor": [80, 16] },
+        { "id": "rest-end", "timeMilliseconds": 2200, "body": "export/idle/body-rest.png", "eyes": "export/shared/eyes-open.png", "hat": "export/shared/hat-sprout.png", "eyesTranslation": [0, 0], "hatTranslation": [0, 0], "hatAnchor": [80, 16] }
+      ],
+      "interruptiblePoseIds": ["rest-start", "rest-return", "rest-end"],
+      "reducedMotion": "Extend the rest interval, remove sway, and keep only low-frequency contour breathing and blinking."
+    },
+    {
+      "id": "landing",
+      "durationMilliseconds": 420,
+      "loop": false,
+      "poses": [
+        { "id": "fall", "timeMilliseconds": 0, "body": "export/landing/body-fall.png", "eyes": "export/shared/eyes-open.png", "hat": "export/shared/hat-sprout.png", "eyesTranslation": [0, -6], "hatTranslation": [0, -4], "hatAnchor": [80, 12] },
+        { "id": "contact", "timeMilliseconds": 120, "body": "export/landing/body-contact.png", "eyes": "export/shared/eyes-open.png", "hat": "export/shared/hat-sprout.png", "eyesTranslation": [0, 2], "hatTranslation": [0, 4], "hatAnchor": [80, 20] },
+        { "id": "compress", "timeMilliseconds": 180, "body": "export/landing/body-compress.png", "eyes": "export/shared/eyes-open.png", "hat": "export/shared/hat-sprout.png", "eyesTranslation": [0, 16], "hatTranslation": [0, 32], "hatAnchor": [80, 48] },
+        { "id": "rebound", "timeMilliseconds": 280, "body": "export/landing/body-rebound.png", "eyes": "export/shared/eyes-open.png", "hat": "export/shared/hat-sprout.png", "eyesTranslation": [0, -4], "hatTranslation": [0, -6], "hatAnchor": [80, 10] },
+        { "id": "settle", "timeMilliseconds": 420, "body": "export/landing/body-settle.png", "eyes": "export/shared/eyes-open.png", "hat": "export/shared/hat-sprout.png", "eyesTranslation": [0, 0], "hatTranslation": [0, 0], "hatAnchor": [80, 16] }
+      ],
+      "events": [{ "name": "landed", "poseId": "contact", "anchor": "ground-contact", "point": [80, 114] }],
+      "interruptiblePoseIds": ["settle"],
+      "reducedMotion": "Keep first contact, landed, and settle while reducing compression and rebound."
+    },
+    {
+      "id": "climb-up",
+      "durationMilliseconds": 720,
+      "loop": false,
+      "poses": [
+        { "id": "approach", "timeMilliseconds": 0, "body": "export/climb-up/body-approach.png", "eyes": "export/shared/eyes-open.png", "hat": "export/shared/hat-sprout.png", "eyesTranslation": [-8, 12], "hatTranslation": [-10, 14], "hatAnchor": [70, 30] },
+        { "id": "grab", "timeMilliseconds": 180, "body": "export/climb-up/body-grab.png", "eyes": "export/shared/eyes-open.png", "hat": "export/shared/hat-sprout.png", "eyesTranslation": [7, -2], "hatTranslation": [-8, 5], "hatAnchor": [72, 18] },
+        { "id": "transfer", "timeMilliseconds": 320, "body": "export/climb-up/body-transfer.png", "eyes": "export/shared/eyes-open.png", "hat": "export/shared/hat-sprout.png", "eyesTranslation": [11, 4], "hatTranslation": [6, 8], "hatAnchor": [86, 20] },
+        { "id": "cross", "timeMilliseconds": 500, "body": "export/climb-up/body-cross.png", "eyes": "export/shared/eyes-open.png", "hat": "export/shared/hat-sprout.png", "eyesTranslation": [3, 17], "hatTranslation": [3, 20], "hatAnchor": [83, 34] },
+        { "id": "stand", "timeMilliseconds": 720, "body": "export/climb-up/body-stand.png", "eyes": "export/shared/eyes-open.png", "hat": "export/shared/hat-sprout.png", "eyesTranslation": [0, 0], "hatTranslation": [0, 0], "hatAnchor": [80, 16] }
+      ],
+      "events": [{ "name": "island-grabbed", "poseId": "grab", "anchor": "island-grab", "point": [120, 58] }],
+      "finalAnchor": { "name": "island-stand", "point": [80, 114] },
+      "interruptiblePoseIds": ["approach", "stand"],
+      "reducedMotion": "Reduce deformation while preserving grab contact, weight transfer, and final stand."
+    }
+  ]
+}

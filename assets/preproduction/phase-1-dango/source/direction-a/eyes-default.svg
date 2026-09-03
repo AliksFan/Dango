@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" width="160" height="120">
+  <title>Dango direction A default eyes layer</title>
+  <circle id="eye-left" cx="61" cy="65" r="6" fill="#2B201E" />
+  <circle id="eye-right" cx="99" cy="65" r="6" fill="#2B201E" />
+</svg>

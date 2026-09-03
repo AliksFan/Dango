@@ -1,0 +1,42 @@
+{
+  "$schema": "../provenance.schema.json",
+  "version": 1,
+  "files": [
+    {
+      "path": "direction-a/body.png",
+      "sourceType": "project-code-generated",
+      "source": "source/direction-a/body.svg",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Microsoft Edge headless via source/direction-a/export-svg.ps1",
+      "createdOn": "2026-09-02",
+      "modifications": "Transparent 160 by 120 raster export"
+    },
+    {
+      "path": "direction-a/eyes-default.png",
+      "sourceType": "project-code-generated",
+      "source": "source/direction-a/eyes-default.svg",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Microsoft Edge headless via source/direction-a/export-svg.ps1",
+      "createdOn": "2026-09-02",
+      "modifications": "Transparent 160 by 120 raster export"
+    },
+    {
+      "path": "direction-a/hat-sprout.png",
+      "sourceType": "project-code-generated",
+      "source": "source/direction-a/hat-sprout.svg",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Microsoft Edge headless via source/direction-a/export-svg.ps1",
+      "createdOn": "2026-09-02",
+      "modifications": "Transparent 160 by 120 raster export"
+    },
+    {
+      "path": "direction-a/preview-default.png",
+      "sourceType": "project-code-generated",
+      "source": "source/direction-a/preview-default.svg",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Microsoft Edge headless via source/direction-a/export-svg.ps1",
+      "createdOn": "2026-09-02",
+      "modifications": "Review-only transparent 160 by 120 composite; not a runtime layer"
+    }
+  ]
+}

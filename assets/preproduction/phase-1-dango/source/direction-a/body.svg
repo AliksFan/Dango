@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" width="160" height="120">
+  <title>Dango direction A body layer</title>
+  <path
+    id="body"
+    d="M80 16C109 16 132 38 132 70C132 91 120 106 99 111C88 114 72 114 61 111C40 106 28 91 28 70C28 38 51 16 80 16Z"
+    fill="#FFE8C2" />
+</svg>

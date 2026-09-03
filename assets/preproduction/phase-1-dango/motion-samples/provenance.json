@@ -1,0 +1,159 @@
+{
+  "$schema": "../provenance.schema.json",
+  "version": 1,
+  "files": [
+    {
+      "path": "motion-samples.json",
+      "sourceType": "project-created",
+      "source": "Approved AP-004 timing, layer, anchor, and pose mapping",
+      "license": "Dango project-owned source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Uses only body, eyes, and hat layers"
+    },
+    {
+      "path": "export-motion-samples.ps1",
+      "sourceType": "project-code-generated",
+      "source": "Deterministic local SVG export helper",
+      "license": "Dango project-owned source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Exports fixed 160 by 120 transparent PNG files with local Microsoft Edge"
+    },
+    {
+      "path": "source/climb-up/body-approach.svg",
+      "sourceType": "project-created",
+      "source": "Original deterministic vector key pose for the approved direction A",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Solid-color editor-neutral SVG with no mouth, blush, shadow, or limbs"
+    },
+    {
+      "path": "source/climb-up/body-cross.svg",
+      "sourceType": "project-created",
+      "source": "Original deterministic vector key pose for the approved direction A",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Solid-color editor-neutral SVG with no mouth, blush, shadow, or limbs"
+    },
+    {
+      "path": "source/climb-up/body-grab.svg",
+      "sourceType": "project-created",
+      "source": "Original deterministic vector key pose for the approved direction A",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Solid-color editor-neutral SVG with no mouth, blush, shadow, or limbs"
+    },
+    {
+      "path": "source/climb-up/body-stand.svg",
+      "sourceType": "project-created",
+      "source": "Original deterministic vector key pose for the approved direction A",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Solid-color editor-neutral SVG with no mouth, blush, shadow, or limbs"
+    },
+    {
+      "path": "source/climb-up/body-transfer.svg",
+      "sourceType": "project-created",
+      "source": "Original deterministic vector key pose for the approved direction A",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Solid-color editor-neutral SVG with no mouth, blush, shadow, or limbs"
+    },
+    {
+      "path": "source/idle/body-inhale.svg",
+      "sourceType": "project-created",
+      "source": "Original deterministic vector key pose for the approved direction A",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Solid-color editor-neutral SVG with no mouth, blush, shadow, or limbs"
+    },
+    {
+      "path": "source/idle/body-rest.svg",
+      "sourceType": "project-created",
+      "source": "Original deterministic vector key pose for the approved direction A",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Solid-color editor-neutral SVG with no mouth, blush, shadow, or limbs"
+    },
+    {
+      "path": "source/landing/body-compress.svg",
+      "sourceType": "project-created",
+      "source": "Original deterministic vector key pose for the approved direction A",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Solid-color editor-neutral SVG with no mouth, blush, shadow, or limbs"
+    },
+    {
+      "path": "source/landing/body-contact.svg",
+      "sourceType": "project-created",
+      "source": "Original deterministic vector key pose for the approved direction A",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Solid-color editor-neutral SVG with no mouth, blush, shadow, or limbs"
+    },
+    {
+      "path": "source/landing/body-fall.svg",
+      "sourceType": "project-created",
+      "source": "Original deterministic vector key pose for the approved direction A",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Solid-color editor-neutral SVG with no mouth, blush, shadow, or limbs"
+    },
+    {
+      "path": "source/landing/body-rebound.svg",
+      "sourceType": "project-created",
+      "source": "Original deterministic vector key pose for the approved direction A",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Solid-color editor-neutral SVG with no mouth, blush, shadow, or limbs"
+    },
+    {
+      "path": "source/landing/body-settle.svg",
+      "sourceType": "project-created",
+      "source": "Original deterministic vector key pose for the approved direction A",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Solid-color editor-neutral SVG with no mouth, blush, shadow, or limbs"
+    },
+    {
+      "path": "source/shared/eyes-closed.svg",
+      "sourceType": "project-created",
+      "source": "Original deterministic vector key pose for the approved direction A",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Solid-color editor-neutral SVG with no mouth, blush, shadow, or limbs"
+    },
+    {
+      "path": "source/shared/eyes-open.svg",
+      "sourceType": "project-created",
+      "source": "Original deterministic vector key pose for the approved direction A",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Solid-color editor-neutral SVG with no mouth, blush, shadow, or limbs"
+    },
+    {
+      "path": "source/shared/hat-sprout.svg",
+      "sourceType": "project-created",
+      "source": "Original deterministic vector key pose for the approved direction A",
+      "license": "Dango project-owned original; no third-party source",
+      "tool": "Codex apply_patch",
+      "createdOn": "2026-09-02",
+      "modifications": "Solid-color editor-neutral SVG with no mouth, blush, shadow, or limbs"
+    }
+  ]
+}
