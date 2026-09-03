@@ -306,7 +306,7 @@
 - 已验收：P1-002 透明覆盖层宿主完成自动门禁与 20 项图形化人工清单；用户于 2026-09-02 确认“验收完毕”，输入、焦点、桌面操作、拖动、托盘、生命周期和 DPI 均通过。全屏观测为覆盖层位于全屏之上，用户接受该行为；详见 [验证记录](verification/phase-1-p1-002-overlay-host.md)。
 - 已验收：[Dango 控制中心 UI 设计](phase-1-control-center-ui-design.md) 对应的 P1-002A 正式控制中心、统一托盘/单实例入口、图形化验收会话、本地诊断和隐私安全导出；自动门禁及用户人工验收均通过，详见 [验证记录](verification/phase-1-p1-002a-control-center.md)。
 - 已验收：P1-003 首个透明 WPF WorkerW 候选曾按停止点判定失败；用户随后明确要求保留动态桌面路线并批准原生分层增量试验。原生分层宿主、浅蓝背景、图标上下对象层、特殊 Topmost 悬空岛、图标优先输入和本地设置已完成自动门禁及 Windows 11 Build 26100 人工验收，用户于 2026-09-03 确认“没问题了，验收完毕”；详见 [验证记录](verification/phase-1-p1-003-workerw-host.md)和[分层试验设计](phase-1-desktop-layering-experiment-design.md)。
-- 进行中：P1-004 单团子生命感最小纵切；[ADR 0005](adr/0005-box2d-visual-soft-body-presentation.md) 与 [Box2D 视觉软体实施计划](phase-1-box2d-soft-body-implementation-plan.md) 已获批准。P2D-000/B0 已完成；P2D-001/AP-005 已形成十动作手工 fallback 候选包，格式、构建、85 项 .NET 测试、19 项动画 Python 测试、42 个 PNG 预检和真实 Core parser 门禁通过，等待用户完成 [A5 静态姿势预审](verification/phase-1-p2d-001-authored-fallback-pack.md)。B1 确认前不开始 P2D-002，Box2D 尚未引入；最终宿主 ADR 和正式渲染性能结论仍分别留待 P1-007 与 P1-005。
+- 进行中：P1-004 单团子生命感最小纵切；[ADR 0005](adr/0005-box2d-visual-soft-body-presentation.md) 与 [Box2D 视觉软体实施计划](phase-1-box2d-soft-body-implementation-plan.md) 已获批准。P2D-000/B0 与 P2D-001/AP-005/B1 已完成；[P2D-002/B2](verification/phase-1-p2d-002-box2d-native-spike.md) 已固定官方 Box2D `v3.1.1`，来源/许可证/哈希、可复现 x64 构建、受控 loader、100 次生命周期循环和 self-contained 探针均通过。下一步为 P2D-003 表现契约与权威隔离；软体环、动态 WPF/Box2D 体验仍未实现或验证，最终宿主 ADR 和正式渲染性能结论分别留待 P1-007 与 P1-005。
 - 未授权：将 Phase 1 分支合并到 `main`、推送、部署或开始计划外工作。
 
 ## 11. 后续路线

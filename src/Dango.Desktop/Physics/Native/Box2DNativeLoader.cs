@@ -1,0 +1,261 @@
+using System.IO;
+using System.Runtime.InteropServices;
+
+namespace Dango.Desktop.Physics.Native;
+
+public readonly record struct Box2DNativeVersion(int Major, int Minor, int Revision)
+{
+    public override string ToString() => $"{Major}.{Minor}.{Revision}";
+}
+
+public sealed record Box2DNativeRequirements(int AbiVersion, Box2DNativeVersion Box2DVersion);
+
+public enum Box2DNativeLoadFailureKind
+{
+    None,
+    MissingLibrary,
+    InvalidLibrary,
+    UnsupportedArchitecture,
+    MissingExport,
+    AbiMismatch,
+    VersionMismatch,
+    LoadFailed,
+}
+
+public sealed record Box2DNativeLoadFailure(Box2DNativeLoadFailureKind Kind, string Message)
+{
+    public static Box2DNativeLoadFailure None { get; } = new(Box2DNativeLoadFailureKind.None, string.Empty);
+}
+
+public readonly record struct Box2DNativeProbeResult(
+    bool Succeeded,
+    int ErrorCode,
+    int OutstandingBytes,
+    string Message);
+
+public static class Box2DNativeLoader
+{
+    public const string LibraryFileName = "dango_box2d.dll";
+
+    public static Box2DNativeRequirements PinnedRequirements { get; } =
+        new(1, new Box2DNativeVersion(3, 1, 1));
+
+    public static string DefaultLibraryPath => Path.Combine(AppContext.BaseDirectory, LibraryFileName);
+
+    public static bool TryLoad(
+        string libraryPath,
+        Box2DNativeRequirements requirements,
+        out Box2DNativeSession? session,
+        out Box2DNativeLoadFailure failure)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(libraryPath);
+        ArgumentNullException.ThrowIfNull(requirements);
+
+        session = null;
+        if (!File.Exists(libraryPath))
+        {
+            failure = new(
+                Box2DNativeLoadFailureKind.MissingLibrary,
+                $"Box2D native library is missing: {libraryPath}");
+            return false;
+        }
+
+        var architecture = ReadPeArchitecture(libraryPath, out var architectureError);
+        if (architecture is null)
+        {
+            failure = new(Box2DNativeLoadFailureKind.InvalidLibrary, architectureError!);
+            return false;
+        }
+        if (architecture != PeArchitecture.Amd64 || RuntimeInformation.ProcessArchitecture != Architecture.X64)
+        {
+            failure = new(
+                Box2DNativeLoadFailureKind.UnsupportedArchitecture,
+                $"Box2D requires an x64 process and AMD64 DLL; process={RuntimeInformation.ProcessArchitecture}, library={architecture}.");
+            return false;
+        }
+
+        nint handle = 0;
+        try
+        {
+            handle = NativeLibrary.Load(Path.GetFullPath(libraryPath));
+            if (!TryResolve(handle, "dango_box2d_get_abi_version", out GetIntegerDelegate getAbi) ||
+                !TryResolve(handle, "dango_box2d_get_version_major", out GetIntegerDelegate getMajor) ||
+                !TryResolve(handle, "dango_box2d_get_version_minor", out GetIntegerDelegate getMinor) ||
+                !TryResolve(handle, "dango_box2d_get_version_revision", out GetIntegerDelegate getRevision) ||
+                !TryResolve(handle, "dango_box2d_run_lifecycle_probe", out LifecycleProbeDelegate runProbe))
+            {
+                failure = new(
+                    Box2DNativeLoadFailureKind.MissingExport,
+                    "Box2D native library does not expose the complete Dango ABI.");
+                return false;
+            }
+
+            var actualAbi = getAbi();
+            if (actualAbi != requirements.AbiVersion)
+            {
+                failure = new(
+                    Box2DNativeLoadFailureKind.AbiMismatch,
+                    $"Box2D bridge ABI mismatch: expected {requirements.AbiVersion}, got {actualAbi}.");
+                return false;
+            }
+
+            var actualVersion = new Box2DNativeVersion(getMajor(), getMinor(), getRevision());
+            if (actualVersion != requirements.Box2DVersion)
+            {
+                failure = new(
+                    Box2DNativeLoadFailureKind.VersionMismatch,
+                    $"Box2D version mismatch: expected {requirements.Box2DVersion}, got {actualVersion}.");
+                return false;
+            }
+
+            session = new Box2DNativeSession(handle, actualVersion, runProbe);
+            handle = 0;
+            failure = Box2DNativeLoadFailure.None;
+            return true;
+        }
+        catch (BadImageFormatException exception)
+        {
+            failure = new(Box2DNativeLoadFailureKind.InvalidLibrary, exception.Message);
+            return false;
+        }
+        catch (DllNotFoundException exception)
+        {
+            failure = new(Box2DNativeLoadFailureKind.LoadFailed, exception.Message);
+            return false;
+        }
+        finally
+        {
+            if (handle != 0)
+            {
+                NativeLibrary.Free(handle);
+            }
+        }
+    }
+
+    private static bool TryResolve<TDelegate>(nint handle, string exportName, out TDelegate export)
+        where TDelegate : Delegate
+    {
+        if (NativeLibrary.TryGetExport(handle, exportName, out var address))
+        {
+            export = Marshal.GetDelegateForFunctionPointer<TDelegate>(address);
+            return true;
+        }
+
+        export = null!;
+        return false;
+    }
+
+    private static PeArchitecture? ReadPeArchitecture(string path, out string? error)
+    {
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var reader = new BinaryReader(stream);
+            if (stream.Length < 70 || reader.ReadUInt16() != 0x5a4d)
+            {
+                error = "Native library is not a valid PE image.";
+                return null;
+            }
+
+            stream.Position = 0x3c;
+            var peOffset = reader.ReadInt32();
+            if (peOffset < 0 || peOffset > stream.Length - 6)
+            {
+                error = "Native library has an invalid PE header offset.";
+                return null;
+            }
+
+            stream.Position = peOffset;
+            if (reader.ReadUInt32() != 0x00004550)
+            {
+                error = "Native library has an invalid PE signature.";
+                return null;
+            }
+
+            var machine = reader.ReadUInt16();
+            error = null;
+            return machine switch
+            {
+                0x8664 => PeArchitecture.Amd64,
+                0x014c => PeArchitecture.I386,
+                0xaa64 => PeArchitecture.Arm64,
+                _ => PeArchitecture.Unknown,
+            };
+        }
+        catch (IOException exception)
+        {
+            error = $"Native library cannot be inspected: {exception.Message}";
+            return null;
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            error = $"Native library cannot be inspected: {exception.Message}";
+            return null;
+        }
+    }
+
+    private enum PeArchitecture
+    {
+        Unknown,
+        I386,
+        Amd64,
+        Arm64,
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate int GetIntegerDelegate();
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate int LifecycleProbeDelegate(int stepCount, out int outstandingBytes);
+}
+
+public sealed class Box2DNativeSession : IDisposable
+{
+    private nint _handle;
+    private readonly Box2DNativeLoader.LifecycleProbeDelegate _runProbe;
+
+    internal Box2DNativeSession(
+        nint handle,
+        Box2DNativeVersion box2DVersion,
+        Box2DNativeLoader.LifecycleProbeDelegate runProbe)
+    {
+        _handle = handle;
+        Box2DVersion = box2DVersion;
+        _runProbe = runProbe;
+    }
+
+    public Box2DNativeVersion Box2DVersion { get; }
+
+    ~Box2DNativeSession()
+    {
+        Dispose(false);
+    }
+
+    public Box2DNativeProbeResult RunLifecycleProbe(int stepCount)
+    {
+        ObjectDisposedException.ThrowIf(_handle == 0, this);
+        var errorCode = _runProbe(stepCount, out var outstandingBytes);
+        return errorCode == 0
+            ? new(true, 0, outstandingBytes, "Box2D create/step/destroy probe succeeded.")
+            : new(
+                false,
+                errorCode,
+                outstandingBytes,
+                $"Box2D create/step/destroy probe failed with native code {errorCode} and {outstandingBytes} outstanding bytes.");
+    }
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    private void Dispose(bool disposing)
+    {
+        var handle = Interlocked.Exchange(ref _handle, 0);
+        if (handle != 0)
+        {
+            NativeLibrary.Free(handle);
+        }
+    }
+}

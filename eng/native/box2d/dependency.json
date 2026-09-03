@@ -1,0 +1,29 @@
+{
+  "name": "Box2D",
+  "version": "3.1.1",
+  "tag": "v3.1.1",
+  "commit": "8c661469c9507d3ad6fbd2fea3f1aa71669c2fe3",
+  "sourceArchive": {
+    "url": "https://github.com/erincatto/box2d/archive/8c661469c9507d3ad6fbd2fea3f1aa71669c2fe3.zip",
+    "sha256": "FF94DDF7D75FFA6171502FDC7A7F336594560278978305CFC56C72268BC66721"
+  },
+  "license": {
+    "path": "LICENSE.box2d.txt",
+    "sha256": "68A3E676D7E94093B102D5CBA0D4E04AF812040D6F230C3DB67A6664574E43D2"
+  },
+  "native": {
+    "rid": "win-x64",
+    "path": "src/Dango.Desktop/runtimes/win-x64/native/dango_box2d.dll",
+    "sha256": "C5CA5491614519F76B73F6EC5EFE9E42613B473ADD1E4F2043E08A91BA522A91",
+    "abiVersion": 1,
+    "runtimeDownload": false,
+    "linkage": "MSVC static runtime; official Box2D linked into the Dango bridge DLL",
+    "exports": [
+      "dango_box2d_get_abi_version",
+      "dango_box2d_get_version_major",
+      "dango_box2d_get_version_minor",
+      "dango_box2d_get_version_revision",
+      "dango_box2d_run_lifecycle_probe"
+    ]
+  }
+}

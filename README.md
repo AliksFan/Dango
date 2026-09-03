@@ -4,7 +4,7 @@
 
 项目希望让每位用户拥有一只代表自己的“团子”。团子平时生活在 Windows 桌面上；当好友进入同一房间后，多只团子会在一个持续存在的共享空间中相遇、陪伴并自动互动。
 
-Phase 0 工作区与技术基线已通过自动门禁并由用户验收。Phase 1 正在实施：P1-001 已固化无 UI 的场景与资产契约，P1-002 透明覆盖层与 P1-002A 图形化控制中心已于 2026-09-02 通过人工验收；P1-003 WorkerW/Shell 候选在 Windows 11 Build 26100 上因场景不可见而验证失败并按停止点结束；正式动画和多人功能尚未实现。阶段证据见 [Phase 0 阶段记录](docs/verification/phase-0-stage-result.md)。
+Phase 0 工作区与技术基线已通过自动门禁并由用户验收。Phase 1 正在实施：P1-001 已固化无 UI 的场景与资产契约，P1-002 透明覆盖层、P1-002A 图形化控制中心和 P1-003 原生分层 WorkerW 候选均已通过人工验收；P1-004 正在按已批准计划验证手工动作 fallback 与 Box2D 视觉软体表现层。正式动画和多人功能尚未实现。阶段证据见 [Phase 0 阶段记录](docs/verification/phase-0-stage-result.md)。
 
 ## 构建与验证
 
@@ -16,6 +16,8 @@ dotnet format --verify-no-changes
 dotnet build -c Release
 dotnet test -c Release --no-build
 ```
+
+P1-004 固定的 Box2D native 依赖、来源/许可证/哈希和显式重建方式见 [Box2D native 依赖](eng/native/box2d/README.md)。普通 .NET 构建与应用运行不会联网下载 native 文件。
 
 Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](docs/verification/README.md)。当前 WPF 程序包含 P1-002 透明覆盖层、P1-003 WorkerW 候选与统一控制中心；默认仍使用 Overlay，WorkerW 需在控制中心显式选择。程序不包含正式动画或完整 Phase 1 体验。
 

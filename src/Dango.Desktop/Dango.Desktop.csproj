@@ -12,4 +12,19 @@
     <ProjectReference Include="..\Dango.Core\Dango.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="runtimes\win-x64\native\dango_box2d.dll"
+             Link="dango_box2d.dll"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\eng\native\box2d\LICENSE.box2d.txt"
+             Link="licenses\Box2D-LICENSE.txt"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\eng\native\box2d\dependency.json"
+             Link="licenses\Box2D-dependency.json"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
