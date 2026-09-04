@@ -14,8 +14,8 @@
   "native": {
     "rid": "win-x64",
     "path": "src/Dango.Desktop/runtimes/win-x64/native/dango_box2d.dll",
-    "sha256": "247B2D2D6E5027FB33C0F5B21BC2318F9DCBF67188A54146303B3DF99665F7CB",
-    "abiVersion": 1,
+    "sha256": "86B81A2DC7BA7DEC9BE7811589461DBD2D3C96C23125B196454B68B5269553A9",
+    "abiVersion": 5,
     "runtimeDownload": false,
     "linkage": "MSVC static runtime; official Box2D linked into the Dango bridge DLL",
     "exports": [
@@ -25,6 +25,7 @@
       "dango_box2d_get_version_revision",
       "dango_box2d_run_lifecycle_probe",
       "dango_box2d_soft_body_create",
+      "dango_box2d_soft_body_create_configured",
       "dango_box2d_soft_body_step",
       "dango_box2d_soft_body_destroy"
     ]

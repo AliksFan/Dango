@@ -108,7 +108,7 @@ $manifest = [ordered]@{
         rid = 'win-x64'
         path = $nativeRelativePath
         sha256 = $binaryHash
-        abiVersion = 1
+        abiVersion = 5
         runtimeDownload = $false
         linkage = 'MSVC static runtime; official Box2D linked into the Dango bridge DLL'
         exports = @(
@@ -118,6 +118,7 @@ $manifest = [ordered]@{
             'dango_box2d_get_version_revision',
             'dango_box2d_run_lifecycle_probe',
             'dango_box2d_soft_body_create',
+            'dango_box2d_soft_body_create_configured',
             'dango_box2d_soft_body_step',
             'dango_box2d_soft_body_destroy'
         )

@@ -1,6 +1,7 @@
 <Window x:Class="Dango.Desktop.DesktopHost.Overlay.OverlayWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:visuals="clr-namespace:Dango.Desktop.Rendering.Visuals"
         Title="Dango P1-002 Overlay Spike"
         Width="520"
         Height="320"
@@ -40,29 +41,15 @@
         <Border x:Name="DangoVisual"
                 Canvas.Left="185"
                 Canvas.Top="55"
-                Width="150"
-                Height="135"
-                Background="#FFF2C94C"
-                BorderBrush="#FF6E5A3C"
-                BorderThickness="3"
-                CornerRadius="72"
+                Width="160"
+                Height="120"
+                Background="Transparent"
                 Cursor="Hand"
                 MouseLeftButtonDown="OnDangoMouseLeftButtonDown"
                 MouseLeftButtonUp="OnDangoMouseLeftButtonUp"
                 MouseMove="OnDangoMouseMove"
                 LostMouseCapture="OnDangoLostMouseCapture">
-            <Grid>
-                <StackPanel HorizontalAlignment="Center"
-                            VerticalAlignment="Center">
-                    <TextBlock HorizontalAlignment="Center"
-                               FontSize="25"
-                               Text="●  ●" />
-                    <TextBlock HorizontalAlignment="Center"
-                               Margin="0,8,0,0"
-                               FontSize="13"
-                               Text="占位团子" />
-                </StackPanel>
-            </Grid>
+            <visuals:DeformableDangoVisual ShowAccessories="True" />
         </Border>
     </Canvas>
 </Window>

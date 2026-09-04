@@ -25,7 +25,7 @@ public sealed class DesktopHostSwitchException : InvalidOperationException
     public string SafeReason { get; }
 }
 
-public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopHostModeControl, IDesktopLayeringControl
+public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopHostModeControl, IDesktopLayeringControl, IKeyboardControl
 {
     private readonly IDesktopHostControl overlay;
     private readonly IDesktopHostControl workerW;
@@ -60,6 +60,21 @@ public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopHostMo
         }
 
         layeringControl.ApplyLayeringSettings(settings);
+    }
+
+    public KeyboardControlSettings GetKeyboardControlSettings() =>
+        workerW is IKeyboardControl keyboardControl
+            ? keyboardControl.GetKeyboardControlSettings()
+            : KeyboardControlSettings.CreateDefault();
+
+    public void ApplyKeyboardControlSettings(KeyboardControlSettings settings)
+    {
+        if (workerW is not IKeyboardControl keyboardControl)
+        {
+            throw new NotSupportedException("WorkerW 宿主不支持键盘控制设置。");
+        }
+
+        keyboardControl.ApplyKeyboardControlSettings(settings);
     }
 
     public void SetMode(DesktopHostMode mode)

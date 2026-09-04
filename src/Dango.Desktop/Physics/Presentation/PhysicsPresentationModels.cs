@@ -127,13 +127,17 @@ public sealed record PhysicsPresentationDiagnostics(
 
 public sealed record PhysicsPresentationFrame
 {
+    public const double DefaultEyeHalfDistance = 19d / 72d;
+
     public PhysicsPresentationFrame(
         bool isVisible,
         IEnumerable<PresentationPoint> contour,
         PresentationAttachment eyes,
         PresentationAttachment hat,
         PhysicsPresentationFallbackReason fallbackReason,
-        PhysicsPresentationDiagnostics diagnostics)
+        PhysicsPresentationDiagnostics diagnostics,
+        PresentationAttachment? leftEye = null,
+        PresentationAttachment? rightEye = null)
     {
         ArgumentNullException.ThrowIfNull(contour);
         ArgumentNullException.ThrowIfNull(diagnostics);
@@ -141,6 +145,16 @@ public sealed record PhysicsPresentationFrame
         IsVisible = isVisible;
         Contour = Array.AsReadOnly(contour.ToArray());
         Eyes = eyes;
+        LeftEye = leftEye ?? new PresentationAttachment(
+            new PresentationPoint(
+                Math.Clamp(eyes.Position.X - DefaultEyeHalfDistance, -1, 1),
+                eyes.Position.Y),
+            eyes.RotationRadians);
+        RightEye = rightEye ?? new PresentationAttachment(
+            new PresentationPoint(
+                Math.Clamp(eyes.Position.X + DefaultEyeHalfDistance, -1, 1),
+                eyes.Position.Y),
+            eyes.RotationRadians);
         Hat = hat;
         FallbackReason = fallbackReason;
         Diagnostics = diagnostics;
@@ -151,6 +165,10 @@ public sealed record PhysicsPresentationFrame
     public IReadOnlyList<PresentationPoint> Contour { get; }
 
     public PresentationAttachment Eyes { get; }
+
+    public PresentationAttachment LeftEye { get; }
+
+    public PresentationAttachment RightEye { get; }
 
     public PresentationAttachment Hat { get; }
 
@@ -173,7 +191,11 @@ public sealed record PhysicsPresentationInput
         int parameterVersion,
         bool reducedMotion,
         bool isHostAvailable,
-        IEnumerable<string> participantIds)
+        IEnumerable<string> participantIds,
+        double squashStrength = 0,
+        double groundFrictionCue = 0,
+        DangoFacingDirection facingDirection = DangoFacingDirection.Center,
+        PresentationPoint? dragGrabPoint = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dangoId);
         ArgumentException.ThrowIfNullOrWhiteSpace(semanticAnchor);
@@ -189,6 +211,14 @@ public sealed record PhysicsPresentationInput
         if (parameterVersion <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(parameterVersion));
+        }
+        if (!double.IsFinite(squashStrength) || squashStrength is < 0 or > 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(squashStrength));
+        }
+        if (!double.IsFinite(groundFrictionCue) || groundFrictionCue is < -1 or > 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(groundFrictionCue));
         }
 
         var participants = participantIds.ToArray();
@@ -211,6 +241,10 @@ public sealed record PhysicsPresentationInput
         ReducedMotion = reducedMotion;
         IsHostAvailable = isHostAvailable;
         ParticipantIds = Array.AsReadOnly(participants);
+        SquashStrength = squashStrength;
+        GroundFrictionCue = groundFrictionCue;
+        FacingDirection = facingDirection;
+        DragGrabPoint = dragGrabPoint;
     }
 
     public string DangoId { get; }
@@ -237,9 +271,26 @@ public sealed record PhysicsPresentationInput
 
     public IReadOnlyList<string> ParticipantIds { get; }
 
-    public static PhysicsPresentationInput FromSnapshot(SceneSnapshot snapshot)
+    public double SquashStrength { get; }
+
+    public double GroundFrictionCue { get; }
+
+    public DangoFacingDirection FacingDirection { get; }
+
+    public PresentationPoint? DragGrabPoint { get; }
+
+    public static PhysicsPresentationInput FromSnapshot(
+        SceneSnapshot snapshot,
+        double squashStrength = 0,
+        double groundFrictionCue = 0,
+        DangoFacingDirection facingDirection = DangoFacingDirection.Center,
+        PresentationPoint? dragGrabPoint = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        if (!double.IsFinite(squashStrength) || squashStrength is < 0 or > 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(squashStrength));
+        }
         return new(
             snapshot.Dango.Id,
             snapshot.Dango.VisualBounds,
@@ -252,7 +303,11 @@ public sealed record PhysicsPresentationInput
             1,
             false,
             true,
-            []);
+            [],
+            squashStrength,
+            groundFrictionCue,
+            facingDirection,
+            dragGrabPoint);
     }
 }
 

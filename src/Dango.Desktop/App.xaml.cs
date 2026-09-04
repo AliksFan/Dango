@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Threading;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.Physics.Native;
+using Dango.Desktop.Rendering.Visuals;
 
 namespace Dango.Desktop;
 
@@ -18,6 +19,14 @@ public partial class App : System.Windows.Application
         if (e.Args.Contains("--box2d-native-probe", StringComparer.Ordinal))
         {
             Shutdown(RunBox2DNativeProbe());
+            return;
+        }
+
+        if (e.Args.Contains("--soft-body-preview", StringComparer.Ordinal))
+        {
+            ShutdownMode = ShutdownMode.OnMainWindowClose;
+            MainWindow = new SoftBodyPreviewWindow();
+            MainWindow.Show();
             return;
         }
 

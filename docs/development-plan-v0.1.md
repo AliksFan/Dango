@@ -198,7 +198,7 @@
 ### 范围
 
 - 初次使用和创建团子流程。
-- 有限颜色、表情和配饰。
+- 有限颜色、帽子，以及安全、有界的身体体型与柔软度 DIY；眼睛继续由运行时表情驱动。
 - 基础家具与悬浮岛布局。
 - 单人、双人和小群体自动互动。
 - 普通贴贴与情侣专属贴贴。
@@ -306,10 +306,24 @@
 - 已验收：P1-002 透明覆盖层宿主完成自动门禁与 20 项图形化人工清单；用户于 2026-09-02 确认“验收完毕”，输入、焦点、桌面操作、拖动、托盘、生命周期和 DPI 均通过。全屏观测为覆盖层位于全屏之上，用户接受该行为；详见 [验证记录](verification/phase-1-p1-002-overlay-host.md)。
 - 已验收：[Dango 控制中心 UI 设计](phase-1-control-center-ui-design.md) 对应的 P1-002A 正式控制中心、统一托盘/单实例入口、图形化验收会话、本地诊断和隐私安全导出；自动门禁及用户人工验收均通过，详见 [验证记录](verification/phase-1-p1-002a-control-center.md)。
 - 已验收：P1-003 首个透明 WPF WorkerW 候选曾按停止点判定失败；用户随后明确要求保留动态桌面路线并批准原生分层增量试验。原生分层宿主、浅蓝背景、图标上下对象层、特殊 Topmost 悬空岛、图标优先输入和本地设置已完成自动门禁及 Windows 11 Build 26100 人工验收，用户于 2026-09-03 确认“没问题了，验收完毕”；详见 [验证记录](verification/phase-1-p1-003-workerw-host.md)和[分层试验设计](phase-1-desktop-layering-experiment-design.md)。
-- 进行中：P1-004 单团子生命感最小纵切；[ADR 0005](adr/0005-box2d-visual-soft-body-presentation.md) 与 [Box2D 视觉软体实施计划](phase-1-box2d-soft-body-implementation-plan.md) 已获批准。P2D-000/B0、P2D-001/AP-005/B1、[P2D-002/B2](verification/phase-1-p2d-002-box2d-native-spike.md) 与 [P2D-003/B3](verification/phase-1-p2d-003-presentation-contract.md) 已完成；[P2D-004/B4](verification/phase-1-p2d-004-soft-body-stability.md) 已建立真实 Box2D 运动学核心、12/16 节点环、相邻/径向弹簧、接地代理、2/4 子步、休眠、稳定性熔断和容差重放，默认暂选通过统一压力序列且求解工作量最低的 12 节点 × 2 子步。下一步为 P2D-005 WPF 动态轮廓与分层挂点；动态 WPF/Box2D 桌面体验仍未实现或验证，最终宿主 ADR 和正式渲染性能结论分别留待 P1-007 与 P1-005。
+- 进行中：P1-004 单团子生命感最小纵切；[ADR 0005](adr/0005-box2d-visual-soft-body-presentation.md) 与 [Box2D 视觉软体实施计划](phase-1-box2d-soft-body-implementation-plan.md) 已获批准。P2D-000/B0、P2D-001/AP-005/B1、[P2D-002/B2](verification/phase-1-p2d-002-box2d-native-spike.md)、[P2D-003/B3](verification/phase-1-p2d-003-presentation-contract.md)、[P2D-004/B4](verification/phase-1-p2d-004-soft-body-stability.md)、[P2D-005/B5](verification/phase-1-p2d-005-dynamic-contour.md) 与 [P2D-006/B6](verification/phase-1-p2d-006-single-dango-motion.md) 已完成；用户于 2026-09-04 确认单团子方向控制、动作观感、附件连接、拖动及释放表现人工验收通过。双体技术证明、正式性能结论和最终宿主 ADR 仍分别留待 P2D-007、P2D-008/P1-005 与 P1-007。
 - 未授权：将 Phase 1 分支合并到 `main`、推送、部署或开始计划外工作。
 
 ## 11. 后续路线
+
+### 11.1 已登记的后续工作：团子 DIY 产品化
+
+在 P1-004 只完成物理表现与参数验证，不把诊断调参台直接提升为面向用户的捏脸系统。Phase 4 创建团子流程开始前，单独完成 DIY 设计与实施计划，至少包括：
+
+- 将宽高、顶部圆度、下半部鼓度、底部平坦度、常态压缩、恢复弹性和整体阻尼转换为用户可理解的控件与预设；
+- 保留纯色和帽子选择，眼睛不作为固定捏脸预设；
+- 定义组合参数的安全区域、版本迁移、恢复默认、性能降级和跨客户端一致表现；
+- 明确外观/柔软度配置的持久化与服务端校验，不同步 Box2D 逐帧状态；
+- 通过极端组合、旧版本兼容、多人同屏性能和人工观感验收后，才进入首版创建团子闭环。
+
+地面、碰撞、节点数、子步、固定步长和熔断阈值继续由引擎管理。动作高度与撞击速度是否成为独立“动作性格”留待该设计阶段评估。
+
+### 11.2 首版之后
 
 首版之后再单独立项评估：
 

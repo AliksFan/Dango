@@ -5,6 +5,10 @@ using Dango.Desktop.AppShell.Tray;
 using Dango.Desktop.DesktopHost;
 using Dango.Desktop.DesktopHost.Overlay;
 using Dango.Desktop.DesktopHost.WorkerW;
+using Dango.Desktop.Physics.Native;
+using Dango.Desktop.Physics.Presentation;
+using Dango.Desktop.Physics.Tuning;
+using Dango.Desktop.Rendering.Visuals;
 using Dango.Desktop.Verification;
 
 namespace Dango.Desktop.AppShell;
@@ -23,7 +27,11 @@ internal sealed class DangoApplicationHost : IDisposable
     public DangoApplicationHost()
     {
         overlayWindow = new OverlayWindow();
-        workerWWindow = new WorkerWWindow();
+        workerWWindow = new WorkerWWindow(sink => new SingleDangoMotionRuntime(
+            () => Box2DPhysicsPresentationAdapter.CreateTuning(
+                Box2DNativeLoader.DefaultLibraryPath,
+                new SoftBodyTuningParameters()),
+            sink));
         desktopHost = new DesktopHostCoordinator(overlayWindow, workerWWindow);
         commandController = new ApplicationCommandController(desktopHost);
         verificationDefinition = VerificationDefinition.CreateP1003WorkerW();

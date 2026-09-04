@@ -65,17 +65,20 @@ public sealed class WorkerWHostConfigurationTests
     }
 
     [TestMethod]
-    public void WorkerWUsesTheSamePlaceholderSceneContractAsOverlay()
+    public void WorkerWPreservesTheExistingIslandAndCushionSceneContract()
     {
         var root = Path.Combine(TestRepository.Root, "src", "Dango.Desktop", "DesktopHost");
         var overlay = File.ReadAllText(Path.Combine(root, "Overlay", "OverlayWindow.xaml"));
         var workerW = File.ReadAllText(Path.Combine(root, "WorkerW", "WorkerWWindow.xaml"));
 
-        foreach (var marker in new[] { "占位团子", "静态悬浮岛", "Width=\"150\"", "Width=\"360\"" })
+        foreach (var marker in new[] { "静态悬浮岛", "Width=\"360\"" })
         {
             StringAssert.Contains(overlay, marker);
             StringAssert.Contains(workerW, marker);
         }
+
+        StringAssert.Contains(overlay, "DeformableDangoVisual");
+        Assert.IsFalse(overlay.Contains("占位团子", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -97,6 +100,41 @@ public sealed class WorkerWHostConfigurationTests
         var reparent = method.IndexOf("SetParent(proxyWindow", StringComparison.Ordinal);
         var alpha = method.IndexOf("ApplyInputProxyTransparency(proxyWindow)", StringComparison.Ordinal);
         Assert.IsTrue(reparent >= 0 && alpha > reparent, "透明属性必须在跨进程 SetParent 完成后应用。");
+    }
+
+    [TestMethod]
+    public void WorkerWUsesDynamicDangoMotionWithoutOwningBox2DSteps()
+    {
+        var root = Path.Combine(TestRepository.Root, "src", "Dango.Desktop", "DesktopHost", "WorkerW");
+        var xaml = File.ReadAllText(Path.Combine(root, "WorkerWWindow.xaml"));
+        var code = File.ReadAllText(Path.Combine(root, "WorkerWWindow.xaml.cs"));
+
+        StringAssert.Contains(xaml, "DeformableDangoVisual");
+        Assert.IsFalse(xaml.Contains("占位团子", StringComparison.Ordinal));
+        StringAssert.Contains(code, "SingleDangoMotionRuntime");
+        StringAssert.Contains(code, "PhysicsPresentationInput.FromSnapshot");
+        Assert.IsFalse(code.Contains(".Step(", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void AuthoritativeMovementKeepsTheInputProxyAlignedWithTheVisibleDango()
+    {
+        var code = File.ReadAllText(Path.Combine(
+            TestRepository.Root,
+            "src",
+            "Dango.Desktop",
+            "DesktopHost",
+            "WorkerW",
+            "WorkerWWindow.xaml.cs"));
+        var methodStart = code.IndexOf("private void ApplyAuthoritativePosition()", StringComparison.Ordinal);
+        var methodEnd = code.IndexOf("private static long NowMilliseconds", methodStart, StringComparison.Ordinal);
+        Assert.IsTrue(methodStart >= 0 && methodEnd > methodStart);
+
+        var method = code[methodStart..methodEnd];
+        StringAssert.Contains(
+            method,
+            "UpdateInputProxyBounds();",
+            "方向控制更新团子位置时必须同步移动 WorkerW 输入代理，否则可见团子与可拖区域会分离。");
     }
 
     private static string? Attribute(XElement element, string name) =>

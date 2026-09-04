@@ -30,6 +30,7 @@ internal static partial class NativeMethods
     private const uint MemRelease = 0x8000;
     private const uint PageReadWrite = 0x04;
     private const uint LvmHitTest = 0x1012;
+    private const int WhKeyboardLl = 13;
 
     public static WorkerWDesktopTarget? FindWorkerW()
     {
@@ -57,6 +58,20 @@ internal static partial class NativeMethods
         IsValidWindow(target.ParentHandle) &&
         IsValidWindow(target.WallpaperLayerHandle) &&
         (!target.IsRaisedDesktop || IsValidWindow(target.InsertAfterHandle));
+
+    public static bool IsExplorerDesktopForeground(WorkerWDesktopTarget target) =>
+        WorkerWDesktopFocusPolicy.IsAllowed(GetForegroundWindow(), target, IsChild);
+
+    public static bool HasSystemKeyboardModifier() =>
+        IsKeyDown(0x11) || IsKeyDown(0x12) || IsKeyDown(0x5B) || IsKeyDown(0x5C);
+
+    public static nint InstallLowLevelKeyboardHook(LowLevelKeyboardProcedure procedure) =>
+        SetWindowsHookEx(WhKeyboardLl, procedure, GetModuleHandle(null), 0);
+
+    public static bool UninstallKeyboardHook(nint hook) => UnhookWindowsHookEx(hook);
+
+    public static nint CallNextKeyboardHook(nint hook, int code, nint wordParameter, nint longParameter) =>
+        CallNextHookEx(hook, code, wordParameter, longParameter);
 
     public static bool IsForegroundFullscreen()
     {
@@ -431,6 +446,18 @@ internal static partial class NativeMethods
 
     private delegate bool EnumWindowsCallback(nint windowHandle, nint parameter);
 
+    internal delegate nint LowLevelKeyboardProcedure(int code, nint wordParameter, nint longParameter);
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct LowLevelKeyboardInput
+    {
+        public uint VirtualKey;
+        public uint ScanCode;
+        public uint Flags;
+        public uint Time;
+        public nuint ExtraInfo;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeRect
     {
@@ -471,6 +498,27 @@ internal static partial class NativeMethods
 
     [DllImport("user32.dll")]
     private static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsChild(nint parentWindow, nint childWindow);
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int virtualKey);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern nint SetWindowsHookEx(
+        int hookId,
+        LowLevelKeyboardProcedure procedure,
+        nint module,
+        uint threadId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UnhookWindowsHookEx(nint hook);
+
+    [DllImport("user32.dll")]
+    private static extern nint CallNextHookEx(nint hook, int code, nint wordParameter, nint longParameter);
 
     [DllImport("user32.dll")]
     private static extern nint MonitorFromWindow(nint windowHandle, uint flags);
@@ -570,6 +618,9 @@ internal static partial class NativeMethods
     internal static extern bool ShowWindow(nint windowHandle, int command);
 
     [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern nint GetModuleHandle(string? moduleName);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
     private static extern nint OpenProcess(
         uint desiredAccess,
         [MarshalAs(UnmanagedType.Bool)] bool inheritHandle,
@@ -605,4 +656,6 @@ internal static partial class NativeMethods
 
     [LibraryImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
     private static partial nint SetWindowLongPtr(nint windowHandle, int index, nint newValue);
+
+    private static bool IsKeyDown(int virtualKey) => (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
 }

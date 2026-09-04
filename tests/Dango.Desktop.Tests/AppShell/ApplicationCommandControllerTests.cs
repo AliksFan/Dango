@@ -104,6 +104,19 @@ public sealed class ApplicationCommandControllerTests
         Assert.IsFalse(result.Error.Contains("InvalidOperationException", StringComparison.Ordinal));
     }
 
+    [TestMethod]
+    public void KeyboardSettingsAreAppliedOnlyAfterHostConfirmation()
+    {
+        var host = new FakeKeyboardHost();
+        var controller = new ApplicationCommandController(host);
+        var requested = new KeyboardControlSettings(true, KeyboardControlScheme.Wasd);
+
+        var result = controller.ApplyKeyboardControlSettings(requested);
+
+        Assert.AreEqual(CommandApplicationState.Applied, result.State);
+        Assert.AreEqual(requested, controller.GetKeyboardControlSettings());
+    }
+
     private sealed class FakeDesktopHost : IDesktopHostControl
     {
         private DesktopHostSnapshot snapshot;
@@ -184,5 +197,26 @@ public sealed class ApplicationCommandControllerTests
         }
 
         public string CreateDiagnosticSummary() => "safe diagnostics";
+    }
+
+    private sealed class FakeKeyboardHost : IDesktopHostControl, IKeyboardControl
+    {
+        private KeyboardControlSettings settings = KeyboardControlSettings.CreateDefault();
+
+        public DesktopHostSnapshot GetSnapshot() => new("WorkerW", true, true, "测试", null);
+
+        public void SetVisibility(bool isVisible)
+        {
+        }
+
+        public void SetInteractionEnabled(bool isEnabled)
+        {
+        }
+
+        public string CreateDiagnosticSummary() => "safe diagnostics";
+
+        public KeyboardControlSettings GetKeyboardControlSettings() => settings;
+
+        public void ApplyKeyboardControlSettings(KeyboardControlSettings value) => settings = value;
     }
 }

@@ -84,6 +84,48 @@ public sealed class ApplicationCommandController
         }
     }
 
+    public KeyboardControlSettings GetKeyboardControlSettings() =>
+        host is IKeyboardControl keyboardControl
+            ? keyboardControl.GetKeyboardControlSettings()
+            : KeyboardControlSettings.CreateDefault();
+
+    public HostCommandResult ApplyKeyboardControlSettings(KeyboardControlSettings settings)
+    {
+        if (host is not IKeyboardControl keyboardControl)
+        {
+            return new HostCommandResult(
+                CommandApplicationState.Failed,
+                host.GetSnapshot(),
+                "当前宿主控制器不支持键盘控制设置。");
+        }
+
+        var before = keyboardControl.GetKeyboardControlSettings();
+        try
+        {
+            keyboardControl.ApplyKeyboardControlSettings(settings);
+            var after = keyboardControl.GetKeyboardControlSettings();
+            return after == settings
+                ? new HostCommandResult(CommandApplicationState.Applied, host.GetSnapshot(), null)
+                : new HostCommandResult(CommandApplicationState.Failed, host.GetSnapshot(), "键盘控制设置未确认。");
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            try
+            {
+                keyboardControl.ApplyKeyboardControlSettings(before);
+            }
+            catch (Exception rollbackException) when (rollbackException is not OutOfMemoryException)
+            {
+                System.Diagnostics.Debug.WriteLine($"Unable to roll back keyboard control: {rollbackException.GetType().Name}");
+            }
+
+            return new HostCommandResult(
+                CommandApplicationState.Failed,
+                host.GetSnapshot(),
+                $"键盘控制无法应用：{SafeError(exception)}");
+        }
+    }
+
     public HostCommandResult SetVisibility(bool isVisible) =>
         Apply(
             snapshot => snapshot.IsVisible,

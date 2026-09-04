@@ -9,7 +9,7 @@ namespace Dango.Desktop.Tests.Physics.Native;
 public sealed class Box2DNativeLoaderTests
 {
     private static readonly Box2DNativeRequirements PinnedRequirements =
-        new(1, new Box2DNativeVersion(3, 1, 1));
+        new(5, new Box2DNativeVersion(3, 1, 1));
 
     [TestMethod]
     public void MissingLibraryReturnsControlledFailure()

@@ -10,6 +10,7 @@ public enum DangoActionState
     OnIsland,
     ClimbDown,
     Dragged,
+    Jumping,
     Falling,
     Landing,
     Reacting,
@@ -39,6 +40,7 @@ public sealed class ActionStateMachine
                 DangoActionState.Wander,
                 DangoActionState.ApproachIsland,
                 DangoActionState.Dragged,
+                DangoActionState.Jumping,
                 DangoActionState.Reacting,
             },
             [DangoActionState.Wander] = new HashSet<DangoActionState>
@@ -46,6 +48,7 @@ public sealed class ActionStateMachine
                 DangoActionState.Idle,
                 DangoActionState.ApproachIsland,
                 DangoActionState.Dragged,
+                DangoActionState.Jumping,
                 DangoActionState.Reacting,
             },
             [DangoActionState.ApproachIsland] = new HashSet<DangoActionState>
@@ -62,8 +65,23 @@ public sealed class ActionStateMachine
             },
             [DangoActionState.ClimbDown] = new HashSet<DangoActionState> { DangoActionState.Falling },
             [DangoActionState.Dragged] = new HashSet<DangoActionState> { DangoActionState.Falling },
-            [DangoActionState.Falling] = new HashSet<DangoActionState> { DangoActionState.Landing },
-            [DangoActionState.Landing] = new HashSet<DangoActionState> { DangoActionState.Idle },
+            [DangoActionState.Jumping] = new HashSet<DangoActionState>
+            {
+                DangoActionState.Falling,
+                DangoActionState.Dragged,
+            },
+            [DangoActionState.Falling] = new HashSet<DangoActionState>
+            {
+                DangoActionState.Landing,
+                DangoActionState.Dragged,
+            },
+            [DangoActionState.Landing] = new HashSet<DangoActionState>
+            {
+                DangoActionState.Idle,
+                DangoActionState.Wander,
+                DangoActionState.Jumping,
+                DangoActionState.Dragged,
+            },
             [DangoActionState.Reacting] = new HashSet<DangoActionState>
             {
                 DangoActionState.Idle,

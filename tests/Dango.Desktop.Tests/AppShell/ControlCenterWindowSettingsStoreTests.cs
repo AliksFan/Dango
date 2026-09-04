@@ -90,6 +90,34 @@ public sealed class ControlCenterWindowSettingsStoreTests
             Assert.AreEqual(
                 DesktopObjectLayer.BelowDesktopIcons,
                 restored.DesktopLayeringExperiment.DangoLayer);
+            Assert.IsFalse(restored.KeyboardControl.IsEnabled);
+            Assert.AreEqual(KeyboardControlScheme.ArrowKeys, restored.KeyboardControl.Scheme);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void KeyboardControlRoundTripsWithoutInputHistory()
+    {
+        var directory = CreateTemporaryDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "settings.json");
+            var store = new ControlCenterWindowSettingsStore();
+            store.Save(path, new ControlCenterWindowSettings(
+                940,
+                620,
+                keyboardControl: new KeyboardControlSettings(true, KeyboardControlScheme.Wasd)));
+
+            var restored = store.Load(path);
+            Assert.IsTrue(restored.KeyboardControl.IsEnabled);
+            Assert.AreEqual(KeyboardControlScheme.Wasd, restored.KeyboardControl.Scheme);
+            var json = File.ReadAllText(path);
+            Assert.IsFalse(json.Contains("lastKey", StringComparison.OrdinalIgnoreCase));
+            Assert.IsFalse(json.Contains("history", StringComparison.OrdinalIgnoreCase));
         }
         finally
         {

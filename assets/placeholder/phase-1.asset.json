@@ -147,6 +147,7 @@
     "OnIsland": "on-island",
     "ClimbDown": "climb-down",
     "Dragged": "dragged",
+    "Jumping": "falling",
     "Falling": "falling",
     "Landing": "landing",
     "Reacting": "reacting"

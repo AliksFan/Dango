@@ -1,5 +1,6 @@
 using System.IO;
 using System.Runtime.InteropServices;
+using Dango.Desktop.Physics.Tuning;
 
 namespace Dango.Desktop.Physics.Native;
 
@@ -38,7 +39,7 @@ public static class Box2DNativeLoader
     public const string LibraryFileName = "dango_box2d.dll";
 
     public static Box2DNativeRequirements PinnedRequirements { get; } =
-        new(1, new Box2DNativeVersion(3, 1, 1));
+        new(5, new Box2DNativeVersion(3, 1, 1));
 
     public static string DefaultLibraryPath => Path.Combine(AppContext.BaseDirectory, LibraryFileName);
 
@@ -84,6 +85,7 @@ public static class Box2DNativeLoader
                 !TryResolve(handle, "dango_box2d_get_version_revision", out GetIntegerDelegate getRevision) ||
                 !TryResolve(handle, "dango_box2d_run_lifecycle_probe", out LifecycleProbeDelegate runProbe) ||
                 !TryResolve(handle, "dango_box2d_soft_body_create", out SoftBodyCreateDelegate createSoftBody) ||
+                !TryResolve(handle, "dango_box2d_soft_body_create_configured", out SoftBodyCreateConfiguredDelegate createConfiguredSoftBody) ||
                 !TryResolve(handle, "dango_box2d_soft_body_step", out SoftBodyStepDelegate stepSoftBody) ||
                 !TryResolve(handle, "dango_box2d_soft_body_destroy", out SoftBodyDestroyDelegate destroySoftBody))
             {
@@ -116,6 +118,7 @@ public static class Box2DNativeLoader
                 actualVersion,
                 runProbe,
                 createSoftBody,
+                createConfiguredSoftBody,
                 stepSoftBody,
                 destroySoftBody);
             handle = 0;
@@ -221,6 +224,9 @@ public static class Box2DNativeLoader
     internal delegate int SoftBodyCreateDelegate(int nodeCount, int substepCount, out nint softBodyHandle);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    internal delegate int SoftBodyCreateConfiguredDelegate(in NativeSoftBodyConfiguration configuration, out nint softBodyHandle);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate int SoftBodyStepDelegate(
         nint softBodyHandle,
         float timeStep,
@@ -228,6 +234,10 @@ public static class Box2DNativeLoader
         float anchorX,
         float anchorY,
         float strength,
+        float facing,
+        int dragActive,
+        float dragGrabX,
+        float dragGrabY,
         [Out] float[] points,
         int pointCapacity,
         out int pointCount,
@@ -237,10 +247,86 @@ public static class Box2DNativeLoader
         out float maximumRadius,
         out float maximumSpeed,
         out float energyProxy,
-        out int sleeping);
+        out int sleeping,
+        out float leftEyeX,
+        out float leftEyeY,
+        out float rightEyeX,
+        out float rightEyeY,
+        out float hatX,
+        out float hatY,
+        out float hatAngle);
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate int SoftBodyDestroyDelegate(nint softBodyHandle, out int outstandingBytes);
+}
+
+[StructLayout(LayoutKind.Sequential)]
+internal struct NativeSoftBodyConfiguration
+{
+    public int NodeCount;
+    public int SubStepCount;
+    public float RestWidth;
+    public float RestHeight;
+    public float TopRoundness;
+    public float LowerBulge;
+    public float BottomFlatness;
+    public float GroundCompression;
+    public float DropHeight;
+    public float ImpactSpeed;
+    public float ReboundStrength;
+    public float LiftOffLimit;
+    public float SettleTime;
+    public float MaximumCompression;
+    public float LateralExpansion;
+    public float RadialHertz;
+    public float EdgeHertz;
+    public float RadialDamping;
+    public float EdgeDamping;
+    public float LinearDamping;
+    public float NodeMass;
+    public float GroundHeight;
+    public float NodeRadius;
+    public float Friction;
+    public float Restitution;
+    public float ContactHertz;
+    public float MaximumRadius;
+    public float MaximumSpeed;
+    public float MaximumCentroidOffset;
+    public float MinimumArea;
+
+    public static NativeSoftBodyConfiguration From(SoftBodyTuningParameters value) => new()
+    {
+        NodeCount = value.NodeCount,
+        SubStepCount = value.SubStepCount,
+        RestWidth = (float)value.RestWidth,
+        RestHeight = (float)value.RestHeight,
+        TopRoundness = (float)value.TopRoundness,
+        LowerBulge = (float)value.LowerBulge,
+        BottomFlatness = (float)value.BottomFlatness,
+        GroundCompression = (float)value.GroundCompression,
+        DropHeight = (float)value.DropHeight,
+        ImpactSpeed = (float)value.ImpactSpeed,
+        ReboundStrength = (float)value.ReboundStrength,
+        LiftOffLimit = (float)value.LiftOffLimit,
+        SettleTime = (float)value.SettleTime,
+        MaximumCompression = (float)value.MaximumCompression,
+        LateralExpansion = (float)value.LateralExpansion,
+        RadialHertz = (float)value.RadialElasticity,
+        EdgeHertz = (float)value.ContourElasticity,
+        RadialDamping = (float)value.RadialDamping,
+        EdgeDamping = (float)value.ContourDamping,
+        LinearDamping = (float)value.OverallDamping,
+        NodeMass = (float)value.NodeMass,
+        GroundHeight = (float)value.GroundHeight,
+        NodeRadius = (float)value.NodeRadius,
+        Friction = (float)value.Friction,
+        Restitution = (float)value.Restitution,
+        ContactHertz = (float)value.ContactSoftness,
+        MaximumRadius = (float)(value.MaximumDeformation * 1.4),
+        MaximumSpeed = (float)value.MaximumSpeed,
+        MaximumCentroidOffset = (float)(value.MaximumCentroidOffset * 2),
+        MinimumArea = (float)value.MinimumContourArea,
+    };
 }
 
 public sealed class Box2DNativeSession : IDisposable
@@ -248,6 +334,7 @@ public sealed class Box2DNativeSession : IDisposable
     private nint _handle;
     private readonly Box2DNativeLoader.LifecycleProbeDelegate _runProbe;
     private readonly Box2DNativeLoader.SoftBodyCreateDelegate _createSoftBody;
+    private readonly Box2DNativeLoader.SoftBodyCreateConfiguredDelegate _createConfiguredSoftBody;
     private readonly Box2DNativeLoader.SoftBodyStepDelegate _stepSoftBody;
     private readonly Box2DNativeLoader.SoftBodyDestroyDelegate _destroySoftBody;
 
@@ -256,6 +343,7 @@ public sealed class Box2DNativeSession : IDisposable
         Box2DNativeVersion box2DVersion,
         Box2DNativeLoader.LifecycleProbeDelegate runProbe,
         Box2DNativeLoader.SoftBodyCreateDelegate createSoftBody,
+        Box2DNativeLoader.SoftBodyCreateConfiguredDelegate createConfiguredSoftBody,
         Box2DNativeLoader.SoftBodyStepDelegate stepSoftBody,
         Box2DNativeLoader.SoftBodyDestroyDelegate destroySoftBody)
     {
@@ -263,6 +351,7 @@ public sealed class Box2DNativeSession : IDisposable
         Box2DVersion = box2DVersion;
         _runProbe = runProbe;
         _createSoftBody = createSoftBody;
+        _createConfiguredSoftBody = createConfiguredSoftBody;
         _stepSoftBody = stepSoftBody;
         _destroySoftBody = destroySoftBody;
     }
@@ -309,6 +398,25 @@ public sealed class Box2DNativeSession : IDisposable
         return true;
     }
 
+    internal bool TryCreateSoftBody(
+        SoftBodyTuningParameters parameters,
+        out Box2DSoftBodyNativeSession? softBody,
+        out int errorCode)
+    {
+        ObjectDisposedException.ThrowIf(_handle == 0, this);
+        ArgumentNullException.ThrowIfNull(parameters);
+        parameters.Validate();
+        var configuration = NativeSoftBodyConfiguration.From(parameters);
+        errorCode = _createConfiguredSoftBody(in configuration, out var softBodyHandle);
+        if (errorCode != 0 || softBodyHandle == 0)
+        {
+            softBody = null;
+            return false;
+        }
+        softBody = new Box2DSoftBodyNativeSession(softBodyHandle, parameters.NodeCount, _stepSoftBody, _destroySoftBody);
+        return true;
+    }
+
     public void Dispose()
     {
         Dispose(true);
@@ -336,7 +444,14 @@ internal readonly record struct Box2DSoftBodyNativeFrame(
     float MaximumRadius,
     float MaximumSpeed,
     float EnergyProxy,
-    bool IsSleeping);
+    bool IsSleeping,
+    float LeftEyeX,
+    float LeftEyeY,
+    float RightEyeX,
+    float RightEyeY,
+    float HatX,
+    float HatY,
+    float HatAngle);
 
 internal sealed class Box2DSoftBodyNativeSession : IDisposable
 {
@@ -362,7 +477,11 @@ internal sealed class Box2DSoftBodyNativeSession : IDisposable
         int cue,
         float anchorX,
         float anchorY,
-        float strength)
+        float strength,
+        float facing,
+        bool dragActive,
+        float dragGrabX,
+        float dragGrabY)
     {
         ObjectDisposedException.ThrowIf(_handle == 0, this);
         var points = new float[_nodeCount * 2];
@@ -373,6 +492,10 @@ internal sealed class Box2DSoftBodyNativeSession : IDisposable
             anchorX,
             anchorY,
             strength,
+            facing,
+            dragActive ? 1 : 0,
+            dragGrabX,
+            dragGrabY,
             points,
             _nodeCount,
             out var pointCount,
@@ -382,7 +505,14 @@ internal sealed class Box2DSoftBodyNativeSession : IDisposable
             out var maximumRadius,
             out var maximumSpeed,
             out var energyProxy,
-            out var sleeping);
+            out var sleeping,
+            out var leftEyeX,
+            out var leftEyeY,
+            out var rightEyeX,
+            out var rightEyeY,
+            out var hatX,
+            out var hatY,
+            out var hatAngle);
         return new(
             errorCode == 0,
             errorCode,
@@ -394,7 +524,14 @@ internal sealed class Box2DSoftBodyNativeSession : IDisposable
             maximumRadius,
             maximumSpeed,
             energyProxy,
-            sleeping != 0);
+            sleeping != 0,
+            leftEyeX,
+            leftEyeY,
+            rightEyeX,
+            rightEyeY,
+            hatX,
+            hatY,
+            hatAngle);
     }
 
     public void Dispose()

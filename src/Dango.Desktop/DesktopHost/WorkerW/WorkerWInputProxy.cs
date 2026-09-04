@@ -23,7 +23,7 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
     private const int WsExLayered = 0x00080000;
     private const int WsExNoActivate = 0x08000000;
     private const int WsExToolWindow = 0x00000080;
-    private readonly Func<bool> beginDrag;
+    private readonly Func<double, double, bool> beginDrag;
     private readonly Action<double, double> moveDrag;
     private readonly Action completeDrag;
     private readonly Action cancelDrag;
@@ -34,10 +34,15 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
     private bool dragging;
     private bool isWindowShown;
     private bool disposed;
+    private bool hasBounds;
+    private int boundsX;
+    private int boundsY;
+    private int boundsWidth;
+    private int boundsHeight;
 
     public WorkerWInputProxy(
         WorkerWDesktopTarget target,
-        Func<bool> beginDrag,
+        Func<double, double, bool> beginDrag,
         Action<double, double> moveDrag,
         Action completeDrag,
         Action cancelDrag)
@@ -94,11 +99,29 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
 
     public void SetBounds(int x, int y, int width, int height)
     {
-        if (!disposed)
+        if (disposed)
         {
-            NativeMethods.PositionWorkerWInputProxy(Handle, x, y, width, height, isWindowShown);
-            RefreshInputPriority();
+            return;
         }
+
+        width = Math.Max(1, width);
+        height = Math.Max(1, height);
+        if (hasBounds &&
+            boundsX == x &&
+            boundsY == y &&
+            boundsWidth == width &&
+            boundsHeight == height)
+        {
+            return;
+        }
+
+        hasBounds = true;
+        boundsX = x;
+        boundsY = y;
+        boundsWidth = width;
+        boundsHeight = height;
+        NativeMethods.PositionWorkerWInputProxy(Handle, x, y, width, height, isWindowShown);
+        RefreshInputPriority();
     }
 
     protected override void WndProc(ref WinFormsMessage message)
@@ -112,7 +135,9 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
                 message.Result = MaNoActivate;
                 return;
             case WmLeftButtonDown when enabled:
-                if (beginDrag() && NativeMethods.GetCursorPos(out dragOrigin))
+                var localX = unchecked((short)((long)message.LParam & 0xffff));
+                var localY = unchecked((short)(((long)message.LParam >> 16) & 0xffff));
+                if (beginDrag(localX, localY) && NativeMethods.GetCursorPos(out dragOrigin))
                 {
                     dragging = true;
                     _ = NativeMethods.SetCapture(Handle);

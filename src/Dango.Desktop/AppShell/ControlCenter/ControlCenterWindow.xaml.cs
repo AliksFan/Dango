@@ -141,6 +141,25 @@ public partial class ControlCenterWindow : Window
         ApplyCommand(commandController.SetInteractionEnabled(InteractionCheckBox.IsChecked.Value));
     }
 
+    private void OnKeyboardControlChanged(object sender, RoutedEventArgs e)
+    {
+        if (refreshingHostState || KeyboardControlCheckBox.IsChecked is null ||
+            ArrowKeysRadioButton.IsChecked is null || WasdRadioButton.IsChecked is null)
+        {
+            return;
+        }
+
+        var settings = new KeyboardControlSettings(
+            KeyboardControlCheckBox.IsChecked.Value,
+            WasdRadioButton.IsChecked == true ? KeyboardControlScheme.Wasd : KeyboardControlScheme.ArrowKeys);
+        var result = commandController.ApplyKeyboardControlSettings(settings);
+        ApplyCommand(result);
+        if (result.State == CommandApplicationState.Applied)
+        {
+            SaveWindowSettings();
+        }
+    }
+
     private void OnHostModeChanged(object sender, RoutedEventArgs e)
     {
         if (refreshingHostState)
@@ -285,6 +304,10 @@ public partial class ControlCenterWindow : Window
         {
             VisibilityCheckBox.IsChecked = snapshot.IsVisible;
             InteractionCheckBox.IsChecked = snapshot.IsInteractionEnabled;
+            var keyboard = commandController.GetKeyboardControlSettings();
+            KeyboardControlCheckBox.IsChecked = keyboard.IsEnabled;
+            ArrowKeysRadioButton.IsChecked = keyboard.Scheme == KeyboardControlScheme.ArrowKeys;
+            WasdRadioButton.IsChecked = keyboard.Scheme == KeyboardControlScheme.Wasd;
             var layering = commandController.GetLayeringSettings();
             DangoBelowIconsRadioButton.IsChecked = layering.DangoLayer == DesktopObjectLayer.BelowDesktopIcons;
             DangoAboveIconsRadioButton.IsChecked = layering.DangoLayer == DesktopObjectLayer.AboveDesktopIcons;
@@ -416,6 +439,7 @@ public partial class ControlCenterWindow : Window
             Width = settings.Width;
             Height = settings.Height;
             _ = commandController.ApplyLayeringSettings(settings.DesktopLayeringExperiment);
+            _ = commandController.ApplyKeyboardControlSettings(settings.KeyboardControl);
         }
         catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
         {
@@ -441,7 +465,8 @@ public partial class ControlCenterWindow : Window
                     bounds.Width,
                     bounds.Height,
                     schemaVersion: 1,
-                    commandController.GetLayeringSettings()));
+                    commandController.GetLayeringSettings(),
+                    commandController.GetKeyboardControlSettings()));
         }
         catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
         {

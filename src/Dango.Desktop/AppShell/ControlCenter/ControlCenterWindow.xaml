@@ -235,6 +235,35 @@
 
                         <Border Margin="0,16,0,0" Style="{StaticResource CardStyle}">
                             <StackPanel>
+                                <CheckBox x:Name="KeyboardControlCheckBox"
+                                          AutomationProperties.Name="键盘控制"
+                                          Checked="OnKeyboardControlChanged"
+                                          Content="键盘控制"
+                                          FontSize="17"
+                                          FontWeight="SemiBold"
+                                          Unchecked="OnKeyboardControlChanged" />
+                                <TextBlock Margin="24,6,0,14"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           Text="默认关闭；仅 Explorer 桌面获得焦点时生效。"
+                                           TextWrapping="Wrap" />
+                                <StackPanel Margin="24,0,0,0" Orientation="Horizontal">
+                                    <RadioButton x:Name="ArrowKeysRadioButton"
+                                                 AutomationProperties.Name="使用方向键控制"
+                                                 Checked="OnKeyboardControlChanged"
+                                                 Content="方向键：↑ ↓ ← →"
+                                                 GroupName="KeyboardControlScheme" />
+                                    <RadioButton x:Name="WasdRadioButton"
+                                                 Margin="20,0,0,0"
+                                                 AutomationProperties.Name="使用 WASD 控制"
+                                                 Checked="OnKeyboardControlChanged"
+                                                 Content="WASD：W S A D"
+                                                 GroupName="KeyboardControlScheme" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Margin="0,16,0,0" Style="{StaticResource CardStyle}">
+                            <StackPanel>
                                 <TextBlock FontSize="17" FontWeight="SemiBold" Text="对象层级（实验）" />
                                 <TextBlock Margin="0,6,0,14"
                                            Foreground="{StaticResource MutedTextBrush}"

@@ -6,7 +6,7 @@
 - commit：`8c661469c9507d3ad6fbd2fea3f1aa71669c2fe3`
 - 许可证：MIT，原文保存在 `LICENSE.box2d.txt`
 - 目标：`win-x64`
-- Dango bridge ABI：`1`
+- Dango bridge ABI：`5`
 - 完整来源、归档、许可证和二进制 SHA-256：`dependency.json`
 
 ## 交付选择
@@ -46,6 +46,8 @@ bridge 暴露版本、ABI、`create → body/joint → step → destroy` 生命�
 
 - 12/16 个动态外圈节点；
 - 运动学核心、相邻弹簧和径向弹簧；
+- ABI v5 接收拖动状态和局部点击坐标，以临时 mouse joint 形成局部抓取支点；
+- 拖动期间施加有界悬垂力并降低径向弹簧刚度，释放时销毁支点并恢复原弹性；
 - 只与外圈节点碰撞的静态接地代理；
 - 2/4 个 Box2D 子步；
 - 有限数、正向面积、半径、质心和速度/能量上限；

@@ -13,12 +13,14 @@ public sealed record ControlCenterWindowSettings
         double width,
         double height,
         int schemaVersion = 1,
-        DesktopLayeringSettings? desktopLayeringExperiment = null)
+        DesktopLayeringSettings? desktopLayeringExperiment = null,
+        KeyboardControlSettings? keyboardControl = null)
     {
         Width = width;
         Height = height;
         SchemaVersion = schemaVersion == 0 ? 1 : schemaVersion;
         DesktopLayeringExperiment = desktopLayeringExperiment ?? DesktopLayeringSettings.CreateDefault();
+        KeyboardControl = keyboardControl ?? KeyboardControlSettings.CreateDefault();
     }
 
     public double Width { get; }
@@ -28,6 +30,8 @@ public sealed record ControlCenterWindowSettings
     public int SchemaVersion { get; }
 
     public DesktopLayeringSettings DesktopLayeringExperiment { get; }
+
+    public KeyboardControlSettings KeyboardControl { get; }
 }
 
 public static class ControlCenterWindowSettingsValidator
@@ -56,6 +60,7 @@ public static class ControlCenterWindowSettingsValidator
         }
 
         DesktopLayeringSettingsValidator.Validate(settings.DesktopLayeringExperiment);
+        KeyboardControlSettingsValidator.Validate(settings.KeyboardControl);
     }
 }
 

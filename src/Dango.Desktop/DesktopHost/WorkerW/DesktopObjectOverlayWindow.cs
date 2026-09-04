@@ -3,6 +3,8 @@ using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using Dango.Desktop.DesktopHost.Win32;
+using Dango.Desktop.Physics.Presentation;
+using Dango.Desktop.Rendering.Visuals;
 using WpfBrushes = System.Windows.Media.Brushes;
 using WpfColor = System.Windows.Media.Color;
 using WpfCursors = System.Windows.Input.Cursors;
@@ -30,6 +32,10 @@ internal sealed class DesktopObjectOverlayWindow : Window
     private const int HtTransparent = -1;
     private readonly PrototypeDesktopObject objectKind;
     private readonly Action<double, double>? positionChanged;
+    private readonly Action<double, double>? dragStarted;
+    private readonly Action? dragCompleted;
+    private readonly Action? dragCancelled;
+    private readonly DeformableDangoVisual? dangoVisual;
     private nint windowHandle;
     private NativeMethods.NativePoint pointerOrigin;
     private double windowLeftOrigin;
@@ -39,12 +45,18 @@ internal sealed class DesktopObjectOverlayWindow : Window
 
     public DesktopObjectOverlayWindow(
         PrototypeDesktopObject objectKind,
-        Action<double, double>? positionChanged = null)
+        Action<double, double>? positionChanged = null,
+        Action<double, double>? dragStarted = null,
+        Action? dragCompleted = null,
+        Action? dragCancelled = null)
     {
         this.objectKind = objectKind;
         this.positionChanged = positionChanged;
-        Width = objectKind == PrototypeDesktopObject.Dango ? 150 : 150;
-        Height = objectKind == PrototypeDesktopObject.Dango ? 135 : 58;
+        this.dragStarted = dragStarted;
+        this.dragCompleted = dragCompleted;
+        this.dragCancelled = dragCancelled;
+        Width = objectKind == PrototypeDesktopObject.Dango ? 160 : 150;
+        Height = objectKind == PrototypeDesktopObject.Dango ? 120 : 58;
         AllowsTransparency = true;
         Background = WpfBrushes.Transparent;
         Focusable = objectKind == PrototypeDesktopObject.Dango;
@@ -54,7 +66,15 @@ internal sealed class DesktopObjectOverlayWindow : Window
         Topmost = false;
         WindowStartupLocation = WindowStartupLocation.Manual;
         WindowStyle = WindowStyle.None;
-        Content = objectKind == PrototypeDesktopObject.Dango ? CreateDango() : CreateCushion();
+        if (objectKind == PrototypeDesktopObject.Dango)
+        {
+            dangoVisual = new DeformableDangoVisual();
+            Content = dangoVisual;
+        }
+        else
+        {
+            Content = CreateCushion();
+        }
         SourceInitialized += OnSourceInitialized;
     }
 
@@ -69,33 +89,7 @@ internal sealed class DesktopObjectOverlayWindow : Window
         Top = top;
     }
 
-    private Border CreateDango()
-    {
-        var face = new TextBlock
-        {
-            HorizontalAlignment = WpfHorizontalAlignment.Center,
-            FontSize = 25,
-            Text = "●  ●",
-        };
-        var label = new TextBlock
-        {
-            HorizontalAlignment = WpfHorizontalAlignment.Center,
-            Margin = new Thickness(0, 8, 0, 0),
-            FontSize = 13,
-            Text = "占位团子",
-        };
-        var stack = new StackPanel
-        {
-            HorizontalAlignment = WpfHorizontalAlignment.Center,
-            VerticalAlignment = WpfVerticalAlignment.Center,
-        };
-        stack.Children.Add(face);
-        stack.Children.Add(label);
-        var border = CreateObjectBorder(72, WpfColor.FromRgb(0xF2, 0xC9, 0x4C));
-        border.Cursor = WpfCursors.Hand;
-        border.Child = stack;
-        return border;
-    }
+    public void ApplyDangoFrame(PhysicsPresentationFrame frame) => dangoVisual?.ApplyFrame(frame);
 
     private static Border CreateCushion()
     {
@@ -155,6 +149,10 @@ internal sealed class DesktopObjectOverlayWindow : Window
                 windowLeftOrigin = Left;
                 windowTopOrigin = Top;
                 _ = NativeMethods.SetCapture(windowHandle);
+                var dpi = VisualTreeHelper.GetDpi(this);
+                var localX = unchecked((short)((long)longParameter & 0xffff)) / dpi.DpiScaleX;
+                var localY = unchecked((short)(((long)longParameter >> 16) & 0xffff)) / dpi.DpiScaleY;
+                dragStarted?.Invoke(localX, localY);
             }
 
             handled = true;
@@ -175,6 +173,7 @@ internal sealed class DesktopObjectOverlayWindow : Window
         {
             dragging = false;
             _ = NativeMethods.ReleaseCapture();
+            dragCompleted?.Invoke();
             handled = true;
             return nint.Zero;
         }
@@ -182,6 +181,7 @@ internal sealed class DesktopObjectOverlayWindow : Window
         if (message == WmCaptureChanged && dragging)
         {
             dragging = false;
+            dragCancelled?.Invoke();
         }
 
         return nint.Zero;
