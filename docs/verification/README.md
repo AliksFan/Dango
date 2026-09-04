@@ -10,7 +10,8 @@
 - [P1-003 WorkerW/Shell 壁纸层宿主验证记录](phase-1-p1-003-workerw-host.md)：保留透明 WPF 候选失败证据；经批准的原生分层增量已完成自动门禁及 Windows 11 Build 26100 人工验收。
 - [P2D-000 最新基线与动画资产集成预检](phase-1-p2d-000-integration-preflight.md)：P1-003/C3 后继基线与动画预生产历史无冲突集成，格式、构建、84 项 .NET 测试和动画门禁通过。
 - [P2D-005 WPF 动态轮廓与落地预审](phase-1-p2d-005-dynamic-contour.md)：真实 Box2D 落地、WPF 纯色轮廓、默认调参预设、稳定态和人工观感已通过；WorkerW 正式动作接入留在 P2D-006。
-- [P2D-006 单团子正式动作与 WorkerW 接入](phase-1-p2d-006-single-dango-motion.md)：Core 权威动作、WorkerW 动态轮廓、宿主生命周期和崩溃回归已通过自动及真实进程检查，等待用户人工验收动作观感与交互。
+- [P2D-006 单团子正式动作与 WorkerW 接入](phase-1-p2d-006-single-dango-motion.md)：Core 权威动作、WorkerW 动态轮廓、宿主生命周期、真实进程检查和人工观感验收均已通过。
+- [P1-006 壁纸层与普通窗口模式](phase-1-p1-006-window-modes.md)：运行模式、单一 Core、设置迁移和 Overlay 退役已通过自动门禁；真实桌面矩阵与人工验收待完成。
 - [2026-09-02 P1-002 人工验收导出](evidence/p1-002-manual-acceptance-2026-09-02.md)：用户导出的 20/20 项人工通过原始记录。
 
 ## Phase 0 公共命令

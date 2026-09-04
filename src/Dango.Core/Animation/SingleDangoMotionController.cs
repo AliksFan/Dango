@@ -26,7 +26,7 @@ public sealed class SingleDangoMotionController
         };
 
     private readonly ActionStateMachine stateMachine;
-    private readonly LogicalRect workArea;
+    private LogicalRect workArea;
     private LogicalVector dragOffset;
     private LogicalPoint jumpOrigin;
     private double jumpGroundContactY;
@@ -147,6 +147,27 @@ public sealed class SingleDangoMotionController
 
         var current = Snapshot.Dango.VisualBounds;
         ApplyBounds(new LogicalRect(topLeft.X, topLeft.Y, current.Width, current.Height).ClampInside(workArea));
+    }
+
+    public void Rehost(SceneSnapshot snapshot, LogicalRect targetWorkArea)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (!string.Equals(snapshot.Dango.Id, Snapshot.Dango.Id, StringComparison.Ordinal) ||
+            !string.Equals(snapshot.Island.Id, Snapshot.Island.Id, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("宿主迁移必须保持同一场景实体。", nameof(snapshot));
+        }
+
+        if (!targetWorkArea.Contains(snapshot.Dango.VisualBounds) ||
+            !targetWorkArea.Contains(snapshot.Island.VisualBounds))
+        {
+            throw new ArgumentException("迁移后的场景必须位于目标工作区内。", nameof(snapshot));
+        }
+
+        ResetDirectionalControl();
+        IsDragging = false;
+        workArea = targetWorkArea;
+        Snapshot = snapshot;
     }
 
     public void ConfirmLanding(LogicalPoint groundContact, long nowMilliseconds)

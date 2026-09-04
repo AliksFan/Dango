@@ -73,10 +73,10 @@ public sealed class ApplicationCommandControllerTests
         var host = new FakeModeHost();
         var controller = new ApplicationCommandController(host);
 
-        var result = controller.SetHostMode(DesktopHostMode.WorkerW);
+        var result = controller.SetHostMode(DesktopDisplayMode.Window);
 
         Assert.AreEqual(CommandApplicationState.Applied, result.State);
-        Assert.AreEqual("WorkerW", result.Snapshot.Mode);
+        Assert.AreEqual("Window", result.Snapshot.Mode);
     }
 
     [TestMethod]
@@ -85,10 +85,10 @@ public sealed class ApplicationCommandControllerTests
         var controller = new ApplicationCommandController(
             new FakeDesktopHost(isVisible: true, isInteractionEnabled: true));
 
-        var result = controller.SetHostMode(DesktopHostMode.WorkerW);
+        var result = controller.SetHostMode(DesktopDisplayMode.Window);
 
         Assert.AreEqual(CommandApplicationState.Failed, result.State);
-        Assert.AreEqual("Overlay", result.Snapshot.Mode);
+        Assert.AreEqual("Wallpaper", result.Snapshot.Mode);
         StringAssert.Contains(result.Error, "不支持");
     }
 
@@ -97,7 +97,7 @@ public sealed class ApplicationCommandControllerTests
     {
         var controller = new ApplicationCommandController(new FailingModeHost());
 
-        var result = controller.SetHostMode(DesktopHostMode.WorkerW);
+        var result = controller.SetHostMode(DesktopDisplayMode.Window);
 
         Assert.AreEqual(CommandApplicationState.Failed, result.State);
         StringAssert.Contains(result.Error, "未发现兼容的 WorkerW 桌面层");
@@ -124,7 +124,7 @@ public sealed class ApplicationCommandControllerTests
         public FakeDesktopHost(bool isVisible, bool isInteractionEnabled)
         {
             snapshot = new DesktopHostSnapshot(
-                "Overlay",
+                "Wallpaper",
                 isVisible,
                 isInteractionEnabled,
                 "尚未完成人工验收",
@@ -165,13 +165,13 @@ public sealed class ApplicationCommandControllerTests
         public string CreateDiagnosticSummary() => "safe diagnostics";
     }
 
-    private sealed class FakeModeHost : IDesktopHostControl, IDesktopHostModeControl
+    private sealed class FakeModeHost : IDesktopHostControl, IDesktopDisplayModeControl
     {
-        private DesktopHostSnapshot snapshot = new("Overlay", true, true, "测试", null);
+        private DesktopHostSnapshot snapshot = new("Wallpaper", true, true, "测试", null);
 
         public DesktopHostSnapshot GetSnapshot() => snapshot;
 
-        public void SetMode(DesktopHostMode mode) => snapshot = snapshot with { Mode = mode.ToString() };
+        public void SetMode(DesktopDisplayMode mode) => snapshot = snapshot with { Mode = mode.ToString() };
 
         public void SetVisibility(bool isVisible) => snapshot = snapshot with { IsVisible = isVisible };
 
@@ -181,11 +181,11 @@ public sealed class ApplicationCommandControllerTests
         public string CreateDiagnosticSummary() => snapshot.Mode;
     }
 
-    private sealed class FailingModeHost : IDesktopHostControl, IDesktopHostModeControl
+    private sealed class FailingModeHost : IDesktopHostControl, IDesktopDisplayModeControl
     {
-        public DesktopHostSnapshot GetSnapshot() => new("Overlay", true, true, "测试", null);
+        public DesktopHostSnapshot GetSnapshot() => new("Wallpaper", true, true, "测试", null);
 
-        public void SetMode(DesktopHostMode mode) =>
+        public void SetMode(DesktopDisplayMode mode) =>
             throw new DesktopHostSwitchException("未发现兼容的 WorkerW 桌面层。");
 
         public void SetVisibility(bool isVisible)

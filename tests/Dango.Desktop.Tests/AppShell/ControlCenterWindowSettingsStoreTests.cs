@@ -55,10 +55,10 @@ public sealed class ControlCenterWindowSettingsStoreTests
                     [DesktopLayeringSettings.PrototypeCushionId] = DesktopObjectLayer.AboveDesktopIcons,
                 });
 
-            store.Save(path, new ControlCenterWindowSettings(940, 620, 1, layering));
+            store.Save(path, new ControlCenterWindowSettings(940, 620, 2, layering));
             var restored = store.Load(path);
 
-            Assert.AreEqual(1, restored.SchemaVersion);
+            Assert.AreEqual(2, restored.SchemaVersion);
             Assert.AreEqual(DesktopObjectLayer.AboveDesktopIcons, restored.DesktopLayeringExperiment.DangoLayer);
             Assert.AreEqual(
                 DesktopObjectLayer.AboveDesktopIcons,
@@ -86,12 +86,100 @@ public sealed class ControlCenterWindowSettingsStoreTests
 
             var restored = new ControlCenterWindowSettingsStore().Load(path);
 
-            Assert.AreEqual(1, restored.SchemaVersion);
+            Assert.AreEqual(2, restored.SchemaVersion);
             Assert.AreEqual(
                 DesktopObjectLayer.BelowDesktopIcons,
                 restored.DesktopLayeringExperiment.DangoLayer);
             Assert.IsFalse(restored.KeyboardControl.IsEnabled);
             Assert.AreEqual(KeyboardControlScheme.ArrowKeys, restored.KeyboardControl.Scheme);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    [DataRow("WorkerW")]
+    [DataRow("Overlay")]
+    public void LegacyHostModesMigrateToWallpaper(string legacyMode)
+    {
+        var directory = CreateTemporaryDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "settings.json");
+            File.WriteAllText(path, $$"""
+                {
+                  "schemaVersion": 1,
+                  "width": 940,
+                  "height": 620,
+                  "displayMode": "{{legacyMode}}"
+                }
+                """);
+
+            var result = new ControlCenterWindowSettingsStore().LoadOrDefault(path);
+
+            Assert.AreEqual(DesktopDisplayMode.Wallpaper, result.Settings.DisplayMode);
+            Assert.IsTrue(result.WasMigrated);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void ValidWindowModeAndScenePlacementRoundTripInSchemaTwo()
+    {
+        var directory = CreateTemporaryDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "settings.json");
+            var sceneWindow = new SceneWindowSettings(800, 600, "DISPLAY1", 0.25, 0.75);
+            var store = new ControlCenterWindowSettingsStore();
+
+            store.Save(path, new ControlCenterWindowSettings(
+                940,
+                620,
+                displayMode: DesktopDisplayMode.Window,
+                sceneWindow: sceneWindow));
+            var restored = store.Load(path);
+
+            Assert.AreEqual(2, restored.SchemaVersion);
+            Assert.AreEqual(DesktopDisplayMode.Window, restored.DisplayMode);
+            Assert.AreEqual(sceneWindow, restored.SceneWindow);
+            var json = File.ReadAllText(path);
+            StringAssert.Contains(json, "\"displayMode\": \"Window\"");
+            Assert.IsFalse(json.Contains("Overlay", StringComparison.Ordinal));
+            Assert.IsFalse(json.Contains("WorkerW", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void UnknownSchemaOrModeReturnsSafeDefaultWithWarning()
+    {
+        var directory = CreateTemporaryDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "settings.json");
+            File.WriteAllText(path, """
+                {
+                  "schemaVersion": 99,
+                  "width": 940,
+                  "height": 620,
+                  "displayMode": "Unexpected"
+                }
+                """);
+
+            var result = new ControlCenterWindowSettingsStore().LoadOrDefault(path);
+
+            Assert.AreEqual(DesktopDisplayMode.Wallpaper, result.Settings.DisplayMode);
+            Assert.IsFalse(result.WasMigrated);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(result.Warning));
         }
         finally
         {

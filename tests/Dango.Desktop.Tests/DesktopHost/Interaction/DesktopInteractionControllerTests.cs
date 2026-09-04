@@ -1,19 +1,19 @@
-using Dango.Desktop.DesktopHost.Overlay;
+using Dango.Desktop.DesktopHost.Interaction;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Dango.Desktop.Tests.DesktopHost.Overlay;
 
 [TestClass]
-public sealed class OverlayInteractionControllerTests
+public sealed class DesktopInteractionControllerTests
 {
     [TestMethod]
     public void DragCanOnlyBeginFromTheDangoRegion()
     {
-        var controller = new OverlayInteractionController();
+        var controller = new DesktopInteractionController();
 
-        Assert.IsFalse(controller.TryBeginDrag(OverlayHitTarget.PassThrough));
-        Assert.IsFalse(controller.TryBeginDrag(OverlayHitTarget.Island));
-        Assert.IsTrue(controller.TryBeginDrag(OverlayHitTarget.Dango));
+        Assert.IsFalse(controller.TryBeginDrag(DesktopHitTarget.PassThrough));
+        Assert.IsFalse(controller.TryBeginDrag(DesktopHitTarget.Island));
+        Assert.IsTrue(controller.TryBeginDrag(DesktopHitTarget.Dango));
         Assert.IsTrue(controller.IsDragging);
     }
 
@@ -24,8 +24,8 @@ public sealed class OverlayInteractionControllerTests
     [DataRow(DragCancellationReason.WindowClosing)]
     public void CancellationPathsAlwaysEndAnActiveDrag(DragCancellationReason reason)
     {
-        var controller = new OverlayInteractionController();
-        Assert.IsTrue(controller.TryBeginDrag(OverlayHitTarget.Dango));
+        var controller = new DesktopInteractionController();
+        Assert.IsTrue(controller.TryBeginDrag(DesktopHitTarget.Dango));
 
         var captureMustBeReleased = controller.CancelDrag(reason);
 
@@ -37,8 +37,8 @@ public sealed class OverlayInteractionControllerTests
     [TestMethod]
     public void RepeatedCancellationIsIdempotent()
     {
-        var controller = new OverlayInteractionController();
-        Assert.IsTrue(controller.TryBeginDrag(OverlayHitTarget.Dango));
+        var controller = new DesktopInteractionController();
+        Assert.IsTrue(controller.TryBeginDrag(DesktopHitTarget.Dango));
 
         Assert.IsTrue(controller.CancelDrag(DragCancellationReason.WindowClosing));
         Assert.IsFalse(controller.CancelDrag(DragCancellationReason.WindowClosing));

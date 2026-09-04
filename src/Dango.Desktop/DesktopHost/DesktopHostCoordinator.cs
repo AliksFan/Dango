@@ -2,15 +2,14 @@ using Dango.Desktop.AppShell;
 
 namespace Dango.Desktop.DesktopHost;
 
-public enum DesktopHostMode
+public interface IDesktopDisplayModeControl
 {
-    Overlay,
-    WorkerW,
+    void SetMode(DesktopDisplayMode mode);
 }
 
-public interface IDesktopHostModeControl
+public interface IDesktopHostSwitchGuard
 {
-    void SetMode(DesktopHostMode mode);
+    string? GetSwitchBlockReason();
 }
 
 public sealed class DesktopHostSwitchException : InvalidOperationException
@@ -25,18 +24,19 @@ public sealed class DesktopHostSwitchException : InvalidOperationException
     public string SafeReason { get; }
 }
 
-public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopHostModeControl, IDesktopLayeringControl, IKeyboardControl
+public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopDisplayModeControl, IDesktopLayeringControl, IKeyboardControl
 {
-    private readonly IDesktopHostControl overlay;
-    private readonly IDesktopHostControl workerW;
+    private readonly IDesktopHostControl wallpaper;
+    private readonly IDesktopHostControl window;
     private IDesktopHostControl active;
-    private DesktopHostMode activeMode = DesktopHostMode.Overlay;
+    private DesktopDisplayMode activeMode = DesktopDisplayMode.Wallpaper;
+    private bool switchInProgress;
 
-    public DesktopHostCoordinator(IDesktopHostControl overlay, IDesktopHostControl workerW)
+    public DesktopHostCoordinator(IDesktopHostControl wallpaper, IDesktopHostControl window)
     {
-        this.overlay = overlay ?? throw new ArgumentNullException(nameof(overlay));
-        this.workerW = workerW ?? throw new ArgumentNullException(nameof(workerW));
-        active = overlay;
+        this.wallpaper = wallpaper ?? throw new ArgumentNullException(nameof(wallpaper));
+        this.window = window ?? throw new ArgumentNullException(nameof(window));
+        active = wallpaper;
     }
 
     public DesktopHostSnapshot GetSnapshot() => active.GetSnapshot();
@@ -48,46 +48,53 @@ public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopHostMo
     public string CreateDiagnosticSummary() => active.CreateDiagnosticSummary();
 
     public DesktopLayeringSettings GetLayeringSettings() =>
-        workerW is IDesktopLayeringControl layeringControl
+        wallpaper is IDesktopLayeringControl layeringControl
             ? layeringControl.GetLayeringSettings()
             : DesktopLayeringSettings.CreateDefault();
 
     public void ApplyLayeringSettings(DesktopLayeringSettings settings)
     {
-        if (workerW is not IDesktopLayeringControl layeringControl)
+        if (wallpaper is not IDesktopLayeringControl layeringControl)
         {
-            throw new NotSupportedException("WorkerW 宿主不支持对象分层设置。");
+            throw new NotSupportedException("壁纸层宿主不支持对象分层设置。");
         }
 
         layeringControl.ApplyLayeringSettings(settings);
     }
 
     public KeyboardControlSettings GetKeyboardControlSettings() =>
-        workerW is IKeyboardControl keyboardControl
+        active is IKeyboardControl keyboardControl
             ? keyboardControl.GetKeyboardControlSettings()
             : KeyboardControlSettings.CreateDefault();
 
     public void ApplyKeyboardControlSettings(KeyboardControlSettings settings)
     {
-        if (workerW is not IKeyboardControl keyboardControl)
-        {
-            throw new NotSupportedException("WorkerW 宿主不支持键盘控制设置。");
-        }
-
-        keyboardControl.ApplyKeyboardControlSettings(settings);
+        ApplyKeyboardControl(wallpaper, settings);
+        ApplyKeyboardControl(window, settings);
     }
 
-    public void SetMode(DesktopHostMode mode)
+    public void SetMode(DesktopDisplayMode mode)
     {
         if (mode == activeMode)
         {
             return;
         }
 
+        if (switchInProgress)
+        {
+            throw new DesktopHostSwitchException("已有宿主切换正在进行。");
+        }
+
+        if (active is IDesktopHostSwitchGuard guard && guard.GetSwitchBlockReason() is { } blockReason)
+        {
+            throw new DesktopHostSwitchException(blockReason);
+        }
+
+        switchInProgress = true;
         var previous = active;
         var previousMode = activeMode;
         var previousSnapshot = previous.GetSnapshot();
-        var candidate = mode == DesktopHostMode.Overlay ? overlay : workerW;
+        var candidate = mode == DesktopDisplayMode.Wallpaper ? wallpaper : window;
         try
         {
             previous.SetVisibility(false);
@@ -125,5 +132,19 @@ public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopHostMo
                 : "目标宿主发生内部错误，已恢复原宿主。";
             throw new DesktopHostSwitchException(safeReason, exception);
         }
+        finally
+        {
+            switchInProgress = false;
+        }
+    }
+
+    private static void ApplyKeyboardControl(IDesktopHostControl host, KeyboardControlSettings settings)
+    {
+        if (host is not IKeyboardControl keyboardControl)
+        {
+            throw new NotSupportedException("显示宿主不支持键盘控制设置。");
+        }
+
+        keyboardControl.ApplyKeyboardControlSettings(settings);
     }
 }

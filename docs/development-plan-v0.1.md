@@ -5,7 +5,7 @@
 > 日期：2026-08-31
 >
 > 基线提交：`f624ccf`
-> 当前阶段：Phase 0 — 工作区与技术基线
+> 当前阶段：Phase 1 — 桌面生命感原型
 
 ## 1. 计划原则
 
@@ -307,6 +307,7 @@
 - 已验收：[Dango 控制中心 UI 设计](phase-1-control-center-ui-design.md) 对应的 P1-002A 正式控制中心、统一托盘/单实例入口、图形化验收会话、本地诊断和隐私安全导出；自动门禁及用户人工验收均通过，详见 [验证记录](verification/phase-1-p1-002a-control-center.md)。
 - 已验收：P1-003 首个透明 WPF WorkerW 候选曾按停止点判定失败；用户随后明确要求保留动态桌面路线并批准原生分层增量试验。原生分层宿主、浅蓝背景、图标上下对象层、特殊 Topmost 悬空岛、图标优先输入和本地设置已完成自动门禁及 Windows 11 Build 26100 人工验收，用户于 2026-09-03 确认“没问题了，验收完毕”；详见 [验证记录](verification/phase-1-p1-003-workerw-host.md)和[分层试验设计](phase-1-desktop-layering-experiment-design.md)。
 - 进行中：P1-004 单团子生命感最小纵切；[ADR 0005](adr/0005-box2d-visual-soft-body-presentation.md) 与 [Box2D 视觉软体实施计划](phase-1-box2d-soft-body-implementation-plan.md) 已获批准。P2D-000/B0、P2D-001/AP-005/B1、[P2D-002/B2](verification/phase-1-p2d-002-box2d-native-spike.md)、[P2D-003/B3](verification/phase-1-p2d-003-presentation-contract.md)、[P2D-004/B4](verification/phase-1-p2d-004-soft-body-stability.md)、[P2D-005/B5](verification/phase-1-p2d-005-dynamic-contour.md) 与 [P2D-006/B6](verification/phase-1-p2d-006-single-dango-motion.md) 已完成；用户于 2026-09-04 确认单团子方向控制、动作观感、附件连接、拖动及释放表现人工验收通过。双体技术证明、正式性能结论和最终宿主 ADR 仍分别留待 P2D-007、P2D-008/P1-005 与 P1-007。
+- 进行中：P1-006 已把当前运行宿主收敛为默认 `Wallpaper` 与标准 `Window`，完成单一 Core 场景迁移、设置 Schema 2、旧模式迁移、控制中心改造和 Overlay 运行代码退役；自动门禁已通过，真实 Windows 桌面矩阵与用户人工验收待完成，详见 [验证记录](verification/phase-1-p1-006-window-modes.md)。
 - 未授权：将 Phase 1 分支合并到 `main`、推送、部署或开始计划外工作。
 
 ## 11. 后续路线

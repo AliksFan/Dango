@@ -8,7 +8,7 @@ using Dango.Core.Animation;
 using Dango.Core.Coordinates;
 using Dango.Core.Scene;
 using Dango.Desktop.AppShell;
-using Dango.Desktop.DesktopHost.Overlay;
+using Dango.Desktop.DesktopHost.Interaction;
 using Dango.Desktop.DesktopHost.Win32;
 using Dango.Desktop.Physics.Presentation;
 using Dango.Desktop.Rendering.Visuals;
@@ -19,7 +19,7 @@ using WpfUserControl = System.Windows.Controls.UserControl;
 
 namespace Dango.Desktop.DesktopHost.WorkerW;
 
-public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDesktopLayeringControl, IKeyboardControl
+public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDesktopLayeringControl, IKeyboardControl, IDesktopHostSwitchGuard
 {
     private const int WmMouseActivate = 0x0021;
     private const int WmNcHitTest = 0x0084;
@@ -28,14 +28,14 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
     private const int WsChild = 0x40000000;
     private const int WsVisible = 0x10000000;
     private const int WsExToolWindow = 0x00000080;
-    private readonly OverlayInteractionController interactionController = new();
+    private readonly DesktopInteractionController interactionController = new();
     private readonly WorkerWRecoveryStateMachine recoveryState = new(TimeSpan.FromSeconds(8), 8);
     private readonly DispatcherTimer shellTimer;
     private readonly DispatcherTimer motionTimer;
     private readonly DesktopObjectOverlayWindow dangoAboveWindow;
     private readonly DesktopObjectOverlayWindow cushionAboveWindow;
     private readonly IslandOverlayWindow islandOverlayWindow;
-    private OverlayHitTestPolicy hitTestPolicy = new([]);
+    private DesktopHitTestPolicy hitTestPolicy = new([]);
     private System.Windows.Point dragPointerOrigin;
     private double dragVisualLeft;
     private double dragVisualTop;
@@ -53,7 +53,8 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
     private KeyboardControlSettings keyboardControlSettings = KeyboardControlSettings.CreateDefault();
     private string? lastError;
     private readonly SingleDangoMotionRuntime motionRuntime;
-    private SingleDangoMotionController? motionController;
+    private readonly DesktopSceneSession sceneSession;
+    private SingleDangoMotionController? motionController => sceneSession.Controller;
     private DangoActionState reactionReturnState = DangoActionState.Idle;
     private LogicalPoint proxyDragPointer;
     private double dragGrabVisualX;
@@ -62,8 +63,11 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
     private bool proxyDragMoved;
     private bool aboveDragPending;
 
-    public WorkerWWindow(SingleDangoMotionRuntimeFactory motionRuntimeFactory)
+    public WorkerWWindow(
+        DesktopSceneSession sceneSession,
+        SingleDangoMotionRuntimeFactory motionRuntimeFactory)
     {
+        this.sceneSession = sceneSession ?? throw new ArgumentNullException(nameof(sceneSession));
         ArgumentNullException.ThrowIfNull(motionRuntimeFactory);
         InitializeComponent();
         dangoAboveWindow = new DesktopObjectOverlayWindow(
@@ -127,7 +131,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
 
     public DesktopHostSnapshot GetSnapshot() =>
         new(
-            "WorkerW",
+            "Wallpaper",
             isVisible && recoveryState.State == WorkerWRecoveryState.Attached,
             isInteractionEnabled,
             recoveryState.State == WorkerWRecoveryState.Attached ? "已通过人工验收" : StateText(),
@@ -138,11 +142,6 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         if (!isVisible)
         {
             CancelDrag(DragCancellationReason.WindowDeactivated);
-            if (motionController is { IsExited: false } &&
-                motionController.Snapshot.Dango.State != DangoActionState.Hidden)
-            {
-                motionController.Hide(NowMilliseconds());
-            }
             shellTimer.Stop();
             DisposeSurface();
             HideLayeredObjectWindows();
@@ -184,6 +183,18 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
     public DesktopLayeringSettings GetLayeringSettings() => layeringSettings;
 
     public KeyboardControlSettings GetKeyboardControlSettings() => keyboardControlSettings;
+
+    public string? GetSwitchBlockReason()
+    {
+        if (interactionController.IsDragging || motionController?.IsDragging == true)
+        {
+            return "团子拖动结束后才能切换显示模式。";
+        }
+
+        return recoveryState.State == WorkerWRecoveryState.Recovering
+            ? "壁纸层恢复完成后才能切换显示模式。"
+            : null;
+    }
 
     public void ApplyKeyboardControlSettings(KeyboardControlSettings settings)
     {
@@ -257,7 +268,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         var target = NativeMethods.FindWorkerW();
         if (!NativeMethods.IsValidDesktopTarget(target))
         {
-            lastError = "未发现兼容的 WorkerW 桌面层，已恢复透明覆盖层。";
+            lastError = "未发现兼容的 WorkerW 桌面层，已保持安全隐藏。";
             return;
         }
 
@@ -414,7 +425,6 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         isClosed = true;
         shellTimer.Stop();
         CancelDrag(DragCancellationReason.WindowClosing);
-        motionController?.Exit(NowMilliseconds());
         motionTimer.Stop();
         motionRuntime.Dispose();
         DisposeSurface();
@@ -525,16 +535,16 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
     {
         var regions = new[]
         {
-            Region(OverlayHitTarget.Dango, DangoVisual),
-            Region(OverlayHitTarget.Island, IslandVisual),
-        }.OfType<OverlayHitRegion>();
-        hitTestPolicy = new OverlayHitTestPolicy(regions);
+            Region(DesktopHitTarget.Dango, DangoVisual),
+            Region(DesktopHitTarget.Island, IslandVisual),
+        }.OfType<DesktopHitRegion>();
+        hitTestPolicy = new DesktopHitTestPolicy(regions);
         UpdateInputProxyBounds();
     }
 
     private bool BeginProxyDrag(double deviceLocalX, double deviceLocalY)
     {
-        if (!isInteractionEnabled || !interactionController.TryBeginDrag(OverlayHitTarget.Dango))
+        if (!isInteractionEnabled || !interactionController.TryBeginDrag(DesktopHitTarget.Dango))
         {
             return false;
         }
@@ -724,50 +734,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
     private void StartMotion(double surfaceWidth, double surfaceHeight)
     {
         var now = NowMilliseconds();
-        if (motionController is null || motionController.IsExited)
-        {
-            var islandBounds = new LogicalRect(
-                Math.Max(0, surfaceWidth - 440),
-                Math.Max(0, surfaceHeight - 130),
-                360,
-                100);
-            var dangoBounds = new LogicalRect(
-                Math.Max(0, islandBounds.X - DangoVisual.Width - 24),
-                Math.Max(0, surfaceHeight - DangoVisual.Height),
-                DangoVisual.Width,
-                DangoVisual.Height);
-            var scene = new SceneSnapshot(
-                SceneSnapshot.CurrentVersion,
-                now,
-                17,
-                "p2d-006",
-                new DangoSnapshot(
-                    "primary-dango",
-                    dangoBounds,
-                    DangoActionState.Idle,
-                    now,
-                    17,
-                    new LogicalPoint(dangoBounds.Center.X, dangoBounds.Bottom),
-                    "idle",
-                    "click",
-                    "drag",
-                    "collision",
-                    "island-grab"),
-                new IslandSnapshot(
-                    "primary-island",
-                    islandBounds,
-                    new LogicalRect(islandBounds.X + 40, islandBounds.Y, 280, 20),
-                    new LogicalRect(islandBounds.X + 24, islandBounds.Y, 312, 20),
-                    new LogicalRect(islandBounds.X + 48, islandBounds.Y, 264, 30),
-                    new LogicalRect(islandBounds.X, islandBounds.Y + 30, 360, 70)));
-            motionController = new SingleDangoMotionController(
-                scene,
-                new LogicalRect(0, 0, surfaceWidth, surfaceHeight));
-        }
-        else if (motionController.Snapshot.Dango.State == DangoActionState.Hidden)
-        {
-            motionController.StartAction(DangoActionState.Idle, now);
-        }
+        sceneSession.AttachSurface(new LogicalRect(0, 0, surfaceWidth, surfaceHeight), now);
 
         ApplyAuthoritativePosition();
         motionRuntime.Start();
@@ -859,10 +826,10 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         }
     }
 
-    private static OverlayHitRegion? Region(OverlayHitTarget target, FrameworkElement element) =>
+    private static DesktopHitRegion? Region(DesktopHitTarget target, FrameworkElement element) =>
         element.Visibility != Visibility.Visible
             ? null
-            : OverlayHitRegionFactory.TryCreate(
+            : DesktopHitRegionFactory.TryCreate(
                 target,
                 WpfCanvas.GetLeft(element),
                 WpfCanvas.GetTop(element),

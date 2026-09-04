@@ -7,9 +7,9 @@ namespace Dango.Desktop.Tests.Verification;
 public sealed class VerificationMarkdownExporterTests
 {
     [TestMethod]
-    public void IncompleteSessionCannotClaimP1002Passed()
+    public void IncompleteSessionCannotClaimP1003Passed()
     {
-        var definition = VerificationDefinition.CreateP1002Overlay();
+        var definition = VerificationDefinition.CreateP1003WorkerW();
         var session = CreateSession(definition);
 
         var markdown = VerificationMarkdownExporter.Export(definition, session);
@@ -26,7 +26,7 @@ public sealed class VerificationMarkdownExporterTests
     [TestMethod]
     public void FailureAndUnableToRunRemainVisibleInReport()
     {
-        var definition = VerificationDefinition.CreateP1002Overlay();
+        var definition = VerificationDefinition.CreateP1003WorkerW();
         var session = CreateSession(definition);
         session.Results[0].Outcome = ManualVerificationOutcome.Failed;
         session.Results[0].Notes = "透明区域仍阻挡桌面";
@@ -61,6 +61,6 @@ public sealed class VerificationMarkdownExporterTests
     private static VerificationSession CreateSession(VerificationDefinition definition) =>
         VerificationSession.Create(
             definition,
-            new VerificationEnvironmentSnapshot("1.0.0", "test", "Overlay", "26100", "1 display / 100%"),
+            new VerificationEnvironmentSnapshot("1.0.0", "test", "Wallpaper", "26100", "1 display / 100%"),
             new DateTimeOffset(2026, 9, 1, 10, 0, 0, TimeSpan.FromHours(8)));
 }

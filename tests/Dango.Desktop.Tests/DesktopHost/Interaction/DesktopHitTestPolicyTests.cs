@@ -1,41 +1,41 @@
 using Dango.Core.Coordinates;
-using Dango.Desktop.DesktopHost.Overlay;
+using Dango.Desktop.DesktopHost.Interaction;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Dango.Desktop.Tests.DesktopHost.Overlay;
 
 [TestClass]
-public sealed class OverlayHitTestPolicyTests
+public sealed class DesktopHitTestPolicyTests
 {
     [TestMethod]
     public void DistinguishesInteractiveSceneRegionsFromTransparentPixels()
     {
-        var policy = new OverlayHitTestPolicy(
+        var policy = new DesktopHitTestPolicy(
         [
-            new OverlayHitRegion(
-                OverlayHitTarget.Dango,
+            new DesktopHitRegion(
+                DesktopHitTarget.Dango,
                 new LogicalRect(160, 40, 140, 120)),
-            new OverlayHitRegion(
-                OverlayHitTarget.Island,
+            new DesktopHitRegion(
+                DesktopHitTarget.Island,
                 new LogicalRect(80, 170, 320, 100)),
         ]);
 
         Assert.AreEqual(
-            OverlayHitTarget.Dango,
+            DesktopHitTarget.Dango,
             policy.HitTest(new LogicalPoint(200, 100)));
         Assert.AreEqual(
-            OverlayHitTarget.Island,
+            DesktopHitTarget.Island,
             policy.HitTest(new LogicalPoint(100, 200)));
         Assert.AreEqual(
-            OverlayHitTarget.PassThrough,
+            DesktopHitTarget.PassThrough,
             policy.HitTest(new LogicalPoint(20, 20)));
     }
 
     [TestMethod]
     public void CollapsedOrUnarrangedVisualDoesNotCreateAnInvalidRegion()
     {
-        Assert.IsNull(OverlayHitRegionFactory.TryCreate(OverlayHitTarget.Dango, 10, 20, 0, 135));
-        Assert.IsNull(OverlayHitRegionFactory.TryCreate(OverlayHitTarget.Island, 10, 20, 360, 0));
-        Assert.IsNotNull(OverlayHitRegionFactory.TryCreate(OverlayHitTarget.Dango, 10, 20, 150, 135));
+        Assert.IsNull(DesktopHitRegionFactory.TryCreate(DesktopHitTarget.Dango, 10, 20, 0, 135));
+        Assert.IsNull(DesktopHitRegionFactory.TryCreate(DesktopHitTarget.Island, 10, 20, 360, 0));
+        Assert.IsNotNull(DesktopHitRegionFactory.TryCreate(DesktopHitTarget.Dango, 10, 20, 150, 135));
     }
 }

@@ -20,6 +20,8 @@ public partial class ControlCenterWindow : Window
     private readonly Action requestExit;
     private readonly ControlCenterWindowSettingsStore? windowSettingsStore;
     private readonly string? settingsPath;
+    private readonly Func<SceneWindowSettings>? captureSceneWindowSettings;
+    private readonly string? startupSettingsWarning;
     private readonly List<ThemePropertyOverride> highContrastOverrides = [];
     private VerificationSession? verificationSession;
     private IReadOnlyList<VerificationItemViewModel> verificationItems = [];
@@ -33,7 +35,9 @@ public partial class ControlCenterWindow : Window
         string draftPath,
         Action requestExit,
         ControlCenterWindowSettingsStore? windowSettingsStore = null,
-        string? settingsPath = null)
+        string? settingsPath = null,
+        Func<SceneWindowSettings>? captureSceneWindowSettings = null,
+        string? startupSettingsWarning = null)
     {
         this.commandController = commandController ?? throw new ArgumentNullException(nameof(commandController));
         this.verificationDefinition = verificationDefinition ?? throw new ArgumentNullException(nameof(verificationDefinition));
@@ -42,6 +46,8 @@ public partial class ControlCenterWindow : Window
         this.requestExit = requestExit ?? throw new ArgumentNullException(nameof(requestExit));
         this.windowSettingsStore = windowSettingsStore;
         this.settingsPath = settingsPath;
+        this.captureSceneWindowSettings = captureSceneWindowSettings;
+        this.startupSettingsWarning = startupSettingsWarning;
         InitializeComponent();
         SystemParameters.StaticPropertyChanged += OnSystemParametersChanged;
         Closed += OnClosed;
@@ -62,6 +68,11 @@ public partial class ControlCenterWindow : Window
         RestoreWindowSettings();
         LoadOrCreateVerificationSession();
         RefreshHostState();
+        if (!string.IsNullOrWhiteSpace(startupSettingsWarning))
+        {
+            OverviewCommandStatusText.Text = startupSettingsWarning;
+            DesktopCommandStatusText.Text = startupSettingsWarning;
+        }
         RefreshDiagnostics();
         ShowPage(OverviewPage);
         ApplyAccessibilityTheme();
@@ -167,10 +178,27 @@ public partial class ControlCenterWindow : Window
             return;
         }
 
-        var mode = WorkerWHostRadioButton.IsChecked == true
-            ? DesktopHostMode.WorkerW
-            : DesktopHostMode.Overlay;
-        ApplyCommand(commandController.SetHostMode(mode));
+        var mode = WindowHostRadioButton.IsChecked == true
+            ? DesktopDisplayMode.Window
+            : DesktopDisplayMode.Wallpaper;
+        var result = commandController.SetHostMode(mode);
+        ApplyCommand(result);
+        if (result.State == CommandApplicationState.Applied)
+        {
+            SaveWindowSettings();
+        }
+    }
+
+    private void OnRetryWallpaperClick(object sender, RoutedEventArgs e)
+    {
+        var result = string.Equals(commandController.GetSnapshot().Mode, "Wallpaper", StringComparison.Ordinal)
+            ? commandController.SetVisibility(true)
+            : commandController.SetHostMode(DesktopDisplayMode.Wallpaper);
+        ApplyCommand(result);
+        if (result.State == CommandApplicationState.Applied)
+        {
+            SaveWindowSettings();
+        }
     }
 
     private void OnObjectLayerChanged(object sender, RoutedEventArgs e)
@@ -320,8 +348,9 @@ public partial class ControlCenterWindow : Window
             OverviewVisibilityText.Text = snapshot.IsVisible ? "已开启" : "已隐藏";
             OverviewVisibilityButton.Content = snapshot.IsVisible ? "隐藏桌面团子" : "显示桌面团子";
             OverviewInteractionText.Text = snapshot.IsInteractionEnabled ? "已开启" : "已关闭";
-            OverlayHostRadioButton.IsChecked = string.Equals(snapshot.Mode, "Overlay", StringComparison.Ordinal);
-            WorkerWHostRadioButton.IsChecked = string.Equals(snapshot.Mode, "WorkerW", StringComparison.Ordinal);
+            WallpaperHostRadioButton.IsChecked = string.Equals(snapshot.Mode, "Wallpaper", StringComparison.Ordinal);
+            WindowHostRadioButton.IsChecked = string.Equals(snapshot.Mode, "Window", StringComparison.Ordinal);
+            DesktopLayeringPanel.IsEnabled = string.Equals(snapshot.Mode, "Wallpaper", StringComparison.Ordinal);
             OverviewHostStatusText.Text =
                 $"{snapshot.Mode} · {(snapshot.IsVisible ? "正在运行" : "已隐藏")} · {snapshot.VerificationStatus}";
         }
@@ -464,9 +493,13 @@ public partial class ControlCenterWindow : Window
                 new ControlCenterWindowSettings(
                     bounds.Width,
                     bounds.Height,
-                    schemaVersion: 1,
+                    schemaVersion: ControlCenterWindowSettings.CurrentSchemaVersion,
                     commandController.GetLayeringSettings(),
-                    commandController.GetKeyboardControlSettings()));
+                    commandController.GetKeyboardControlSettings(),
+                    Enum.TryParse<DesktopDisplayMode>(commandController.GetSnapshot().Mode, out var mode)
+                        ? mode
+                        : DesktopDisplayMode.Wallpaper,
+                    captureSceneWindowSettings?.Invoke() ?? SceneWindowSettings.CreateDefault()));
         }
         catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
         {

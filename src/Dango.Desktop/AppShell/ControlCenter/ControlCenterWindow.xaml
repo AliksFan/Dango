@@ -175,7 +175,7 @@
                                 <TextBlock x:Name="OverviewHostStatusText"
                                            Margin="0,9,0,14"
                                            Foreground="#B7791F"
-                                           Text="透明覆盖层 · 正在运行 · 尚未完成人工验收" />
+                                           Text="壁纸层 · 正在运行 · 尚未完成人工验收" />
                                 <Button HorizontalAlignment="Left"
                                         AutomationProperties.Name="继续人工验收"
                                         Click="OnVerificationNavigationClick"
@@ -244,7 +244,7 @@
                                           Unchecked="OnKeyboardControlChanged" />
                                 <TextBlock Margin="24,6,0,14"
                                            Foreground="{StaticResource MutedTextBrush}"
-                                           Text="默认关闭；仅 Explorer 桌面获得焦点时生效。"
+                                           Text="默认关闭；壁纸层仅在桌面获得焦点时生效，普通窗口仅在自身获得焦点时生效。"
                                            TextWrapping="Wrap" />
                                 <StackPanel Margin="24,0,0,0" Orientation="Horizontal">
                                     <RadioButton x:Name="ArrowKeysRadioButton"
@@ -263,7 +263,7 @@
                         </Border>
 
                         <Border Margin="0,16,0,0" Style="{StaticResource CardStyle}">
-                            <StackPanel>
+                            <StackPanel x:Name="DesktopLayeringPanel">
                                 <TextBlock FontSize="17" FontWeight="SemiBold" Text="对象层级（实验）" />
                                 <TextBlock Margin="0,6,0,14"
                                            Foreground="{StaticResource MutedTextBrush}"
@@ -308,18 +308,23 @@
 
                         <Border Margin="0,16,0,0" Style="{StaticResource CardStyle}">
                             <StackPanel>
-                                <TextBlock FontSize="17" FontWeight="SemiBold" Text="实验宿主" />
-                                <RadioButton x:Name="OverlayHostRadioButton"
+                                <TextBlock FontSize="17" FontWeight="SemiBold" Text="显示模式" />
+                                <RadioButton x:Name="WallpaperHostRadioButton"
                                              Margin="0,14,0,6"
-                                             AutomationProperties.Name="切换到透明覆盖层"
+                                             AutomationProperties.Name="切换到壁纸层"
                                              Checked="OnHostModeChanged"
-                                             Content="透明覆盖层 · P1-002 已通过人工验收"
+                                             Content="壁纸层 · 默认随桌面显示"
                                              GroupName="DesktopHost" />
-                                <RadioButton x:Name="WorkerWHostRadioButton"
-                                             AutomationProperties.Name="切换到 WorkerW 壁纸层"
+                                <RadioButton x:Name="WindowHostRadioButton"
+                                             AutomationProperties.Name="切换到普通窗口"
                                              Checked="OnHostModeChanged"
-                                             Content="WorkerW/Shell 壁纸层 · P1-003 已通过人工验收"
+                                             Content="普通窗口 · 可移动和调整大小"
                                              GroupName="DesktopHost" />
+                                <Button Margin="0,14,0,0"
+                                        HorizontalAlignment="Left"
+                                        AutomationProperties.Name="重试壁纸层"
+                                        Click="OnRetryWallpaperClick"
+                                        Content="重试壁纸层" />
                             </StackPanel>
                         </Border>
 
@@ -342,7 +347,7 @@
                     <TextBlock x:Name="VerificationEnvironmentText"
                                Margin="0,8,0,12"
                                Foreground="{StaticResource MutedTextBrush}"
-                               Text="透明覆盖层 · 环境待采集" />
+                               Text="壁纸层 · 环境待采集" />
                 </StackPanel>
                 <Grid Grid.Row="1" Margin="0,0,0,12">
                     <Grid.ColumnDefinitions>

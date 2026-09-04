@@ -1,4 +1,4 @@
-namespace Dango.Desktop.DesktopHost.Overlay;
+namespace Dango.Desktop.DesktopHost.Interaction;
 
 public enum DragCancellationReason
 {
@@ -8,15 +8,15 @@ public enum DragCancellationReason
     WindowClosing,
 }
 
-public sealed class OverlayInteractionController
+public sealed class DesktopInteractionController
 {
     public bool IsDragging { get; private set; }
 
     public DragCancellationReason? LastCancellationReason { get; private set; }
 
-    public bool TryBeginDrag(OverlayHitTarget target)
+    public bool TryBeginDrag(DesktopHitTarget target)
     {
-        if (IsDragging || target != OverlayHitTarget.Dango)
+        if (IsDragging || target != DesktopHitTarget.Dango)
         {
             return false;
         }

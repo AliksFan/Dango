@@ -26,34 +26,6 @@ public sealed record VerificationDefinition(
 {
     public const int CurrentSchemaVersion = 1;
 
-    public static VerificationDefinition CreateP1002Overlay() =>
-        new(
-            CurrentSchemaVersion,
-            "p1-002-overlay",
-            "P1-002 透明覆盖层人工验收",
-            [
-                Item("startup-single-instance", "启动与恢复", "连续启动两次", "保持 Dango 运行，再次启动同一程序。", "只存在一个覆盖层、一个控制中心和一个托盘图标。"),
-                Item("transparent-click-through", "输入与焦点", "透明区域单击穿透", "在窗口矩形内、团子和岛之外单击桌面或下层应用。", "点击到达下层目标，覆盖层不抢焦点。"),
-                Item("transparent-desktop-actions", "输入与焦点", "透明区域桌面操作", "在透明区域右键、双击并拖出桌面框选。", "下层桌面保持正常行为。"),
-                Item("dango-hit", "输入与焦点", "团子区域命中", "单击占位团子。", "团子区域接收输入，透明区规则不改变。"),
-                Item("island-hit", "输入与焦点", "悬浮岛区域命中", "单击悬浮岛。", "岛作为可见场景区域参与命中。"),
-                Item("drag-release", "拖动与取消", "拖动并释放", "从团子内部开始拖动并释放。", "仅团子被移动，释放后不再捕获鼠标。"),
-                Item("drag-escape", "拖动与取消", "Esc 取消拖动", "拖动中按 Esc。", "拖动立即取消，鼠标捕获释放。"),
-                Item("drag-lost-capture", "拖动与取消", "失去捕获取消", "拖动中切换到其他窗口或造成捕获丢失。", "拖动取消，其他窗口可正常操作。"),
-                Item("focus-startup", "输入与焦点", "启动不抢焦点", "启动后直接在其他应用输入。", "覆盖层不主动抢占焦点。"),
-                Item("focus-after-interaction", "输入与焦点", "交互后不持续抢焦点", "与团子交互后继续操作其他应用。", "其他应用可以立即继续正常接收输入。"),
-                Item("desktop-icons", "桌面与系统 UI", "桌面图标和框选", "操作桌面图标单击、双击、右键和框选。", "团子和岛之外不被覆盖层普遍阻断。"),
-                Item("system-ui", "桌面与系统 UI", "任务栏与开始菜单", "操作任务栏、开始菜单和普通窗口。", "系统 UI 与普通窗口行为正常。"),
-                Item("fullscreen-layer", "全屏与窗口层级", "全屏应用层级", "打开并退出一个全屏应用。", "记录覆盖层层级，且不造成无法恢复的干扰。"),
-                Item("tray-visibility", "托盘与退出", "托盘显示与隐藏", "执行隐藏覆盖层，再执行显示覆盖层。", "显示状态正确，且不创建第二个窗口。"),
-                Item("tray-control-center", "托盘与退出", "打开控制中心", "使用托盘菜单和双击托盘图标分别打开控制中心。", "两种入口都激活同一个普通任务栏窗口。"),
-                Item("diagnostics-privacy", "托盘与退出", "诊断摘要隐私", "打开诊断页并检查显示与导出字段。", "只显示 Dango、系统、显示和 DPI 摘要，不包含桌面内容或用户信息。"),
-                Item("tray-exit", "托盘与退出", "安全退出", "执行退出 Dango。", "覆盖层、控制中心和托盘图标消失，进程退出。"),
-                Item("repeat-lifecycle", "启动与恢复", "重复生命周期", "重复启动、隐藏、显示、打开控制中心和退出 3 次。", "无窗口、托盘或进程残留。"),
-                Item("dpi-100", "DPI 与显示器", "1080p 100%", "在 1080p、100% 缩放环境执行关键操作。", "控制中心不截断，覆盖层行为有明确记录。"),
-                Item("dpi-high", "DPI 与显示器", "较高 DPI", "在例如 1440p、150% 缩放环境执行关键操作。", "控制中心不截断，覆盖层行为有明确记录。")
-            ]);
-
     public static VerificationDefinition CreateP1003WorkerW() =>
         new(
             CurrentSchemaVersion,
@@ -82,6 +54,27 @@ public sealed record VerificationDefinition(
                 Item("diagnostics-privacy", "诊断", "诊断摘要隐私", "打开诊断页并检查字段。", "只显示 Dango、系统、句柄状态和显示摘要，不包含窗口标题、桌面内容或用户输入。"),
                 Item("dpi-100", "DPI 与显示器", "1080p 100%", "在 1080p、100% 缩放环境执行关键操作。", "WorkerW 场景和控制中心无不可恢复的布局问题。"),
                 Item("dpi-high", "DPI 与显示器", "较高 DPI", "在较高 DPI 环境执行关键操作。", "WorkerW 场景坐标与控制中心保持可用。")
+            ]);
+
+    public static VerificationDefinition CreateP1006WindowModes() =>
+        new(
+            CurrentSchemaVersion,
+            "p1-006-window-modes",
+            "P1-006 壁纸层与普通窗口人工验收",
+            [
+                Item("wallpaper-default", "启动与设置", "首次启动默认壁纸层", "使用无显示模式字段的旧设置或全新设置启动。", "团子只在壁纸层显示，且不会自动弹出普通窗口。"),
+                Item("window-standard", "普通窗口", "标准窗口行为", "切换到普通窗口并检查标题栏、任务栏、移动、缩放和普通应用遮挡。", "窗口可正常操作，不置顶且不透明穿透。"),
+                Item("window-input", "普通窗口", "窗口内控制与拖动", "聚焦普通窗口后执行方向控制、跳跃和拖动，再切走焦点。", "仅窗口有焦点时接收按键，拖动与动态表现正常。"),
+                Item("window-hide", "生命周期", "关闭按钮只隐藏", "点击普通窗口关闭按钮，再从托盘和控制中心恢复显示。", "Dango 进程、托盘和控制中心保留，只恢复同一个场景窗口。"),
+                Item("window-minimize", "生命周期", "最小化与恢复", "最小化普通窗口，等待后恢复。", "隐藏期间没有补帧或积压输入，恢复后场景继续可用。"),
+                Item("roundtrip", "宿主切换", "两模式往返", "在壁纸层与普通窗口之间往返至少三次。", "始终只有一只团子，位置合理，无闪退、重放或重复进程。"),
+                Item("wallpaper-desktop", "壁纸层", "桌面输入与层级", "操作桌面图标、空白区、任务栏和普通窗口，并复验对象层级。", "Dango 不普遍阻断桌面输入，层级设置只影响壁纸层。"),
+                Item("explorer-wallpaper", "Shell 恢复", "壁纸层恢复", "在壁纸层正常重启 Windows Explorer，并记录失败恢复路径。", "成功时有界恢复；失败时只安全隐藏，不自动显示普通窗口。"),
+                Item("explorer-window", "Shell 恢复", "窗口模式不受 Explorer 影响", "普通窗口运行时重启 Windows Explorer。", "普通窗口持续可用，壁纸层恢复流程不抢占显示。"),
+                Item("dpi-monitor", "DPI 与显示器", "缩放与多显示器", "在 100% 与当前高 DPI 环境复验；有双屏时跨屏并移除副屏。", "窗口保持可操作，团子完整可见，坐标和命中不漂移。"),
+                Item("settings-restart", "启动与设置", "模式与窗口布局恢复", "选择普通窗口并调整布局后退出、重启，再验证旧宿主设置迁移。", "最后确认模式与安全窗口布局恢复，旧宿主值迁移到 Wallpaper。"),
+                Item("system-focus", "系统兼容", "系统 UI 与焦点", "检查 Alt+Tab、开始菜单、任务栏、最大化窗口和真正全屏应用。", "Dango 不异常抢焦点、置顶或遮挡系统操作。"),
+                Item("safe-exit", "生命周期", "完整退出", "从托盘或控制中心退出 Dango。", "场景窗口、输入桥、计时器、托盘和进程全部回收。")
             ]);
 
     private static VerificationItemDefinition Item(

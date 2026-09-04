@@ -140,9 +140,9 @@ public sealed class ApplicationCommandController
             isEnabled,
             "交互模式");
 
-    public HostCommandResult SetHostMode(DesktopHostMode mode)
+    public HostCommandResult SetHostMode(DesktopDisplayMode mode)
     {
-        if (host is not IDesktopHostModeControl modeControl)
+        if (host is not IDesktopDisplayModeControl modeControl)
         {
             return new HostCommandResult(
                 CommandApplicationState.Failed,

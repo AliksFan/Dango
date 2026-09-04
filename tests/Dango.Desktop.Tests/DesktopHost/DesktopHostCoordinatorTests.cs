@@ -10,39 +10,57 @@ public sealed class DesktopHostCoordinatorTests
     [TestMethod]
     public void SwitchingHostPreservesConfirmedVisibilityAndInteraction()
     {
-        var overlay = new FakeHost("Overlay", isVisible: true, isInteractionEnabled: false);
-        var workerW = new FakeHost("WorkerW", isVisible: false, isInteractionEnabled: true);
-        var coordinator = new DesktopHostCoordinator(overlay, workerW);
+        var wallpaper = new FakeHost("Wallpaper", isVisible: true, isInteractionEnabled: false);
+        var window = new FakeHost("Window", isVisible: false, isInteractionEnabled: true);
+        var coordinator = new DesktopHostCoordinator(wallpaper, window);
 
-        coordinator.SetMode(DesktopHostMode.WorkerW);
+        coordinator.SetMode(DesktopDisplayMode.Window);
 
         var snapshot = coordinator.GetSnapshot();
-        Assert.AreEqual("WorkerW", snapshot.Mode);
+        Assert.AreEqual("Window", snapshot.Mode);
         Assert.IsTrue(snapshot.IsVisible);
         Assert.IsFalse(snapshot.IsInteractionEnabled);
-        Assert.IsFalse(overlay.GetSnapshot().IsVisible);
+        Assert.IsFalse(wallpaper.GetSnapshot().IsVisible);
     }
 
     [TestMethod]
-    public void FailedWorkerWActivationRollsBackToVisibleOverlay()
+    public void FailedWindowActivationRollsBackToVisibleWallpaper()
     {
-        var overlay = new FakeHost("Overlay", isVisible: true, isInteractionEnabled: true);
-        var workerW = new FakeHost("WorkerW", isVisible: false, isInteractionEnabled: true)
+        var wallpaper = new FakeHost("Wallpaper", isVisible: true, isInteractionEnabled: true);
+        var window = new FakeHost("Window", isVisible: false, isInteractionEnabled: true)
         {
             RefuseShow = true,
         };
-        var coordinator = new DesktopHostCoordinator(overlay, workerW);
+        var coordinator = new DesktopHostCoordinator(wallpaper, window);
 
         var exception = Assert.ThrowsExactly<DesktopHostSwitchException>(
-            () => coordinator.SetMode(DesktopHostMode.WorkerW));
+            () => coordinator.SetMode(DesktopDisplayMode.Window));
 
         Assert.AreEqual("目标宿主未确认切换后的显示或交互状态。", exception.SafeReason);
-        Assert.AreEqual("Overlay", coordinator.GetSnapshot().Mode);
-        Assert.IsTrue(overlay.GetSnapshot().IsVisible);
-        Assert.IsFalse(workerW.GetSnapshot().IsVisible);
+        Assert.AreEqual("Wallpaper", coordinator.GetSnapshot().Mode);
+        Assert.IsTrue(wallpaper.GetSnapshot().IsVisible);
+        Assert.IsFalse(window.GetSnapshot().IsVisible);
     }
 
-    private sealed class FakeHost : IDesktopHostControl
+    [TestMethod]
+    public void ActiveDragBlocksSwitchBeforeEitherSurfaceChanges()
+    {
+        var wallpaper = new FakeHost("Wallpaper", isVisible: true, isInteractionEnabled: true)
+        {
+            SwitchBlockReason = "团子拖动结束后才能切换显示模式。",
+        };
+        var window = new FakeHost("Window", isVisible: false, isInteractionEnabled: true);
+        var coordinator = new DesktopHostCoordinator(wallpaper, window);
+
+        var exception = Assert.ThrowsExactly<DesktopHostSwitchException>(
+            () => coordinator.SetMode(DesktopDisplayMode.Window));
+
+        Assert.AreEqual("团子拖动结束后才能切换显示模式。", exception.SafeReason);
+        Assert.IsTrue(wallpaper.GetSnapshot().IsVisible);
+        Assert.IsFalse(window.GetSnapshot().IsVisible);
+    }
+
+    private sealed class FakeHost : IDesktopHostControl, IDesktopHostSwitchGuard
     {
         private DesktopHostSnapshot snapshot;
 
@@ -52,6 +70,10 @@ public sealed class DesktopHostCoordinatorTests
         }
 
         public bool RefuseShow { get; init; }
+
+        public string? SwitchBlockReason { get; init; }
+
+        public string? GetSwitchBlockReason() => SwitchBlockReason;
 
         public DesktopHostSnapshot GetSnapshot() => snapshot;
 

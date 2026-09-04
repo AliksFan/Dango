@@ -13,12 +13,12 @@ public sealed class VerificationSessionStoreTests
         var directory = CreateTemporaryDirectory();
         try
         {
-            var definition = VerificationDefinition.CreateP1002Overlay();
+            var definition = VerificationDefinition.CreateP1003WorkerW();
             var store = new VerificationSessionStore(definition);
             var path = Path.Combine(directory, "session.json");
             var session = VerificationSession.Create(
                 definition,
-                new VerificationEnvironmentSnapshot("1.0.0", "test", "Overlay", "26100", "1 display / 100%"),
+                new VerificationEnvironmentSnapshot("1.0.0", "test", "Wallpaper", "26100", "1 display / 100%"),
                 DateTimeOffset.UtcNow);
             session.Results[0].Outcome = ManualVerificationOutcome.Passed;
             session.Results[0].Notes = "使用虚构环境完成";
@@ -44,12 +44,12 @@ public sealed class VerificationSessionStoreTests
         var directory = CreateTemporaryDirectory();
         try
         {
-            var definition = VerificationDefinition.CreateP1002Overlay();
+            var definition = VerificationDefinition.CreateP1003WorkerW();
             var store = new VerificationSessionStore(definition);
             var path = Path.Combine(directory, "session.json");
             var session = VerificationSession.Create(
                 definition,
-                new VerificationEnvironmentSnapshot("1.0.0", "test", "Overlay", "26100", "1 display / 100%"),
+                new VerificationEnvironmentSnapshot("1.0.0", "test", "Wallpaper", "26100", "1 display / 100%"),
                 DateTimeOffset.UtcNow);
             store.Save(path, session);
             var json = File.ReadAllText(path).Replace(
@@ -72,13 +72,13 @@ public sealed class VerificationSessionStoreTests
         var directory = CreateTemporaryDirectory();
         try
         {
-            var definition = VerificationDefinition.CreateP1002Overlay();
+            var definition = VerificationDefinition.CreateP1003WorkerW();
             var path = Path.Combine(directory, "session.json");
             File.WriteAllText(path, "original");
             var store = new VerificationSessionStore(definition, new FailingAtomicTextWriter());
             var session = VerificationSession.Create(
                 definition,
-                new VerificationEnvironmentSnapshot("1.0.0", "test", "Overlay", "26100", "1 display / 100%"),
+                new VerificationEnvironmentSnapshot("1.0.0", "test", "Wallpaper", "26100", "1 display / 100%"),
                 DateTimeOffset.UtcNow);
 
             Assert.ThrowsExactly<IOException>(() => store.Save(path, session));

@@ -68,17 +68,17 @@ public sealed class WorkerWHostConfigurationTests
     public void WorkerWPreservesTheExistingIslandAndCushionSceneContract()
     {
         var root = Path.Combine(TestRepository.Root, "src", "Dango.Desktop", "DesktopHost");
-        var overlay = File.ReadAllText(Path.Combine(root, "Overlay", "OverlayWindow.xaml"));
+        var window = File.ReadAllText(Path.Combine(root, "Window", "DangoSceneWindow.xaml"));
         var workerW = File.ReadAllText(Path.Combine(root, "WorkerW", "WorkerWWindow.xaml"));
 
-        foreach (var marker in new[] { "静态悬浮岛", "Width=\"360\"" })
+        foreach (var marker in new[] { "悬浮岛", "Width=\"360\"" })
         {
-            StringAssert.Contains(overlay, marker);
+            StringAssert.Contains(window, marker);
             StringAssert.Contains(workerW, marker);
         }
 
-        StringAssert.Contains(overlay, "DeformableDangoVisual");
-        Assert.IsFalse(overlay.Contains("占位团子", StringComparison.Ordinal));
+        StringAssert.Contains(window, "DeformableDangoVisual");
+        Assert.IsFalse(window.Contains("占位团子", StringComparison.Ordinal));
     }
 
     [TestMethod]

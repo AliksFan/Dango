@@ -4,7 +4,7 @@
 
 项目希望让每位用户拥有一只代表自己的“团子”。团子平时生活在 Windows 桌面上；当好友进入同一房间后，多只团子会在一个持续存在的共享空间中相遇、陪伴并自动互动。
 
-Phase 0 工作区与技术基线已通过自动门禁并由用户验收。Phase 1 正在实施：P1-001 已固化无 UI 的场景与资产契约，P1-002 透明覆盖层、P1-002A 图形化控制中心和 P1-003 原生分层 WorkerW 候选均已通过人工验收；P1-004 正在按已批准计划验证手工动作 fallback 与 Box2D 视觉软体表现层。正式动画和多人功能尚未实现。阶段证据见 [Phase 0 阶段记录](docs/verification/phase-0-stage-result.md)。
+Phase 0 工作区与技术基线已通过自动门禁并由用户验收。Phase 1 正在实施：P1-001 场景与资产契约、P1-002A 控制中心、P1-003 WorkerW 壁纸层以及 P2D-006 单团子动态动作均已完成对应验收。P1-006 正在把运行宿主收敛为默认 `Wallpaper` 和标准 `Window` 两种正式显示模式；自动门禁已通过，真实桌面与人工验收待完成。多人功能尚未实现。阶段证据见 [本地验证入口](docs/verification/README.md)。
 
 ## 构建与验证
 
@@ -19,15 +19,15 @@ dotnet test -c Release --no-build
 
 P1-004 固定的 Box2D native 依赖、来源/许可证/哈希和显式重建方式见 [Box2D native 依赖](eng/native/box2d/README.md)。普通 .NET 构建与应用运行不会联网下载 native 文件。
 
-Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](docs/verification/README.md)。当前 WPF 程序包含 P1-002 透明覆盖层、P1-003 WorkerW 候选与统一控制中心；默认仍使用 Overlay，WorkerW 需在控制中心显式选择。程序不包含正式动画或完整 Phase 1 体验。
+Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](docs/verification/README.md)。当前 WPF 程序默认使用 WorkerW/Shell 承载的 `Wallpaper`，也可在控制中心显式切换到标准、可缩放、有任务栏入口的 `Window`。两种宿主共享同一 Core 团子实体；旧透明覆盖层只保留历史设计和验收记录，不再参与运行。
 
-运行当前透明覆盖层 Spike：
+运行当前 Phase 1 原型：
 
 ```powershell
 dotnet run --project .\src\Dango.Desktop\Dango.Desktop.csproj -c Release
 ```
 
-两个候选只显示相同的静态占位团子和悬浮岛。通过托盘菜单或双击托盘图标可以打开“Dango 控制中心”，其中提供宿主切换、显示/隐藏、交互控制、图形化人工清单、本地草稿、隐私安全诊断和 Markdown 导出；关闭控制中心后 Dango 继续在托盘运行。验证见 [P1-002 Overlay](docs/verification/phase-1-p1-002-overlay-host.md)、[P1-002A 控制中心](docs/verification/phase-1-p1-002a-control-center.md)与 [P1-003 WorkerW](docs/verification/phase-1-p1-003-workerw-host.md)。这些实现不代表桌面承载方案已经最终选定。
+通过托盘菜单或双击托盘图标可以打开“Dango 控制中心”，其中提供显示模式、显示/隐藏、交互与键盘控制、壁纸层对象层级、图形化人工清单、本地草稿、隐私安全诊断和 Markdown 导出；关闭控制中心后 Dango 继续在托盘运行。当前 P1-006 证据见 [壁纸层与普通窗口验证记录](docs/verification/phase-1-p1-006-window-modes.md)。
 
 ## 当前文档
 

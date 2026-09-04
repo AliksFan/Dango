@@ -33,8 +33,10 @@ public sealed class ControlCenterConfigurationTests
         StringAssert.Contains(text, "桌面体验");
         StringAssert.Contains(text, "实验与验收");
         StringAssert.Contains(text, "诊断");
-        StringAssert.Contains(text, "P1-002 已通过人工验收");
-        StringAssert.Contains(text, "WorkerW/Shell 壁纸层 · P1-003 已通过人工验收");
+        StringAssert.Contains(text, "壁纸层 · 默认随桌面显示");
+        StringAssert.Contains(text, "普通窗口 · 可移动和调整大小");
+        Assert.IsFalse(text.Contains("OverlayHostRadioButton", StringComparison.Ordinal));
+        Assert.IsFalse(text.Contains("WorkerWHostRadioButton", StringComparison.Ordinal));
         StringAssert.Contains(text, "对象层级（实验）");
         StringAssert.Contains(text, "团子层级");
         StringAssert.Contains(text, "占位软垫");
@@ -48,7 +50,7 @@ public sealed class ControlCenterConfigurationTests
     [STATestMethod]
     public void ControlCenterCanLoadItsCompiledXamlWithoutShowingAWindow()
     {
-        var definition = VerificationDefinition.CreateP1002Overlay();
+        var definition = VerificationDefinition.CreateP1003WorkerW();
         var controller = new ApplicationCommandController(new FakeDesktopHost());
         var store = new VerificationSessionStore(definition);
 
@@ -70,7 +72,7 @@ public sealed class ControlCenterConfigurationTests
     private sealed class FakeDesktopHost : IDesktopHostControl
     {
         public DesktopHostSnapshot GetSnapshot() =>
-            new("Overlay", true, true, "尚未完成人工验收", null);
+            new("Wallpaper", true, true, "尚未完成人工验收", null);
 
         public void SetVisibility(bool isVisible)
         {

@@ -1,19 +1,19 @@
 using Dango.Core.Coordinates;
 
-namespace Dango.Desktop.DesktopHost.Overlay;
+namespace Dango.Desktop.DesktopHost.Interaction;
 
-public enum OverlayHitTarget
+public enum DesktopHitTarget
 {
     PassThrough,
     Island,
     Dango,
 }
 
-public sealed record OverlayHitRegion
+public sealed record DesktopHitRegion
 {
-    public OverlayHitRegion(OverlayHitTarget target, LogicalRect bounds)
+    public DesktopHitRegion(DesktopHitTarget target, LogicalRect bounds)
     {
-        if (target == OverlayHitTarget.PassThrough)
+        if (target == DesktopHitTarget.PassThrough)
         {
             throw new ArgumentException("穿透区不应注册为显式命中区域。", nameof(target));
         }
@@ -22,15 +22,15 @@ public sealed record OverlayHitRegion
         Bounds = bounds;
     }
 
-    public OverlayHitTarget Target { get; }
+    public DesktopHitTarget Target { get; }
 
     public LogicalRect Bounds { get; }
 }
 
-public static class OverlayHitRegionFactory
+public static class DesktopHitRegionFactory
 {
-    public static OverlayHitRegion? TryCreate(
-        OverlayHitTarget target,
+    public static DesktopHitRegion? TryCreate(
+        DesktopHitTarget target,
         double x,
         double y,
         double width,
@@ -46,21 +46,21 @@ public static class OverlayHitRegionFactory
             return null;
         }
 
-        return new OverlayHitRegion(target, new LogicalRect(x, y, width, height));
+        return new DesktopHitRegion(target, new LogicalRect(x, y, width, height));
     }
 }
 
-public sealed class OverlayHitTestPolicy
+public sealed class DesktopHitTestPolicy
 {
-    private readonly IReadOnlyList<OverlayHitRegion> regions;
+    private readonly IReadOnlyList<DesktopHitRegion> regions;
 
-    public OverlayHitTestPolicy(IEnumerable<OverlayHitRegion> regions)
+    public DesktopHitTestPolicy(IEnumerable<DesktopHitRegion> regions)
     {
         ArgumentNullException.ThrowIfNull(regions);
         this.regions = Array.AsReadOnly(regions.ToArray());
     }
 
-    public OverlayHitTarget HitTest(LogicalPoint point) =>
+    public DesktopHitTarget HitTest(LogicalPoint point) =>
         regions
             .Where(region => region.Bounds.Contains(point))
             .OrderByDescending(region => region.Target)
