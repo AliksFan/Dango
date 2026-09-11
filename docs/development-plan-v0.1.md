@@ -292,7 +292,7 @@
 
 ### 当前工作
 
-- 分支：`phase/0-workspace-foundation`
+- 当前稳定基线：本地 `main` 与 `phase/0-workspace-foundation` 均指向 `60ec200`。
 - 已完成：工作区规则、开发工作流和阶段计划。
 - 已批准：[ADR 0001](adr/0001-windows-client-foundation.md) 采用 C# + .NET 10 LTS + WPF + Win32 作为 Phase 1 首选原型基础；Windows 10 22H2 为项目实测兼容目标，Godot 4 为第一备选。
 - 已批准：[ADR 0002](adr/0002-server-foundation-and-scaling.md) 采用 ASP.NET Core 10、SignalR、PostgreSQL 18、EF Core/Npgsql、Caddy 与 Docker Compose，并以 `roomId` 分区、单房间单一权威和可替换运行时目录保留扩展空间。
@@ -303,7 +303,7 @@
 - 已完成：P0-001 最小 .NET 10/WPF 工作区、Core/Desktop/测试项目、格式/构建/资产校验入口与 win-x64 self-contained 空壳发布验证。
 - 已完成：[Phase 0 阶段记录](verification/phase-0-stage-result.md)，自动门禁通过；用户已于 2026-09-01 批准阶段结束，状态为“已验收”。
 - 仍待 Spike 决策：最终渲染后端与桌面承载方式。
-- 未授权：将 Phase 0 分支合并到 `main`、创建 Phase 1 分支或开始 P1-001；这些动作仍需用户分别明确授权。
+- 交付状态：Phase 0 已合入本地 `main`；仓库未配置远端，未推送、未部署、未创建发布标签。
 
 ## 11. 后续路线
 
