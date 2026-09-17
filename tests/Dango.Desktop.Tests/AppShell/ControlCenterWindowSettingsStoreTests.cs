@@ -55,10 +55,10 @@ public sealed class ControlCenterWindowSettingsStoreTests
                     [DesktopLayeringSettings.PrototypeCushionId] = DesktopObjectLayer.AboveDesktopIcons,
                 });
 
-            store.Save(path, new ControlCenterWindowSettings(940, 620, 2, layering));
+            store.Save(path, new ControlCenterWindowSettings(940, 620, 3, layering));
             var restored = store.Load(path);
 
-            Assert.AreEqual(2, restored.SchemaVersion);
+            Assert.AreEqual(3, restored.SchemaVersion);
             Assert.AreEqual(DesktopObjectLayer.AboveDesktopIcons, restored.DesktopLayeringExperiment.DangoLayer);
             Assert.AreEqual(
                 DesktopObjectLayer.AboveDesktopIcons,
@@ -86,7 +86,7 @@ public sealed class ControlCenterWindowSettingsStoreTests
 
             var restored = new ControlCenterWindowSettingsStore().Load(path);
 
-            Assert.AreEqual(2, restored.SchemaVersion);
+            Assert.AreEqual(3, restored.SchemaVersion);
             Assert.AreEqual(
                 DesktopObjectLayer.BelowDesktopIcons,
                 restored.DesktopLayeringExperiment.DangoLayer);
@@ -129,7 +129,7 @@ public sealed class ControlCenterWindowSettingsStoreTests
     }
 
     [TestMethod]
-    public void ValidWindowModeAndScenePlacementRoundTripInSchemaTwo()
+    public void ValidWindowModeScenePlacementAndSkeletonRoundTripInCurrentSchema()
     {
         var directory = CreateTemporaryDirectory();
         try
@@ -142,12 +142,14 @@ public sealed class ControlCenterWindowSettingsStoreTests
                 940,
                 620,
                 displayMode: DesktopDisplayMode.Window,
-                sceneWindow: sceneWindow));
+                sceneWindow: sceneWindow,
+                showDebugSkeleton: true));
             var restored = store.Load(path);
 
-            Assert.AreEqual(2, restored.SchemaVersion);
+            Assert.AreEqual(3, restored.SchemaVersion);
             Assert.AreEqual(DesktopDisplayMode.Window, restored.DisplayMode);
             Assert.AreEqual(sceneWindow, restored.SceneWindow);
+            Assert.IsTrue(restored.ShowDebugSkeleton);
             var json = File.ReadAllText(path);
             StringAssert.Contains(json, "\"displayMode\": \"Window\"");
             Assert.IsFalse(json.Contains("Overlay", StringComparison.Ordinal));

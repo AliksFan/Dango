@@ -127,24 +127,26 @@ public static class DangoStreamGeometryFactory
         var geometry = new StreamGeometry { FillRule = FillRule.Nonzero };
         using (var context = geometry.Open())
         {
-            context.BeginFigure(points[0], true, true);
+            context.BeginFigure(Midpoint(points[^1], points[0]), true, true);
             for (var index = 0; index < points.Length; index++)
             {
-                var previous = points[(index - 1 + points.Length) % points.Length];
                 var current = points[index];
                 var next = points[(index + 1) % points.Length];
-                var afterNext = points[(index + 2) % points.Length];
-                var firstControl = current + ((next - previous) / 6);
-                var secondControl = next - ((afterNext - current) / 6);
-                context.BezierTo(firstControl, secondControl, next, true, false);
+                // Closed quadratic B-spline: each arc stays inside its three
+                // control points and joins the next with a continuous tangent.
+                context.QuadraticBezierTo(current, Midpoint(current, next), true, true);
             }
         }
         geometry.Freeze();
         return new(true, geometry, DangoContourFailure.None);
     }
 
-    private static System.Windows.Point Map(PresentationPoint point, double width, double height) =>
-        new(
-            (width / 2) + (point.X * width * 0.45),
-            (height * 0.55) - (point.Y * height * 0.48333333333333334));
+    private static System.Windows.Point Midpoint(System.Windows.Point first, System.Windows.Point second) =>
+        new((first.X + second.X) / 2, (first.Y + second.Y) / 2);
+
+    internal static System.Windows.Point Map(PresentationPoint point, double width, double height)
+    {
+        var mapped = Dango.Desktop.Physics.Presentation.Attachments.AttachmentShapeGeometry.MapToCanvas(point, width, height);
+        return new(mapped.X, mapped.Y);
+    }
 }

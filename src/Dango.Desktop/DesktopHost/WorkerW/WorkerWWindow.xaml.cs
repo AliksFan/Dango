@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -11,7 +11,9 @@ using Dango.Desktop.AppShell;
 using Dango.Desktop.DesktopHost.Interaction;
 using Dango.Desktop.DesktopHost.Win32;
 using Dango.Desktop.Physics.Presentation;
+using Dango.Desktop.Physics.Tuning;
 using Dango.Desktop.Rendering.Visuals;
+using Dango.Physics;
 using CoreDpiScale = Dango.Core.Coordinates.DpiScale;
 using WpfCanvas = System.Windows.Controls.Canvas;
 using WpfColor = System.Windows.Media.Color;
@@ -19,7 +21,7 @@ using WpfUserControl = System.Windows.Controls.UserControl;
 
 namespace Dango.Desktop.DesktopHost.WorkerW;
 
-public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDesktopLayeringControl, IKeyboardControl, IDesktopHostSwitchGuard
+public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDesktopLayeringControl, IKeyboardControl, IDesktopHostSwitchGuard, IPhysicsDebugControl, IDangoPopulationControl, IDangoPhysicsTuningControl
 {
     private const int WmMouseActivate = 0x0021;
     private const int WmNcHitTest = 0x0084;
@@ -32,16 +34,14 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
     private readonly WorkerWRecoveryStateMachine recoveryState = new(TimeSpan.FromSeconds(8), 8);
     private readonly DispatcherTimer shellTimer;
     private readonly DispatcherTimer motionTimer;
-    private readonly DesktopObjectOverlayWindow dangoAboveWindow;
+    private readonly DesktopDangoSceneOverlayWindow dangoAboveWindow;
     private readonly DesktopObjectOverlayWindow cushionAboveWindow;
     private readonly IslandOverlayWindow islandOverlayWindow;
     private DesktopHitTestPolicy hitTestPolicy = new([]);
-    private System.Windows.Point dragPointerOrigin;
-    private double dragVisualLeft;
-    private double dragVisualTop;
     private nint windowHandle;
     private WorkerWNativeHost? nativeHost;
-    private WorkerWInputProxy? inputProxy;
+    private readonly Dictionary<DangoEntityId, WorkerWInputProxy> inputProxies = [];
+    private DeformableDangoVisual? capturedDango;
     private WorkerWKeyboardInputBridge? keyboardInputBridge;
     private HwndSource? windowSource;
     private WorkerWDesktopTarget? currentTarget;
@@ -52,33 +52,34 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
     private DesktopLayeringSettings layeringSettings = DesktopLayeringSettings.CreateDefault();
     private KeyboardControlSettings keyboardControlSettings = KeyboardControlSettings.CreateDefault();
     private string? lastError;
-    private readonly SingleDangoMotionRuntime motionRuntime;
+    private readonly StackedDangoSceneRuntime motionRuntime;
     private readonly DesktopSceneSession sceneSession;
     private SingleDangoMotionController? motionController => sceneSession.Controller;
     private DangoActionState reactionReturnState = DangoActionState.Idle;
     private LogicalPoint proxyDragPointer;
-    private double dragGrabVisualX;
-    private double dragGrabVisualY;
-    private PresentationPoint? dragGrabPoint;
     private bool proxyDragMoved;
-    private bool aboveDragPending;
 
     public WorkerWWindow(
         DesktopSceneSession sceneSession,
-        SingleDangoMotionRuntimeFactory motionRuntimeFactory)
+        StackedDangoSceneRuntime motionRuntime)
     {
         this.sceneSession = sceneSession ?? throw new ArgumentNullException(nameof(sceneSession));
-        ArgumentNullException.ThrowIfNull(motionRuntimeFactory);
+        this.motionRuntime = motionRuntime ?? throw new ArgumentNullException(nameof(motionRuntime));
         InitializeComponent();
-        dangoAboveWindow = new DesktopObjectOverlayWindow(
-            PrototypeDesktopObject.Dango,
-            OnAboveDangoMoved,
-            BeginAboveDangoDrag,
-            CompleteAboveDangoDrag,
-            CancelAboveDangoDrag);
+        DangoVisual.ShowHat = false;
+        MiddleDangoVisual.ShowHat = false;
+        TopDangoVisual.ShowHat = false;
+        MiddleDangoVisual.BodyFill = new SolidColorBrush(WpfColor.FromRgb(201, 226, 255));
+        TopDangoVisual.BodyFill = new SolidColorBrush(WpfColor.FromRgb(221, 204, 248));
+        dangoAboveWindow = new DesktopDangoSceneOverlayWindow(
+            point => { var local = PointFromScreen(point); return new LogicalPoint(local.X, local.Y); },
+            point => PointToScreen(new System.Windows.Point(point.X, point.Y)),
+            TryBeginPhysicalDrag,
+            point => { if (motionRuntime.IsDragging) motionRuntime.MovePhysicalDrag(point); },
+            CompleteProxyDrag);
+
         cushionAboveWindow = new DesktopObjectOverlayWindow(PrototypeDesktopObject.Cushion);
         islandOverlayWindow = new IslandOverlayWindow();
-        motionRuntime = motionRuntimeFactory(new MirroredDangoSink(DynamicDangoVisual, dangoAboveWindow));
         motionTimer = new DispatcherTimer(DispatcherPriority.Render)
         {
             Interval = TimeSpan.FromSeconds(1d / 60d),
@@ -93,7 +94,24 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         SizeChanged += OnSizeChanged;
         LostKeyboardFocus += OnLostKeyboardFocus;
         KeyDown += OnKeyDown;
+        motionRuntime.InputCancelled += ClearHostInput;
     }
+
+    public int DangoCount => motionRuntime.DangoCount;
+
+    public bool AddDango() => motionRuntime.AddDangoInViewport(
+        new(0, 0, Math.Max(480, ActualWidth), Math.Max(360, ActualHeight)));
+
+    public bool RemoveDango() => motionRuntime.RemoveDango();
+
+    public DangoSelfPhysicsParameters PhysicsParameters => motionRuntime.Parameters;
+
+    public void ApplyPhysicsParameters(DangoSelfPhysicsParameters parameters) =>
+        motionRuntime.ApplyPhysicsParameters(parameters);
+
+    public void RestoreDefaultPhysicsParameters() => motionRuntime.RestoreDefaultPhysicsParameters();
+
+    public void RegenerateDango() => motionRuntime.RegenerateDango();
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -134,8 +152,8 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
             "Wallpaper",
             isVisible && recoveryState.State == WorkerWRecoveryState.Attached,
             isInteractionEnabled,
-            recoveryState.State == WorkerWRecoveryState.Attached ? "已通过人工验收" : StateText(),
-            lastError);
+            motionRuntime.LayoutWarning ?? (recoveryState.State == WorkerWRecoveryState.Attached ? "宿主已验收；新物理接入待人工验收" : StateText()),
+            motionRuntime.LastError ?? lastError);
 
     public void SetVisibility(bool isVisible)
     {
@@ -174,8 +192,10 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
             recoveryState.State == WorkerWRecoveryState.Attached && isVisible,
             isEnabled);
         DangoVisual.IsHitTestVisible = isEnabled;
+        MiddleDangoVisual.IsHitTestVisible = isEnabled;
+        TopDangoVisual.IsHitTestVisible = isEnabled;
         IslandVisual.IsHitTestVisible = isEnabled;
-        inputProxy?.SetEnabled(isEnabled);
+        foreach (var proxy in inputProxies.Values) proxy.SetEnabled(isEnabled);
         dangoAboveWindow.SetInteractionEnabled(isEnabled);
         ApplyObjectLayerVisibility();
     }
@@ -186,7 +206,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
 
     public string? GetSwitchBlockReason()
     {
-        if (interactionController.IsDragging || motionController?.IsDragging == true)
+        if (motionRuntime.IsDragging || interactionController.IsDragging || motionController?.IsDragging == true)
         {
             return "团子拖动结束后才能切换显示模式。";
         }
@@ -206,6 +226,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
     public void ApplyLayeringSettings(DesktopLayeringSettings settings)
     {
         DesktopLayeringSettingsValidator.Validate(settings);
+        CancelDrag(DragCancellationReason.WindowDeactivated);
         layeringSettings = new DesktopLayeringSettings(
             settings.DangoLayer,
             new Dictionary<string, DesktopObjectLayer>(settings.FurnitureLayers, StringComparer.Ordinal));
@@ -236,6 +257,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
             $"占位软垫层级：{layeringSettings.GetFurnitureLayer(DesktopLayeringSettings.PrototypeCushionId)}",
             $"悬浮岛避让全屏：{NativeMethods.IsForegroundFullscreen()}",
             $"拖动中：{interactionController.IsDragging}",
+            motionRuntime.CreateDiagnosticSummary(),
             $"最近错误：{lastError ?? "无"}");
     }
 
@@ -303,7 +325,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
             !NativeMethods.IsValidDesktopTarget(currentTarget))
         {
             Opacity = 0;
-            motionRuntime.NotifyHostUnavailable();
+            motionRuntime.Stop();
             motionTimer.Stop();
             DisposeSurface();
             currentTarget = null;
@@ -336,72 +358,33 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
 
     private void OnDangoMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (sender is not DeformableDangoVisual { Tag: DangoEntityId id } visual) return;
         var pointer = e.GetPosition(SceneCanvas);
-        var target = hitTestPolicy.HitTest(new LogicalPoint(pointer.X, pointer.Y));
-        if (!interactionController.TryBeginDrag(target))
-        {
-            return;
-        }
-
-        Focus();
-        dragPointerOrigin = pointer;
-        SetDragGrabPoint(e.GetPosition(DangoVisual));
-        dragVisualLeft = WpfCanvas.GetLeft(DangoVisual);
-        dragVisualTop = WpfCanvas.GetTop(DangoVisual);
-        if (!DangoVisual.CaptureMouse())
-        {
-            interactionController.CancelDrag(DragCancellationReason.LostCapture);
-        }
-
+        if (!TryBeginPhysicalDrag(id, new(pointer.X, pointer.Y))) return;
+        capturedDango = visual;
+        if (!visual.CaptureMouse()) CancelDrag(DragCancellationReason.LostCapture);
         e.Handled = true;
     }
 
     private void OnDangoMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (!interactionController.IsDragging || e.LeftButton != MouseButtonState.Pressed)
-        {
-            return;
-        }
-
+        if (!motionRuntime.IsDragging || e.LeftButton != MouseButtonState.Pressed) return;
         var pointer = e.GetPosition(SceneCanvas);
-        if (motionController?.IsDragging == false)
-        {
-            motionController.BeginDrag(
-                new LogicalPoint(dragPointerOrigin.X, dragPointerOrigin.Y),
-                NowMilliseconds());
-        }
-        motionController?.MoveDrag(new LogicalPoint(pointer.X, pointer.Y));
-        ApplyAuthoritativePosition();
-        RebuildHitTestPolicy();
+        motionRuntime.MovePhysicalDrag(new(pointer.X, pointer.Y));
+        e.Handled = true;
     }
 
     private void OnDangoMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (interactionController.CompleteDrag() && DangoVisual.IsMouseCaptured)
-        {
-            DangoVisual.ReleaseMouseCapture();
-        }
-
-        if (motionController?.IsDragging == true)
-        {
-            motionController.ReleaseDrag(NowMilliseconds());
-        }
-        else
-        {
-            TriggerReaction();
-        }
-
-        dragGrabPoint = null;
-
+        CompleteProxyDrag();
+        var captured = capturedDango;
+        capturedDango = null;
+        if (captured?.IsMouseCaptured == true) captured.ReleaseMouseCapture();
         e.Handled = true;
     }
 
-    private void OnDangoLostMouseCapture(object sender, System.Windows.Input.MouseEventArgs e)
-    {
-        interactionController.CancelDrag(DragCancellationReason.LostCapture);
-        motionController?.CancelDrag(NowMilliseconds());
-        dragGrabPoint = null;
-    }
+    private void OnDangoLostMouseCapture(object sender, System.Windows.Input.MouseEventArgs e) =>
+        CancelDrag(DragCancellationReason.LostCapture);
 
     private void OnKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
@@ -426,10 +409,11 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         shellTimer.Stop();
         CancelDrag(DragCancellationReason.WindowClosing);
         motionTimer.Stop();
-        motionRuntime.Dispose();
+        motionRuntime.Stop();
         DisposeSurface();
         currentTarget = null;
         recoveryState.Stop();
+        motionRuntime.InputCancelled -= ClearHostInput;
         dangoAboveWindow.Close();
         cushionAboveWindow.Close();
         islandOverlayWindow.Close();
@@ -468,13 +452,8 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         windowSource.CompositionTarget.BackgroundColor = WpfColor.FromRgb(0xEA, 0xF4, 0xFF);
         windowSource.RootVisual = this;
         windowSource.AddHook(WindowMessageHook);
-        inputProxy = new WorkerWInputProxy(
-            target,
-            BeginProxyDrag,
-            MoveProxyDrag,
-            CompleteProxyDrag,
-            CancelProxyDrag);
-        inputProxy.SetEnabled(isInteractionEnabled);
+
+
         keyboardInputBridge = new WorkerWKeyboardInputBridge(target);
         keyboardInputBridge.ApplySettings(keyboardControlSettings);
         Dispatcher.BeginInvoke(RebuildHitTestPolicy, DispatcherPriority.Loaded);
@@ -485,9 +464,10 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         isVisible = false;
         Opacity = 0;
         motionTimer.Stop();
-        motionRuntime.NotifyHostUnavailable();
-        inputProxy?.Dispose();
-        inputProxy = null;
+        motionRuntime.Stop();
+        foreach (var proxy in inputProxies.Values.ToArray()) proxy.Dispose();
+        inputProxies.Clear();
+        HideLayeredObjectWindows();
         keyboardInputBridge?.Dispose();
         keyboardInputBridge = null;
         if (windowSource is not null)
@@ -523,12 +503,18 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
 
     private void CancelDrag(DragCancellationReason reason)
     {
-        if (interactionController.CancelDrag(reason) && DangoVisual.IsMouseCaptured)
-        {
-            DangoVisual.ReleaseMouseCapture();
-        }
+        motionRuntime.CancelInput();
+    }
 
-        motionController?.CancelDrag(NowMilliseconds());
+    private void ClearHostInput()
+    {
+        keyboardInputBridge?.Clear();
+        interactionController.CancelDrag(DragCancellationReason.LostCapture);
+        var captured = capturedDango;
+        capturedDango = null;
+        if (captured?.IsMouseCaptured == true) captured.ReleaseMouseCapture();
+        foreach (var proxy in inputProxies.Values.ToArray()) proxy.CancelDrag();
+        dangoAboveWindow.CancelDrag();
     }
 
     private void RebuildHitTestPolicy()
@@ -536,90 +522,90 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         var regions = new[]
         {
             Region(DesktopHitTarget.Dango, DangoVisual),
+            Region(DesktopHitTarget.Dango, MiddleDangoVisual),
+            Region(DesktopHitTarget.Dango, TopDangoVisual),
             Region(DesktopHitTarget.Island, IslandVisual),
         }.OfType<DesktopHitRegion>();
         hitTestPolicy = new DesktopHitTestPolicy(regions);
         UpdateInputProxyBounds();
     }
 
-    private bool BeginProxyDrag(double deviceLocalX, double deviceLocalY)
+    private bool TryBeginPhysicalDrag(DangoEntityId id, LogicalPoint pointer)
     {
-        if (!isInteractionEnabled || !interactionController.TryBeginDrag(DesktopHitTarget.Dango))
-        {
-            return false;
-        }
+        if (!isVisible || !isInteractionEnabled || motionRuntime.LastError is not null ||
+            motionRuntime.IsDragging || !motionRuntime.EntityIds.Contains(id)) return false;
+        motionRuntime.BeginPhysicalDrag(id, pointer);
+        if (interactionController.TryBeginDrag(DesktopHitTarget.Dango)) return true;
+        motionRuntime.EndPhysicalDrag();
+        return false;
+    }
 
-        dragVisualLeft = WpfCanvas.GetLeft(DangoVisual);
-        dragVisualTop = WpfCanvas.GetTop(DangoVisual);
+    private bool BeginProxyDrag(DangoEntityId proxyId, double deviceLocalX, double deviceLocalY)
+    {
+        var frame = motionRuntime.LastFrame;
+        if (frame is null) return false;
+        var index = frame.EntityIds.ToList().IndexOf(proxyId);
+        if (index < 0) return false;
+        var bounds = DangoHostFrameBinding.Bounds(frame, index);
         var dpi = VisualTreeHelper.GetDpi(this);
-        SetDragGrabPoint(new System.Windows.Point(
-            deviceLocalX / dpi.DpiScaleX,
-            deviceLocalY / dpi.DpiScaleY));
-        proxyDragPointer = new LogicalPoint(
-            dragVisualLeft + dragGrabVisualX,
-            dragVisualTop + dragGrabVisualY);
+        proxyDragPointer = new(bounds.X + deviceLocalX / dpi.DpiScaleX,
+            bounds.Y + deviceLocalY / dpi.DpiScaleY);
+        // A proxy can overlap another body. Resolve the final target in the same
+        // back-to-front order as the display, independent of native window order.
+        if (DangoHostFrameBinding.HitTest(frame, proxyDragPointer) is not { } id ||
+            !TryBeginPhysicalDrag(id, proxyDragPointer)) return false;
         proxyDragMoved = false;
         return true;
     }
 
     private void MoveProxyDrag(double deviceDeltaX, double deviceDeltaY)
     {
+        if (!motionRuntime.IsDragging) return;
         var dpi = VisualTreeHelper.GetDpi(this);
         var deltaX = deviceDeltaX / dpi.DpiScaleX;
         var deltaY = deviceDeltaY / dpi.DpiScaleY;
-        if (!proxyDragMoved && Math.Sqrt((deltaX * deltaX) + (deltaY * deltaY)) < 3)
-        {
-            return;
-        }
-
-        if (!proxyDragMoved)
-        {
-            proxyDragMoved = true;
-            motionController?.BeginDrag(proxyDragPointer, NowMilliseconds());
-        }
-        motionController?.MoveDrag(new LogicalPoint(
-            proxyDragPointer.X + deltaX,
-            proxyDragPointer.Y + deltaY));
-        ApplyAuthoritativePosition();
-        RebuildHitTestPolicy();
+        if (!proxyDragMoved && Math.Sqrt(deltaX * deltaX + deltaY * deltaY) < 3) return;
+        proxyDragMoved = true;
+        motionRuntime.MovePhysicalDrag(new(proxyDragPointer.X + deltaX, proxyDragPointer.Y + deltaY));
     }
 
     private void CompleteProxyDrag()
     {
         interactionController.CompleteDrag();
-        if (motionController?.IsDragging == true)
-        {
-            motionController.ReleaseDrag(NowMilliseconds());
-        }
-        else
-        {
-            TriggerReaction();
-        }
-        dragGrabPoint = null;
+        motionRuntime.EndPhysicalDrag();
     }
 
     private void CancelProxyDrag()
     {
         interactionController.CancelDrag(DragCancellationReason.LostCapture);
-        motionController?.CancelDrag(NowMilliseconds());
-        dragGrabPoint = null;
+        motionRuntime.EndPhysicalDrag();
     }
 
     private void UpdateInputProxyBounds()
     {
-        if (inputProxy is null)
+        var frame = motionRuntime.LastFrame;
+        if (!isVisible || currentTarget is null || frame is null) return;
+        foreach (var removed in inputProxies.Keys.Where(id => !frame.EntityIds.Contains(id)).ToArray())
         {
-            return;
+            inputProxies[removed].Dispose();
+            inputProxies.Remove(removed);
         }
-
         var dpi = VisualTreeHelper.GetDpi(this);
-        var width = DangoVisual.ActualWidth > 0 ? DangoVisual.ActualWidth : DangoVisual.Width;
-        var height = DangoVisual.ActualHeight > 0 ? DangoVisual.ActualHeight : DangoVisual.Height;
-        inputProxy.SetBounds(
-            (int)Math.Round(WpfCanvas.GetLeft(DangoVisual) * dpi.DpiScaleX),
-            (int)Math.Round(WpfCanvas.GetTop(DangoVisual) * dpi.DpiScaleY),
-            (int)Math.Round(width * dpi.DpiScaleX),
-            (int)Math.Round(height * dpi.DpiScaleY));
+        for (var i = 0; i < frame.EntityIds.Count; i++)
+        {
+            var id = frame.EntityIds[i];
+            if (!inputProxies.TryGetValue(id, out var proxy))
+            {
+                proxy = new WorkerWInputProxy(currentTarget,
+                    (x, y) => BeginProxyDrag(id, x, y), MoveProxyDrag, CompleteProxyDrag, CancelProxyDrag);
+                inputProxies.Add(id, proxy);
+            }
+            var bounds = DangoHostFrameBinding.Bounds(frame, i);
+            proxy.SetBounds((int)Math.Round(bounds.X * dpi.DpiScaleX), (int)Math.Round(bounds.Y * dpi.DpiScaleY),
+                (int)Math.Round(bounds.Width * dpi.DpiScaleX), (int)Math.Round(bounds.Height * dpi.DpiScaleY));
+            proxy.SetEnabled(isInteractionEnabled && motionRuntime.LastError is null &&
+                layeringSettings.DangoLayer == DesktopObjectLayer.BelowDesktopIcons);
+        }
     }
 
     private void ApplyObjectLayerVisibility()
@@ -633,18 +619,26 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         var dangoAbove = layeringSettings.DangoLayer == DesktopObjectLayer.AboveDesktopIcons;
         var cushionAbove = layeringSettings.GetFurnitureLayer(DesktopLayeringSettings.PrototypeCushionId) ==
             DesktopObjectLayer.AboveDesktopIcons;
-
-        DangoVisual.Visibility = dangoAbove ? Visibility.Collapsed : Visibility.Visible;
+        var bodyVisuals = new[] { DangoVisual, MiddleDangoVisual, TopDangoVisual };
+        var hatVisuals = new[] { DangoHat, MiddleDangoHat, TopDangoHat };
+        var frame = motionRuntime.LastFrame;
+        for (var i = 0; i < 3; i++)
+        {
+            var show = !dangoAbove && i < (frame?.Bodies.Count ?? 1);
+            bodyVisuals[i].Visibility = hatVisuals[i].Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        }
         CushionVisual.Visibility = cushionAbove ? Visibility.Collapsed : Visibility.Visible;
         IslandVisual.Visibility = Visibility.Collapsed;
-
-        dangoAboveWindow.SetInteractionEnabled(isInteractionEnabled);
-        dangoAboveWindow.SetPosition(WpfCanvas.GetLeft(DangoVisual), WpfCanvas.GetTop(DangoVisual));
+        dangoAboveWindow.SetInteractionEnabled(isInteractionEnabled && motionRuntime.LastError is null);
+        if (frame is not null) dangoAboveWindow.ApplyFrame(frame, motionRuntime.DisplayHatAppearance, motionRuntime.DisplayHatSize);
+        SetWindowVisibility(dangoAboveWindow, dangoAbove && frame is not null);
+        // Apply physical window coordinates after SourceInitialized on first Show.
+        if (dangoAboveWindow.IsVisible && frame is not null) dangoAboveWindow.ApplyFrame(frame, motionRuntime.DisplayHatAppearance, motionRuntime.DisplayHatSize);
         cushionAboveWindow.SetPosition(WpfCanvas.GetLeft(CushionVisual), WpfCanvas.GetTop(CushionVisual));
-        SetWindowVisibility(dangoAboveWindow, dangoAbove);
         SetWindowVisibility(cushionAboveWindow, cushionAbove);
         islandOverlayWindow.SetDesiredVisibility(true);
-        inputProxy?.SetEnabled(isInteractionEnabled && !dangoAbove);
+        foreach (var proxy in inputProxies.Values)
+            proxy.SetEnabled(isInteractionEnabled && !dangoAbove && motionRuntime.LastError is null);
     }
 
     private void HideLayeredObjectWindows()
@@ -652,7 +646,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         dangoAboveWindow.Hide();
         cushionAboveWindow.Hide();
         islandOverlayWindow.SetDesiredVisibility(false);
-        inputProxy?.SetEnabled(false);
+        foreach (var proxy in inputProxies.Values) proxy.SetEnabled(false);
         keyboardInputBridge?.Refresh(hostReady: false, interactionEnabled: false);
     }
 
@@ -668,49 +662,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         }
     }
 
-    private void OnAboveDangoMoved(double left, double top)
-    {
-        if (aboveDragPending && motionController?.IsDragging == false)
-        {
-            aboveDragPending = false;
-            motionController.BeginDrag(
-                new LogicalPoint(dragVisualLeft + dragGrabVisualX, dragVisualTop + dragGrabVisualY),
-                NowMilliseconds());
-        }
-        motionController?.MoveDrag(new LogicalPoint(left + dragGrabVisualX, top + dragGrabVisualY));
-        ApplyAuthoritativePosition();
-        RebuildHitTestPolicy();
-    }
 
-    private void BeginAboveDangoDrag(double localX, double localY)
-    {
-        dragVisualLeft = dangoAboveWindow.Left;
-        dragVisualTop = dangoAboveWindow.Top;
-        SetDragGrabPoint(new System.Windows.Point(localX, localY));
-        aboveDragPending = true;
-    }
-
-    private void CompleteAboveDangoDrag()
-    {
-        if (motionController?.IsDragging == true)
-        {
-            motionController.ReleaseDrag(NowMilliseconds());
-        }
-        else if (aboveDragPending)
-        {
-            TriggerReaction();
-        }
-
-        aboveDragPending = false;
-        dragGrabPoint = null;
-    }
-
-    private void CancelAboveDangoDrag()
-    {
-        aboveDragPending = false;
-        motionController?.CancelDrag(NowMilliseconds());
-        dragGrabPoint = null;
-    }
 
     private void TriggerReaction()
     {
@@ -734,6 +686,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
     private void StartMotion(double surfaceWidth, double surfaceHeight)
     {
         var now = NowMilliseconds();
+        motionRuntime.SetViewport(new(0, 0, surfaceWidth, surfaceHeight));
         sceneSession.AttachSurface(new LogicalRect(0, 0, surfaceWidth, surfaceHeight), now);
 
         ApplyAuthoritativePosition();
@@ -752,21 +705,26 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         keyboardInputBridge?.Refresh(
             recoveryState.State == WorkerWRecoveryState.Attached && isVisible,
             isInteractionEnabled);
+        if (motionRuntime.IsDragging && (NativeMethods.IsEscapePressed() ||
+            currentTarget is not null && !NativeMethods.IsExplorerDesktopForeground(currentTarget)))
+        {
+            CancelDrag(DragCancellationReason.WindowDeactivated);
+        }
         var step = TimeSpan.FromSeconds(1d / 60d);
-        motionController.AdvanceDirectionalControl(
-            keyboardInputBridge?.CurrentIntent ?? DirectionalControlIntent.None,
-            step,
-            now);
+        motionRuntime.SetDirectionalControl(
+            keyboardInputBridge?.CurrentIntent ?? DirectionalControlIntent.None);
         AdvanceNonDirectionalAction(motionController, now);
         ApplyAuthoritativePosition();
-        motionRuntime.Tick(
+        var frame = motionRuntime.Tick(
             PhysicsPresentationInput.FromSnapshot(
                 motionController.Snapshot,
                 motionController.SquashAmount,
                 motionController.GroundFrictionCue,
                 motionController.FacingDirection,
-                dragGrabPoint),
+                null),
             step);
+        ApplyPresentationFrame(frame);
+        RebuildHitTestPolicy();
         motionController.ObservePresentationFrame();
     }
 
@@ -796,35 +754,31 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         var bounds = motionController.Snapshot.Dango.VisualBounds;
         WpfCanvas.SetLeft(DangoVisual, bounds.X);
         WpfCanvas.SetTop(DangoVisual, bounds.Y);
-        dangoAboveWindow.SetPosition(bounds.X, bounds.Y);
         UpdateInputProxyBounds();
     }
 
+    public void SetDebugSkeletonVisible(bool isVisible)
+    {
+        DangoVisual.ShowDebugGeometry = isVisible;
+        MiddleDangoVisual.ShowDebugGeometry = isVisible;
+        TopDangoVisual.ShowDebugGeometry = isVisible;
+        dangoAboveWindow.SetDebugSkeletonVisible(isVisible);
+    }
+
+    public bool IsDebugSkeletonVisible => DangoVisual.ShowDebugGeometry;
+
+    private void ApplyPresentationFrame(StackedPhysicsPresentationFrame frame)
+    {
+        DangoHostFrameBinding.Apply(DangoVisual, DangoHat, frame, 0, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize);
+        DangoHostFrameBinding.Apply(MiddleDangoVisual, MiddleDangoHat, frame, 1, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize);
+        DangoHostFrameBinding.Apply(TopDangoVisual, TopDangoHat, frame, 2, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize);
+        ApplyObjectLayerVisibility();
+    }
+
+
     private static long NowMilliseconds() => Environment.TickCount64;
 
-    private void SetDragGrabPoint(System.Windows.Point visualPoint)
-    {
-        var width = DangoVisual.ActualWidth > 0 ? DangoVisual.ActualWidth : DangoVisual.Width;
-        var height = DangoVisual.ActualHeight > 0 ? DangoVisual.ActualHeight : DangoVisual.Height;
-        dragGrabVisualX = Math.Clamp(visualPoint.X, 0, width);
-        dragGrabVisualY = Math.Clamp(visualPoint.Y, 0, height);
-        dragGrabPoint = DragGrabPointMapper.FromVisualPoint(
-            dragGrabVisualX,
-            dragGrabVisualY,
-            width,
-            height);
-    }
 
-    private sealed class MirroredDangoSink(
-        DeformableDangoVisual workerVisual,
-        DesktopObjectOverlayWindow aboveWindow) : IPhysicsPresentationSink
-    {
-        public void ApplyFrame(PhysicsPresentationFrame frame)
-        {
-            workerVisual.ApplyFrame(frame);
-            aboveWindow.ApplyDangoFrame(frame);
-        }
-    }
 
     private static DesktopHitRegion? Region(DesktopHitTarget target, FrameworkElement element) =>
         element.Visibility != Visibility.Visible

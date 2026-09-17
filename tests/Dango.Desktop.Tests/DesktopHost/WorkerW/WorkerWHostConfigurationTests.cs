@@ -111,7 +111,7 @@ public sealed class WorkerWHostConfigurationTests
 
         StringAssert.Contains(xaml, "DeformableDangoVisual");
         Assert.IsFalse(xaml.Contains("占位团子", StringComparison.Ordinal));
-        StringAssert.Contains(code, "SingleDangoMotionRuntime");
+        StringAssert.Contains(code, "StackedDangoSceneRuntime");
         StringAssert.Contains(code, "PhysicsPresentationInput.FromSnapshot");
         Assert.IsFalse(code.Contains(".Step(", StringComparison.Ordinal));
     }

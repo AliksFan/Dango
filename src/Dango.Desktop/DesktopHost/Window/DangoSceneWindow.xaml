@@ -28,16 +28,26 @@
                        Text="Dango 悬浮岛" />
         </Border>
 
-        <Border x:Name="DangoVisual"
-                Width="160"
-                Height="120"
-                Background="Transparent"
-                Cursor="Hand"
-                MouseLeftButtonDown="OnDangoMouseLeftButtonDown"
-                MouseLeftButtonUp="OnDangoMouseLeftButtonUp"
-                MouseMove="OnDangoMouseMove"
-                LostMouseCapture="OnDangoLostMouseCapture">
-            <visuals:DeformableDangoVisual x:Name="DynamicDangoVisual" ShowAccessories="True" />
-        </Border>
+        <visuals:DeformableDangoVisual x:Name="DangoVisual"
+                                      Cursor="Hand"
+                                      MouseLeftButtonDown="OnDangoMouseLeftButtonDown"
+                                      MouseLeftButtonUp="OnDangoMouseLeftButtonUp"
+                                      MouseMove="OnDangoMouseMove"
+                                      LostMouseCapture="OnDangoLostMouseCapture" />
+        <visuals:DeformableDangoVisual x:Name="MiddleDangoVisual" Visibility="Collapsed"
+                                      Cursor="Hand"
+                                      MouseLeftButtonDown="OnDangoMouseLeftButtonDown"
+                                      MouseLeftButtonUp="OnDangoMouseLeftButtonUp"
+                                      MouseMove="OnDangoMouseMove"
+                                      LostMouseCapture="OnDangoLostMouseCapture" />
+        <visuals:DeformableDangoVisual x:Name="TopDangoVisual" Visibility="Collapsed"
+                                      Cursor="Hand"
+                                      MouseLeftButtonDown="OnDangoMouseLeftButtonDown"
+                                      MouseLeftButtonUp="OnDangoMouseLeftButtonUp"
+                                      MouseMove="OnDangoMouseMove"
+                                      LostMouseCapture="OnDangoLostMouseCapture" />
+        <visuals:DangoHatVisual x:Name="DangoHat" IsHitTestVisible="False" />
+        <visuals:DangoHatVisual x:Name="MiddleDangoHat" IsHitTestVisible="False" Visibility="Collapsed" />
+        <visuals:DangoHatVisual x:Name="TopDangoHat" IsHitTestVisible="False" Visibility="Collapsed" />
     </Canvas>
 </Window>

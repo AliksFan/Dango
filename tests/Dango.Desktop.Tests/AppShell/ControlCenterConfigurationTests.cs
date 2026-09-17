@@ -41,10 +41,23 @@ public sealed class ControlCenterConfigurationTests
         StringAssert.Contains(text, "团子层级");
         StringAssert.Contains(text, "占位软垫");
         StringAssert.Contains(text, "所有界面之上；全屏时隐藏");
+        StringAssert.Contains(text, "添加团子");
+        StringAssert.Contains(text, "移除团子");
+        StringAssert.Contains(text, "显示骨架");
+        StringAssert.Contains(text, "恢复默认参数");
+        StringAssert.Contains(text, "重置当前团子");
+        StringAssert.Contains(text, "拖动力");
+        StringAssert.Contains(text, "落地形变力");
+        StringAssert.Contains(text, "跳跃冲量");
         StringAssert.Contains(text, "AutomationProperties");
 
         var codeBehind = File.ReadAllText(Path.ChangeExtension(path, ".xaml.cs"));
         StringAssert.Contains(codeBehind, "SystemParameters.HighContrast");
+        StringAssert.Contains(codeBehind, "SetDebugSkeletonVisible");
+
+        var appHost = File.ReadAllText(Path.Combine(TestRepository.Root, "src", "Dango.Desktop", "AppShell", "DangoApplicationHost.cs"));
+        Assert.IsFalse(appHost.Contains("CreateP2D007A", StringComparison.Ordinal));
+        Assert.IsFalse(appHost.Contains("p2d-007a-draft", StringComparison.OrdinalIgnoreCase));
     }
 
     [STATestMethod]
@@ -62,6 +75,16 @@ public sealed class ControlCenterConfigurationTests
             () => { });
 
         Assert.AreEqual("Dango 控制中心", window.Title);
+        var panel = (System.Windows.Controls.StackPanel)window.FindName("PhysicsTuningPanel");
+        var rows = panel.Children.OfType<System.Windows.Controls.Expander>()
+            .SelectMany(expander => ((System.Windows.Controls.StackPanel)expander.Content).Children
+                .OfType<System.Windows.Controls.Grid>()).ToArray();
+        Assert.IsTrue(rows.Length > 0);
+        foreach (var row in rows)
+        {
+            Assert.IsFalse(row.Children.OfType<System.Windows.Controls.Slider>().Single().IsEnabled);
+            Assert.IsTrue(row.Children.OfType<System.Windows.Controls.TextBox>().Single().IsReadOnly);
+        }
         window.PrepareForExit();
         window.Close();
     }

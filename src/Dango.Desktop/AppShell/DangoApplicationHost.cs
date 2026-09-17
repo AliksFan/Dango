@@ -5,9 +5,6 @@ using Dango.Desktop.AppShell.Tray;
 using Dango.Desktop.DesktopHost;
 using Dango.Desktop.DesktopHost.StandardWindow;
 using Dango.Desktop.DesktopHost.WorkerW;
-using Dango.Desktop.Physics.Native;
-using Dango.Desktop.Physics.Presentation;
-using Dango.Desktop.Physics.Tuning;
 using Dango.Desktop.Rendering.Visuals;
 using Dango.Desktop.Verification;
 
@@ -16,6 +13,7 @@ namespace Dango.Desktop.AppShell;
 internal sealed class DangoApplicationHost : IDisposable
 {
     private readonly DesktopSceneSession sceneSession;
+    private readonly StackedDangoSceneRuntime stackedRuntime;
     private readonly WorkerWWindow workerWWindow;
     private readonly DangoSceneWindow sceneWindow;
     private readonly DesktopHostCoordinator desktopHost;
@@ -27,31 +25,36 @@ internal sealed class DangoApplicationHost : IDisposable
     private readonly ControlCenterWindowSettings initialSettings;
     private ControlCenterWindow? controlCenterWindow;
     private DangoTrayIcon? trayIcon;
+    private AttachmentReviewPanel? attachmentPanel;
     private bool disposed;
 
-    public DangoApplicationHost()
+    public DangoApplicationHost(bool isolatedPhysicsReview = false, bool isolatedEyeHatReview = false)
     {
         sceneSession = new DesktopSceneSession();
-        SingleDangoMotionRuntime CreateRuntime(IPhysicsPresentationSink sink) => new(
-            () => Box2DPhysicsPresentationAdapter.CreateTuning(
-                Box2DNativeLoader.DefaultLibraryPath,
-                new SoftBodyTuningParameters()),
-            sink);
-        workerWWindow = new WorkerWWindow(sceneSession, CreateRuntime);
-        sceneWindow = new DangoSceneWindow(sceneSession, CreateRuntime);
+        stackedRuntime = isolatedEyeHatReview ? StackedDangoSceneRuntime.CreateEyeHatReview() : new StackedDangoSceneRuntime();
+        workerWWindow = new WorkerWWindow(sceneSession, stackedRuntime);
+        sceneWindow = new DangoSceneWindow(sceneSession, stackedRuntime);
         desktopHost = new DesktopHostCoordinator(workerWWindow, sceneWindow);
         commandController = new ApplicationCommandController(desktopHost);
-        verificationDefinition = VerificationDefinition.CreateP1006WindowModes();
+        verificationDefinition = isolatedEyeHatReview ? VerificationDefinition.CreateEyeHatHosts() : VerificationDefinition.CreatePhysicsModuleHosts();
         var localData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        settingsPath = Path.Combine(localData, "Dango", "settings.json");
+        settingsPath = isolatedEyeHatReview
+            ? Path.Combine(AppContext.BaseDirectory, "eye-hat-review-state", "settings.json")
+            : isolatedPhysicsReview
+            ? Path.Combine(AppContext.BaseDirectory, "physics-review-state", "settings.json")
+            : Path.Combine(localData, "Dango", "settings.json");
+        var firstReviewRun = (isolatedPhysicsReview || isolatedEyeHatReview) && !File.Exists(settingsPath);
         settingsStore = new ControlCenterWindowSettingsStore();
         var loadResult = settingsStore.LoadOrDefault(settingsPath);
         initialSettings = loadResult.Settings;
         settingsWarning = loadResult.Warning;
         sceneWindow.RestorePlacement(loadResult.Settings.SceneWindow);
         desktopHost.ApplyLayeringSettings(loadResult.Settings.DesktopLayeringExperiment);
-        desktopHost.ApplyKeyboardControlSettings(loadResult.Settings.KeyboardControl);
-        if (loadResult.Settings.DisplayMode == DesktopDisplayMode.Window)
+        desktopHost.ApplyKeyboardControlSettings(firstReviewRun
+            ? new KeyboardControlSettings(true, KeyboardControlScheme.Wasd)
+            : loadResult.Settings.KeyboardControl);
+        desktopHost.SetDebugSkeletonVisible(loadResult.Settings.ShowDebugSkeleton);
+        if (firstReviewRun || loadResult.Settings.DisplayMode == DesktopDisplayMode.Window)
         {
             desktopHost.SetMode(DesktopDisplayMode.Window);
         }
@@ -74,6 +77,11 @@ internal sealed class DangoApplicationHost : IDisposable
         var window = GetOrCreateControlCenter();
         window.ShowOverview();
         ShowAndActivate(window);
+        if (stackedRuntime.EyeHatReviewEnabled)
+        {
+            attachmentPanel ??= new AttachmentReviewPanel(stackedRuntime);
+            attachmentPanel.Show();
+        }
     }
 
     public void ShowDiagnostics()
@@ -115,6 +123,7 @@ internal sealed class DangoApplicationHost : IDisposable
         disposed = true;
         trayIcon?.Dispose();
         trayIcon = null;
+        if (attachmentPanel is not null) { attachmentPanel.AllowClose = true; attachmentPanel.Close(); attachmentPanel = null; }
         if (controlCenterWindow is null)
         {
             SaveSettingsWithoutControlCenter();
@@ -131,6 +140,7 @@ internal sealed class DangoApplicationHost : IDisposable
         sceneWindow.PrepareForExit();
         sceneWindow.Close();
         workerWWindow.Close();
+        stackedRuntime.Dispose();
     }
 
     private ControlCenterWindow GetOrCreateControlCenter()
@@ -140,8 +150,7 @@ internal sealed class DangoApplicationHost : IDisposable
             return controlCenterWindow;
         }
 
-        var localData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var draftPath = Path.Combine(localData, "Dango", "verification", "p1-006-draft.json");
+        var draftPath = Path.Combine(Path.GetDirectoryName(settingsPath)!, "verification", verificationDefinition.Id + "-draft.json");
         controlCenterWindow = new ControlCenterWindow(
             commandController,
             verificationDefinition,
@@ -185,7 +194,8 @@ internal sealed class DangoApplicationHost : IDisposable
                     Enum.TryParse<DesktopDisplayMode>(desktopHost.GetSnapshot().Mode, out var mode)
                         ? mode
                         : DesktopDisplayMode.Wallpaper,
-                    sceneWindow.CapturePlacement()));
+                    sceneWindow.CapturePlacement(),
+                    desktopHost.IsDebugSkeletonVisible));
         }
         catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
         {

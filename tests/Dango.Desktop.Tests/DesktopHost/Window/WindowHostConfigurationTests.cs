@@ -37,43 +37,34 @@ public sealed class WindowHostConfigurationTests
         var code = File.ReadAllText(path + ".cs");
         StringAssert.Contains(code, "e.Cancel = true");
         StringAssert.Contains(code, "Hide()");
-        StringAssert.Contains(code, "SingleDangoMotionRuntime");
+        StringAssert.Contains(code, "StackedDangoSceneRuntime");
         StringAssert.Contains(code, "PreviewKeyDown");
         StringAssert.Contains(code, "PreviewKeyUp");
     }
 
     [STATestMethod]
-    public void CloseHidesSceneAndShowingAgainCreatesOneFreshWorld()
+    public void CloseHidesSceneWithoutDisposingTheSharedStackedRuntime()
     {
-        var worlds = new List<TrackingWorld>();
         using var sessionOwner = new SessionOwner();
-        SingleDangoMotionRuntime RuntimeFactory(IPhysicsPresentationSink sink) => new(
-            () =>
-            {
-                var world = new TrackingWorld();
-                worlds.Add(world);
-                return world;
-            },
-            sink);
-        var window = new DangoSceneWindow(sessionOwner.Session, RuntimeFactory);
+        using var runtime = new StackedDangoSceneRuntime();
+        var window = new DangoSceneWindow(sessionOwner.Session, runtime);
 
         window.Show();
         Assert.IsTrue(window.IsVisible);
-        Assert.HasCount(1, worlds);
+        Assert.IsTrue(runtime.IsRunning);
 
         window.Close();
         Assert.IsFalse(window.IsVisible);
-        Assert.IsTrue(worlds[0].Disposed);
+        Assert.IsFalse(runtime.IsRunning);
 
         window.SetVisibility(true);
         Assert.IsTrue(window.IsVisible);
-        Assert.HasCount(2, worlds);
+        Assert.IsTrue(runtime.IsRunning);
         window.SetVisibility(true);
-        Assert.HasCount(2, worlds);
+        Assert.IsTrue(runtime.IsRunning);
 
         window.PrepareForExit();
         window.Close();
-        Assert.IsTrue(worlds[1].Disposed);
     }
 
     private static string? Attribute(XElement element, string name) => element.Attribute(name)?.Value;
@@ -85,17 +76,4 @@ public sealed class WindowHostConfigurationTests
         public void Dispose() => Session.Exit(Environment.TickCount64);
     }
 
-    private sealed class TrackingWorld : IPhysicsPresentationWorld
-    {
-        public PhysicsPresentationWorldState State => Disposed
-            ? PhysicsPresentationWorldState.Disposed
-            : PhysicsPresentationWorldState.Active;
-
-        public bool Disposed { get; private set; }
-
-        public PhysicsPresentationFrame Step(PhysicsPresentationInput input, TimeSpan fixedStep) =>
-            throw new InvalidOperationException("The lifecycle assertion closes the window before the first timer tick.");
-
-        public void Dispose() => Disposed = true;
-    }
 }

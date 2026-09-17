@@ -1,0 +1,4 @@
+using System.Runtime.CompilerServices;
+
+[assembly: InternalsVisibleTo("Dango.Desktop.Tests")]
+[assembly: InternalsVisibleTo("Dango.JointReview")]

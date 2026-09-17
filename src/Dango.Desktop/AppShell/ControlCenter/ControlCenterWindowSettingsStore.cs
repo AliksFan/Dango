@@ -8,7 +8,7 @@ namespace Dango.Desktop.AppShell.ControlCenter;
 
 public sealed record ControlCenterWindowSettings
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     [JsonConstructor]
     public ControlCenterWindowSettings(
@@ -18,7 +18,8 @@ public sealed record ControlCenterWindowSettings
         DesktopLayeringSettings? desktopLayeringExperiment = null,
         KeyboardControlSettings? keyboardControl = null,
         DesktopDisplayMode displayMode = DesktopDisplayMode.Wallpaper,
-        SceneWindowSettings? sceneWindow = null)
+        SceneWindowSettings? sceneWindow = null,
+        bool showDebugSkeleton = false)
     {
         Width = width;
         Height = height;
@@ -27,6 +28,7 @@ public sealed record ControlCenterWindowSettings
         KeyboardControl = keyboardControl ?? KeyboardControlSettings.CreateDefault();
         DisplayMode = displayMode;
         SceneWindow = sceneWindow ?? SceneWindowSettings.CreateDefault();
+        ShowDebugSkeleton = showDebugSkeleton;
     }
 
     public double Width { get; }
@@ -36,6 +38,7 @@ public sealed record ControlCenterWindowSettings
     public KeyboardControlSettings KeyboardControl { get; }
     public DesktopDisplayMode DisplayMode { get; }
     public SceneWindowSettings SceneWindow { get; }
+    public bool ShowDebugSkeleton { get; }
 
     public static ControlCenterWindowSettings CreateDefault() => new(940, 620);
 }
@@ -133,7 +136,7 @@ public sealed class ControlCenterWindowSettingsStore
             var persisted = JsonSerializer.Deserialize<PersistedSettings>(File.ReadAllText(path), SerializerOptions)
                 ?? throw new InvalidDataException("控制中心设置为空。");
             var sourceSchema = persisted.SchemaVersion ?? 1;
-            if (sourceSchema is not (1 or ControlCenterWindowSettings.CurrentSchemaVersion))
+            if (sourceSchema is not (1 or 2 or ControlCenterWindowSettings.CurrentSchemaVersion))
             {
                 return SafeDefault("设置版本无法识别，已使用安全默认值。");
             }
@@ -147,9 +150,10 @@ public sealed class ControlCenterWindowSettingsStore
                 persisted.DesktopLayeringExperiment,
                 persisted.KeyboardControl,
                 displayMode,
-                persisted.SceneWindow);
+                persisted.SceneWindow,
+                persisted.ShowDebugSkeleton ?? false);
             ControlCenterWindowSettingsValidator.Validate(settings);
-            return new(settings, sourceSchema == 1, modeWarning);
+            return new(settings, sourceSchema != ControlCenterWindowSettings.CurrentSchemaVersion, modeWarning);
         }
         catch (Exception exception) when (exception is JsonException or InvalidDataException or IOException or UnauthorizedAccessException)
         {
@@ -187,5 +191,6 @@ public sealed class ControlCenterWindowSettingsStore
         public KeyboardControlSettings? KeyboardControl { get; init; }
         public string? DisplayMode { get; init; }
         public SceneWindowSettings? SceneWindow { get; init; }
+        public bool? ShowDebugSkeleton { get; init; }
     }
 }

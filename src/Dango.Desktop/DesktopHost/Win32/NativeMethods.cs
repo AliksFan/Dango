@@ -65,6 +65,10 @@ internal static partial class NativeMethods
     public static bool HasSystemKeyboardModifier() =>
         IsKeyDown(0x11) || IsKeyDown(0x12) || IsKeyDown(0x5B) || IsKeyDown(0x5C);
 
+    public static bool IsEscapePressed() => IsKeyDown(0x1B);
+
+    public static bool IsInputKeyPressed(int virtualKey) => IsKeyDown(virtualKey);
+
     public static nint InstallLowLevelKeyboardHook(LowLevelKeyboardProcedure procedure) =>
         SetWindowsHookEx(WhKeyboardLl, procedure, GetModuleHandle(null), 0);
 

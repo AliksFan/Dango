@@ -91,6 +91,14 @@ internal sealed class DesktopObjectOverlayWindow : Window
 
     public void ApplyDangoFrame(PhysicsPresentationFrame frame) => dangoVisual?.ApplyFrame(frame);
 
+    public void SetDebugSkeletonVisible(bool isVisible)
+    {
+        if (dangoVisual is not null)
+        {
+            dangoVisual.ShowDebugGeometry = isVisible;
+        }
+    }
+
     private static Border CreateCushion()
     {
         var border = CreateObjectBorder(24, WpfColor.FromRgb(0xB7, 0xD8, 0xF7));

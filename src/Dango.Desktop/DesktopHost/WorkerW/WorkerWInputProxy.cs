@@ -137,10 +137,11 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
             case WmLeftButtonDown when enabled:
                 var localX = unchecked((short)((long)message.LParam & 0xffff));
                 var localY = unchecked((short)(((long)message.LParam >> 16) & 0xffff));
-                if (beginDrag(localX, localY) && NativeMethods.GetCursorPos(out dragOrigin))
+                if (NativeMethods.GetCursorPos(out dragOrigin) && beginDrag(localX, localY))
                 {
-                    dragging = true;
                     _ = NativeMethods.SetCapture(Handle);
+                    dragging = GetCapture() == Handle;
+                    if (!dragging) cancelDrag();
                 }
 
                 return;
@@ -179,6 +180,11 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
         CancelActiveDrag();
         DestroyHandle();
     }
+
+    public void CancelDrag() => CancelActiveDrag();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern nint GetCapture();
 
     private void OnInputPriorityTimerTick(object? sender, EventArgs e) => RefreshInputPriority();
 

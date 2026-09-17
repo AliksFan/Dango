@@ -29,19 +29,26 @@
                        Text="P1-003 静态悬浮岛" />
         </Border>
 
-        <Border x:Name="DangoVisual"
-                Canvas.Left="185"
-                Canvas.Top="55"
-                Width="160"
-                Height="120"
-                Background="Transparent"
-                Cursor="Hand"
-                MouseLeftButtonDown="OnDangoMouseLeftButtonDown"
-                MouseLeftButtonUp="OnDangoMouseLeftButtonUp"
-                MouseMove="OnDangoMouseMove"
-                LostMouseCapture="OnDangoLostMouseCapture">
-            <visuals:DeformableDangoVisual x:Name="DynamicDangoVisual" />
-        </Border>
+        <visuals:DeformableDangoVisual x:Name="DangoVisual"
+                                      Canvas.Left="185"
+                                      Canvas.Top="55"
+                                      Cursor="Hand"
+                                      MouseLeftButtonDown="OnDangoMouseLeftButtonDown"
+                                      MouseLeftButtonUp="OnDangoMouseLeftButtonUp"
+                                      MouseMove="OnDangoMouseMove"
+                                      LostMouseCapture="OnDangoLostMouseCapture" />
+        <visuals:DeformableDangoVisual x:Name="MiddleDangoVisual" Visibility="Collapsed"
+                                      Cursor="Hand"
+                                      MouseLeftButtonDown="OnDangoMouseLeftButtonDown"
+                                      MouseLeftButtonUp="OnDangoMouseLeftButtonUp"
+                                      MouseMove="OnDangoMouseMove"
+                                      LostMouseCapture="OnDangoLostMouseCapture" />
+        <visuals:DeformableDangoVisual x:Name="TopDangoVisual" Visibility="Collapsed"
+                                      Cursor="Hand"
+                                      MouseLeftButtonDown="OnDangoMouseLeftButtonDown"
+                                      MouseLeftButtonUp="OnDangoMouseLeftButtonUp"
+                                      MouseMove="OnDangoMouseMove"
+                                      LostMouseCapture="OnDangoLostMouseCapture" />
 
         <Border x:Name="CushionVisual"
                 Canvas.Left="30"
@@ -59,5 +66,9 @@
                        Foreground="#FF315878"
                        Text="占位软垫" />
         </Border>
+
+        <visuals:DangoHatVisual x:Name="DangoHat" IsHitTestVisible="False" />
+        <visuals:DangoHatVisual x:Name="MiddleDangoHat" IsHitTestVisible="False" Visibility="Collapsed" />
+        <visuals:DangoHatVisual x:Name="TopDangoHat" IsHitTestVisible="False" Visibility="Collapsed" />
     </Canvas>
 </UserControl>

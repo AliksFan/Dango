@@ -1,4 +1,5 @@
 using Dango.Desktop.AppShell;
+using Dango.Desktop.Physics.Tuning;
 
 namespace Dango.Desktop.DesktopHost;
 
@@ -10,6 +11,33 @@ public interface IDesktopDisplayModeControl
 public interface IDesktopHostSwitchGuard
 {
     string? GetSwitchBlockReason();
+}
+
+public interface IPhysicsDebugControl
+{
+    bool IsDebugSkeletonVisible { get; }
+
+    void SetDebugSkeletonVisible(bool isVisible);
+}
+
+public interface IDangoPopulationControl
+{
+    int DangoCount { get; }
+
+    bool AddDango();
+
+    bool RemoveDango();
+}
+
+public interface IDangoPhysicsTuningControl
+{
+    DangoSelfPhysicsParameters PhysicsParameters { get; }
+
+    void ApplyPhysicsParameters(DangoSelfPhysicsParameters parameters);
+
+    void RestoreDefaultPhysicsParameters();
+
+    void RegenerateDango();
 }
 
 public sealed class DesktopHostSwitchException : InvalidOperationException
@@ -24,7 +52,7 @@ public sealed class DesktopHostSwitchException : InvalidOperationException
     public string SafeReason { get; }
 }
 
-public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopDisplayModeControl, IDesktopLayeringControl, IKeyboardControl
+public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopDisplayModeControl, IDesktopLayeringControl, IKeyboardControl, IPhysicsDebugControl, IDangoPopulationControl, IDangoPhysicsTuningControl
 {
     private readonly IDesktopHostControl wallpaper;
     private readonly IDesktopHostControl window;
@@ -71,6 +99,55 @@ public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopDispla
     {
         ApplyKeyboardControl(wallpaper, settings);
         ApplyKeyboardControl(window, settings);
+    }
+
+    public bool IsDebugSkeletonVisible =>
+        active is IPhysicsDebugControl debugControl && debugControl.IsDebugSkeletonVisible;
+
+    public void SetDebugSkeletonVisible(bool isVisible)
+    {
+        ApplyDebugSkeleton(wallpaper, isVisible);
+        ApplyDebugSkeleton(window, isVisible);
+    }
+
+    public int DangoCount =>
+        active is IDangoPopulationControl populationControl
+            ? populationControl.DangoCount
+            : 1;
+
+    public bool AddDango() =>
+        active is IDangoPopulationControl populationControl && populationControl.AddDango();
+
+    public bool RemoveDango() =>
+        active is IDangoPopulationControl populationControl && populationControl.RemoveDango();
+
+    public DangoSelfPhysicsParameters PhysicsParameters =>
+        active is IDangoPhysicsTuningControl tuningControl
+            ? tuningControl.PhysicsParameters
+            : DangoSelfPhysicsParameters.CreateDefault();
+
+    public void ApplyPhysicsParameters(DangoSelfPhysicsParameters parameters)
+    {
+        ApplyPhysicsTuning(wallpaper, parameters);
+        ApplyPhysicsTuning(window, parameters);
+    }
+
+    public void RestoreDefaultPhysicsParameters()
+    {
+        if (active is not IDangoPhysicsTuningControl tuningControl)
+        {
+            throw new NotSupportedException("显示宿主不支持团子物理参数。");
+        }
+        tuningControl.RestoreDefaultPhysicsParameters();
+    }
+
+    public void RegenerateDango()
+    {
+        if (active is not IDangoPhysicsTuningControl tuningControl)
+        {
+            throw new NotSupportedException("显示宿主不支持重新生成团子。");
+        }
+        tuningControl.RegenerateDango();
     }
 
     public void SetMode(DesktopDisplayMode mode)
@@ -146,5 +223,24 @@ public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopDispla
         }
 
         keyboardControl.ApplyKeyboardControlSettings(settings);
+    }
+
+    private static void ApplyDebugSkeleton(IDesktopHostControl host, bool isVisible)
+    {
+        if (host is not IPhysicsDebugControl debugControl)
+        {
+            throw new NotSupportedException("显示宿主不支持物理骨架设置。");
+        }
+
+        debugControl.SetDebugSkeletonVisible(isVisible);
+    }
+
+    private static void ApplyPhysicsTuning(IDesktopHostControl host, DangoSelfPhysicsParameters parameters)
+    {
+        if (host is not IDangoPhysicsTuningControl tuningControl)
+        {
+            throw new NotSupportedException("显示宿主不支持团子物理参数。");
+        }
+        tuningControl.ApplyPhysicsParameters(parameters);
     }
 }

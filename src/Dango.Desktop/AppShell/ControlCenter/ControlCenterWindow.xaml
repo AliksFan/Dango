@@ -235,6 +235,67 @@
 
                         <Border Margin="0,16,0,0" Style="{StaticResource CardStyle}">
                             <StackPanel>
+                                <TextBlock FontSize="17"
+                                           FontWeight="SemiBold"
+                                           Text="团子数量" />
+                                <TextBlock x:Name="DangoCountText"
+                                           Margin="0,6,0,14"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           Text="当前锁定 1 只；团子间碰撞阶段再开放数量调整。" />
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="AddDangoButton"
+                                            AutomationProperties.Name="添加团子"
+                                            Click="OnAddDangoClick"
+                                            Content="添加团子" />
+                                    <Button x:Name="RemoveDangoButton"
+                                            Margin="12,0,0,0"
+                                            AutomationProperties.Name="移除团子"
+                                            Click="OnRemoveDangoClick"
+                                            Content="移除团子" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Margin="0,16,0,0" Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <CheckBox x:Name="DebugSkeletonCheckBox"
+                                          AutomationProperties.Name="显示骨架"
+                                          Checked="OnDebugSkeletonChanged"
+                                          Content="显示骨架"
+                                          FontSize="17"
+                                          FontWeight="SemiBold"
+                                          Unchecked="OnDebugSkeletonChanged" />
+                                <TextBlock Margin="24,6,0,0"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           Text="直接叠加核心、16 条径向弹簧、16 条闭合轮廓弹簧和 16 个节点；仅用于当前桌面观察。"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Margin="0,16,0,0" Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <TextBlock FontSize="17" FontWeight="SemiBold" Text="已验收物理参数（只读）" />
+                                <TextBlock Margin="0,6,0,14"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           Text="正式桌面固定参数版本 1。面积保持、落地形变力、拖动力与跳跃冲量仅供查看；调参请使用实验工具。"
+                                           TextWrapping="Wrap" />
+                                <StackPanel x:Name="PhysicsTuningPanel" />
+                                <StackPanel Margin="0,14,0,0" Orientation="Horizontal">
+                                    <Button AutomationProperties.Name="恢复默认参数"
+                                            IsEnabled="False"
+                                            Click="OnRestoreDefaultPhysicsClick"
+                                            Content="恢复默认参数" />
+                                    <Button Margin="12,0,0,0"
+                                            AutomationProperties.Name="重置当前团子"
+                                            Click="OnRegenerateDangoClick"
+                                            ToolTip="保留当前数量和实体 ID，不恢复已移除团子。"
+                                            Content="重置当前团子" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Margin="0,16,0,0" Style="{StaticResource CardStyle}">
+                            <StackPanel>
                                 <CheckBox x:Name="KeyboardControlCheckBox"
                                           AutomationProperties.Name="键盘控制"
                                           Checked="OnKeyboardControlChanged"

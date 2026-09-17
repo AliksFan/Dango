@@ -30,6 +30,14 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        if (e.Args.Contains("--paired-contact-preview", StringComparer.Ordinal))
+        {
+            ShutdownMode = ShutdownMode.OnMainWindowClose;
+            MainWindow = new PairedContactPreviewWindow();
+            MainWindow.Show();
+            return;
+        }
+
         if (e.Args.Contains("--smoke-test", StringComparer.Ordinal))
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -37,21 +45,26 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        var physicsReview = e.Args.Contains("--physics-host-review", StringComparer.Ordinal);
+        var eyeHatReview = e.Args.Contains("--eye-hat-review", StringComparer.Ordinal);
+        if (physicsReview && eyeHatReview) throw new ArgumentException("Choose one isolated review mode.");
+        var instanceName = eyeHatReview ? SingleInstanceName + ".EyeHatReview" : physicsReview ? SingleInstanceName + ".PhysicsHostReview" : SingleInstanceName;
         singleInstanceCoordinator = SingleInstanceCoordinator.TryBecomePrimary(
-            SingleInstanceName,
+            instanceName,
             () => Dispatcher.BeginInvoke(
                 new Action(() => applicationHost?.ShowControlCenter()),
                 DispatcherPriority.Normal));
         if (singleInstanceCoordinator is null)
         {
-            var signaled = SingleInstanceCoordinator.TrySignalPrimary(SingleInstanceName);
+            var signaled = SingleInstanceCoordinator.TrySignalPrimary(instanceName);
             Shutdown(signaled ? 0 : 2);
             return;
         }
 
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
-        applicationHost = new DangoApplicationHost();
+        applicationHost = new DangoApplicationHost(physicsReview, eyeHatReview);
         applicationHost.Start();
+        if (physicsReview || eyeHatReview) applicationHost.ShowControlCenter();
     }
 
     protected override void OnExit(ExitEventArgs e)

@@ -1,0 +1,16 @@
+<UserControl x:Class="Dango.Desktop.Rendering.Visuals.DangoHatVisual"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Width="160"
+             Height="120"
+             Background="Transparent"
+             IsHitTestVisible="False">
+    <Canvas x:Name="HatLayer"
+            Width="160"
+            Height="120"
+            RenderTransformOrigin="0.5,0.125">
+        <Path Data="M77,25 C77,20 78,16 80,12 C83,16 84,21 83,26 Z" Fill="#FF67B84E" />
+        <Path Data="M80,15 C71,15 64,11 62,4 C70,2 77,5 80,15 Z" Fill="#FF78C85A" />
+        <Path Data="M80,15 C89,15 96,11 98,4 C90,2 83,5 80,15 Z" Fill="#FF78C85A" />
+    </Canvas>
+</UserControl>

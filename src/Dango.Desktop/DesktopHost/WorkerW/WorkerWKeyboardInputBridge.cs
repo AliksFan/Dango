@@ -49,6 +49,7 @@ public static class KeyboardControlKeyPolicy
 public sealed class DirectionalControlHeldState
 {
     private readonly bool[] held = new bool[4];
+    private readonly bool[] suppressed = new bool[4];
 
     public DirectionalControlIntent Snapshot => new(
         held[(int)DirectionalControlKey.Left],
@@ -56,9 +57,30 @@ public sealed class DirectionalControlHeldState
         held[(int)DirectionalControlKey.Jump],
         held[(int)DirectionalControlKey.Squash]);
 
-    public void Set(DirectionalControlKey key, bool isDown) => held[(int)key] = isDown;
+    public void Set(DirectionalControlKey key, bool isDown)
+    {
+        var index = (int)key;
+        if (!isDown) suppressed[index] = false;
+        held[index] = isDown && !suppressed[index];
+    }
 
-    public void Clear() => Array.Clear(held);
+    public void Clear()
+    {
+        Array.Clear(held);
+        Array.Clear(suppressed);
+    }
+
+    public void ClearUntilRelease()
+    {
+        for (var i = 0; i < held.Length; i++) suppressed[i] |= held[i];
+        Array.Clear(held);
+    }
+
+    public void SuppressUntilRelease(DirectionalControlKey key)
+    {
+        held[(int)key] = false;
+        suppressed[(int)key] = true;
+    }
 }
 
 internal sealed class WorkerWKeyboardInputBridge : IDisposable
@@ -109,12 +131,19 @@ internal sealed class WorkerWKeyboardInputBridge : IDisposable
 
         if (hook == nint.Zero && !installationFailed)
         {
+            // Do not import an already-held key from a different focused app.
+            var keys = settings.Scheme == KeyboardControlScheme.Wasd
+                ? new[] { 0x41, 0x44, 0x57, 0x53 }
+                : new[] { 0x25, 0x27, 0x26, 0x28 };
+            foreach (var virtualKey in keys)
+                if (NativeMethods.IsInputKeyPressed(virtualKey) && KeyboardControlKeyPolicy.TryMap(virtualKey, settings.Scheme, out var key))
+                    heldState.SuppressUntilRelease(key);
             hook = NativeMethods.InstallLowLevelKeyboardHook(procedure);
             installationFailed = hook == nint.Zero;
         }
     }
 
-    public void Clear() => heldState.Clear();
+    public void Clear() => heldState.ClearUntilRelease();
 
     public void Dispose()
     {

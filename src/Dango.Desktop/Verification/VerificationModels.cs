@@ -26,6 +26,53 @@ public sealed record VerificationDefinition(
 {
     public const int CurrentSchemaVersion = 1;
 
+    public static VerificationDefinition CreateEyeHatHosts()
+    {
+        var items = CreatePhysicsModuleHosts().Items.ToList();
+        foreach (var host in new[] { "window", "wallpaper" })
+        foreach (var count in new[] { 1, 2, 3 })
+            items.Add(Item($"{host}-{count}-eye-hat", $"{host} · {count} 体眼帽", "眼睛面向、跳跃与帽子惯性",
+                "逐只选择，左右移动急停、跳落和上下拖放；切帽，应用表情并眨眼；隐藏恢复和切换宿主。",
+                "眼距随转向缩小，释放回正；跳跃眼睛上下动；帽子保留埋入位置和惯性前滑回弹，三体状态不串，不裁切。"));
+        return new(CurrentSchemaVersion, "p1-eye-hat-hosts", "眼帽双宿主隔离预览验收", items);
+    }
+
+    public static VerificationDefinition CreatePhysicsModuleHosts()
+    {
+        var items = new List<VerificationItemDefinition>();
+        foreach (var host in new[] { "Window", "Wallpaper" })
+        {
+            foreach (var count in new[] { 1, 2, 3 })
+            {
+                var prefix = $"{host.ToLowerInvariant()}-{count}";
+                var category = $"{host} · {count} 体（独立验收）";
+                items.Add(Item(prefix + "-control", category, "移动、下压、跳跃与手感",
+                    $"切换到 {host}，使场景保留 {count} 只。分别选择每只，测试 A/D、S、W 及长按 W。",
+                    "只有选中实体接收输入；起跳竖直、手感保持，长按不重复触发起跳。"));
+                items.Add(Item(prefix + "-drag", category, "反复拖放、取消与重置",
+                    "逐只拖放，尝试 Esc/失焦/关闭隐藏后恢复，重复拖放及重置。",
+                    "命中对应实体，释放不粘鼠标；取消无残留输入，重置不恢复已移除实体。"));
+                if (count > 1)
+                    items.Add(Item(prefix + "-contact", category, "持续碰撞、偏心叠放与抽走支撑",
+                        "持续推挤、偏心叠放，拖走或移除底部支撑；三体必须分别观察全部实体，不沿用双体结论。",
+                        "无异常穿透或失控；承重和分离正常，允许已经认可的自然滑落。"));
+            }
+        }
+        items.Add(Item("module-layers", "宿主与系统", "三体图标上下层级",
+            "三体下分别切换图标上/下，逐只拖动，重叠观察帽子，再操作空白区和桌面图标。",
+            "所有团子层级一致，帽子在所有身体之上；空白区穿透，图标优先规则保持。"));
+        items.Add(Item("module-roundtrip", "宿主与系统", "三体宿主往返与退出",
+            "三体下往返两种宿主至少三次，隐藏恢复、最小化恢复，最终从控制中心或托盘退出。",
+            "实体数量与状态延续，无双重推进、重复团子、残留覆盖窗/捕获/托盘。"));
+        items.Add(Item("module-dpi", "宿主与系统", "DPI 与跨屏",
+            "在至少两种分辨率或缩放下，分别验证两种宿主的三体显示与拖动；有多屏时补跨屏。",
+            "抓取点、轮廓与位置无明显偏移，窗口可操作；无法执行则标记未验证。"));
+        items.Add(Item("module-focus", "宿主与系统", "焦点、全屏与故障信息",
+            "操作普通应用、任务栏、全屏窗口；查看只读参数和诊断，故障场景按文档单独验证。",
+            "不抢焦点或遮挡正常操作；参数不可写入，故障不可伪装成正常物理帧。"));
+        return new(CurrentSchemaVersion, "p1-physics-module-hosts", "物理模块正式宿主接入人工验收", items);
+    }
+
     public static VerificationDefinition CreateP1003WorkerW() =>
         new(
             CurrentSchemaVersion,

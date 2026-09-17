@@ -1,29 +1,33 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Dango.Core.Animation;
 using Dango.Core.Coordinates;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.Physics.Presentation;
+using Dango.Desktop.Physics.Tuning;
 using Dango.Desktop.Rendering.Visuals;
+using Dango.Physics;
 using Forms = System.Windows.Forms;
 using WpfCanvas = System.Windows.Controls.Canvas;
 
 namespace Dango.Desktop.DesktopHost.StandardWindow;
 
-public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostControl, IKeyboardControl, IDesktopHostSwitchGuard
+public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostControl, IKeyboardControl, IDesktopHostSwitchGuard, IPhysicsDebugControl, IDangoPopulationControl, IDangoPhysicsTuningControl
 {
     private static readonly TimeSpan FixedStep = TimeSpan.FromSeconds(1d / 60d);
     private readonly DesktopSceneSession sceneSession;
-    private readonly SingleDangoMotionRuntime motionRuntime;
+    private readonly StackedDangoSceneRuntime motionRuntime;
     private readonly DispatcherTimer motionTimer;
     private KeyboardControlSettings keyboardSettings = KeyboardControlSettings.CreateDefault();
     private DirectionalControlIntent currentIntent;
     private LogicalPoint dragPointer;
-    private PresentationPoint? dragGrabPoint;
+    private bool physicalDragging;
+    private DeformableDangoVisual? capturedDango;
     private bool isInteractionEnabled = true;
     private bool allowClose;
     private bool loaded;
@@ -31,12 +35,16 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
 
     public DangoSceneWindow(
         DesktopSceneSession sceneSession,
-        SingleDangoMotionRuntimeFactory motionRuntimeFactory)
+        StackedDangoSceneRuntime motionRuntime)
     {
         this.sceneSession = sceneSession ?? throw new ArgumentNullException(nameof(sceneSession));
-        ArgumentNullException.ThrowIfNull(motionRuntimeFactory);
+        this.motionRuntime = motionRuntime ?? throw new ArgumentNullException(nameof(motionRuntime));
         InitializeComponent();
-        motionRuntime = motionRuntimeFactory(DynamicDangoVisual);
+        DangoVisual.ShowHat = false;
+        MiddleDangoVisual.ShowHat = false;
+        TopDangoVisual.ShowHat = false;
+        MiddleDangoVisual.BodyFill = new SolidColorBrush(System.Windows.Media.Color.FromRgb(201, 226, 255));
+        TopDangoVisual.BodyFill = new SolidColorBrush(System.Windows.Media.Color.FromRgb(221, 204, 248));
         motionTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = FixedStep };
         motionTimer.Tick += OnMotionTimerTick;
         Loaded += OnLoaded;
@@ -46,14 +54,31 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
         PreviewKeyDown += OnPreviewKeyDown;
         PreviewKeyUp += OnPreviewKeyUp;
         Closing += OnClosing;
+        motionRuntime.InputCancelled += ClearHostInput;
     }
 
     public DesktopHostSnapshot GetSnapshot() => new(
         "Window",
         IsVisible && WindowState != WindowState.Minimized,
         isInteractionEnabled,
-        "普通窗口模式",
-        null);
+        motionRuntime.LayoutWarning ?? "普通窗口模式（新物理接入待人工验收）",
+        motionRuntime.LastError);
+
+    public int DangoCount => motionRuntime.DangoCount;
+
+    public bool AddDango() => motionRuntime.AddDangoInViewport(
+        new(0, 0, Math.Max(480, SceneCanvas.ActualWidth), Math.Max(360, SceneCanvas.ActualHeight)));
+
+    public bool RemoveDango() => motionRuntime.RemoveDango();
+
+    public DangoSelfPhysicsParameters PhysicsParameters => motionRuntime.Parameters;
+
+    public void ApplyPhysicsParameters(DangoSelfPhysicsParameters parameters) =>
+        motionRuntime.ApplyPhysicsParameters(parameters);
+
+    public void RestoreDefaultPhysicsParameters() => motionRuntime.RestoreDefaultPhysicsParameters();
+
+    public void RegenerateDango() => motionRuntime.RegenerateDango();
 
     public void SetVisibility(bool isVisible)
     {
@@ -83,16 +108,18 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
         if (!isEnabled)
         {
             ClearInput();
-            sceneSession.Controller?.CancelDrag(NowMilliseconds());
+            EndPhysicalDrag();
         }
 
         isInteractionEnabled = isEnabled;
         DangoVisual.IsHitTestVisible = isEnabled;
+        MiddleDangoVisual.IsHitTestVisible = isEnabled;
+        TopDangoVisual.IsHitTestVisible = isEnabled;
     }
 
     public KeyboardControlSettings GetKeyboardControlSettings() => keyboardSettings;
 
-    public string? GetSwitchBlockReason() => sceneSession.Controller?.IsDragging == true
+    public string? GetSwitchBlockReason() => motionRuntime.IsDragging || sceneSession.Controller?.IsDragging == true
         ? "团子拖动结束后才能切换显示模式。"
         : null;
 
@@ -119,7 +146,8 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
             $"允许交互：{isInteractionEnabled}",
             $"键盘控制：{(keyboardSettings.IsEnabled ? "开启" : "关闭")}",
             $"键位方案：{keyboardSettings.Scheme}",
-            $"物理世界运行：{motionRuntime.IsRunning}");
+            $"物理世界运行：{motionRuntime.IsRunning}",
+            motionRuntime.CreateDiagnosticSummary());
     }
 
     public void RestorePlacement(SceneWindowSettings settings)
@@ -188,7 +216,7 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
         allowClose = true;
         ClearInput();
         StopMotion();
-        motionRuntime.Dispose();
+        motionRuntime.InputCancelled -= ClearHostInput;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -236,7 +264,13 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
 
     private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        if (TrySetKey(e.Key, true))
+        if (e.Key == Key.Escape)
+        {
+            ClearInput();
+            e.Handled = true;
+            return;
+        }
+        if (!e.IsRepeat && TrySetKey(e.Key, true))
         {
             e.Handled = true;
         }
@@ -276,7 +310,21 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
         return true;
     }
 
-    private void ClearInput() => currentIntent = DirectionalControlIntent.None;
+    private void ClearInput()
+    {
+        currentIntent = DirectionalControlIntent.None;
+        motionRuntime.SetDirectionalControl(currentIntent);
+        EndPhysicalDrag();
+    }
+
+    private void ClearHostInput()
+    {
+        currentIntent = DirectionalControlIntent.None;
+        physicalDragging = false;
+        var captured = capturedDango;
+        capturedDango = null;
+        if (captured?.IsMouseCaptured == true) captured.ReleaseMouseCapture();
+    }
 
     private void StartMotion()
     {
@@ -294,13 +342,14 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
     private void StopMotion()
     {
         motionTimer.Stop();
-        motionRuntime.NotifyHostUnavailable();
+        motionRuntime.Stop();
     }
 
     private void AttachSurface()
     {
         var width = Math.Max(480, SceneCanvas.ActualWidth);
         var height = Math.Max(360, SceneCanvas.ActualHeight);
+        motionRuntime.SetViewport(new(0, 0, width, height));
         sceneSession.AttachSurface(new LogicalRect(0, 0, width, height), NowMilliseconds());
     }
 
@@ -312,65 +361,58 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
             return;
         }
 
-        var now = NowMilliseconds();
-        controller.AdvanceDirectionalControl(currentIntent, FixedStep, now);
+        motionRuntime.SetDirectionalControl(currentIntent);
         ApplyAuthoritativePosition();
-        motionRuntime.Tick(
+        var frame = motionRuntime.Tick(
             PhysicsPresentationInput.FromSnapshot(
                 controller.Snapshot,
                 controller.SquashAmount,
                 controller.GroundFrictionCue,
                 controller.FacingDirection,
-                dragGrabPoint),
+                null),
             FixedStep);
+        ApplyPresentationFrame(frame);
         controller.ObservePresentationFrame();
     }
 
     private void OnDangoMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (!isInteractionEnabled || sceneSession.Controller is not { } controller)
+        if (!isInteractionEnabled || sceneSession.Controller is null || motionRuntime.LastError is not null ||
+            sender is not DeformableDangoVisual { Tag: DangoEntityId id } visual || !motionRuntime.EntityIds.Contains(id))
         {
             return;
         }
 
         ClearInput();
         dragPointer = ToLogicalPoint(e.GetPosition(SceneCanvas));
-        var local = e.GetPosition(DangoVisual);
-        dragGrabPoint = DragGrabPointMapper.FromVisualPoint(local.X, local.Y, DangoVisual.ActualWidth, DangoVisual.ActualHeight);
-        controller.BeginDrag(dragPointer, NowMilliseconds());
-        DangoVisual.CaptureMouse();
+        motionRuntime.BeginPhysicalDrag(id, dragPointer);
+        physicalDragging = true;
+        capturedDango = visual;
+        if (!visual.CaptureMouse()) EndPhysicalDrag();
         e.Handled = true;
     }
 
     private void OnDangoMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (e.LeftButton != MouseButtonState.Pressed || sceneSession.Controller?.IsDragging != true)
+        if (e.LeftButton != MouseButtonState.Pressed || !physicalDragging)
         {
             return;
         }
 
         dragPointer = ToLogicalPoint(e.GetPosition(SceneCanvas));
-        sceneSession.Controller.MoveDrag(dragPointer);
-        ApplyAuthoritativePosition();
+        motionRuntime.MovePhysicalDrag(dragPointer);
         e.Handled = true;
     }
 
     private void OnDangoMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (sceneSession.Controller?.IsDragging == true)
-        {
-            sceneSession.Controller.ReleaseDrag(NowMilliseconds());
-        }
-
-        dragGrabPoint = null;
-        DangoVisual.ReleaseMouseCapture();
+        EndPhysicalDrag();
         e.Handled = true;
     }
 
     private void OnDangoLostMouseCapture(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        sceneSession.Controller?.CancelDrag(NowMilliseconds());
-        dragGrabPoint = null;
+        EndPhysicalDrag();
     }
 
     private void ApplyAuthoritativePosition()
@@ -386,7 +428,37 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
         WpfCanvas.SetTop(IslandVisual, snapshot.Island.VisualBounds.Y);
     }
 
+    public void SetDebugSkeletonVisible(bool isVisible)
+    {
+        DangoVisual.ShowDebugGeometry = isVisible;
+        MiddleDangoVisual.ShowDebugGeometry = isVisible;
+        TopDangoVisual.ShowDebugGeometry = isVisible;
+    }
+
+    public bool IsDebugSkeletonVisible => DangoVisual.ShowDebugGeometry;
+
+    private void ApplyPresentationFrame(StackedPhysicsPresentationFrame frame)
+    {
+        DangoHostFrameBinding.Apply(DangoVisual, DangoHat, frame, 0, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize);
+        DangoHostFrameBinding.Apply(MiddleDangoVisual, MiddleDangoHat, frame, 1, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize);
+        DangoHostFrameBinding.Apply(TopDangoVisual, TopDangoHat, frame, 2, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize);
+    }
+
+
     private static LogicalPoint ToLogicalPoint(System.Windows.Point point) => new(point.X, point.Y);
+
+    private void EndPhysicalDrag()
+    {
+        if (!physicalDragging)
+        {
+            return;
+        }
+        physicalDragging = false;
+        motionRuntime.EndPhysicalDrag();
+        var captured = capturedDango;
+        capturedDango = null;
+        if (captured?.IsMouseCaptured == true) captured.ReleaseMouseCapture();
+    }
 
     private static long NowMilliseconds() => (long)(Stopwatch.GetTimestamp() * 1000d / Stopwatch.Frequency);
 }

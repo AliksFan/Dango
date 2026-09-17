@@ -127,6 +127,7 @@ public sealed record PhysicsPresentationDiagnostics(
 
 public sealed record PhysicsPresentationFrame
 {
+    public Attachments.AttachmentPresentationFrame? Attachments { get; init; }
     public const double DefaultEyeHalfDistance = 19d / 72d;
 
     public PhysicsPresentationFrame(

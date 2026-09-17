@@ -1,4 +1,5 @@
 using Dango.Desktop.DesktopHost;
+using Dango.Desktop.Physics.Tuning;
 
 namespace Dango.Desktop.AppShell;
 
@@ -123,6 +124,97 @@ public sealed class ApplicationCommandController
                 CommandApplicationState.Failed,
                 host.GetSnapshot(),
                 $"键盘控制无法应用：{SafeError(exception)}");
+        }
+    }
+
+    public bool IsDebugSkeletonVisible =>
+        host is IPhysicsDebugControl debugControl && debugControl.IsDebugSkeletonVisible;
+
+    public int DangoCount =>
+        host is IDangoPopulationControl populationControl ? populationControl.DangoCount : 1;
+
+    public HostCommandResult AddDango() => ApplyPopulationChange(add: true);
+
+    public HostCommandResult RemoveDango() => ApplyPopulationChange(add: false);
+
+    public DangoSelfPhysicsParameters GetPhysicsParameters() =>
+        host is IDangoPhysicsTuningControl tuningControl
+            ? tuningControl.PhysicsParameters
+            : DangoSelfPhysicsParameters.CreateDefault();
+
+    public HostCommandResult ApplyPhysicsParameters(DangoSelfPhysicsParameters parameters) =>
+        ApplyPhysicsCommand(control => control.ApplyPhysicsParameters(parameters), "物理参数已应用。");
+
+    public HostCommandResult RestoreDefaultPhysicsParameters() =>
+        ApplyPhysicsCommand(control => control.RestoreDefaultPhysicsParameters(), "已恢复默认物理参数。");
+
+    public HostCommandResult RegenerateDango() =>
+        ApplyPhysicsCommand(control => control.RegenerateDango(), "已重置当前存活团子；未恢复已移除实体。");
+
+    public HostCommandResult SetDebugSkeletonVisible(bool isVisible)
+    {
+        if (host is not IPhysicsDebugControl debugControl)
+        {
+            return new HostCommandResult(
+                CommandApplicationState.Failed,
+                host.GetSnapshot(),
+                "当前宿主控制器不支持物理骨架设置。");
+        }
+
+        debugControl.SetDebugSkeletonVisible(isVisible);
+        return new HostCommandResult(CommandApplicationState.Applied, host.GetSnapshot(), null);
+    }
+
+    private HostCommandResult ApplyPopulationChange(bool add)
+    {
+        if (host is not IDangoPopulationControl populationControl)
+        {
+            return new HostCommandResult(
+                CommandApplicationState.Failed,
+                host.GetSnapshot(),
+                "当前宿主控制器不支持团子数量调整。");
+        }
+
+        bool changed;
+        try
+        {
+            changed = add ? populationControl.AddDango() : populationControl.RemoveDango();
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return new HostCommandResult(CommandApplicationState.Failed, host.GetSnapshot(),
+                $"数量调整失败：{SafeError(exception)}");
+        }
+        return changed
+            ? new HostCommandResult(CommandApplicationState.Applied, host.GetSnapshot(), null)
+            : new HostCommandResult(
+                CommandApplicationState.Failed,
+                host.GetSnapshot(),
+                add ? "团子数量已达到本阶段上限 3。" : "至少需要保留 1 只团子。");
+    }
+
+    private HostCommandResult ApplyPhysicsCommand(
+        Action<IDangoPhysicsTuningControl> command,
+        string successMessage)
+    {
+        if (host is not IDangoPhysicsTuningControl tuningControl)
+        {
+            return new HostCommandResult(
+                CommandApplicationState.Failed,
+                host.GetSnapshot(),
+                "当前宿主控制器不支持团子物理调参。");
+        }
+        try
+        {
+            command(tuningControl);
+            return new HostCommandResult(CommandApplicationState.Applied, host.GetSnapshot(), successMessage);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return new HostCommandResult(
+                CommandApplicationState.Failed,
+                host.GetSnapshot(),
+                $"物理参数无法应用：{SafeError(exception)}");
         }
     }
 

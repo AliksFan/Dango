@@ -6,8 +6,10 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Dango.Desktop.DesktopHost;
+using Dango.Desktop.Physics.Tuning;
 using Dango.Desktop.Verification;
 using Forms = System.Windows.Forms;
+using WpfTextBox = System.Windows.Controls.TextBox;
 
 namespace Dango.Desktop.AppShell.ControlCenter;
 
@@ -23,10 +25,13 @@ public partial class ControlCenterWindow : Window
     private readonly Func<SceneWindowSettings>? captureSceneWindowSettings;
     private readonly string? startupSettingsWarning;
     private readonly List<ThemePropertyOverride> highContrastOverrides = [];
+    private readonly DispatcherTimer hostStatusTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
     private VerificationSession? verificationSession;
     private IReadOnlyList<VerificationItemViewModel> verificationItems = [];
     private bool allowClose;
     private bool refreshingHostState;
+    private bool refreshingPhysicsParameters;
+    private readonly Dictionary<string, (Slider Slider, WpfTextBox TextBox)> physicsControls = [];
 
     public ControlCenterWindow(
         ApplicationCommandController commandController,
@@ -49,8 +54,15 @@ public partial class ControlCenterWindow : Window
         this.captureSceneWindowSettings = captureSceneWindowSettings;
         this.startupSettingsWarning = startupSettingsWarning;
         InitializeComponent();
+        BuildPhysicsTuningPanel();
         SystemParameters.StaticPropertyChanged += OnSystemParametersChanged;
         Closed += OnClosed;
+        hostStatusTimer.Tick += (_, _) => RefreshHostState();
+        IsVisibleChanged += (_, _) =>
+        {
+            if (IsVisible) hostStatusTimer.Start();
+            else hostStatusTimer.Stop();
+        };
     }
 
     public void ShowOverview() => ShowPage(OverviewPage);
@@ -92,6 +104,7 @@ public partial class ControlCenterWindow : Window
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        hostStatusTimer.Stop();
         SystemParameters.StaticPropertyChanged -= OnSystemParametersChanged;
         RestoreThemeOverrides();
     }
@@ -170,6 +183,31 @@ public partial class ControlCenterWindow : Window
             SaveWindowSettings();
         }
     }
+
+    private void OnDebugSkeletonChanged(object sender, RoutedEventArgs e)
+    {
+        if (refreshingHostState || DebugSkeletonCheckBox.IsChecked is null)
+        {
+            return;
+        }
+
+        ApplyCommand(commandController.SetDebugSkeletonVisible(DebugSkeletonCheckBox.IsChecked.Value));
+    }
+
+    private void OnAddDangoClick(object sender, RoutedEventArgs e) =>
+        ApplyCommand(commandController.AddDango());
+
+    private void OnRemoveDangoClick(object sender, RoutedEventArgs e) =>
+        ApplyCommand(commandController.RemoveDango());
+
+    private void OnRestoreDefaultPhysicsClick(object sender, RoutedEventArgs e)
+    {
+        ApplyCommand(commandController.RestoreDefaultPhysicsParameters());
+        RefreshPhysicsParameters();
+    }
+
+    private void OnRegenerateDangoClick(object sender, RoutedEventArgs e) =>
+        ApplyCommand(commandController.RegenerateDango());
 
     private void OnHostModeChanged(object sender, RoutedEventArgs e)
     {
@@ -336,6 +374,12 @@ public partial class ControlCenterWindow : Window
             KeyboardControlCheckBox.IsChecked = keyboard.IsEnabled;
             ArrowKeysRadioButton.IsChecked = keyboard.Scheme == KeyboardControlScheme.ArrowKeys;
             WasdRadioButton.IsChecked = keyboard.Scheme == KeyboardControlScheme.Wasd;
+            DebugSkeletonCheckBox.IsChecked = commandController.IsDebugSkeletonVisible;
+            var dangoCount = commandController.DangoCount;
+            DangoCountText.Text = $"当前 {dangoCount} 只（最多 3 只）；拖动选择团子，移除作用于选中团子。";
+            AddDangoButton.IsEnabled = snapshot.LastError is null && dangoCount < 3;
+            RemoveDangoButton.IsEnabled = snapshot.LastError is null && dangoCount > 1;
+            RefreshPhysicsParameters();
             var layering = commandController.GetLayeringSettings();
             DangoBelowIconsRadioButton.IsChecked = layering.DangoLayer == DesktopObjectLayer.BelowDesktopIcons;
             DangoAboveIconsRadioButton.IsChecked = layering.DangoLayer == DesktopObjectLayer.AboveDesktopIcons;
@@ -352,13 +396,201 @@ public partial class ControlCenterWindow : Window
             WindowHostRadioButton.IsChecked = string.Equals(snapshot.Mode, "Window", StringComparison.Ordinal);
             DesktopLayeringPanel.IsEnabled = string.Equals(snapshot.Mode, "Wallpaper", StringComparison.Ordinal);
             OverviewHostStatusText.Text =
-                $"{snapshot.Mode} · {(snapshot.IsVisible ? "正在运行" : "已隐藏")} · {snapshot.VerificationStatus}";
+                $"{snapshot.Mode} · {(snapshot.IsVisible ? "正在运行" : "已隐藏")} · {snapshot.LastError ?? snapshot.VerificationStatus}";
         }
         finally
         {
             refreshingHostState = false;
         }
     }
+
+    private void BuildPhysicsTuningPanel()
+    {
+        StackPanel? sectionPanel = null;
+        var sectionIndex = 0;
+        foreach (var descriptor in PhysicsParameterDescriptors)
+        {
+            if (descriptor.IsSection)
+            {
+                sectionPanel = new StackPanel
+                {
+                    Margin = new Thickness(0, 4, 0, 6),
+                };
+                PhysicsTuningPanel.Children.Add(new Expander
+                {
+                    Header = new TextBlock
+                    {
+                        FontWeight = FontWeights.SemiBold,
+                        Text = descriptor.Label,
+                    },
+                    IsExpanded = sectionIndex == 0,
+                    Margin = new Thickness(0, sectionIndex == 0 ? 0 : 6, 0, 0),
+                    Content = sectionPanel,
+                });
+                sectionIndex++;
+                continue;
+            }
+
+            var valueTextBox = new WpfTextBox
+            {
+                IsReadOnly = true,
+                Width = 72,
+                Margin = new Thickness(10, 0, 0, 0),
+                HorizontalContentAlignment = System.Windows.HorizontalAlignment.Right,
+                Tag = descriptor,
+            };
+            var slider = new Slider
+            {
+                IsEnabled = false,
+                Minimum = descriptor.Minimum,
+                Maximum = descriptor.Maximum,
+                TickFrequency = descriptor.Tick,
+                IsSnapToTickEnabled = false,
+                Tag = descriptor,
+            };
+            var row = new Grid { Margin = new Thickness(0, 3, 0, 3) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(150) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            var label = new TextBlock
+            {
+                VerticalAlignment = VerticalAlignment.Center,
+                Text = descriptor.Label,
+            };
+            Grid.SetColumn(label, 0);
+            Grid.SetColumn(slider, 1);
+            Grid.SetColumn(valueTextBox, 2);
+            row.Children.Add(label);
+            row.Children.Add(slider);
+            row.Children.Add(valueTextBox);
+            (sectionPanel ?? PhysicsTuningPanel).Children.Add(row);
+            physicsControls.Add(descriptor.PropertyName, (slider, valueTextBox));
+        }
+        RefreshPhysicsParameters();
+    }
+
+    private void OnPhysicsSliderValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (refreshingPhysicsParameters || sender is not Slider { Tag: PhysicsParameterDescriptor descriptor })
+        {
+            return;
+        }
+        ApplyPhysicsValue(descriptor, e.NewValue);
+    }
+
+    private void OnPhysicsValueKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != System.Windows.Input.Key.Enter)
+        {
+            return;
+        }
+        OnPhysicsValueCommitted(sender, e);
+        e.Handled = true;
+    }
+
+    private void OnPhysicsValueCommitted(object sender, RoutedEventArgs e)
+    {
+        if (refreshingPhysicsParameters || sender is not WpfTextBox { Tag: PhysicsParameterDescriptor descriptor } textBox ||
+            !double.TryParse(textBox.Text, out var value))
+        {
+            RefreshPhysicsParameters();
+            return;
+        }
+        ApplyPhysicsValue(descriptor, value);
+    }
+
+    private void ApplyPhysicsValue(PhysicsParameterDescriptor descriptor, double value)
+    {
+        try
+        {
+            var parameters = commandController.GetPhysicsParameters().WithNumericValue(descriptor.PropertyName, value);
+            var result = commandController.ApplyPhysicsParameters(parameters);
+            ApplyCommand(result);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            DesktopCommandStatusText.Text = $"{descriptor.Label}超出安全范围，未应用。";
+            RefreshPhysicsParameters();
+        }
+    }
+
+    private void RefreshPhysicsParameters()
+    {
+        if (physicsControls.Count == 0)
+        {
+            return;
+        }
+        var parameters = commandController.GetPhysicsParameters();
+        refreshingPhysicsParameters = true;
+        try
+        {
+            foreach (var descriptor in PhysicsParameterDescriptors.Where(item => !item.IsSection))
+            {
+                var value = (double)(typeof(DangoSelfPhysicsParameters).GetProperty(descriptor.PropertyName)!
+                    .GetValue(parameters) ?? 0d);
+                var controls = physicsControls[descriptor.PropertyName];
+                controls.Slider.Value = value;
+                controls.TextBox.Text = value.ToString(descriptor.Format, System.Globalization.CultureInfo.CurrentCulture);
+            }
+        }
+        finally
+        {
+            refreshingPhysicsParameters = false;
+        }
+    }
+
+    private sealed record PhysicsParameterDescriptor(
+        string PropertyName,
+        string Label,
+        double Minimum,
+        double Maximum,
+        double Tick,
+        string Format,
+        bool IsSection = false)
+    {
+        public static PhysicsParameterDescriptor Section(string label) => new(string.Empty, label, 0, 0, 0, "", true);
+    }
+
+    private static readonly IReadOnlyList<PhysicsParameterDescriptor> PhysicsParameterDescriptors =
+    [
+        PhysicsParameterDescriptor.Section("结构与伸缩"),
+        new(nameof(DangoSelfPhysicsParameters.RadialRestLength), "团子大小", 0.45, 0.90, 0.01, "F2"),
+        new(nameof(DangoSelfPhysicsParameters.TopInwardForce), "顶部内收力", 0, 1, 0.01, "F2"),
+        new(nameof(DangoSelfPhysicsParameters.RadialMinimumRatio), "径向压缩下限", 0.65, 1, 0.01, "F2"),
+        new(nameof(DangoSelfPhysicsParameters.RadialMaximumRatio), "径向拉伸上限", 1, 1.35, 0.01, "F2"),
+        new(nameof(DangoSelfPhysicsParameters.PerimeterMinimumRatio), "外围压缩下限", 0.65, 1, 0.01, "F2"),
+        new(nameof(DangoSelfPhysicsParameters.PerimeterMaximumRatio), "外围拉伸上限", 1, 1.35, 0.01, "F2"),
+        new(nameof(DangoSelfPhysicsParameters.RadialElasticity), "径向弹性", 0.5, 20, 0.1, "F1"),
+        new(nameof(DangoSelfPhysicsParameters.PerimeterElasticity), "外围弹性", 0.5, 25, 0.1, "F1"),
+        new(nameof(DangoSelfPhysicsParameters.RadialDamping), "径向阻尼", 0, 2, 0.01, "F2"),
+        new(nameof(DangoSelfPhysicsParameters.PerimeterDamping), "外围阻尼", 0, 2, 0.01, "F2"),
+        new(nameof(DangoSelfPhysicsParameters.AreaPreservationStrength), "面积保持", 0, 20, 0.1, "F1"),
+        PhysicsParameterDescriptor.Section("防交叉"),
+        new(nameof(DangoSelfPhysicsParameters.BoneRepulsionDistance), "骨架排斥距离", 0.02, 0.30, 0.01, "F2"),
+        new(nameof(DangoSelfPhysicsParameters.BoneRepulsionStrength), "骨架排斥力", 0, 10, 0.1, "F1"),
+        new(nameof(DangoSelfPhysicsParameters.BoneRepulsionMaximumForce), "排斥最大力", 0.1, 20, 0.1, "F1"),
+        new(nameof(DangoSelfPhysicsParameters.CoreExclusionRatio), "核心排除比例", 0.05, 0.60, 0.01, "F2"),
+        new(nameof(DangoSelfPhysicsParameters.PerimeterAngleStrength), "90°–180°纠正力", 0, 20, 0.1, "F1"),
+        new(nameof(DangoSelfPhysicsParameters.LocalAngleBalanceStrength), "局部角度均衡力", 0, 20, 0.1, "F1"),
+        PhysicsParameterDescriptor.Section("地面与整体"),
+        new(nameof(DangoSelfPhysicsParameters.Gravity), "重力", 0.5, 25, 0.1, "F1"),
+        new(nameof(DangoSelfPhysicsParameters.DropHeight), "初始下落高度", 0, 1.5, 0.01, "F2"),
+        new(nameof(DangoSelfPhysicsParameters.GroundFriction), "地面摩擦", 0, 1.5, 0.01, "F2"),
+        new(nameof(DangoSelfPhysicsParameters.Restitution), "回弹系数", 0, 0.5, 0.01, "F2"),
+        new(nameof(DangoSelfPhysicsParameters.OverallDamping), "整体阻尼", 0, 8, 0.1, "F1"),
+        new(nameof(DangoSelfPhysicsParameters.GroundDeformationStrength), "落地形变力", 0, 10, 0.1, "F1"),
+        PhysicsParameterDescriptor.Section("鼠标拖动力"),
+        new(nameof(DangoSelfPhysicsParameters.DragStiffness), "拖动弹性", 0.1, 40, 0.1, "F1"),
+        new(nameof(DangoSelfPhysicsParameters.DragDamping), "拖动阻尼", 0, 12, 0.1, "F1"),
+        new(nameof(DangoSelfPhysicsParameters.DragMaximumForce), "拖动力上限", 0.2, 30, 0.1, "F1"),
+        PhysicsParameterDescriptor.Section("WASD 与跳跃冲量"),
+        new(nameof(DangoSelfPhysicsParameters.HorizontalForce), "A/D 水平力", 0.1, 12, 0.1, "F1"),
+        new(nameof(DangoSelfPhysicsParameters.MaximumHorizontalSpeed), "水平速度上限", 0.2, 8, 0.1, "F1"),
+        new(nameof(DangoSelfPhysicsParameters.AirControlRatio), "空中控制比例", 0, 1, 0.01, "F2"),
+        new(nameof(DangoSelfPhysicsParameters.DownwardForce), "S 向下力", 0, 12, 0.1, "F1"),
+        new(nameof(DangoSelfPhysicsParameters.JumpImpulse), "W 跳跃冲量", 0.05, 2, 0.01, "F2"),
+        new(nameof(DangoSelfPhysicsParameters.JumpCooldownMilliseconds), "跳跃冷却 ms", 100, 1500, 10, "F0"),
+    ];
 
     private void RefreshDiagnostics() =>
         DiagnosticsTextBox.Text = commandController.CreateDiagnosticSummary();
@@ -499,7 +731,8 @@ public partial class ControlCenterWindow : Window
                     Enum.TryParse<DesktopDisplayMode>(commandController.GetSnapshot().Mode, out var mode)
                         ? mode
                         : DesktopDisplayMode.Wallpaper,
-                    captureSceneWindowSettings?.Invoke() ?? SceneWindowSettings.CreateDefault()));
+                    captureSceneWindowSettings?.Invoke() ?? SceneWindowSettings.CreateDefault(),
+                    commandController.IsDebugSkeletonVisible));
         }
         catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
         {
