@@ -1,6 +1,7 @@
 #include <box2d/box2d.h>
 #include <math.h>
 #include <stdlib.h>
+#include "dango_self_constraints.h"
 
 #if defined(_WIN32)
 #define DANGO_API __declspec(dllexport)
@@ -8,7 +9,7 @@
 #define DANGO_API __attribute__((visibility("default")))
 #endif
 
-#define DANGO_BOX2D_ABI_VERSION 5
+#define DANGO_BOX2D_ABI_VERSION 13
 #define DANGO_SOFT_BODY_MAX_NODES 16
 #define DANGO_EYE_COUNT 2
 #define DANGO_EYE_JOINT_COUNT 3
@@ -986,4 +987,1921 @@ DANGO_API int dango_box2d_soft_body_destroy(void* soft_body_handle, int* outstan
     dango_destroy_soft_body_internal(soft_body);
     *outstanding_bytes = b2GetByteCount() - initial_bytes;
     return *outstanding_bytes == 0 ? 0 : -31;
+}
+
+typedef struct dango_paired_soft_bodies
+{
+    b2WorldId world_id;
+    b2BodyId ground_body_id;
+    b2ShapeId ground_shape_id;
+    b2BodyId core_body_ids[2];
+    b2ShapeId core_proxy_shape_ids[2];
+    b2BodyId node_body_ids[2][DANGO_SOFT_BODY_MAX_NODES];
+    b2ShapeId node_shape_ids[2][DANGO_SOFT_BODY_MAX_NODES];
+    b2JointId radial_joint_ids[2][DANGO_SOFT_BODY_MAX_NODES];
+    b2JointId edge_joint_ids[2][DANGO_SOFT_BODY_MAX_NODES];
+    int node_count;
+    int substep_count;
+    int initial_box2d_bytes;
+    bool contact_active_applied;
+    bool anchors_initialized;
+    dango_soft_body_config config;
+} dango_paired_soft_bodies;
+
+static void dango_destroy_paired_internal(dango_paired_soft_bodies* pair)
+{
+    if (pair == NULL)
+    {
+        return;
+    }
+    if (b2World_IsValid(pair->world_id))
+    {
+        b2DestroyWorld(pair->world_id);
+    }
+    free(pair);
+}
+
+static b2Vec2 dango_paired_target_point(const dango_paired_soft_bodies* pair, int index)
+{
+    float angle = 6.28318530717958647692f * (float)index / (float)pair->node_count;
+    float sine = sinf(angle);
+    float x = 0.5f * pair->config.rest_width * cosf(angle);
+    float y = 0.5f * pair->config.rest_height * sine;
+    float lower = fmaxf(0.0f, -sine);
+    float top = fmaxf(0.0f, sine);
+    x *= 1.0f + pair->config.lower_bulge * lower;
+    x *= 1.0f - (1.0f - pair->config.top_roundness) * top * 0.22f;
+    if (sine < -0.35f)
+    {
+        float bottom_y = -0.5f * pair->config.rest_height * (1.0f - pair->config.ground_compression);
+        y += (bottom_y - y) * pair->config.bottom_flatness;
+    }
+    return (b2Vec2){x, y};
+}
+
+static int dango_create_paired_ring(dango_paired_soft_bodies* pair, int participant, float center_x)
+{
+    b2BodyDef core_def = b2DefaultBodyDef();
+    core_def.type = b2_kinematicBody;
+    core_def.position = (b2Vec2){center_x, 0.0f};
+    pair->core_body_ids[participant] = b2CreateBody(pair->world_id, &core_def);
+    if (!b2Body_IsValid(pair->core_body_ids[participant]))
+    {
+        return -42;
+    }
+
+    b2ShapeDef proxy_shape_def = b2DefaultShapeDef();
+    proxy_shape_def.filter.categoryBits = participant == 0 ? 0x00000040 : 0x00000080;
+    proxy_shape_def.filter.maskBits = 0;
+    float proxy_radius = fmaxf(0.2f, 0.5f * pair->config.rest_width - pair->config.node_radius);
+    b2Circle proxy_circle = {{0.0f, 0.0f}, proxy_radius};
+    pair->core_proxy_shape_ids[participant] = b2CreateCircleShape(
+        pair->core_body_ids[participant], &proxy_shape_def, &proxy_circle);
+    if (!b2Shape_IsValid(pair->core_proxy_shape_ids[participant]))
+    {
+        return -42;
+    }
+
+    const uint64_t category = participant == 0 ? 0x00000010 : 0x00000020;
+    const float collision_radius = pair->config.node_radius * 0.10f;
+    b2ShapeDef node_shape_def = b2DefaultShapeDef();
+    node_shape_def.density = pair->config.node_mass /
+        (3.14159265f * collision_radius * collision_radius);
+    node_shape_def.material.friction = pair->config.friction;
+    node_shape_def.material.restitution = pair->config.restitution;
+    node_shape_def.filter.categoryBits = category;
+    node_shape_def.filter.maskBits = 0x00000001;
+    b2Circle node_circle = {{0.0f, 0.0f}, collision_radius};
+
+    for (int index = 0; index < pair->node_count; ++index)
+    {
+        b2Vec2 local = dango_paired_target_point(pair, index);
+        b2BodyDef node_def = b2DefaultBodyDef();
+        node_def.type = b2_dynamicBody;
+        node_def.position = (b2Vec2){center_x + local.x, local.y};
+        node_def.linearDamping = pair->config.linear_damping;
+        node_def.angularDamping = 2.0f;
+        node_def.gravityScale = 0.0f;
+        node_def.fixedRotation = true;
+        node_def.sleepThreshold = 0.02f;
+        pair->node_body_ids[participant][index] = b2CreateBody(pair->world_id, &node_def);
+        pair->node_shape_ids[participant][index] = b2CreateCircleShape(
+            pair->node_body_ids[participant][index], &node_shape_def, &node_circle);
+        if (!b2Body_IsValid(pair->node_body_ids[participant][index]) ||
+            !b2Shape_IsValid(pair->node_shape_ids[participant][index]))
+        {
+            return -43;
+        }
+        pair->radial_joint_ids[participant][index] = dango_create_spring(
+            pair->world_id,
+            pair->core_body_ids[participant],
+            pair->node_body_ids[participant][index],
+            sqrtf(local.x * local.x + local.y * local.y),
+            pair->config.radial_hertz,
+            pair->config.radial_damping);
+        if (!b2Joint_IsValid(pair->radial_joint_ids[participant][index]))
+        {
+            return -44;
+        }
+    }
+
+    for (int index = 0; index < pair->node_count; ++index)
+    {
+        int next = (index + 1) % pair->node_count;
+        b2Vec2 position = b2Body_GetPosition(pair->node_body_ids[participant][index]);
+        b2Vec2 next_position = b2Body_GetPosition(pair->node_body_ids[participant][next]);
+        pair->edge_joint_ids[participant][index] = dango_create_spring(
+            pair->world_id,
+            pair->node_body_ids[participant][index],
+            pair->node_body_ids[participant][next],
+            dango_distance(position, next_position),
+            pair->config.edge_hertz,
+            pair->config.edge_damping);
+        if (!b2Joint_IsValid(pair->edge_joint_ids[participant][index]))
+        {
+            return -45;
+        }
+    }
+    return 0;
+}
+
+static void dango_apply_paired_contact_compliance(
+    dango_paired_soft_bodies* pair,
+    int participant,
+    float normal_x,
+    float normal_y,
+    float strength,
+    int contact_active)
+{
+    float direction_x = participant == 0 ? normal_x : -normal_x;
+    float direction_y = participant == 0 ? normal_y : -normal_y;
+    for (int index = 0; index < pair->node_count; ++index)
+    {
+        b2Vec2 target = dango_paired_target_point(pair, index);
+        float target_length = sqrtf(target.x * target.x + target.y * target.y);
+        float alignment = target_length > 0.0001f
+            ? (target.x * direction_x + target.y * direction_y) / target_length
+            : 0.0f;
+        float near_weight = fmaxf(0.0f, alignment);
+        float far_weight = fmaxf(0.0f, -alignment);
+        float radial_factor = contact_active != 0
+            ? 1.0f - 0.55f * strength * near_weight + 1.50f * strength * far_weight
+            : 1.0f;
+        b2DistanceJoint_SetSpringHertz(
+            pair->radial_joint_ids[participant][index],
+            pair->config.radial_hertz * radial_factor);
+        if (contact_active != 0 && far_weight > 0.0f)
+        {
+            b2Vec2 core = b2Body_GetPosition(pair->core_body_ids[participant]);
+            b2Vec2 position = b2Body_GetPosition(pair->node_body_ids[participant][index]);
+            float angular_frequency = 6.28318530717958647692f * pair->config.radial_hertz;
+            float lateral_stiffness = pair->config.node_mass * angular_frequency * angular_frequency;
+            float lateral_force = (core.x + target.x - position.x) *
+                lateral_stiffness * strength * far_weight;
+            lateral_force = fmaxf(-2.5f, fminf(2.5f, lateral_force));
+            b2Body_ApplyForceToCenter(
+                pair->node_body_ids[participant][index],
+                (b2Vec2){lateral_force, 0.0f},
+                true);
+        }
+
+        int next = (index + 1) % pair->node_count;
+        b2Vec2 next_target = dango_paired_target_point(pair, next);
+        float edge_x = target.x + next_target.x;
+        float edge_y = target.y + next_target.y;
+        float edge_length = sqrtf(edge_x * edge_x + edge_y * edge_y);
+        float edge_alignment = edge_length > 0.0001f
+            ? (edge_x * direction_x + edge_y * direction_y) / edge_length
+            : 0.0f;
+        float edge_near_weight = fmaxf(0.0f, edge_alignment);
+        float edge_far_weight = fmaxf(0.0f, -edge_alignment);
+        float edge_factor = contact_active != 0
+            ? 1.0f - 0.65f * strength * edge_near_weight + 1.00f * strength * edge_far_weight
+            : 1.0f;
+        b2DistanceJoint_SetSpringHertz(
+            pair->edge_joint_ids[participant][index],
+            pair->config.edge_hertz * edge_factor);
+    }
+}
+
+DANGO_API int dango_box2d_paired_soft_body_create_configured(
+    const dango_soft_body_config* config,
+    void** paired_handle)
+{
+    if (paired_handle == NULL)
+    {
+        return -40;
+    }
+    *paired_handle = NULL;
+    if (config == NULL ||
+        !dango_is_supported_soft_body_configuration(config->node_count, config->substep_count))
+    {
+        return -41;
+    }
+
+    dango_paired_soft_bodies* pair = calloc(1, sizeof(dango_paired_soft_bodies));
+    if (pair == NULL)
+    {
+        return -42;
+    }
+    pair->world_id = b2_nullWorldId;
+    pair->initial_box2d_bytes = b2GetByteCount();
+    pair->node_count = config->node_count;
+    pair->substep_count = config->substep_count;
+    pair->config = *config;
+
+    b2WorldDef world_def = b2DefaultWorldDef();
+    world_def.gravity = (b2Vec2){0.0f, -9.8f};
+    pair->world_id = b2CreateWorld(&world_def);
+    if (!b2World_IsValid(pair->world_id))
+    {
+        dango_destroy_paired_internal(pair);
+        return -42;
+    }
+    b2World_SetContactTuning(pair->world_id, config->contact_hertz, 10.0f, 3.0f);
+    b2World_EnableSleeping(pair->world_id, true);
+
+    b2BodyDef ground_def = b2DefaultBodyDef();
+    ground_def.type = b2_staticBody;
+    ground_def.position = (b2Vec2){0.0f, config->ground_height - 0.08f};
+    pair->ground_body_id = b2CreateBody(pair->world_id, &ground_def);
+    b2ShapeDef ground_shape_def = b2DefaultShapeDef();
+    ground_shape_def.material.friction = config->friction;
+    ground_shape_def.filter.categoryBits = 0x00000001;
+    ground_shape_def.filter.maskBits = 0x00000030;
+    b2Polygon ground_box = b2MakeBox(5.0f, 0.08f);
+    pair->ground_shape_id = b2CreatePolygonShape(
+        pair->ground_body_id, &ground_shape_def, &ground_box);
+    if (!b2Body_IsValid(pair->ground_body_id) || !b2Shape_IsValid(pair->ground_shape_id))
+    {
+        dango_destroy_paired_internal(pair);
+        return -42;
+    }
+
+    int result = dango_create_paired_ring(pair, 0, 0.0f);
+    if (result == 0)
+    {
+        result = dango_create_paired_ring(pair, 1, 2.5f);
+    }
+    if (result != 0)
+    {
+        dango_destroy_paired_internal(pair);
+        return result;
+    }
+
+    *paired_handle = pair;
+    return 0;
+}
+
+DANGO_API int dango_box2d_paired_soft_body_create(int node_count, int substep_count, void** paired_handle)
+{
+    dango_soft_body_config config = dango_default_soft_body_config(node_count, substep_count);
+    return dango_box2d_paired_soft_body_create_configured(&config, paired_handle);
+}
+
+static int dango_write_paired_ring(
+    dango_paired_soft_bodies* pair,
+    int participant,
+    float* points,
+    float* signed_area,
+    float* centroid_x,
+    float* centroid_y,
+    float* maximum_speed)
+{
+    b2Vec2 core = b2Body_GetPosition(pair->core_body_ids[participant]);
+    float area_twice = 0.0f;
+    float center_x = 0.0f;
+    float center_y = 0.0f;
+    for (int index = 0; index < pair->node_count; ++index)
+    {
+        int next = (index + 1) % pair->node_count;
+        b2Vec2 position = b2Body_GetPosition(pair->node_body_ids[participant][index]);
+        b2Vec2 next_position = b2Body_GetPosition(pair->node_body_ids[participant][next]);
+        b2Vec2 velocity = b2Body_GetLinearVelocity(pair->node_body_ids[participant][index]);
+        float local_x = position.x - core.x;
+        float local_y = position.y - core.y;
+        float next_x = next_position.x - core.x;
+        float next_y = next_position.y - core.y;
+        float local_length = sqrtf(local_x * local_x + local_y * local_y);
+        float next_length = sqrtf(next_x * next_x + next_y * next_y);
+        if (local_length > 0.0001f)
+        {
+            local_x += pair->config.node_radius * local_x / local_length;
+            local_y += pair->config.node_radius * local_y / local_length;
+        }
+        if (next_length > 0.0001f)
+        {
+            next_x += pair->config.node_radius * next_x / next_length;
+            next_y += pair->config.node_radius * next_y / next_length;
+        }
+        float speed = sqrtf(velocity.x * velocity.x + velocity.y * velocity.y);
+        if (!isfinite(local_x) || !isfinite(local_y) || !isfinite(speed) ||
+            fabsf(local_x) > 1.0f || fabsf(local_y) > 1.0f || speed > 10.0f)
+        {
+            return -48;
+        }
+        points[index * 2] = local_x;
+        points[index * 2 + 1] = local_y;
+        center_x += local_x;
+        center_y += local_y;
+        area_twice += local_x * next_y - next_x * local_y;
+        *maximum_speed = fmaxf(*maximum_speed, speed);
+    }
+    *signed_area = 0.5f * area_twice;
+    *centroid_x = center_x / (float)pair->node_count;
+    *centroid_y = center_y / (float)pair->node_count;
+    return !isfinite(*signed_area) || *signed_area < 0.35f ? -49 : 0;
+}
+
+DANGO_API int dango_box2d_paired_soft_body_step(
+    void* paired_handle,
+    float time_step,
+    float first_anchor_x,
+    float first_anchor_y,
+    float second_anchor_x,
+    float second_anchor_y,
+    float normal_x,
+    float normal_y,
+    float strength,
+    int contact_active,
+    float* first_points,
+    float* second_points,
+    int point_capacity,
+    int* point_count,
+    int* contact_count,
+    float* first_signed_area,
+    float* first_centroid_x,
+    float* first_centroid_y,
+    float* second_signed_area,
+    float* second_centroid_x,
+    float* second_centroid_y,
+    float* maximum_speed)
+{
+    dango_paired_soft_bodies* pair = paired_handle;
+    if (pair == NULL || first_points == NULL || second_points == NULL || point_count == NULL ||
+        contact_count == NULL || first_signed_area == NULL || first_centroid_x == NULL ||
+        first_centroid_y == NULL || second_signed_area == NULL || second_centroid_x == NULL ||
+        second_centroid_y == NULL || maximum_speed == NULL)
+    {
+        return -46;
+    }
+    float normal_length = sqrtf(normal_x * normal_x + normal_y * normal_y);
+    if (!b2World_IsValid(pair->world_id) || point_capacity < pair->node_count ||
+        !isfinite(time_step) || time_step <= 0.0f || time_step > 0.1f ||
+        !isfinite(first_anchor_x) || !isfinite(first_anchor_y) ||
+        !isfinite(second_anchor_x) || !isfinite(second_anchor_y) ||
+        !isfinite(normal_x) || !isfinite(normal_y) || !isfinite(strength) ||
+        strength < 0.0f || strength > 1.0f || contact_active < 0 || contact_active > 1 ||
+        (contact_active != 0 && normal_length < 0.9f))
+    {
+        return -47;
+    }
+
+    const b2Vec2 requested_anchors[2] =
+    {
+        {first_anchor_x, first_anchor_y},
+        {second_anchor_x, second_anchor_y}
+    };
+    if (!pair->anchors_initialized)
+    {
+        for (int participant = 0; participant < 2; ++participant)
+        {
+            b2Vec2 current_anchor = b2Body_GetPosition(pair->core_body_ids[participant]);
+            b2Vec2 delta =
+            {
+                requested_anchors[participant].x - current_anchor.x,
+                requested_anchors[participant].y - current_anchor.y
+            };
+            b2Body_SetTransform(pair->core_body_ids[participant], requested_anchors[participant], b2Rot_identity);
+            for (int index = 0; index < pair->node_count; ++index)
+            {
+                b2Vec2 position = b2Body_GetPosition(pair->node_body_ids[participant][index]);
+                b2Body_SetTransform(
+                    pair->node_body_ids[participant][index],
+                    (b2Vec2){position.x + delta.x, position.y + delta.y},
+                    b2Rot_identity);
+                b2Body_SetLinearVelocity(pair->node_body_ids[participant][index], (b2Vec2){0.0f, 0.0f});
+            }
+        }
+        pair->anchors_initialized = true;
+    }
+    else
+    {
+        b2Body_SetTransform(pair->core_body_ids[0], requested_anchors[0], b2Rot_identity);
+        b2Body_SetTransform(pair->core_body_ids[1], requested_anchors[1], b2Rot_identity);
+    }
+
+    if (contact_active != 0)
+    {
+        normal_x /= normal_length;
+        normal_y /= normal_length;
+    }
+
+    for (int participant = 0; participant < 2; ++participant)
+    {
+        dango_apply_paired_contact_compliance(
+            pair,
+            participant,
+            normal_x,
+            normal_y,
+            strength,
+            contact_active);
+        for (int index = 0; index < pair->node_count; ++index)
+        {
+            if ((contact_active != 0) != pair->contact_active_applied)
+            {
+                b2Filter filter = b2Shape_GetFilter(pair->node_shape_ids[participant][index]);
+                filter.maskBits = contact_active != 0
+                    ? (participant == 0 ? 0x000000A1 : 0x00000051)
+                    : 0x00000001;
+                b2Shape_SetFilter(pair->node_shape_ids[participant][index], filter);
+                b2Body_SetAwake(pair->node_body_ids[participant][index], true);
+            }
+        }
+        if ((contact_active != 0) != pair->contact_active_applied)
+        {
+            b2Filter proxy_filter = b2Shape_GetFilter(pair->core_proxy_shape_ids[participant]);
+            proxy_filter.maskBits = contact_active != 0
+                ? (participant == 0 ? 0x00000020 : 0x00000010)
+                : 0;
+            b2Shape_SetFilter(pair->core_proxy_shape_ids[participant], proxy_filter);
+        }
+    }
+    pair->contact_active_applied = contact_active != 0;
+
+    b2World_Step(pair->world_id, time_step, pair->substep_count);
+    *point_count = pair->node_count;
+    *contact_count = 0;
+    *maximum_speed = 0.0f;
+    for (int index = 0; index < pair->node_count; ++index)
+    {
+        b2ContactData contacts[8];
+        int capacity = b2Body_GetContactCapacity(pair->node_body_ids[0][index]);
+        capacity = capacity < 8 ? capacity : 8;
+        if (capacity > 0)
+        {
+            int count = b2Body_GetContactData(pair->node_body_ids[0][index], contacts, capacity);
+            for (int contact_index = 0; contact_index < count; ++contact_index)
+            {
+                uint64_t category_a = b2Shape_GetFilter(contacts[contact_index].shapeIdA).categoryBits;
+                uint64_t category_b = b2Shape_GetFilter(contacts[contact_index].shapeIdB).categoryBits;
+                if (((category_a | category_b) & 0x000000A0) != 0)
+                {
+                    *contact_count += 1;
+                }
+            }
+        }
+    }
+    int result = dango_write_paired_ring(pair, 0, first_points, first_signed_area, first_centroid_x, first_centroid_y, maximum_speed);
+    if (result == 0)
+    {
+        result = dango_write_paired_ring(pair, 1, second_points, second_signed_area, second_centroid_x, second_centroid_y, maximum_speed);
+    }
+    return result;
+}
+
+DANGO_API int dango_box2d_paired_soft_body_destroy(void* paired_handle, int* outstanding_bytes)
+{
+    dango_paired_soft_bodies* pair = paired_handle;
+    if (pair == NULL || outstanding_bytes == NULL)
+    {
+        return -50;
+    }
+    int initial_bytes = pair->initial_box2d_bytes;
+    dango_destroy_paired_internal(pair);
+    *outstanding_bytes = b2GetByteCount() - initial_bytes;
+    return *outstanding_bytes == 0 ? 0 : -51;
+}
+
+#define DANGO_STACKED_BODY_COUNT 3
+
+typedef struct dango_stacked_soft_bodies
+{
+    b2WorldId world_id;
+    b2BodyId ground_body_id;
+    b2ShapeId ground_shape_id;
+    b2BodyId core_body_ids[DANGO_STACKED_BODY_COUNT];
+    b2ShapeId core_proxy_shape_ids[DANGO_STACKED_BODY_COUNT];
+    b2BodyId node_body_ids[DANGO_STACKED_BODY_COUNT][DANGO_SOFT_BODY_MAX_NODES];
+    b2ShapeId node_shape_ids[DANGO_STACKED_BODY_COUNT][DANGO_SOFT_BODY_MAX_NODES];
+    b2JointId radial_joint_ids[DANGO_STACKED_BODY_COUNT][DANGO_SOFT_BODY_MAX_NODES];
+    b2JointId edge_joint_ids[DANGO_STACKED_BODY_COUNT][DANGO_SOFT_BODY_MAX_NODES];
+    int node_count;
+    int substep_count;
+    int initial_box2d_bytes;
+    int active_count;
+    bool anchors_initialized;
+    dango_soft_body_config config;
+} dango_stacked_soft_bodies;
+
+static void dango_destroy_stacked_internal(dango_stacked_soft_bodies* stack)
+{
+    if (stack == NULL)
+    {
+        return;
+    }
+    if (b2World_IsValid(stack->world_id))
+    {
+        b2DestroyWorld(stack->world_id);
+    }
+    free(stack);
+}
+
+static b2Vec2 dango_stacked_target_point(const dango_stacked_soft_bodies* stack, int index)
+{
+    float angle = 6.28318530717958647692f * (float)index / (float)stack->node_count;
+    float sine = sinf(angle);
+    float x = 0.5f * stack->config.rest_width * cosf(angle);
+    float y = 0.5f * stack->config.rest_height * sine;
+    float lower = fmaxf(0.0f, -sine);
+    float top = fmaxf(0.0f, sine);
+    x *= 1.0f + stack->config.lower_bulge * lower;
+    x *= 1.0f - (1.0f - stack->config.top_roundness) * top * 0.22f;
+    if (sine < -0.35f)
+    {
+        float bottom_y = -0.5f * stack->config.rest_height * (1.0f - stack->config.ground_compression);
+        y += (bottom_y - y) * stack->config.bottom_flatness;
+    }
+    return (b2Vec2){x, y};
+}
+
+static uint64_t dango_stacked_node_category(int participant)
+{
+    return (uint64_t)0x00000010 << participant;
+}
+
+static uint64_t dango_stacked_proxy_category(int participant)
+{
+    return (uint64_t)0x00000100 << participant;
+}
+
+static int dango_create_stacked_ring(dango_stacked_soft_bodies* stack, int participant, float center_x)
+{
+    b2BodyDef core_def = b2DefaultBodyDef();
+    core_def.type = b2_dynamicBody;
+    core_def.position = (b2Vec2){center_x, 0.0f};
+    core_def.linearDamping = 2.4f;
+    core_def.angularDamping = 2.0f;
+    core_def.gravityScale = 1.0f;
+    core_def.fixedRotation = true;
+    core_def.sleepThreshold = 0.025f;
+    stack->core_body_ids[participant] = b2CreateBody(stack->world_id, &core_def);
+    if (!b2Body_IsValid(stack->core_body_ids[participant]))
+    {
+        return -62;
+    }
+
+    uint64_t own_node_category = dango_stacked_node_category(participant);
+    uint64_t own_proxy_category = dango_stacked_proxy_category(participant);
+    uint64_t all_node_categories = 0;
+    uint64_t all_proxy_categories = 0;
+    for (int body = 0; body < DANGO_STACKED_BODY_COUNT; ++body)
+    {
+        all_node_categories |= dango_stacked_node_category(body);
+        all_proxy_categories |= dango_stacked_proxy_category(body);
+    }
+
+    b2ShapeDef proxy_shape_def = b2DefaultShapeDef();
+    proxy_shape_def.density = 0.55f;
+    proxy_shape_def.material.friction = 0.0f;
+    proxy_shape_def.material.restitution = stack->config.restitution;
+    proxy_shape_def.filter.categoryBits = own_proxy_category;
+    proxy_shape_def.filter.maskBits = all_node_categories & ~own_node_category;
+    float proxy_half_width = fmaxf(0.2f, 0.38f * stack->config.rest_width);
+    float proxy_half_height = fmaxf(0.2f, 0.54f * stack->config.rest_height);
+    b2Polygon proxy_shape = b2MakeRoundedBox(proxy_half_width, proxy_half_height, 0.12f);
+    stack->core_proxy_shape_ids[participant] = b2CreatePolygonShape(
+        stack->core_body_ids[participant], &proxy_shape_def, &proxy_shape);
+    if (!b2Shape_IsValid(stack->core_proxy_shape_ids[participant]))
+    {
+        return -62;
+    }
+
+    const float collision_radius = stack->config.node_radius * 0.10f;
+    b2ShapeDef node_shape_def = b2DefaultShapeDef();
+    node_shape_def.density = stack->config.node_mass /
+        (3.14159265f * collision_radius * collision_radius);
+    node_shape_def.material.friction = stack->config.friction;
+    node_shape_def.material.restitution = stack->config.restitution;
+    node_shape_def.filter.categoryBits = own_node_category;
+    node_shape_def.filter.maskBits = 0x00000001 |
+        (all_node_categories & ~own_node_category) |
+        (all_proxy_categories & ~own_proxy_category);
+    b2Circle node_circle = {{0.0f, 0.0f}, collision_radius};
+
+    for (int index = 0; index < stack->node_count; ++index)
+    {
+        b2Vec2 local = dango_stacked_target_point(stack, index);
+        b2BodyDef node_def = b2DefaultBodyDef();
+        node_def.type = b2_dynamicBody;
+        node_def.position = (b2Vec2){center_x + local.x, local.y};
+        node_def.linearDamping = stack->config.linear_damping;
+        node_def.angularDamping = 2.0f;
+        node_def.gravityScale = 1.0f;
+        node_def.fixedRotation = true;
+        node_def.sleepThreshold = 0.025f;
+        stack->node_body_ids[participant][index] = b2CreateBody(stack->world_id, &node_def);
+        stack->node_shape_ids[participant][index] = b2CreateCircleShape(
+            stack->node_body_ids[participant][index], &node_shape_def, &node_circle);
+        if (!b2Body_IsValid(stack->node_body_ids[participant][index]) ||
+            !b2Shape_IsValid(stack->node_shape_ids[participant][index]))
+        {
+            return -63;
+        }
+        stack->radial_joint_ids[participant][index] = dango_create_spring(
+            stack->world_id,
+            stack->core_body_ids[participant],
+            stack->node_body_ids[participant][index],
+            sqrtf(local.x * local.x + local.y * local.y),
+            stack->config.radial_hertz,
+            stack->config.radial_damping);
+        if (!b2Joint_IsValid(stack->radial_joint_ids[participant][index]))
+        {
+            return -64;
+        }
+    }
+
+    for (int index = 0; index < stack->node_count; ++index)
+    {
+        int next = (index + 1) % stack->node_count;
+        b2Vec2 position = b2Body_GetPosition(stack->node_body_ids[participant][index]);
+        b2Vec2 next_position = b2Body_GetPosition(stack->node_body_ids[participant][next]);
+        stack->edge_joint_ids[participant][index] = dango_create_spring(
+            stack->world_id,
+            stack->node_body_ids[participant][index],
+            stack->node_body_ids[participant][next],
+            dango_distance(position, next_position),
+            stack->config.edge_hertz,
+            stack->config.edge_damping);
+        if (!b2Joint_IsValid(stack->edge_joint_ids[participant][index]))
+        {
+            return -65;
+        }
+    }
+    return 0;
+}
+
+DANGO_API int dango_box2d_stacked_soft_body_create_configured(
+    const dango_soft_body_config* config,
+    void** stacked_handle)
+{
+    if (stacked_handle == NULL)
+    {
+        return -60;
+    }
+    *stacked_handle = NULL;
+    if (config == NULL ||
+        !dango_is_supported_soft_body_configuration(config->node_count, config->substep_count))
+    {
+        return -61;
+    }
+
+    dango_stacked_soft_bodies* stack = calloc(1, sizeof(dango_stacked_soft_bodies));
+    if (stack == NULL)
+    {
+        return -62;
+    }
+    stack->world_id = b2_nullWorldId;
+    stack->initial_box2d_bytes = b2GetByteCount();
+    stack->node_count = config->node_count;
+    stack->substep_count = config->substep_count;
+    stack->config = *config;
+
+    b2WorldDef world_def = b2DefaultWorldDef();
+    world_def.gravity = (b2Vec2){0.0f, -9.8f};
+    stack->world_id = b2CreateWorld(&world_def);
+    if (!b2World_IsValid(stack->world_id))
+    {
+        dango_destroy_stacked_internal(stack);
+        return -62;
+    }
+    b2World_SetContactTuning(stack->world_id, config->contact_hertz, 10.0f, 3.0f);
+    b2World_EnableSleeping(stack->world_id, true);
+
+    b2BodyDef ground_def = b2DefaultBodyDef();
+    ground_def.type = b2_staticBody;
+    ground_def.position = (b2Vec2){0.0f, config->ground_height - 0.08f};
+    stack->ground_body_id = b2CreateBody(stack->world_id, &ground_def);
+    b2ShapeDef ground_shape_def = b2DefaultShapeDef();
+    ground_shape_def.material.friction = fmaxf(config->friction, 0.75f);
+    ground_shape_def.filter.categoryBits = 0x00000001;
+    ground_shape_def.filter.maskBits = 0x00000070;
+    b2Polygon ground_box = b2MakeBox(8.0f, 0.08f);
+    stack->ground_shape_id = b2CreatePolygonShape(
+        stack->ground_body_id, &ground_shape_def, &ground_box);
+    if (!b2Body_IsValid(stack->ground_body_id) || !b2Shape_IsValid(stack->ground_shape_id))
+    {
+        dango_destroy_stacked_internal(stack);
+        return -62;
+    }
+    b2Polygon side_wall = b2MakeBox(0.08f, 5.0f);
+    b2ShapeDef wall_shape_def = ground_shape_def;
+    b2Transform left_wall_transform = {{-5.5f, 5.0f}, b2Rot_identity};
+    b2Transform right_wall_transform = {{5.5f, 5.0f}, b2Rot_identity};
+    b2Polygon left_wall = b2TransformPolygon(left_wall_transform, &side_wall);
+    b2Polygon right_wall = b2TransformPolygon(right_wall_transform, &side_wall);
+    b2CreatePolygonShape(stack->ground_body_id, &wall_shape_def, &left_wall);
+    b2CreatePolygonShape(stack->ground_body_id, &wall_shape_def, &right_wall);
+
+    int result = 0;
+    for (int participant = 0; participant < DANGO_STACKED_BODY_COUNT && result == 0; ++participant)
+    {
+        result = dango_create_stacked_ring(stack, participant, (float)participant * 3.0f);
+    }
+    if (result != 0)
+    {
+        dango_destroy_stacked_internal(stack);
+        return result;
+    }
+
+    for (int participant = 0; participant < DANGO_STACKED_BODY_COUNT; ++participant)
+    {
+        b2Body_Disable(stack->core_body_ids[participant]);
+        for (int index = 0; index < stack->node_count; ++index)
+        {
+            b2Body_Disable(stack->node_body_ids[participant][index]);
+        }
+    }
+
+    *stacked_handle = stack;
+    return 0;
+}
+
+static int dango_write_stacked_ring(
+    dango_stacked_soft_bodies* stack,
+    int participant,
+    float* points,
+    float* signed_area,
+    float* centroid_x,
+    float* centroid_y,
+    float* maximum_speed)
+{
+    b2Vec2 core = b2Body_GetPosition(stack->core_body_ids[participant]);
+    float area_twice = 0.0f;
+    float center_x = 0.0f;
+    float center_y = 0.0f;
+    for (int index = 0; index < stack->node_count; ++index)
+    {
+        int next = (index + 1) % stack->node_count;
+        b2Vec2 position = b2Body_GetPosition(stack->node_body_ids[participant][index]);
+        b2Vec2 next_position = b2Body_GetPosition(stack->node_body_ids[participant][next]);
+        b2Vec2 velocity = b2Body_GetLinearVelocity(stack->node_body_ids[participant][index]);
+        float local_x = position.x - core.x;
+        float local_y = position.y - core.y;
+        float next_x = next_position.x - core.x;
+        float next_y = next_position.y - core.y;
+        float local_length = sqrtf(local_x * local_x + local_y * local_y);
+        float next_length = sqrtf(next_x * next_x + next_y * next_y);
+        if (local_length > 0.0001f)
+        {
+            local_x += stack->config.node_radius * local_x / local_length;
+            local_y += stack->config.node_radius * local_y / local_length;
+        }
+        if (next_length > 0.0001f)
+        {
+            next_x += stack->config.node_radius * next_x / next_length;
+            next_y += stack->config.node_radius * next_y / next_length;
+        }
+        float speed = sqrtf(velocity.x * velocity.x + velocity.y * velocity.y);
+        if (!isfinite(local_x) || !isfinite(local_y) || !isfinite(speed))
+        {
+            return -68;
+        }
+        if (fabsf(local_x) > 1.2f || fabsf(local_y) > 1.2f)
+        {
+            return -72;
+        }
+        if (speed > 10.0f)
+        {
+            return -73;
+        }
+        points[index * 2] = local_x;
+        points[index * 2 + 1] = local_y;
+        center_x += local_x;
+        center_y += local_y;
+        area_twice += local_x * next_y - next_x * local_y;
+        *maximum_speed = fmaxf(*maximum_speed, speed);
+    }
+    *signed_area = 0.5f * area_twice;
+    *centroid_x = center_x / (float)stack->node_count;
+    *centroid_y = center_y / (float)stack->node_count;
+    return !isfinite(*signed_area) || *signed_area < 0.30f ? -69 : 0;
+}
+
+DANGO_API int dango_box2d_stacked_soft_body_step(
+    void* stacked_handle,
+    float time_step,
+    const float* anchors,
+    int anchor_count,
+    float control_x,
+    float control_y,
+    float* first_points,
+    float* second_points,
+    float* third_points,
+    int point_capacity,
+    int* point_count,
+    int* contact_count,
+    int* first_second_contact,
+    int* second_third_contact,
+    float* signed_areas,
+    float* centroid_xs,
+    float* centroid_ys,
+    float* core_xs,
+    float* core_ys,
+    float* maximum_speed)
+{
+    dango_stacked_soft_bodies* stack = stacked_handle;
+    if (stack == NULL || anchors == NULL || first_points == NULL || second_points == NULL ||
+        third_points == NULL || point_count == NULL || contact_count == NULL ||
+        first_second_contact == NULL || second_third_contact == NULL || signed_areas == NULL ||
+        centroid_xs == NULL || centroid_ys == NULL || core_xs == NULL || core_ys == NULL ||
+        maximum_speed == NULL)
+    {
+        return -66;
+    }
+    if (!b2World_IsValid(stack->world_id) || anchor_count < 1 || anchor_count > DANGO_STACKED_BODY_COUNT ||
+        point_capacity < stack->node_count || !isfinite(time_step) || time_step <= 0.0f || time_step > 0.1f)
+    {
+        return -67;
+    }
+    if (!isfinite(control_x) || !isfinite(control_y) ||
+        control_x < -1.0f || control_x > 1.0f || control_y < -1.0f || control_y > 1.0f)
+    {
+        return -67;
+    }
+    for (int participant = 0; participant < DANGO_STACKED_BODY_COUNT; ++participant)
+    {
+        if (participant >= anchor_count)
+        {
+            b2Body_Disable(stack->core_body_ids[participant]);
+            for (int index = 0; index < stack->node_count; ++index)
+            {
+                b2Body_Disable(stack->node_body_ids[participant][index]);
+            }
+            continue;
+        }
+        if (!isfinite(anchors[participant * 2]) || !isfinite(anchors[participant * 2 + 1]))
+        {
+            return -67;
+        }
+        b2Vec2 requested_anchor = {anchors[participant * 2], anchors[participant * 2 + 1]};
+        if (participant >= stack->active_count)
+        {
+            b2Body_Enable(stack->core_body_ids[participant]);
+            for (int index = 0; index < stack->node_count; ++index)
+            {
+                b2Body_Enable(stack->node_body_ids[participant][index]);
+            }
+            b2Vec2 current_anchor = b2Body_GetPosition(stack->core_body_ids[participant]);
+            b2Vec2 delta = {requested_anchor.x - current_anchor.x, requested_anchor.y - current_anchor.y};
+            b2Body_SetTransform(stack->core_body_ids[participant], requested_anchor, b2Rot_identity);
+            for (int index = 0; index < stack->node_count; ++index)
+            {
+                b2Vec2 position = b2Body_GetPosition(stack->node_body_ids[participant][index]);
+                b2Body_SetTransform(
+                    stack->node_body_ids[participant][index],
+                    (b2Vec2){position.x + delta.x, position.y + delta.y},
+                    b2Rot_identity);
+                b2Body_SetLinearVelocity(stack->node_body_ids[participant][index], (b2Vec2){0.0f, 0.0f});
+            }
+        }
+        else if (participant == 0)
+        {
+            b2Body_SetTransform(stack->core_body_ids[participant], requested_anchor, b2Rot_identity);
+            b2Body_SetLinearVelocity(stack->core_body_ids[participant], (b2Vec2){0.0f, 0.0f});
+            b2Body_SetAwake(stack->core_body_ids[participant], true);
+        }
+    }
+    stack->active_count = anchor_count;
+    stack->anchors_initialized = true;
+
+    b2World_Step(stack->world_id, time_step, stack->substep_count);
+    *point_count = stack->node_count;
+    *contact_count = 0;
+    *first_second_contact = 0;
+    *second_third_contact = 0;
+    *maximum_speed = 0.0f;
+    for (int participant = 0; participant < anchor_count; ++participant)
+    {
+        uint64_t participant_category = dango_stacked_node_category(participant);
+        for (int index = 0; index < stack->node_count; ++index)
+        {
+            b2ContactData contacts[12];
+            int capacity = b2Body_GetContactCapacity(stack->node_body_ids[participant][index]);
+            capacity = capacity < 12 ? capacity : 12;
+            if (capacity <= 0)
+            {
+                continue;
+            }
+            int count = b2Body_GetContactData(stack->node_body_ids[participant][index], contacts, capacity);
+            for (int contact_index = 0; contact_index < count; ++contact_index)
+            {
+                uint64_t category_a = b2Shape_GetFilter(contacts[contact_index].shapeIdA).categoryBits;
+                uint64_t category_b = b2Shape_GetFilter(contacts[contact_index].shapeIdB).categoryBits;
+                uint64_t other_category = category_a == participant_category ? category_b : category_a;
+                for (int other = participant + 1; other < anchor_count; ++other)
+                {
+                    uint64_t other_node = dango_stacked_node_category(other);
+                    uint64_t other_proxy = dango_stacked_proxy_category(other);
+                    if (other_category == other_node || other_category == other_proxy)
+                    {
+                        *contact_count += 1;
+                        if (participant == 0 && other == 1)
+                        {
+                            *first_second_contact = 1;
+                        }
+                        if (participant == 1 && other == 2)
+                        {
+                            *second_third_contact = 1;
+                        }
+                    }
+                }
+            }
+        }
+        b2ContactData core_contacts[8];
+        int core_capacity = b2Body_GetContactCapacity(stack->core_body_ids[participant]);
+        core_capacity = core_capacity < 8 ? core_capacity : 8;
+        if (core_capacity > 0)
+        {
+            int core_count = b2Body_GetContactData(
+                stack->core_body_ids[participant], core_contacts, core_capacity);
+            uint64_t participant_proxy = dango_stacked_proxy_category(participant);
+            for (int contact_index = 0; contact_index < core_count; ++contact_index)
+            {
+                uint64_t category_a = b2Shape_GetFilter(core_contacts[contact_index].shapeIdA).categoryBits;
+                uint64_t category_b = b2Shape_GetFilter(core_contacts[contact_index].shapeIdB).categoryBits;
+                uint64_t other_category = category_a == participant_proxy ? category_b : category_a;
+                for (int other = participant + 1; other < anchor_count; ++other)
+                {
+                    if (other_category == dango_stacked_proxy_category(other) ||
+                        other_category == dango_stacked_node_category(other))
+                    {
+                        *contact_count += 1;
+                        if (participant == 0 && other == 1)
+                        {
+                            *first_second_contact = 1;
+                        }
+                        if (participant == 1 && other == 2)
+                        {
+                            *second_third_contact = 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    float* point_sets[DANGO_STACKED_BODY_COUNT] = {first_points, second_points, third_points};
+    int result = 0;
+    for (int participant = 0; participant < anchor_count && result == 0; ++participant)
+    {
+        b2Vec2 core_position = b2Body_GetPosition(stack->core_body_ids[participant]);
+        core_xs[participant] = core_position.x;
+        core_ys[participant] = core_position.y;
+        result = dango_write_stacked_ring(
+            stack,
+            participant,
+            point_sets[participant],
+            &signed_areas[participant],
+            &centroid_xs[participant],
+            &centroid_ys[participant],
+            maximum_speed);
+    }
+    return result;
+}
+
+DANGO_API int dango_box2d_stacked_soft_body_destroy(void* stacked_handle, int* outstanding_bytes)
+{
+    dango_stacked_soft_bodies* stack = stacked_handle;
+    if (stack == NULL || outstanding_bytes == NULL)
+    {
+        return -70;
+    }
+    int initial_bytes = stack->initial_box2d_bytes;
+    dango_destroy_stacked_internal(stack);
+    *outstanding_bytes = b2GetByteCount() - initial_bytes;
+    return *outstanding_bytes == 0 ? 0 : -71;
+}
+
+#include "dango_self_physics_internal.h"
+
+bool dango_self_config_valid(const dango_self_physics_config* config)
+{
+    return config != NULL && config->node_count == 16 &&
+        (config->substep_count == 2 || config->substep_count == 4) &&
+        isfinite(config->radial_rest_length) && config->radial_rest_length > 0.0f &&
+        isfinite(config->radial_minimum_ratio) && isfinite(config->radial_maximum_ratio) &&
+        config->radial_minimum_ratio > 0.0f && config->radial_minimum_ratio <= 1.0f &&
+        config->radial_maximum_ratio >= 1.0f &&
+        isfinite(config->perimeter_minimum_ratio) && isfinite(config->perimeter_maximum_ratio) &&
+        config->perimeter_minimum_ratio > 0.0f && config->perimeter_minimum_ratio <= 1.0f &&
+        config->perimeter_maximum_ratio >= 1.0f &&
+        isfinite(config->ground_deformation_strength) && config->ground_deformation_strength >= 0.0f &&
+        isfinite(config->local_angle_balance_strength) && config->local_angle_balance_strength >= 0.0f &&
+        isfinite(config->top_inward_force) && config->top_inward_force >= 0.0f && config->top_inward_force <= 1.0f &&
+        isfinite(config->gravity) && config->gravity > 0.0f &&
+        isfinite(config->node_radius) && config->node_radius > 0.0f &&
+        isfinite(config->maximum_speed) && config->maximum_speed > 0.0f;
+}
+
+static void dango_destroy_self_internal(dango_self_soft_body* body)
+{
+    if (body == NULL)
+    {
+        return;
+    }
+    if (b2World_IsValid(body->world_id))
+    {
+        b2DestroyWorld(body->world_id);
+    }
+    free(body);
+}
+
+static float dango_clamp_force(float value, float maximum)
+{
+    return fmaxf(-maximum, fminf(maximum, value));
+}
+
+static void dango_self_update_joint_parameters(
+    dango_self_soft_body* body,
+    const dango_self_physics_config* config)
+{
+    for (int index = 0; index < body->node_count; ++index)
+    {
+        b2DistanceJoint_SetLengthRange(body->radial_joint_ids[index],
+            body->radial_rest_length * config->radial_minimum_ratio,
+            body->radial_rest_length * config->radial_maximum_ratio);
+        b2DistanceJoint_SetSpringHertz(body->radial_joint_ids[index], config->radial_hertz);
+        b2DistanceJoint_SetSpringDampingRatio(body->radial_joint_ids[index], config->radial_damping);
+        b2DistanceJoint_SetSpringHertz(body->perimeter_joint_ids[index], config->perimeter_hertz);
+        b2DistanceJoint_SetSpringDampingRatio(body->perimeter_joint_ids[index], config->perimeter_damping);
+    }
+}
+
+static float dango_self_signed_area(dango_self_soft_body* body)
+{
+    float twice_area = 0.0f;
+    for (int index = 0; index < body->node_count; ++index)
+    {
+        int next = (index + 1) % body->node_count;
+        b2Vec2 first = b2Body_GetPosition(body->node_body_ids[index]);
+        b2Vec2 second = b2Body_GetPosition(body->node_body_ids[next]);
+        twice_area += first.x * second.y - second.x * first.y;
+    }
+    return 0.5f * twice_area;
+}
+
+static void dango_self_apply_area_force(
+    dango_self_soft_body* body,
+    const dango_self_physics_config* config)
+{
+    float area = dango_self_signed_area(body);
+    if (!isfinite(area) || area >= body->target_area || config->area_strength <= 0.0f)
+    {
+        return;
+    }
+    float pressure = config->area_strength * (body->target_area - area) / body->target_area;
+    pressure = fminf(pressure, config->repulsion_maximum_force);
+    b2Vec2 core = b2Body_GetPosition(body->core_body_id);
+    for (int index = 0; index < body->node_count; ++index)
+    {
+        b2Vec2 position = b2Body_GetPosition(body->node_body_ids[index]);
+        b2Vec2 direction = {position.x - core.x, position.y - core.y};
+        float length = sqrtf(direction.x * direction.x + direction.y * direction.y);
+        if (length > 0.0001f)
+        {
+            b2Body_ApplyForceToCenter(
+                body->node_body_ids[index],
+                (b2Vec2){pressure * direction.x / length, pressure * direction.y / length},
+                true);
+        }
+    }
+}
+
+static b2Vec2 dango_self_top_force(b2Vec2 radial, float strength)
+{
+    float length = b2Length(radial);
+    if (length <= 0.0001f || radial.y <= 0.0f || strength <= 0.0f)
+    {
+        return (b2Vec2){0.0f, 0.0f};
+    }
+    float upward = radial.y / length;
+    return b2MulSV(-strength * upward * upward / length, radial);
+}
+
+static void dango_self_apply_top_pressure(
+    dango_self_soft_body* body,
+    const dango_self_physics_config* config)
+{
+    if (config->top_inward_force <= 0.0f)
+    {
+        return;
+    }
+
+    b2Vec2 core = b2Body_GetPosition(body->core_body_id);
+    b2Vec2 reaction = {0.0f, 0.0f};
+    for (int index = 0; index < body->node_count; ++index)
+    {
+        b2Vec2 node = b2Body_GetPosition(body->node_body_ids[index]);
+        b2Vec2 radial = {node.x - core.x, node.y - core.y};
+        b2Vec2 force = dango_self_top_force(radial, config->top_inward_force);
+        b2Body_ApplyForceToCenter(body->node_body_ids[index], force, true);
+        reaction.x -= force.x;
+        reaction.y -= force.y;
+    }
+    b2Body_ApplyForceToCenter(body->core_body_id, reaction, true);
+}
+
+void dango_self_apply_ground_deformation_force(
+    dango_self_soft_body* body,
+    const dango_self_physics_config* config)
+{
+    if (!body->grounded || config->ground_deformation_strength <= 0.0f)
+    {
+        return;
+    }
+
+    b2Vec2 core = b2Body_GetPosition(body->core_body_id);
+    float total_force_x = 0.0f;
+    for (int index = 0; index < body->node_count; ++index)
+    {
+        b2Vec2 position = b2Body_GetPosition(body->node_body_ids[index]);
+        float local_x = position.x - core.x;
+        float local_y = position.y - core.y;
+        float horizontal_weight = fminf(1.0f, fabsf(local_x) / body->radial_rest_length);
+        float vertical_bias = fmaxf(0.0f, fminf(1.0f, -local_y / body->radial_rest_length));
+        float force_x = config->ground_deformation_strength * vertical_bias * horizontal_weight;
+        force_x = local_x < 0.0f ? -force_x : force_x;
+        b2Body_ApplyForceToCenter(body->node_body_ids[index], (b2Vec2){force_x, 0.0f}, true);
+        total_force_x += force_x;
+    }
+    b2Body_ApplyForceToCenter(body->core_body_id, (b2Vec2){-total_force_x, 0.0f}, true);
+}
+
+static void dango_self_apply_radial_repulsion(
+    dango_self_soft_body* body,
+    const dango_self_physics_config* config)
+{
+    if (config->repulsion_strength <= 0.0f)
+    {
+        return;
+    }
+    b2Vec2 core = b2Body_GetPosition(body->core_body_id);
+    float sample = fmaxf(0.05f, fminf(0.95f, config->core_exclusion_ratio));
+    for (int first = 0; first < body->node_count; ++first)
+    {
+        b2Vec2 first_position = b2Body_GetPosition(body->node_body_ids[first]);
+        b2Vec2 first_sample =
+        {
+            core.x + (first_position.x - core.x) * sample,
+            core.y + (first_position.y - core.y) * sample
+        };
+        for (int second = first + 1; second < body->node_count; ++second)
+        {
+            b2Vec2 second_position = b2Body_GetPosition(body->node_body_ids[second]);
+            b2Vec2 second_sample =
+            {
+                core.x + (second_position.x - core.x) * sample,
+                core.y + (second_position.y - core.y) * sample
+            };
+            b2Vec2 delta = {second_sample.x - first_sample.x, second_sample.y - first_sample.y};
+            float distance = sqrtf(delta.x * delta.x + delta.y * delta.y);
+            if (distance >= config->repulsion_distance || distance < 0.0001f)
+            {
+                continue;
+            }
+            float magnitude = config->repulsion_strength *
+                (config->repulsion_distance - distance) / config->repulsion_distance;
+            magnitude = fminf(magnitude, config->repulsion_maximum_force);
+            b2Vec2 force = {magnitude * delta.x / distance, magnitude * delta.y / distance};
+            b2Body_ApplyForceToCenter(body->node_body_ids[first], (b2Vec2){-force.x, -force.y}, true);
+            b2Body_ApplyForceToCenter(body->node_body_ids[second], force, true);
+        }
+    }
+}
+
+static void dango_self_apply_angle_barrier(
+    dango_self_soft_body* body,
+    const dango_self_physics_config* config)
+{
+    if (config->angle_strength <= 0.0f)
+    {
+        return;
+    }
+    for (int index = 0; index < body->node_count; ++index)
+    {
+        int previous = (index - 1 + body->node_count) % body->node_count;
+        int next = (index + 1) % body->node_count;
+        b2Vec2 center = b2Body_GetPosition(body->node_body_ids[index]);
+        b2Vec2 previous_position = b2Body_GetPosition(body->node_body_ids[previous]);
+        b2Vec2 next_position = b2Body_GetPosition(body->node_body_ids[next]);
+        b2Vec2 first = {previous_position.x - center.x, previous_position.y - center.y};
+        b2Vec2 second = {next_position.x - center.x, next_position.y - center.y};
+        float first_length = sqrtf(first.x * first.x + first.y * first.y);
+        float second_length = sqrtf(second.x * second.x + second.y * second.y);
+        if (first_length < 0.0001f || second_length < 0.0001f)
+        {
+            continue;
+        }
+        float cosine = (first.x * second.x + first.y * second.y) / (first_length * second_length);
+        if (cosine <= 0.0f)
+        {
+            continue;
+        }
+        b2Vec2 separation = {next_position.x - previous_position.x, next_position.y - previous_position.y};
+        float separation_length = sqrtf(separation.x * separation.x + separation.y * separation.y);
+        if (separation_length < 0.0001f)
+        {
+            continue;
+        }
+        float magnitude = fminf(config->angle_strength * cosine, config->repulsion_maximum_force);
+        b2Vec2 force =
+        {
+            magnitude * separation.x / separation_length,
+            magnitude * separation.y / separation_length
+        };
+        b2Body_ApplyForceToCenter(body->node_body_ids[previous], (b2Vec2){-force.x, -force.y}, true);
+        b2Body_ApplyForceToCenter(body->node_body_ids[next], force, true);
+    }
+}
+
+static void dango_self_apply_convexity_barrier(
+    dango_self_soft_body* body,
+    const dango_self_physics_config* config)
+{
+    if (config->angle_strength <= 0.0f)
+    {
+        return;
+    }
+
+    for (int index = 0; index < body->node_count; ++index)
+    {
+        int previous = (index - 1 + body->node_count) % body->node_count;
+        int next = (index + 1) % body->node_count;
+        b2Vec2 p = b2Body_GetPosition(body->node_body_ids[previous]);
+        b2Vec2 c = b2Body_GetPosition(body->node_body_ids[index]);
+        b2Vec2 n = b2Body_GetPosition(body->node_body_ids[next]);
+        b2Vec2 incoming = {c.x - p.x, c.y - p.y};
+        b2Vec2 outgoing = {n.x - c.x, n.y - c.y};
+        float incoming_length = sqrtf(incoming.x * incoming.x + incoming.y * incoming.y);
+        float outgoing_length = sqrtf(outgoing.x * outgoing.x + outgoing.y * outgoing.y);
+        if (incoming_length < 0.0001f || outgoing_length < 0.0001f)
+        {
+            continue;
+        }
+
+        float normalized_cross =
+            (incoming.x * outgoing.y - incoming.y * outgoing.x) /
+            (incoming_length * outgoing_length);
+        const float activation_threshold = 0.12f;
+        if (normalized_cross >= activation_threshold)
+        {
+            continue;
+        }
+
+        b2Vec2 previous_gradient = {c.y - n.y, n.x - c.x};
+        b2Vec2 center_gradient = {n.y - p.y, p.x - n.x};
+        b2Vec2 next_gradient = {p.y - c.y, c.x - p.x};
+        float previous_gradient_length = sqrtf(
+            previous_gradient.x * previous_gradient.x + previous_gradient.y * previous_gradient.y);
+        float center_gradient_length = sqrtf(
+            center_gradient.x * center_gradient.x + center_gradient.y * center_gradient.y);
+        float next_gradient_length = sqrtf(
+            next_gradient.x * next_gradient.x + next_gradient.y * next_gradient.y);
+        float maximum_gradient_length = fmaxf(
+            previous_gradient_length,
+            fmaxf(center_gradient_length, next_gradient_length));
+        if (maximum_gradient_length < 0.0001f)
+        {
+            continue;
+        }
+
+        float penetration = fminf(1.0f, activation_threshold - normalized_cross);
+        float scale = fminf(
+            config->angle_strength * penetration,
+            config->repulsion_maximum_force) / maximum_gradient_length;
+        b2Body_ApplyForceToCenter(
+            body->node_body_ids[previous],
+            (b2Vec2){previous_gradient.x * scale, previous_gradient.y * scale},
+            true);
+        b2Body_ApplyForceToCenter(
+            body->node_body_ids[index],
+            (b2Vec2){center_gradient.x * scale, center_gradient.y * scale},
+            true);
+        b2Body_ApplyForceToCenter(
+            body->node_body_ids[next],
+            (b2Vec2){next_gradient.x * scale, next_gradient.y * scale},
+            true);
+    }
+}
+
+static float dango_self_interior_angle(dango_self_soft_body* body, int index)
+{
+    int previous = (index - 1 + body->node_count) % body->node_count;
+    int next = (index + 1) % body->node_count;
+    b2Vec2 p = b2Body_GetPosition(body->node_body_ids[previous]);
+    b2Vec2 c = b2Body_GetPosition(body->node_body_ids[index]);
+    b2Vec2 n = b2Body_GetPosition(body->node_body_ids[next]);
+    b2Vec2 incoming = {c.x - p.x, c.y - p.y};
+    b2Vec2 outgoing = {n.x - c.x, n.y - c.y};
+    float cross = incoming.x * outgoing.y - incoming.y * outgoing.x;
+    float dot = incoming.x * outgoing.x + incoming.y * outgoing.y;
+    return 3.14159265358979323846f - atan2f(cross, dot);
+}
+
+static void dango_self_apply_local_angle_balance_force(
+    dango_self_soft_body* body,
+    const dango_self_physics_config* config)
+{
+    if (config->local_angle_balance_strength <= 0.0f)
+    {
+        return;
+    }
+
+    for (int index = 0; index < body->node_count; ++index)
+    {
+        int previous = (index - 1 + body->node_count) % body->node_count;
+        int next = (index + 1) % body->node_count;
+        float current_angle = dango_self_interior_angle(body, index);
+        float neighbor_average = 0.5f *
+            (dango_self_interior_angle(body, previous) + dango_self_interior_angle(body, next));
+        float angle_difference = current_angle - neighbor_average;
+        if (fabsf(angle_difference) < 0.001f)
+        {
+            continue;
+        }
+
+        b2Vec2 previous_position = b2Body_GetPosition(body->node_body_ids[previous]);
+        b2Vec2 next_position = b2Body_GetPosition(body->node_body_ids[next]);
+        b2Vec2 chord =
+        {
+            next_position.x - previous_position.x,
+            next_position.y - previous_position.y
+        };
+        float chord_length = sqrtf(chord.x * chord.x + chord.y * chord.y);
+        if (chord_length < 0.0001f)
+        {
+            continue;
+        }
+
+        float magnitude = dango_clamp_force(
+            config->local_angle_balance_strength * angle_difference,
+            config->repulsion_maximum_force);
+        b2Vec2 center_force =
+        {
+            magnitude * chord.y / chord_length,
+            -magnitude * chord.x / chord_length
+        };
+        b2Body_ApplyForceToCenter(body->node_body_ids[index], center_force, true);
+        b2Vec2 neighbor_force = {-0.5f * center_force.x, -0.5f * center_force.y};
+        b2Body_ApplyForceToCenter(body->node_body_ids[previous], neighbor_force, true);
+        b2Body_ApplyForceToCenter(body->node_body_ids[next], neighbor_force, true);
+    }
+}
+
+static float dango_orientation(b2Vec2 first, b2Vec2 second, b2Vec2 third)
+{
+    return (second.x - first.x) * (third.y - first.y) -
+        (second.y - first.y) * (third.x - first.x);
+}
+
+static bool dango_self_has_crossing(dango_self_soft_body* body)
+{
+    for (int first = 0; first < body->node_count; ++first)
+    {
+        int first_next = (first + 1) % body->node_count;
+        b2Vec2 a = b2Body_GetPosition(body->node_body_ids[first]);
+        b2Vec2 b = b2Body_GetPosition(body->node_body_ids[first_next]);
+        for (int second = first + 2; second < body->node_count; ++second)
+        {
+            int second_next = (second + 1) % body->node_count;
+            if (first == second_next || first_next == second)
+            {
+                continue;
+            }
+            b2Vec2 c = b2Body_GetPosition(body->node_body_ids[second]);
+            b2Vec2 d = b2Body_GetPosition(body->node_body_ids[second_next]);
+            float ab_c = dango_orientation(a, b, c);
+            float ab_d = dango_orientation(a, b, d);
+            float cd_a = dango_orientation(c, d, a);
+            float cd_b = dango_orientation(c, d, b);
+            if (ab_c * ab_d < 0.0f && cd_a * cd_b < 0.0f)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool dango_self_limit_speed(dango_self_soft_body* body, float limit)
+{
+    float maximum = 0.0f;
+    for (int i = 0; i <= body->node_count; ++i)
+    {
+        b2BodyId id = i == body->node_count ? body->core_body_id : body->node_body_ids[i];
+        float speed = b2Length(b2Body_GetLinearVelocity(id));
+        if (!isfinite(speed))
+        {
+            return false;
+        }
+        maximum = fmaxf(maximum, speed);
+    }
+    if (maximum > limit)
+    {
+        // One positive scale preserves relative-velocity constraint directions
+        // and only removes energy. Leave positions and ordinary motion untouched.
+        float scale = (limit * 0.99999f) / maximum;
+        for (int i = 0; i <= body->node_count; ++i)
+        {
+            b2BodyId id = i == body->node_count ? body->core_body_id : body->node_body_ids[i];
+            b2Body_SetLinearVelocity(id, b2MulSV(scale, b2Body_GetLinearVelocity(id)));
+        }
+    }
+    return true;
+}
+
+bool dango_self_solve_constraints(dango_self_soft_body* body,
+    const dango_self_physics_config* config)
+{
+    dango_constraint_state state = {0};
+    state.radial_length = body->radial_rest_length;
+    state.perimeter_length = body->perimeter_rest_length;
+    state.radial_min = config->radial_minimum_ratio;
+    state.radial_max = config->radial_maximum_ratio;
+    state.perimeter_min = config->perimeter_minimum_ratio;
+    state.perimeter_max = config->perimeter_maximum_ratio;
+    state.radius = config->node_radius;
+    state.ground = config->ground_height;
+    for (int i = 0; i <= body->node_count; ++i)
+    {
+        b2BodyId id = i == body->node_count ? body->core_body_id : body->node_body_ids[i];
+        state.positions[i] = b2Body_GetPosition(id);
+        state.velocities[i] = b2Body_GetLinearVelocity(id);
+        state.inverse_mass[i] = 1.0f / b2Body_GetMass(id);
+    }
+    if (!dango_constraint_solve(&state))
+    {
+        return false;
+    }
+    body->grounded = false;
+    for (int i = 0; i <= body->node_count; ++i)
+    {
+        b2BodyId id = i == body->node_count ? body->core_body_id : body->node_body_ids[i];
+        b2Vec2 old = b2Body_GetPosition(id);
+        if (b2DistanceSquared(old, state.positions[i]) > 0.0f)
+        {
+            b2Body_SetTransform(id, state.positions[i], b2Rot_identity);
+        }
+        b2Body_SetLinearVelocity(id, state.velocities[i]);
+        if (i < body->node_count && state.positions[i].y - config->node_radius <= config->ground_height + 0.035f)
+        {
+            body->grounded = true;
+        }
+    }
+    return !dango_self_has_crossing(body) && dango_self_signed_area(body) > 0.0f;
+}
+
+void dango_self_create_rig(dango_self_soft_body* body,
+    const dango_self_physics_config* config)
+{
+    body->node_count = config->node_count;
+    body->substep_count = config->substep_count;
+    body->selected_drag_node = -1;
+    body->seconds_since_jump = 1000.0f;
+    body->radial_rest_length = config->radial_rest_length;
+    body->perimeter_rest_length = 2.0f * config->radial_rest_length *
+        sinf(3.14159265358979323846f / (float)config->node_count);
+    body->target_area = 0.5f * (float)config->node_count *
+        config->radial_rest_length * config->radial_rest_length *
+        sinf(6.28318530717958647692f / (float)config->node_count);
+
+    b2BodyDef core_def = b2DefaultBodyDef();
+    core_def.type = b2_dynamicBody;
+    core_def.position = (b2Vec2){0.0f, config->drop_height};
+    core_def.linearDamping = config->linear_damping;
+    core_def.angularDamping = 2.0f;
+    core_def.gravityScale = 1.0f;
+    core_def.fixedRotation = true;
+    body->core_body_id = b2CreateBody(body->world_id, &core_def);
+    b2ShapeDef core_shape_def = b2DefaultShapeDef();
+    const float core_radius = 0.12f;
+    core_shape_def.density = config->core_mass / (3.14159265f * core_radius * core_radius);
+    core_shape_def.filter.categoryBits = 0x00000004;
+    core_shape_def.filter.maskBits = 0;
+    b2Circle core_circle = {{0.0f, 0.0f}, core_radius};
+    body->core_shape_id = b2CreateCircleShape(body->core_body_id, &core_shape_def, &core_circle);
+
+    b2ShapeDef node_shape_def = b2DefaultShapeDef();
+    node_shape_def.density = config->node_mass /
+        (3.14159265f * config->node_radius * config->node_radius);
+    node_shape_def.material.friction = config->friction;
+    node_shape_def.material.restitution = config->restitution;
+    node_shape_def.filter.categoryBits = 0x00000002;
+    node_shape_def.filter.maskBits = 0x00000001;
+    b2Circle node_circle = {{0.0f, 0.0f}, config->node_radius};
+    for (int index = 0; index < body->node_count; ++index)
+    {
+        float angle = 6.28318530717958647692f * (float)index / (float)body->node_count;
+        b2Vec2 local =
+        {
+            body->radial_rest_length * cosf(angle),
+            body->radial_rest_length * sinf(angle)
+        };
+        b2BodyDef node_def = b2DefaultBodyDef();
+        node_def.type = b2_dynamicBody;
+        node_def.position = (b2Vec2){local.x, config->drop_height + local.y};
+        node_def.linearDamping = config->linear_damping;
+        node_def.angularDamping = 2.0f;
+        node_def.gravityScale = 1.0f;
+        node_def.fixedRotation = true;
+        body->node_body_ids[index] = b2CreateBody(body->world_id, &node_def);
+        body->node_shape_ids[index] = b2CreateCircleShape(
+            body->node_body_ids[index], &node_shape_def, &node_circle);
+        body->radial_joint_ids[index] = dango_create_spring(
+            body->world_id,
+            body->core_body_id,
+            body->node_body_ids[index],
+            body->radial_rest_length,
+            config->radial_hertz,
+            config->radial_damping);
+        b2DistanceJoint_EnableLimit(body->radial_joint_ids[index], true);
+        b2DistanceJoint_SetLengthRange(
+            body->radial_joint_ids[index],
+            body->radial_rest_length * config->radial_minimum_ratio,
+            body->radial_rest_length * config->radial_maximum_ratio);
+    }
+    for (int index = 0; index < body->node_count; ++index)
+    {
+        int next = (index + 1) % body->node_count;
+        body->perimeter_joint_ids[index] = dango_create_spring(
+            body->world_id,
+            body->node_body_ids[index],
+            body->node_body_ids[next],
+            body->perimeter_rest_length,
+            config->perimeter_hertz,
+            config->perimeter_damping);
+        b2DistanceJoint_EnableLimit(body->perimeter_joint_ids[index], true);
+        b2DistanceJoint_SetLengthRange(
+            body->perimeter_joint_ids[index],
+            body->perimeter_rest_length * config->perimeter_minimum_ratio,
+            body->perimeter_rest_length * config->perimeter_maximum_ratio);
+    }
+}
+
+void dango_self_destroy_rig(dango_self_soft_body* body)
+{
+    if (body == NULL)
+    {
+        return;
+    }
+    for (int index = 0; index < body->node_count; ++index)
+    {
+        if (b2Body_IsValid(body->node_body_ids[index]))
+        {
+            b2DestroyBody(body->node_body_ids[index]);
+        }
+        body->node_body_ids[index] = b2_nullBodyId;
+        body->node_shape_ids[index] = b2_nullShapeId;
+        body->radial_joint_ids[index] = b2_nullJointId;
+        body->perimeter_joint_ids[index] = b2_nullJointId;
+    }
+    if (b2Body_IsValid(body->core_body_id))
+    {
+        b2DestroyBody(body->core_body_id);
+    }
+    body->core_body_id = b2_nullBodyId;
+    body->core_shape_id = b2_nullShapeId;
+    body->node_count = 0;
+    body->initialized = false;
+    body->drag_active = false;
+    body->grounded = false;
+    body->selected_drag_node = -1;
+}
+
+static void dango_self_apply_internal_forces(dango_self_soft_body* body,
+    const dango_self_physics_config* config)
+{
+    dango_self_apply_area_force(body, config);
+    dango_self_apply_top_pressure(body, config);
+    dango_self_apply_ground_deformation_force(body, config);
+    dango_self_apply_radial_repulsion(body, config);
+    dango_self_apply_angle_barrier(body, config);
+    dango_self_apply_convexity_barrier(body, config);
+    dango_self_apply_local_angle_balance_force(body, config);
+}
+
+int dango_self_world_create(const dango_self_physics_config* config,dango_self_soft_body** self_handle)
+{
+    if (self_handle == NULL)
+    {
+        return -80;
+    }
+    *self_handle = NULL;
+    if (!dango_self_config_valid(config))
+    {
+        return -81;
+    }
+    dango_self_soft_body* body = calloc(1, sizeof(dango_self_soft_body));
+    if (body == NULL)
+    {
+        return -82;
+    }
+    body->world_id = b2_nullWorldId;
+    body->initial_box2d_bytes = b2GetByteCount();
+
+    b2WorldDef world_def = b2DefaultWorldDef();
+    world_def.gravity = (b2Vec2){0.0f, -config->gravity};
+    body->world_id = b2CreateWorld(&world_def);
+    if (!b2World_IsValid(body->world_id))
+    {
+        dango_destroy_self_internal(body);
+        return -82;
+    }
+    b2World_SetContactTuning(body->world_id, config->contact_hertz, 10.0f, 3.0f);
+    b2World_EnableSleeping(body->world_id, true);
+
+    b2BodyDef ground_def = b2DefaultBodyDef();
+    ground_def.type = b2_staticBody;
+    ground_def.position = (b2Vec2){0.0f, config->ground_height - 0.08f};
+    body->ground_body_id = b2CreateBody(body->world_id, &ground_def);
+    b2ShapeDef ground_shape_def = b2DefaultShapeDef();
+    ground_shape_def.material.friction = config->friction;
+    ground_shape_def.material.restitution = config->restitution;
+    ground_shape_def.filter.categoryBits = 0x00000001;
+    ground_shape_def.filter.maskBits = 0x00000002;
+    b2Polygon ground_box = b2MakeBox(8.0f, 0.08f);
+    body->ground_shape_id = b2CreatePolygonShape(body->ground_body_id, &ground_shape_def, &ground_box);
+
+    if (!b2Body_IsValid(body->ground_body_id) || !b2Shape_IsValid(body->ground_shape_id))
+    {
+        dango_destroy_self_internal(body);
+        return -83;
+    }
+    *self_handle = body;
+    return 0;
+}
+
+DANGO_API int dango_box2d_self_soft_body_create(
+    const dango_self_physics_config* config,
+    void** self_handle)
+{
+    dango_self_soft_body* body=NULL;
+    int error=dango_self_world_create(config,&body);
+    if (error) return error;
+    dango_self_create_rig(body,config);
+    if (!b2Body_IsValid(body->core_body_id) || !b2Shape_IsValid(body->core_shape_id))
+    {
+        dango_destroy_self_internal(body);
+        return -83;
+    }
+    *self_handle=body;
+    return 0;
+}
+
+void dango_self_initialize_at(dango_self_soft_body* body, const dango_self_physics_config* config, float anchor_x, float anchor_y)
+{
+    if (!body->initialized)
+    {
+        b2Vec2 current = b2Body_GetPosition(body->core_body_id);
+        b2Vec2 desired = {anchor_x, anchor_y + config->drop_height};
+        b2Vec2 delta = {desired.x - current.x, desired.y - current.y};
+        b2Body_SetTransform(body->core_body_id, desired, b2Rot_identity);
+        for (int index = 0; index < body->node_count; ++index)
+        {
+            b2Vec2 position = b2Body_GetPosition(body->node_body_ids[index]);
+            b2Body_SetTransform(
+                body->node_body_ids[index],
+                (b2Vec2){position.x + delta.x, position.y + delta.y},
+                b2Rot_identity);
+        }
+        body->initialized = true;
+    }
+
+}
+
+void dango_self_apply_step_forces(dango_self_soft_body* body, const dango_self_physics_config* config,
+    float small_time_step, int small_step, float horizontal_control, float downward_control,
+    int jump_pressed, int drag_active, float drag_target_x, float drag_target_y)
+{
+    dango_self_update_joint_parameters(body, config);
+    body->seconds_since_jump += small_time_step;
+    b2Vec2 core_velocity = b2Body_GetLinearVelocity(body->core_body_id);
+    float control_scale = body->grounded ? 1.0f : config->air_control_ratio;
+    if ((horizontal_control < 0.0f && core_velocity.x > -config->maximum_horizontal_speed) ||
+        (horizontal_control > 0.0f && core_velocity.x < config->maximum_horizontal_speed))
+    {
+        b2Body_ApplyForceToCenter(
+            body->core_body_id,
+            (b2Vec2){horizontal_control * config->horizontal_force * control_scale, 0.0f},
+            true);
+    }
+    if (downward_control > 0.0f)
+    {
+        b2Body_ApplyForceToCenter(
+            body->core_body_id,
+            (b2Vec2){0.0f, -downward_control * config->downward_force},
+            true);
+    }
+    if (small_step == 0 && jump_pressed != 0 && body->grounded && body->seconds_since_jump >= config->jump_cooldown_seconds)
+    {
+        b2Body_ApplyLinearImpulseToCenter(
+            body->core_body_id,
+            (b2Vec2){0.0f, config->jump_impulse},
+            true);
+        body->grounded = false;
+        body->seconds_since_jump = 0.0f;
+    }
+
+    if (drag_active != 0 && !body->drag_active)
+    {
+        float highest = -INFINITY;
+        body->selected_drag_node = 0;
+        for (int index = 0; index < body->node_count; ++index)
+        {
+            b2Vec2 position = b2Body_GetPosition(body->node_body_ids[index]);
+            if (position.y > highest)
+            {
+                highest = position.y;
+                body->selected_drag_node = index;
+            }
+        }
+    }
+    body->drag_active = drag_active != 0;
+    if (body->drag_active && body->selected_drag_node >= 0)
+    {
+        b2BodyId dragged = body->node_body_ids[body->selected_drag_node];
+        b2Vec2 position = b2Body_GetPosition(dragged);
+        b2Vec2 velocity = b2Body_GetLinearVelocity(dragged);
+        b2Vec2 force =
+        {
+            config->drag_stiffness * (drag_target_x - position.x) - config->drag_damping * velocity.x,
+            config->drag_stiffness * (drag_target_y - position.y) - config->drag_damping * velocity.y
+        };
+        float magnitude = sqrtf(force.x * force.x + force.y * force.y);
+        if (magnitude > config->drag_maximum_force && magnitude > 0.0001f)
+        {
+            force.x *= config->drag_maximum_force / magnitude;
+            force.y *= config->drag_maximum_force / magnitude;
+        }
+        b2Body_ApplyForceToCenter(dragged, force, true);
+    }
+    else
+    {
+        body->selected_drag_node = -1;
+    }
+
+    dango_self_apply_internal_forces(body, config);
+}
+
+int dango_self_read_frame(dango_self_soft_body* body, const dango_self_physics_config* config,
+    float* points, int* point_count, int* ground_contact_count, float* signed_area,
+    float* centroid_x, float* centroid_y, float* core_x, float* core_y, float* maximum_speed,
+    int* grounded, int* selected_drag_node)
+{
+    if (dango_self_has_crossing(body))
+    {
+        return -86;
+    }
+    b2Vec2 core = b2Body_GetPosition(body->core_body_id);
+    b2Vec2 core_velocity = b2Body_GetLinearVelocity(body->core_body_id);
+    *point_count = body->node_count;
+    *ground_contact_count = 0;
+    *signed_area = 0.0f;
+    *centroid_x = 0.0f;
+    *centroid_y = 0.0f;
+    *maximum_speed = sqrtf(core_velocity.x * core_velocity.x + core_velocity.y * core_velocity.y);
+    float lowest = INFINITY;
+    for (int index = 0; index < body->node_count; ++index)
+    {
+        int next = (index + 1) % body->node_count;
+        b2Vec2 position = b2Body_GetPosition(body->node_body_ids[index]);
+        b2Vec2 next_position = b2Body_GetPosition(body->node_body_ids[next]);
+        b2Vec2 velocity = b2Body_GetLinearVelocity(body->node_body_ids[index]);
+        float local_x = position.x - core.x;
+        float local_y = position.y - core.y;
+        float local_length = sqrtf(local_x * local_x + local_y * local_y);
+        float next_x = next_position.x - core.x;
+        float next_y = next_position.y - core.y;
+        float next_length = sqrtf(next_x * next_x + next_y * next_y);
+        if (next_length > 0.0001f)
+        {
+            next_x += config->node_radius * next_x / next_length;
+            next_y += config->node_radius * next_y / next_length;
+        }
+        if (local_length > 0.0001f)
+        {
+            local_x += config->node_radius * local_x / local_length;
+            local_y += config->node_radius * local_y / local_length;
+        }
+        float speed = sqrtf(velocity.x * velocity.x + velocity.y * velocity.y);
+        if (!isfinite(local_x) || !isfinite(local_y) || !isfinite(speed) || speed > config->maximum_speed)
+        {
+            return -87;
+        }
+        points[index * 2] = local_x;
+        points[index * 2 + 1] = local_y;
+        *centroid_x += local_x;
+        *centroid_y += local_y;
+        *signed_area += local_x * next_y - next_x * local_y;
+        *maximum_speed = fmaxf(*maximum_speed, speed);
+        lowest = fminf(lowest, position.y - config->node_radius);
+        int capacity = b2Body_GetContactCapacity(body->node_body_ids[index]);
+        if (capacity > 0)
+        {
+            b2ContactData contacts[4];
+            capacity = capacity < 4 ? capacity : 4;
+            *ground_contact_count += b2Body_GetContactData(body->node_body_ids[index], contacts, capacity);
+        }
+    }
+    *signed_area *= 0.5f;
+    *centroid_x /= (float)body->node_count;
+    *centroid_y /= (float)body->node_count;
+    body->grounded = *ground_contact_count > 0 || lowest <= config->ground_height + 0.035f;
+    if (!isfinite(*signed_area) || *signed_area < config->minimum_area)
+    {
+        return -88;
+    }
+    *core_x = core.x;
+    *core_y = core.y;
+    *grounded = body->grounded ? 1 : 0;
+    *selected_drag_node = body->selected_drag_node;
+    return 0;
+}
+
+DANGO_API int dango_box2d_self_soft_body_step(
+    void* self_handle,
+    float time_step,
+    const dango_self_physics_config* config,
+    float anchor_x,
+    float anchor_y,
+    float horizontal_control,
+    float downward_control,
+    int jump_pressed,
+    int drag_active,
+    float drag_target_x,
+    float drag_target_y,
+    float* points,
+    int point_capacity,
+    int* point_count,
+    int* ground_contact_count,
+    float* signed_area,
+    float* centroid_x,
+    float* centroid_y,
+    float* core_x,
+    float* core_y,
+    float* maximum_speed,
+    int* grounded,
+    int* selected_drag_node)
+{
+    dango_self_soft_body* body = self_handle;
+    if (body == NULL || !dango_self_config_valid(config) || points == NULL || point_count == NULL ||
+        ground_contact_count == NULL || signed_area == NULL || centroid_x == NULL || centroid_y == NULL ||
+        core_x == NULL || core_y == NULL || maximum_speed == NULL || grounded == NULL || selected_drag_node == NULL)
+    {
+        return -84;
+    }
+    if (!b2World_IsValid(body->world_id) || point_capacity < body->node_count ||
+        !isfinite(time_step) || time_step <= 0.0f || time_step > 0.1f ||
+        !isfinite(anchor_x) || !isfinite(anchor_y) || !isfinite(horizontal_control) ||
+        !isfinite(downward_control) || horizontal_control < -1.0f || horizontal_control > 1.0f ||
+        downward_control < 0.0f || downward_control > 1.0f || jump_pressed < 0 || jump_pressed > 1 ||
+        drag_active < 0 || drag_active > 1 || !isfinite(drag_target_x) || !isfinite(drag_target_y))
+    {
+        return -85;
+    }
+    dango_self_initialize_at(body, config, anchor_x, anchor_y);
+    int small_steps = (int)ceilf(time_step * 240.0f);
+    small_steps = small_steps < body->substep_count ? body->substep_count : small_steps;
+    float small_time_step = time_step / (float)small_steps;
+    for (int small_step = 0; small_step < small_steps; ++small_step)
+    {
+        dango_self_apply_step_forces(body, config, small_time_step, small_step,
+            horizontal_control, downward_control, jump_pressed, drag_active, drag_target_x, drag_target_y);
+        b2World_Step(body->world_id, small_time_step, 1);
+        if (!dango_self_solve_constraints(body, config))
+        {
+            return -91;
+        }
+        if (!dango_self_limit_speed(body, config->maximum_speed))
+        {
+            return -87;
+        }
+    }
+
+    return dango_self_read_frame(body, config, points, point_count, ground_contact_count, signed_area,
+        centroid_x, centroid_y, core_x, core_y, maximum_speed, grounded, selected_drag_node);
+}
+
+DANGO_API int dango_box2d_self_soft_body_destroy(void* self_handle, int* outstanding_bytes)
+{
+    dango_self_soft_body* body = self_handle;
+    if (body == NULL || outstanding_bytes == NULL)
+    {
+        return -89;
+    }
+    int initial_bytes = body->initial_box2d_bytes;
+    dango_destroy_self_internal(body);
+    *outstanding_bytes = b2GetByteCount() - initial_bytes;
+    return *outstanding_bytes == 0 ? 0 : -90;
 }

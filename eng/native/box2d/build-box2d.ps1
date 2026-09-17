@@ -76,8 +76,10 @@ if (-not $CMakePath -or -not (Test-Path -LiteralPath $CMakePath)) {
 $buildRoot = Join-Path $artifactRoot "box2d-build-$Configuration"
 & $CMakePath -S $PSScriptRoot -B $buildRoot -G 'Visual Studio 17 2022' -A x64 "-DBOX2D_SOURCE_DIR=$SourceRoot"
 if ($LASTEXITCODE -ne 0) { throw "CMake configure failed with exit code $LASTEXITCODE." }
-& $CMakePath --build $buildRoot --config $Configuration --target dango_box2d
+& $CMakePath --build $buildRoot --config $Configuration --target dango_box2d dango_self_constraints_tests
 if ($LASTEXITCODE -ne 0) { throw "CMake build failed with exit code $LASTEXITCODE." }
+& (Join-Path $buildRoot "$Configuration\dango_self_constraints_tests.exe")
+if ($LASTEXITCODE -ne 0) { throw "Native constraint tests failed with exit code $LASTEXITCODE." }
 
 $builtLibrary = Join-Path $buildRoot "$Configuration\dango_box2d.dll"
 if (-not (Test-Path -LiteralPath $builtLibrary)) {
@@ -108,7 +110,7 @@ $manifest = [ordered]@{
         rid = 'win-x64'
         path = $nativeRelativePath
         sha256 = $binaryHash
-        abiVersion = 5
+        abiVersion = 13
         runtimeDownload = $false
         linkage = 'MSVC static runtime; official Box2D linked into the Dango bridge DLL'
         exports = @(
@@ -120,7 +122,17 @@ $manifest = [ordered]@{
             'dango_box2d_soft_body_create',
             'dango_box2d_soft_body_create_configured',
             'dango_box2d_soft_body_step',
-            'dango_box2d_soft_body_destroy'
+            'dango_box2d_soft_body_destroy',
+            'dango_box2d_paired_soft_body_create',
+            'dango_box2d_paired_soft_body_create_configured',
+            'dango_box2d_paired_soft_body_step',
+            'dango_box2d_paired_soft_body_destroy',
+            'dango_box2d_stacked_soft_body_create_configured',
+            'dango_box2d_stacked_soft_body_step',
+            'dango_box2d_stacked_soft_body_destroy',
+            'dango_box2d_self_soft_body_create',
+            'dango_box2d_self_soft_body_step',
+            'dango_box2d_self_soft_body_destroy'
         )
     }
 }

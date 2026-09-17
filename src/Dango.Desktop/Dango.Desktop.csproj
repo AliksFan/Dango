@@ -10,9 +10,15 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Dango.Core\Dango.Core.csproj" />
+    <ProjectReference Include="..\Dango.Physics\Dango.Physics.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="$(DangoPhysicsModulePath)"
+             Condition="'$(DangoPhysicsModulePath)' != ''"
+             Link="dango_physics_module.dll"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
     <Content Include="runtimes\win-x64\native\dango_box2d.dll"
              Link="dango_box2d.dll"
              CopyToOutputDirectory="PreserveNewest"
