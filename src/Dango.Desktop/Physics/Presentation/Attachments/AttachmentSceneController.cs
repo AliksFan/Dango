@@ -6,9 +6,10 @@ namespace Dango.Desktop.Physics.Presentation.Attachments;
 /// <summary>Scene-owned presentation state; never advances or writes physics.</summary>
 public sealed class AttachmentSceneController(PhysicsPresentationFrame baseline) : IDisposable
 {
-    private sealed record Entry(AttachmentTarget Target, AttachmentToken Token, AttachmentMotionController Motion)
+    private sealed record Entry(AttachmentTarget Target, AttachmentToken Token, AttachmentToken QuietToken, AttachmentMotionController Motion)
     {
         public long Sequence;
+        public long QuietSequence;
         public string? Error;
     }
     private readonly AttachmentCommandRouter router = new(true);
@@ -28,8 +29,9 @@ public sealed class AttachmentSceneController(PhysicsPresentationFrame baseline)
             // created by the same UI thread, before the next successful step.
             router.SetPaused(false);
             var token = router.RegisterPreview(target);
+            var quietToken = router.RegisterAction(target);
             router.SetPaused(paused);
-            entries.Add(id, new(target, token, new(router, target, baseline) { Paused = paused }));
+            entries.Add(id, new(target, token, quietToken, new(router, target, baseline) { Paused = paused }));
         }
     }
 
@@ -51,6 +53,12 @@ public sealed class AttachmentSceneController(PhysicsPresentationFrame baseline)
         if (!entries.TryGetValue(id, out var entry)) throw new ArgumentException("附件实体已失效。", nameof(id));
         var result = router.Submit(entry.Target, entry.Token, ++entry.Sequence, intent);
         return result;
+    }
+
+    internal AttachmentRequestResult SubmitQuietIdle(DangoEntityId id, AttachmentIntent intent)
+    {
+        if (!entries.TryGetValue(id, out var entry)) throw new ArgumentException("附件实体已失效。", nameof(id));
+        return router.Submit(entry.Target, entry.QuietToken, ++entry.QuietSequence, intent);
     }
 
     public IReadOnlyList<PhysicsPresentationFrame> Advance(DesktopPhysicsSceneFrame frame, double seconds,

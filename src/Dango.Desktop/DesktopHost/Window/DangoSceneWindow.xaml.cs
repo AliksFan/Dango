@@ -118,6 +118,7 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
         }
 
         isInteractionEnabled = isEnabled;
+        motionRuntime.UpdateQuietIdleHost(this, isEnabled && IsVisible && WindowState != WindowState.Minimized);
         DangoVisual.IsHitTestVisible = isEnabled;
         MiddleDangoVisual.IsHitTestVisible = isEnabled;
         TopDangoVisual.IsHitTestVisible = isEnabled;
@@ -342,6 +343,7 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
         AttachSurface();
         ApplyAuthoritativePosition();
         motionRuntime.Start();
+        motionRuntime.AttachQuietIdleHost(this, isInteractionEnabled);
         motionTimer.Start();
     }
 
@@ -368,6 +370,7 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
         }
 
         motionRuntime.SetDirectionalControl(currentIntent);
+        motionRuntime.UpdateQuietIdleHost(this, isInteractionEnabled);
         if (lightInteraction.IsActive)
             lightInteraction.RefreshButtons(NowMilliseconds(), NativeMethods.IsInputKeyPressed(0x10), leftDown: true);
         ApplyAuthoritativePosition();

@@ -13,6 +13,7 @@ internal sealed class LightInteractionSession(StackedDangoSceneRuntime runtime)
     private Func<bool>? canContinue;
     private LogicalPoint lastPoint;
     private bool dragging;
+    private long lightPress;
 
     public bool IsActive => target is not null;
 
@@ -27,6 +28,7 @@ internal sealed class LightInteractionSession(StackedDangoSceneRuntime runtime)
         if (!controller.TryBegin(next, point, nowMilliseconds, shift, out _)) return false;
 
         target = next;
+        lightPress = runtime.BeginLightPress(next);
         lastPoint = point;
         this.tryCapture = tryCapture;
         this.releaseCapture = releaseCapture;
@@ -152,6 +154,8 @@ internal sealed class LightInteractionSession(StackedDangoSceneRuntime runtime)
 
     private void ClearState()
     {
+        if (target is { } current) runtime.EndLightPress(current, lightPress);
+        lightPress = 0;
         controller.Clear();
         target = null;
         dragging = false;

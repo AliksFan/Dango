@@ -76,7 +76,7 @@ public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopDispla
         var snapshot = active.GetSnapshot();
         return runtime is null ? snapshot : snapshot with
         {
-            LastError = runtime.LastError ?? runtime.AttachmentError ?? snapshot.LastError,
+            LastError = runtime.LastError ?? runtime.AttachmentError ?? runtime.QuietIdleError ?? snapshot.LastError,
             VerificationStatus = runtime.InitializationState switch
             {
                 SceneInitializationState.Ready => "场景已就绪",

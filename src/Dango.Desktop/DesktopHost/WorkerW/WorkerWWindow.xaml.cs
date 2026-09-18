@@ -59,6 +59,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
     private DangoActionState reactionReturnState = DangoActionState.Idle;
     private LogicalPoint proxyDragPointer;
     private bool proxyDragMoved;
+    private bool? lastDesktopForeground;
 
     public WorkerWWindow(
         DesktopSceneSession sceneSession,
@@ -193,6 +194,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         }
 
         isInteractionEnabled = isEnabled;
+        motionRuntime.UpdateQuietIdleHost(this, isEnabled && isVisible);
         keyboardInputBridge?.Refresh(
             recoveryState.State == WorkerWRecoveryState.Attached && isVisible,
             isEnabled);
@@ -750,6 +752,8 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
 
         ApplyAuthoritativePosition();
         motionRuntime.Start();
+        lastDesktopForeground = null;
+        motionRuntime.AttachQuietIdleHost(this, isInteractionEnabled);
         motionTimer.Start();
     }
 
@@ -764,8 +768,12 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         keyboardInputBridge?.Refresh(
             recoveryState.State == WorkerWRecoveryState.Attached && isVisible,
             isInteractionEnabled);
-        if ((motionRuntime.IsDragging || lightInteraction.IsActive || motionRuntime.HasLightFeedback) && (NativeMethods.IsEscapePressed() ||
-            currentTarget is not null && !NativeMethods.IsExplorerDesktopForeground(currentTarget)))
+        var desktopForeground = currentTarget is not null && NativeMethods.IsExplorerDesktopForeground(currentTarget);
+        ObserveQuietIdleForeground(desktopForeground);
+        motionRuntime.UpdateQuietIdleHost(this, isInteractionEnabled);
+        if ((motionRuntime.IsDragging || lightInteraction.IsActive || motionRuntime.HasLightFeedback) &&
+            (NativeMethods.IsEscapePressed() || currentTarget is not null && !desktopForeground) ||
+            motionRuntime.HasQuietIdleAction && desktopForeground && NativeMethods.IsEscapePressed())
         {
             CancelDrag(DragCancellationReason.WindowDeactivated);
         }
@@ -839,6 +847,14 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
     private static long NowMilliseconds() => Environment.TickCount64;
 
     private static bool ShiftPressed => NativeMethods.IsInputKeyPressed(0x10);
+
+    internal void ObserveQuietIdleForeground(bool desktopForeground)
+    {
+        if (!motionRuntime.LightInteractionsEnabled) return;
+        var changed = lastDesktopForeground is { } previous && previous != desktopForeground;
+        lastDesktopForeground = desktopForeground;
+        if (changed) motionRuntime.CancelInput();
+    }
 
     private bool LightPointerHostReady() => isVisible && isInteractionEnabled && !isClosed &&
         motionRuntime.IsRunning && motionRuntime.LastError is null && currentTarget is not null &&

@@ -745,7 +745,7 @@ public partial class ControlCenterWindow : Window
         DesktopNavigation.Content = "桌面与团子设置";
         DiagnosticsNavigation.Content = "帮助与诊断";
         OverviewTitle.Text = "你的桌面团子";
-        OverviewIntro.Text = "轻点团子会眨眼；按住 Shift 和鼠标左键，在团子身上横向轻抚会眯眼。直接拖动团子后松手；在设置中开启键盘控制。关闭窗口只是隐藏，可从托盘找回；结束使用请选择退出 Dango。";
+        OverviewIntro.Text = "轻点团子会眨眼；按住 Shift 和鼠标左键，在团子身上横向轻抚会眯眼。不操作时，团子偶尔眨眼、左右看看。直接拖动团子后松手；在设置中开启键盘控制。关闭窗口只是隐藏，可从托盘找回；结束使用请选择退出 Dango。";
         LayeringTitle.Text = "图标层级";
         LayeringDescription.Text = "选择团子显示在桌面图标上方或下方。";
     }
