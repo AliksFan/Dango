@@ -24,7 +24,9 @@ public sealed class AttachmentSceneIntegrationTests
         "fixture-ground", new(0, -1), 0, 1, false, true, []);
 
     [TestMethod]
-    [DataRow(1)] [DataRow(2)] [DataRow(3)]
+    [DataRow(1)]
+    [DataRow(2)]
+    [DataRow(3)]
     public void NewOldAndDirectPhysicsAgreeForNineHundredSteps(int count)
     {
         using var candidate = StackedDangoSceneRuntime.CreateEyeHatReview();
@@ -46,7 +48,7 @@ public sealed class AttachmentSceneIntegrationTests
             Assert.IsNull(candidate.AttachmentError);
             for (var j = 0; j < count; j++)
             {
-                Assert.IsNull(b.Bodies[j].Attachments, "Default host must keep the old route.");
+                Assert.IsNull(b.Bodies[j].Attachments, "The explicit legacy comparison must keep the old route.");
                 var attachment = a.Bodies[j].Attachments!;
                 Assert.IsNotNull(attachment);
                 Assert.AreEqual((long)i, attachment.StepIndex);
@@ -128,7 +130,7 @@ public sealed class AttachmentSceneIntegrationTests
         {
             runtime.Start(); runtime.AddDango(); runtime.AddDango();
             var frame = runtime.Tick(Primary(), Dt);
-            runtime.ReviewHatAppearance = HatAppearance.Bowler;
+            Assert.IsTrue(runtime.TryApplyHatPreset("bowler"));
             foreach (var host in new object[] { window, wallpaper })
             {
                 var apply = host.GetType().GetMethod("ApplyPresentationFrame", BindingFlags.NonPublic | BindingFlags.Instance)!;

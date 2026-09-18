@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using Dango.Desktop.DesktopHost;
 using Dango.Desktop.Physics.Tuning;
+using Dango.Desktop.Rendering.Visuals;
 using Dango.Desktop.Verification;
 using Forms = System.Windows.Forms;
 using WpfTextBox = System.Windows.Controls.TextBox;
@@ -20,10 +21,8 @@ public partial class ControlCenterWindow : Window
     private readonly VerificationSessionStore verificationStore;
     private readonly string draftPath;
     private readonly Action requestExit;
-    private readonly ControlCenterWindowSettingsStore? windowSettingsStore;
-    private readonly string? settingsPath;
-    private readonly Func<SceneWindowSettings>? captureSceneWindowSettings;
-    private readonly string? startupSettingsWarning;
+    private readonly ApplicationSettingsSession? settingsSession;
+    private readonly Action? saveSettings;
     private readonly List<ThemePropertyOverride> highContrastOverrides = [];
     private readonly DispatcherTimer hostStatusTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
     private VerificationSession? verificationSession;
@@ -32,6 +31,7 @@ public partial class ControlCenterWindow : Window
     private bool refreshingHostState;
     private bool refreshingPhysicsParameters;
     private readonly Dictionary<string, (Slider Slider, WpfTextBox TextBox)> physicsControls = [];
+    public event Action? OverviewPresented;
 
     public ControlCenterWindow(
         ApplicationCommandController commandController,
@@ -39,22 +39,29 @@ public partial class ControlCenterWindow : Window
         VerificationSessionStore verificationStore,
         string draftPath,
         Action requestExit,
-        ControlCenterWindowSettingsStore? windowSettingsStore = null,
-        string? settingsPath = null,
-        Func<SceneWindowSettings>? captureSceneWindowSettings = null,
-        string? startupSettingsWarning = null)
+        ApplicationSettingsSession? settingsSession = null,
+        Action? saveSettings = null,
+        Action? scheduleSave = null)
     {
         this.commandController = commandController ?? throw new ArgumentNullException(nameof(commandController));
         this.verificationDefinition = verificationDefinition ?? throw new ArgumentNullException(nameof(verificationDefinition));
         this.verificationStore = verificationStore ?? throw new ArgumentNullException(nameof(verificationStore));
         this.draftPath = draftPath ?? throw new ArgumentNullException(nameof(draftPath));
         this.requestExit = requestExit ?? throw new ArgumentNullException(nameof(requestExit));
-        this.windowSettingsStore = windowSettingsStore;
-        this.settingsPath = settingsPath;
-        this.captureSceneWindowSettings = captureSceneWindowSettings;
-        this.startupSettingsWarning = startupSettingsWarning;
+        this.settingsSession = settingsSession;
+        this.saveSettings = saveSettings;
+        refreshingHostState = true;
         InitializeComponent();
-        BuildPhysicsTuningPanel();
+        if (commandController.UiMode == ApplicationUiMode.DeveloperReview) BuildPhysicsTuningPanel();
+        ApplyUiMode();
+        if (settingsSession is not null)
+        {
+            Width = settingsSession.Current.Width;
+            Height = settingsSession.Current.Height;
+        }
+        refreshingHostState = false;
+        SizeChanged += (_, _) => { if (IsLoaded) scheduleSave?.Invoke(); };
+        ContentRendered += (_, _) => { if (OverviewPage.Visibility == Visibility.Visible) OverviewPresented?.Invoke(); };
         SystemParameters.StaticPropertyChanged += OnSystemParametersChanged;
         Closed += OnClosed;
         hostStatusTimer.Tick += (_, _) => RefreshHostState();
@@ -65,7 +72,17 @@ public partial class ControlCenterWindow : Window
         };
     }
 
-    public void ShowOverview() => ShowPage(OverviewPage);
+    public void ShowOverview()
+    {
+        RefreshHostState();
+        ShowPage(OverviewPage);
+        if (IsLoaded && IsVisible)
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (IsLoaded && IsVisible && OverviewPage.Visibility == Visibility.Visible)
+                    OverviewPresented?.Invoke();
+            }, DispatcherPriority.ContextIdle);
+    }
 
     public void ShowDiagnostics()
     {
@@ -77,27 +94,25 @@ public partial class ControlCenterWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        RestoreWindowSettings();
-        LoadOrCreateVerificationSession();
+        if (commandController.UiMode == ApplicationUiMode.DeveloperReview) LoadOrCreateVerificationSession();
         RefreshHostState();
-        if (!string.IsNullOrWhiteSpace(startupSettingsWarning))
+        if (!string.IsNullOrWhiteSpace(settingsSession?.StartupWarning))
         {
-            OverviewCommandStatusText.Text = startupSettingsWarning;
-            DesktopCommandStatusText.Text = startupSettingsWarning;
+            OverviewCommandStatusText.Text = settingsSession.StartupWarning;
+            DesktopCommandStatusText.Text = settingsSession.StartupWarning;
         }
         RefreshDiagnostics();
-        ShowPage(OverviewPage);
         ApplyAccessibilityTheme();
     }
 
     private void OnClosing(object? sender, CancelEventArgs e)
     {
-        SaveWindowSettings();
         if (allowClose)
         {
             return;
         }
 
+        SaveWindowSettings();
         e.Cancel = true;
         Hide();
     }
@@ -133,6 +148,7 @@ public partial class ControlCenterWindow : Window
 
     private void OnVerificationNavigationClick(object sender, RoutedEventArgs e)
     {
+        if (commandController.UiMode != ApplicationUiMode.DeveloperReview) return;
         RefreshVerificationSummary();
         ShowPage(VerificationPage);
     }
@@ -352,6 +368,26 @@ public partial class ControlCenterWindow : Window
 
     private void OnExitClick(object sender, RoutedEventArgs e) => requestExit();
 
+    private void OnHatPresetChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!refreshingHostState && HatPresetComboBox.SelectedItem is ComboBoxItem { Tag: string id })
+            ApplyCommand(commandController.ApplyHatPreset(id));
+    }
+
+    private void OnRetrySceneClick(object sender, RoutedEventArgs e) => ApplyCommand(commandController.RetryInitialization());
+
+    private void OnRetrySaveClick(object sender, RoutedEventArgs e)
+    {
+        settingsSession?.TrySave();
+        RefreshHostState();
+    }
+
+    private void OnRecoverSettingsClick(object sender, RoutedEventArgs e)
+    {
+        settingsSession?.TryRecoverAndSave();
+        RefreshHostState();
+    }
+
     private void ApplyCommand(HostCommandResult result)
     {
         var status = result.State == CommandApplicationState.Applied
@@ -359,6 +395,7 @@ public partial class ControlCenterWindow : Window
             : result.Error ?? "操作失败，宿主状态未确认。";
         OverviewCommandStatusText.Text = status;
         DesktopCommandStatusText.Text = status;
+        if (result.State == CommandApplicationState.Applied) SaveWindowSettings();
         RefreshHostState();
     }
 
@@ -368,6 +405,19 @@ public partial class ControlCenterWindow : Window
         refreshingHostState = true;
         try
         {
+            var ready = commandController.InitializationState == SceneInitializationState.Ready;
+            RetrySceneButton.Visibility = ready ? Visibility.Collapsed : Visibility.Visible;
+            RestoreDangoButton.IsEnabled = ready;
+            VisibilityCheckBox.IsEnabled = ready;
+            OverviewVisibilityButton.IsEnabled = ready;
+            WallpaperHostRadioButton.IsEnabled = ready;
+            WindowHostRadioButton.IsEnabled = ready;
+            RetryWallpaperButton.IsEnabled = ready;
+            SettingsSaveStatusText.Text = settingsSession?.StatusMessage ?? "";
+            RetrySaveButton.IsEnabled = settingsSession is not null && !settingsSession.IsWriteProtected;
+            RecoverSettingsButton.Visibility = settingsSession?.IsWriteProtected == true ? Visibility.Visible : Visibility.Collapsed;
+            HatPresetComboBox.SelectedItem = HatPresetComboBox.Items.OfType<ComboBoxItem>()
+                .Single(item => (string)item.Tag == commandController.HatPresetId);
             VisibilityCheckBox.IsChecked = snapshot.IsVisible;
             InteractionCheckBox.IsChecked = snapshot.IsInteractionEnabled;
             var keyboard = commandController.GetKeyboardControlSettings();
@@ -379,7 +429,7 @@ public partial class ControlCenterWindow : Window
             DangoCountText.Text = $"当前 {dangoCount} 只（最多 3 只）；拖动选择团子，移除作用于选中团子。";
             AddDangoButton.IsEnabled = snapshot.LastError is null && dangoCount < 3;
             RemoveDangoButton.IsEnabled = snapshot.LastError is null && dangoCount > 1;
-            RefreshPhysicsParameters();
+            if (commandController.UiMode == ApplicationUiMode.DeveloperReview) RefreshPhysicsParameters();
             var layering = commandController.GetLayeringSettings();
             DangoBelowIconsRadioButton.IsChecked = layering.DangoLayer == DesktopObjectLayer.BelowDesktopIcons;
             DangoAboveIconsRadioButton.IsChecked = layering.DangoLayer == DesktopObjectLayer.AboveDesktopIcons;
@@ -395,8 +445,9 @@ public partial class ControlCenterWindow : Window
             WallpaperHostRadioButton.IsChecked = string.Equals(snapshot.Mode, "Wallpaper", StringComparison.Ordinal);
             WindowHostRadioButton.IsChecked = string.Equals(snapshot.Mode, "Window", StringComparison.Ordinal);
             DesktopLayeringPanel.IsEnabled = string.Equals(snapshot.Mode, "Wallpaper", StringComparison.Ordinal);
+            var modeLabel = snapshot.Mode == "Wallpaper" ? "桌面模式" : snapshot.Mode == "Window" ? "窗口模式" : snapshot.Mode;
             OverviewHostStatusText.Text =
-                $"{snapshot.Mode} · {(snapshot.IsVisible ? "正在运行" : "已隐藏")} · {snapshot.LastError ?? snapshot.VerificationStatus}";
+                $"{modeLabel} · {(snapshot.IsVisible ? "正在运行" : "已隐藏")} · {snapshot.LastError ?? snapshot.VerificationStatus}";
         }
         finally
         {
@@ -685,60 +736,28 @@ public partial class ControlCenterWindow : Window
         page.Visibility = Visibility.Visible;
     }
 
-    private void RestoreWindowSettings()
+    private void ApplyUiMode()
     {
-        if (windowSettingsStore is null ||
-            string.IsNullOrWhiteSpace(settingsPath) ||
-            !File.Exists(settingsPath))
-        {
-            return;
-        }
-
-        try
-        {
-            var settings = windowSettingsStore.Load(settingsPath);
-            Width = settings.Width;
-            Height = settings.Height;
-            _ = commandController.ApplyLayeringSettings(settings.DesktopLayeringExperiment);
-            _ = commandController.ApplyKeyboardControlSettings(settings.KeyboardControl);
-        }
-        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
-        {
-            System.Diagnostics.Debug.WriteLine($"Unable to restore control center size: {exception.GetType().Name}");
-        }
+        if (commandController.UiMode != ApplicationUiMode.Product) return;
+        foreach (var element in new UIElement[] { VerificationNavigation, ContinueVerificationButton,
+            PopulationCard, SkeletonCard, PhysicsCard, CushionTitle, CushionOptions, IslandTitle, IslandDescription })
+            element.Visibility = Visibility.Collapsed;
+        DesktopNavigation.Content = "桌面与团子设置";
+        DiagnosticsNavigation.Content = "帮助与诊断";
+        OverviewTitle.Text = "你的桌面团子";
+        OverviewIntro.Text = "拖动团子后松手；在设置中开启键盘控制。关闭窗口只是隐藏，可从托盘找回；结束使用请选择退出 Dango。";
+        LayeringTitle.Text = "图标层级";
+        LayeringDescription.Text = "选择团子显示在桌面图标上方或下方。";
     }
 
-    private void SaveWindowSettings()
+    public (double Width, double Height) CaptureSize()
     {
-        if (windowSettingsStore is null || string.IsNullOrWhiteSpace(settingsPath))
-        {
-            return;
-        }
-
-        try
-        {
-            var bounds = WindowState == WindowState.Normal
-                ? new Rect(Left, Top, ActualWidth, ActualHeight)
-                : RestoreBounds;
-            windowSettingsStore.Save(
-                settingsPath,
-                new ControlCenterWindowSettings(
-                    bounds.Width,
-                    bounds.Height,
-                    schemaVersion: ControlCenterWindowSettings.CurrentSchemaVersion,
-                    commandController.GetLayeringSettings(),
-                    commandController.GetKeyboardControlSettings(),
-                    Enum.TryParse<DesktopDisplayMode>(commandController.GetSnapshot().Mode, out var mode)
-                        ? mode
-                        : DesktopDisplayMode.Wallpaper,
-                    captureSceneWindowSettings?.Invoke() ?? SceneWindowSettings.CreateDefault(),
-                    commandController.IsDebugSkeletonVisible));
-        }
-        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
-        {
-            System.Diagnostics.Debug.WriteLine($"Unable to save control center size: {exception.GetType().Name}");
-        }
+        var bounds = WindowState == WindowState.Normal ? new Rect(0, 0, ActualWidth, ActualHeight) : RestoreBounds;
+        return bounds.Width >= MinWidth && bounds.Height >= MinHeight
+            ? (bounds.Width, bounds.Height) : (Width, Height);
     }
+
+    private void SaveWindowSettings() => saveSettings?.Invoke();
 
     private void ApplyAccessibilityTheme()
     {

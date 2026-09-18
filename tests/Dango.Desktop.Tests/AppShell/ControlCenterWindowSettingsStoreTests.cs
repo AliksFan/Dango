@@ -55,10 +55,10 @@ public sealed class ControlCenterWindowSettingsStoreTests
                     [DesktopLayeringSettings.PrototypeCushionId] = DesktopObjectLayer.AboveDesktopIcons,
                 });
 
-            store.Save(path, new ControlCenterWindowSettings(940, 620, 3, layering));
+            store.Save(path, new ControlCenterWindowSettings(940, 620, ControlCenterWindowSettings.CurrentSchemaVersion, layering));
             var restored = store.Load(path);
 
-            Assert.AreEqual(3, restored.SchemaVersion);
+            Assert.AreEqual(4, restored.SchemaVersion);
             Assert.AreEqual(DesktopObjectLayer.AboveDesktopIcons, restored.DesktopLayeringExperiment.DangoLayer);
             Assert.AreEqual(
                 DesktopObjectLayer.AboveDesktopIcons,
@@ -86,7 +86,7 @@ public sealed class ControlCenterWindowSettingsStoreTests
 
             var restored = new ControlCenterWindowSettingsStore().Load(path);
 
-            Assert.AreEqual(3, restored.SchemaVersion);
+            Assert.AreEqual(4, restored.SchemaVersion);
             Assert.AreEqual(
                 DesktopObjectLayer.BelowDesktopIcons,
                 restored.DesktopLayeringExperiment.DangoLayer);
@@ -146,7 +146,7 @@ public sealed class ControlCenterWindowSettingsStoreTests
                 showDebugSkeleton: true));
             var restored = store.Load(path);
 
-            Assert.AreEqual(3, restored.SchemaVersion);
+            Assert.AreEqual(4, restored.SchemaVersion);
             Assert.AreEqual(DesktopDisplayMode.Window, restored.DisplayMode);
             Assert.AreEqual(sceneWindow, restored.SceneWindow);
             Assert.IsTrue(restored.ShowDebugSkeleton);

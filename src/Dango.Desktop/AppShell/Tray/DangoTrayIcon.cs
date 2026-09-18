@@ -61,6 +61,9 @@ internal sealed class DangoTrayIcon : IDisposable
         notifyIcon.Dispose();
     }
 
+    public void ShowSettingsWarning(string message) => notifyIcon.ShowBalloonTip(
+        5000, "Dango 设置未保存", message, Forms.ToolTipIcon.Warning);
+
     private void ToggleVisibility()
     {
         var snapshot = commandController.GetSnapshot();

@@ -2,13 +2,14 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Dango.Desktop.DesktopHost;
+using Dango.Desktop.Rendering.Visuals;
 using Dango.Desktop.Verification;
 
 namespace Dango.Desktop.AppShell.ControlCenter;
 
 public sealed record ControlCenterWindowSettings
 {
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
 
     [JsonConstructor]
     public ControlCenterWindowSettings(
@@ -19,7 +20,10 @@ public sealed record ControlCenterWindowSettings
         KeyboardControlSettings? keyboardControl = null,
         DesktopDisplayMode displayMode = DesktopDisplayMode.Wallpaper,
         SceneWindowSettings? sceneWindow = null,
-        bool showDebugSkeleton = false)
+        bool showDebugSkeleton = false,
+        bool interactionEnabled = true,
+        string hatPresetId = "sprout",
+        bool introSeen = false)
     {
         Width = width;
         Height = height;
@@ -29,16 +33,22 @@ public sealed record ControlCenterWindowSettings
         DisplayMode = displayMode;
         SceneWindow = sceneWindow ?? SceneWindowSettings.CreateDefault();
         ShowDebugSkeleton = showDebugSkeleton;
+        InteractionEnabled = interactionEnabled;
+        HatPresetId = hatPresetId;
+        IntroSeen = introSeen;
     }
 
-    public double Width { get; }
-    public double Height { get; }
-    public int SchemaVersion { get; }
-    public DesktopLayeringSettings DesktopLayeringExperiment { get; }
-    public KeyboardControlSettings KeyboardControl { get; }
-    public DesktopDisplayMode DisplayMode { get; }
-    public SceneWindowSettings SceneWindow { get; }
-    public bool ShowDebugSkeleton { get; }
+    public double Width { get; init; }
+    public double Height { get; init; }
+    public int SchemaVersion { get; init; }
+    public DesktopLayeringSettings DesktopLayeringExperiment { get; init; }
+    public KeyboardControlSettings KeyboardControl { get; init; }
+    public DesktopDisplayMode DisplayMode { get; init; }
+    public SceneWindowSettings SceneWindow { get; init; }
+    public bool ShowDebugSkeleton { get; init; }
+    public bool InteractionEnabled { get; init; }
+    public string HatPresetId { get; init; }
+    public bool IntroSeen { get; init; }
 
     public static ControlCenterWindowSettings CreateDefault() => new(940, 620);
 }
@@ -46,7 +56,8 @@ public sealed record ControlCenterWindowSettings
 public sealed record ControlCenterSettingsLoadResult(
     ControlCenterWindowSettings Settings,
     bool WasMigrated,
-    string? Warning);
+    string? Warning,
+    bool PreserveOriginal = false);
 
 public static class ControlCenterWindowSettingsValidator
 {
@@ -70,6 +81,8 @@ public static class ControlCenterWindowSettingsValidator
         {
             throw new InvalidDataException("显示模式不受支持。");
         }
+        if (!DangoHatPresets.IsKnown(settings.HatPresetId))
+            throw new InvalidDataException("帽型不受支持。");
 
         var scene = settings.SceneWindow;
         ValidateSize(scene.Width, scene.Height, MinimumSceneWidth, MinimumSceneHeight, "场景窗口尺寸超出安全范围。");
@@ -126,23 +139,19 @@ public sealed class ControlCenterWindowSettingsStore
     public ControlCenterSettingsLoadResult LoadOrDefault(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        if (!File.Exists(path))
-        {
-            return new(ControlCenterWindowSettings.CreateDefault(), false, null);
-        }
-
         try
         {
             var persisted = JsonSerializer.Deserialize<PersistedSettings>(File.ReadAllText(path), SerializerOptions)
                 ?? throw new InvalidDataException("控制中心设置为空。");
             var sourceSchema = persisted.SchemaVersion ?? 1;
-            if (sourceSchema is not (1 or 2 or ControlCenterWindowSettings.CurrentSchemaVersion))
+            if (sourceSchema is not (1 or 2 or 3 or ControlCenterWindowSettings.CurrentSchemaVersion))
             {
                 return SafeDefault("设置版本无法识别，已使用安全默认值。");
             }
 
             var (displayMode, modeWarning) = ParseDisplayMode(persisted.DisplayMode);
             var defaults = ControlCenterWindowSettings.CreateDefault();
+            var validHat = persisted.HatPresetId is null || DangoHatPresets.IsKnown(persisted.HatPresetId);
             var settings = new ControlCenterWindowSettings(
                 persisted.Width ?? defaults.Width,
                 persisted.Height ?? defaults.Height,
@@ -151,9 +160,17 @@ public sealed class ControlCenterWindowSettingsStore
                 persisted.KeyboardControl,
                 displayMode,
                 persisted.SceneWindow,
-                persisted.ShowDebugSkeleton ?? false);
+                persisted.ShowDebugSkeleton ?? false,
+                persisted.InteractionEnabled ?? true,
+                validHat ? persisted.HatPresetId ?? "sprout" : "sprout",
+                persisted.IntroSeen ?? false);
             ControlCenterWindowSettingsValidator.Validate(settings);
-            return new(settings, sourceSchema != ControlCenterWindowSettings.CurrentSchemaVersion, modeWarning);
+            return new(settings, sourceSchema != ControlCenterWindowSettings.CurrentSchemaVersion || !validHat || modeWarning is not null,
+                validHat ? modeWarning : "帽型无法识别，已使用叶芽；其余有效设置已保留。");
+        }
+        catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return new(ControlCenterWindowSettings.CreateDefault(), false, null);
         }
         catch (Exception exception) when (exception is JsonException or InvalidDataException or IOException or UnauthorizedAccessException)
         {
@@ -180,7 +197,7 @@ public sealed class ControlCenterWindowSettingsStore
     }
 
     private static ControlCenterSettingsLoadResult SafeDefault(string warning) =>
-        new(ControlCenterWindowSettings.CreateDefault(), false, warning);
+        new(ControlCenterWindowSettings.CreateDefault(), false, warning, PreserveOriginal: true);
 
     private sealed class PersistedSettings
     {
@@ -192,5 +209,8 @@ public sealed class ControlCenterWindowSettingsStore
         public string? DisplayMode { get; init; }
         public SceneWindowSettings? SceneWindow { get; init; }
         public bool? ShowDebugSkeleton { get; init; }
+        public bool? InteractionEnabled { get; init; }
+        public string? HatPresetId { get; init; }
+        public bool? IntroSeen { get; init; }
     }
 }

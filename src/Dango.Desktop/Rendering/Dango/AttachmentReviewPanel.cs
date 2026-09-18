@@ -20,8 +20,8 @@ internal sealed class AttachmentReviewPanel : Window
         var panel = new StackPanel { Margin = new Thickness(16) };
         Content = panel;
         panel.Children.Add(new TextBlock { Text = "在控制中心切换窗口 / 桌面模式和团子数量。\n点击或拖动团子后，再为它切换表情。", TextWrapping = TextWrapping.Wrap });
-        var hats = new ComboBox { ItemsSource = new[] { "叶芽", "小礼帽", "圆顶帽" }, SelectedIndex = (int)runtime.ReviewHatAppearance, Margin = new Thickness(0, 12, 0, 8) };
-        hats.SelectionChanged += (_, _) => runtime.ReviewHatAppearance = (HatAppearance)hats.SelectedIndex;
+        var hats = new ComboBox { ItemsSource = new[] { "叶芽", "小礼帽", "圆顶帽" }, SelectedIndex = (int)runtime.CurrentHatAppearance, Margin = new Thickness(0, 12, 0, 8) };
+        hats.SelectionChanged += (_, _) => runtime.TryApplyHatPreset(DangoHatPresets.GetId((HatAppearance)hats.SelectedIndex));
         panel.Children.Add(hats);
         var eyes = new ComboBox { ItemsSource = new[] { "圆眼", "柔和", "自然闭眼", "紧闭", "开心", "困倦", "无语", "认真 / 生气", "惊讶", "疑惑" }, SelectedIndex = 0 };
         panel.Children.Add(eyes);

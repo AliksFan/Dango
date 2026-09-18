@@ -1,6 +1,16 @@
-﻿# Dango
+# Dango
 
 `Dango` 是一个多人联机桌面宠物项目的开发代号。
+
+本分支已实现单人正式雏形的第一批入口整合：普通无参数启动接入一只团子及新眼帽，提供既有拖放/方向控制、三种帽型、基础偏好保存、隐藏/恢复和故障重试。多体、骨架、物理参数和验收工具只在显式评审模式展示。用户于 2026-09-17 确认本批人工验收通过；完整互动、自主生活和真实上下岛继续后置，专项矩阵及整个 Phase 1 尚未完成。见[第一批设计](docs/planning/2026-09-17-desktop-entry-integration-design.md)、[实施计划](docs/planning/2026-09-17-desktop-entry-integration-plan.md)和[实施验证](docs/verification/2026-09-17-desktop-entry-integration.md)。下文原有验收说明保留各自历史范围。
+
+日常验收默认直接从项目启动对应窗口，不再默认提供整个压缩包。需要分发时再构建普通便携候选，将已有验收模块的本机路径作为显式输入：
+
+```powershell
+.\eng\publish-desktop-entry.ps1 -RunName <新的输出名称> -PhysicsModulePath <已验收模块DLL路径>
+```
+
+脚本不会重建 native、启动程序或覆盖旧输出。输出为 `artifacts/desktop-entry/<RunName>/package/`，普通启动使用其中的 `Dango.Desktop.exe`；设置位于当前 Windows 用户的本地应用数据目录，人工检查优先使用隔离测试用户。旧 DLL 导出失败和全仓格式基线问题仍保留，该包仅为内部候选。
 
 项目希望让每位用户拥有一只代表自己的“团子”。团子平时生活在 Windows 桌面上；当好友进入同一房间后，多只团子会在一个持续存在的共享空间中相遇、陪伴并自动互动。
 
@@ -61,7 +71,7 @@ Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](d
 
 ## 当前边界
 
-眼帽双宿主隔离预览已于 2026-09-17 获用户人工认可：重绘眼形、130 ms 眨眼、7/5.25 DIP 非对称面向、跳跃眼动、1.35 倍帽子和急停惯性。见[验证与预览入口](docs/verification/phase-1-eye-hat-motion.md)和[眼帽设计](docs/phase-1-eye-hat-motion-design.md)。普通入口尚未启用新眼帽机制；独立 BounceHat、完整组合预算及降低额外动效控制仍待完成，第二种 DPI、长测和完整故障矩阵未验证。[单人完整动作草案](docs/phase-1-single-player-interaction-design.md)继续搁置，保留[类似项目参考](docs/research/2026-09-12-single-player-desktop-pet-reference.md)。本地提交与保留实验见[工作树整理记录](docs/verification/2026-09-17-worktree-checkpoints.md)。
+眼帽双宿主隔离预览已于 2026-09-17 获用户人工认可：重绘眼形、130 ms 眨眼、7/5.25 DIP 非对称面向、跳跃眼动、1.35 倍帽子和急停惯性。见[验证与预览入口](docs/verification/phase-1-eye-hat-motion.md)和[眼帽设计](docs/phase-1-eye-hat-motion-design.md)。本分支普通入口候选已启用新机制，仍需普通入口的新组合人工检查；独立 BounceHat、完整组合预算及降低额外动效控制仍待完成，第二种 DPI、长测和完整故障矩阵未验证。[单人完整动作草案](docs/phase-1-single-player-interaction-design.md)继续搁置，保留[类似项目参考](docs/research/2026-09-12-single-player-desktop-pet-reference.md)。本地提交与保留实验见[工作树整理记录](docs/verification/2026-09-17-worktree-checkpoints.md)。
 
 - 首发平台：Windows
 - 项目性质：个人作品，暂不以盈利为目标

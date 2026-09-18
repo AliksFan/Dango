@@ -8,6 +8,8 @@ using Dango.Physics;
 
 namespace Dango.Desktop.Rendering.Visuals;
 
+public enum SceneInitializationState { NotStarted, Ready, Unavailable }
+
 public sealed class StackedDangoSceneRuntime : IDisposable
 {
     public const int MinimumDangoCount = 1;
@@ -24,12 +26,18 @@ public sealed class StackedDangoSceneRuntime : IDisposable
     private DirectionalControlIntent directionalIntent;
     private bool running;
     private bool disposed;
-    private readonly AttachmentSceneController? attachments;
-    public bool EyeHatReviewEnabled => attachments is not null;
-    public HatAppearance ReviewHatAppearance { get; set; } = HatAppearance.TopHat;
-    public HatAppearance DisplayHatAppearance => EyeHatReviewEnabled ? ReviewHatAppearance : HatAppearance.Sprout;
-    public double DisplayHatSize => EyeHatReviewEnabled ? 1.35 : 1;
+    private AttachmentSceneController? attachments;
+    private bool requiresAttachments;
+    public bool RequiresInitialization { get; private init; }
+    public SceneInitializationState InitializationState { get; private set; }
+    public int CalibrationStepCount { get; private set; }
+    public bool AttachmentsEnabled => attachments is not null;
+    public string CurrentHatPresetId { get; private set; } = "sprout";
+    public HatAppearance CurrentHatAppearance => DangoHatPresets.GetAppearance(CurrentHatPresetId);
+    public HatAppearance DisplayHatAppearance => CurrentHatAppearance;
+    public double DisplayHatSize => AttachmentsEnabled ? 1.35 : 1;
     public string? AttachmentError => attachments?.LastError;
+    public event Action? HatPresetChanged;
 
     public StackedDangoSceneRuntime(string? nativeLibraryPath = null, PhysicsPresentationFrame? attachmentBaseline = null)
     {
@@ -37,18 +45,81 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         if (attachmentBaseline is not null) attachments = new(attachmentBaseline);
     }
 
-    public static StackedDangoSceneRuntime CreateEyeHatReview(string? nativeLibraryPath = null)
+    public static StackedDangoSceneRuntime CreateProduct(string? nativeLibraryPath = null) =>
+        new(nativeLibraryPath) { requiresAttachments = true, RequiresInitialization = true };
+
+    public static StackedDangoSceneRuntime CreateEyeHatReview(string? nativeLibraryPath = null, bool deferInitialization = false)
     {
-        var path = nativeLibraryPath ?? Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName);
-        PhysicsPresentationFrame baseline;
-        using (var calibration = new DesktopPhysicsScene(path, new(0, 0, 160, 120)))
+        var runtime = CreateProduct(nativeLibraryPath);
+        runtime.TryApplyHatPreset("top-hat");
+        if (!deferInitialization && !runtime.TryInitialize())
         {
-            for (var i = 0; i < 240; i++)
-                if (!calibration.Step(TimeSpan.FromSeconds(1d / 60)).Physics.Succeeded)
-                    throw new InvalidOperationException("眼帽标定失败；未启动宿主场景。");
-            baseline = calibration.LastFrame!.Bodies.Single().Presentation;
+            var error = runtime.LastError;
+            runtime.Dispose();
+            throw new InvalidOperationException(error);
         }
-        return new(path, baseline);
+        return runtime;
+    }
+
+    public bool TryApplyHatPreset(string presetId)
+    {
+        VerifyAccess();
+        if (!DangoHatPresets.IsKnown(presetId)) return false;
+        if (CurrentHatPresetId == presetId) return true;
+        CurrentHatPresetId = presetId;
+        HatPresetChanged?.Invoke();
+        return true;
+    }
+
+    public bool TryInitialize()
+    {
+        VerifyAccess();
+        if (InitializationState == SceneInitializationState.Ready) return true;
+        try
+        {
+            if (requiresAttachments && attachments is null)
+            {
+                CalibrationStepCount = 0;
+                PhysicsPresentationFrame baseline;
+                using (var calibration = new DesktopPhysicsScene(nativeLibraryPath, new(0, 0, 160, 120)))
+                {
+                    for (var i = 0; i < 240; i++)
+                    {
+                        var frame = calibration.Step(TimeSpan.FromSeconds(1d / 60));
+                        CalibrationStepCount++;
+                        if (!frame.Physics.Succeeded)
+                            throw new DangoPhysicsException(DangoPhysicsFailureKind.NativeFailure,
+                                "眼帽标定失败。", frame.Physics.ErrorCode);
+                    }
+                    baseline = calibration.LastFrame!.Bodies.Single().Presentation;
+                }
+                // The calibration world has been released before the live world is created.
+                attachments = new(baseline);
+                attachments.SetPaused(!running);
+            }
+            EnsureScene(new(0, 0, 160, 120));
+            LastError = null;
+            InitializationState = SceneInitializationState.Ready;
+            return true;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException or
+            DllNotFoundException or BadImageFormatException or EntryPointNotFoundException)
+        {
+            scene?.Dispose();
+            scene = null;
+            attachments?.Dispose();
+            attachments = null;
+            colorSlots.Clear();
+            pendingSpawns.Clear();
+            hostOrigin = null;
+            LastFrame = null;
+            InitializationState = SceneInitializationState.Unavailable;
+            LastError = exception is DangoPhysicsException physics
+                ? $"场景初始化失败：{physics.Kind}（{physics.NativeErrorCode}）；可重试或退出。"
+                : $"场景初始化失败：{exception.GetType().Name}；可重试或退出。";
+            Stop();
+            return false;
+        }
     }
 
     public AttachmentRequestResult SubmitAttachment(AttachmentIntent intent)
@@ -73,6 +144,8 @@ public sealed class StackedDangoSceneRuntime : IDisposable
 
     public string CreateDiagnosticSummary() => string.Join(
         Environment.NewLine,
+        $"场景初始化：{InitializationState}；标定步数：{CalibrationStepCount}",
+        $"眼帽：{(AttachmentsEnabled ? "已启用" : "未启用")}；附件故障：{AttachmentError ?? "无"}",
         $"统一物理 world：{(running ? "运行" : "暂停")}",
         $"本地物理参与者：{DangoCount}；选中：{SelectedEntity}",
         $"contact：{LastFrame?.ContactCount ?? 0}",
@@ -84,6 +157,8 @@ public sealed class StackedDangoSceneRuntime : IDisposable
     public void Start()
     {
         VerifyAccess();
+        if (RequiresInitialization && InitializationState != SceneInitializationState.Ready)
+            throw new InvalidOperationException(LastError ?? "场景尚未初始化，请重试。");
         if (running) return;
         running = true;
         scene?.SetPaused(false);
@@ -216,6 +291,8 @@ public sealed class StackedDangoSceneRuntime : IDisposable
     public void RegenerateDango()
     {
         VerifyAccess();
+        if (RequiresInitialization && InitializationState != SceneInitializationState.Ready)
+            throw new InvalidOperationException(LastError ?? "请先重试初始化。");
         ClearPhysicalInput();
         scene?.Reset();
         pendingSpawns.Clear();
@@ -305,6 +382,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         attachments?.Dispose();
         disposed = true;
         InputCancelled = null;
+        HatPresetChanged = null;
         GC.SuppressFinalize(this);
     }
 

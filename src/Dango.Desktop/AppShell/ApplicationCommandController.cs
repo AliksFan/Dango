@@ -1,5 +1,6 @@
 using Dango.Desktop.DesktopHost;
 using Dango.Desktop.Physics.Tuning;
+using Dango.Desktop.Rendering.Visuals;
 
 namespace Dango.Desktop.AppShell;
 
@@ -36,9 +37,33 @@ public sealed class ApplicationCommandController
 {
     private readonly IDesktopHostControl host;
 
-    public ApplicationCommandController(IDesktopHostControl host)
+    public ApplicationCommandController(IDesktopHostControl host, ApplicationUiMode uiMode = ApplicationUiMode.Product)
     {
         this.host = host ?? throw new ArgumentNullException(nameof(host));
+        UiMode = uiMode;
+    }
+
+    public ApplicationUiMode UiMode { get; }
+    public SceneInitializationState InitializationState =>
+        host is IDangoSceneControl scene ? scene.InitializationState : SceneInitializationState.Ready;
+    public string HatPresetId => host is IDangoSceneControl scene ? scene.HatPresetId : "sprout";
+    public HostCommandResult ApplyHatPreset(string id) =>
+        host is IDangoSceneControl scene && scene.TryApplyHatPreset(id)
+            ? new(CommandApplicationState.Applied, host.GetSnapshot(), null)
+            : new(CommandApplicationState.Failed, host.GetSnapshot(), "帽型不受支持。");
+
+    public HostCommandResult RetryInitialization()
+    {
+        try
+        {
+            return host is IDangoSceneControl scene && scene.RetryInitialization()
+                ? new(CommandApplicationState.Applied, host.GetSnapshot(), null)
+                : new(CommandApplicationState.Failed, host.GetSnapshot(), host.GetSnapshot().LastError ?? "场景无法初始化。");
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return new(CommandApplicationState.Failed, host.GetSnapshot(), SafeError(exception));
+        }
     }
 
     public DesktopHostSnapshot GetSnapshot() => host.GetSnapshot();

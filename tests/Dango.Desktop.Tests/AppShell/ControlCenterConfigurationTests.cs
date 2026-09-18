@@ -64,7 +64,7 @@ public sealed class ControlCenterConfigurationTests
     public void ControlCenterCanLoadItsCompiledXamlWithoutShowingAWindow()
     {
         var definition = VerificationDefinition.CreateP1003WorkerW();
-        var controller = new ApplicationCommandController(new FakeDesktopHost());
+        var controller = new ApplicationCommandController(new FakeDesktopHost(), ApplicationUiMode.DeveloperReview);
         var store = new VerificationSessionStore(definition);
 
         var window = new ControlCenterWindow(

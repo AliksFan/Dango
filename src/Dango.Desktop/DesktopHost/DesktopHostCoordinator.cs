@@ -1,5 +1,6 @@
 using Dango.Desktop.AppShell;
 using Dango.Desktop.Physics.Tuning;
+using Dango.Desktop.Rendering.Visuals;
 
 namespace Dango.Desktop.DesktopHost;
 
@@ -52,24 +53,57 @@ public sealed class DesktopHostSwitchException : InvalidOperationException
     public string SafeReason { get; }
 }
 
-public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopDisplayModeControl, IDesktopLayeringControl, IKeyboardControl, IPhysicsDebugControl, IDangoPopulationControl, IDangoPhysicsTuningControl
+public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopDisplayModeControl, IDesktopLayeringControl, IKeyboardControl, IPhysicsDebugControl, IDangoPopulationControl, IDangoPhysicsTuningControl, IDangoSceneControl
 {
     private readonly IDesktopHostControl wallpaper;
     private readonly IDesktopHostControl window;
     private IDesktopHostControl active;
     private DesktopDisplayMode activeMode = DesktopDisplayMode.Wallpaper;
     private bool switchInProgress;
+    private readonly StackedDangoSceneRuntime? runtime;
 
-    public DesktopHostCoordinator(IDesktopHostControl wallpaper, IDesktopHostControl window)
+    public DesktopHostCoordinator(IDesktopHostControl wallpaper, IDesktopHostControl window,
+        StackedDangoSceneRuntime? runtime = null)
     {
         this.wallpaper = wallpaper ?? throw new ArgumentNullException(nameof(wallpaper));
         this.window = window ?? throw new ArgumentNullException(nameof(window));
         active = wallpaper;
+        this.runtime = runtime;
     }
 
-    public DesktopHostSnapshot GetSnapshot() => active.GetSnapshot();
+    public DesktopHostSnapshot GetSnapshot()
+    {
+        var snapshot = active.GetSnapshot();
+        return runtime is null ? snapshot : snapshot with
+        {
+            LastError = runtime.LastError ?? runtime.AttachmentError ?? snapshot.LastError,
+            VerificationStatus = runtime.InitializationState switch
+            {
+                SceneInitializationState.Ready => "场景已就绪",
+                SceneInitializationState.Unavailable => "场景不可用",
+                _ => "场景尚未初始化",
+            },
+        };
+    }
 
-    public void SetVisibility(bool isVisible) => active.SetVisibility(isVisible);
+    public void SetVisibility(bool isVisible)
+    {
+        if (isVisible && runtime is { RequiresInitialization: true } &&
+            runtime.InitializationState != SceneInitializationState.Ready)
+            throw new InvalidOperationException(runtime.LastError ?? "场景尚未初始化，请重试。");
+        active.SetVisibility(isVisible);
+    }
+
+    public SceneInitializationState InitializationState =>
+        runtime?.InitializationState ?? SceneInitializationState.Ready;
+    public string HatPresetId => runtime?.CurrentHatPresetId ?? "sprout";
+    public bool TryApplyHatPreset(string id) => runtime?.TryApplyHatPreset(id) == true;
+    public bool RetryInitialization()
+    {
+        if (runtime is null || !runtime.TryInitialize()) return false;
+        SetVisibility(true);
+        return true;
+    }
 
     public void SetInteractionEnabled(bool isEnabled) => active.SetInteractionEnabled(isEnabled);
 
