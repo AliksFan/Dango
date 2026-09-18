@@ -27,6 +27,7 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
     private readonly Action<double, double> moveDrag;
     private readonly Action completeDrag;
     private readonly Action cancelDrag;
+    private readonly Action<double, double>? completePointer;
     private readonly WorkerWDesktopTarget target;
     private readonly WinFormsTimer inputPriorityTimer;
     private NativeMethods.NativePoint dragOrigin;
@@ -45,13 +46,15 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
         Func<double, double, bool> beginDrag,
         Action<double, double> moveDrag,
         Action completeDrag,
-        Action cancelDrag)
+        Action cancelDrag,
+        Action<double, double>? completePointer = null)
     {
         this.target = target;
         this.beginDrag = beginDrag;
         this.moveDrag = moveDrag;
         this.completeDrag = completeDrag;
         this.cancelDrag = cancelDrag;
+        this.completePointer = completePointer;
         inputPriorityTimer = new WinFormsTimer
         {
             Interval = 50,
@@ -137,7 +140,7 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
             case WmLeftButtonDown when enabled:
                 var localX = unchecked((short)((long)message.LParam & 0xffff));
                 var localY = unchecked((short)(((long)message.LParam >> 16) & 0xffff));
-                if (NativeMethods.GetCursorPos(out dragOrigin) && beginDrag(localX, localY))
+                if (NativeMethods.GetCursorPos(out dragOrigin) && beginDrag(localX, localY) && completePointer is null)
                 {
                     _ = NativeMethods.SetCapture(Handle);
                     dragging = GetCapture() == Handle;
@@ -153,13 +156,25 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
 
                 return;
             case WmLeftButtonUp when dragging:
-                dragging = false;
-                _ = NativeMethods.ReleaseCapture();
-                completeDrag();
+                if (completePointer is not null)
+                {
+                    if (NativeMethods.GetCursorPos(out var end))
+                        completePointer(end.X - dragOrigin.X, end.Y - dragOrigin.Y);
+                    else CancelActiveDrag();
+                }
+                else
+                {
+                    ReleasePointerCapture();
+                    completeDrag();
+                }
                 return;
-            case WmCaptureChanged when dragging:
+            case WmCaptureChanged when dragging && GetCapture() != Handle:
                 dragging = false;
                 cancelDrag();
+                return;
+            case 0x02E0 when completePointer is not null: // WM_DPICHANGED
+                cancelDrag();
+                base.WndProc(ref message);
                 return;
             default:
                 base.WndProc(ref message);
@@ -182,6 +197,19 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
     }
 
     public void CancelDrag() => CancelActiveDrag();
+
+    public bool TryCapturePointer()
+    {
+        if (disposed || !enabled) return false;
+        _ = NativeMethods.SetCapture(Handle);
+        return dragging = GetCapture() == Handle;
+    }
+
+    public void ReleasePointerCapture()
+    {
+        dragging = false;
+        if (GetCapture() == Handle) _ = NativeMethods.ReleaseCapture();
+    }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern nint GetCapture();
@@ -230,8 +258,7 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
             return;
         }
 
-        dragging = false;
-        _ = NativeMethods.ReleaseCapture();
+        ReleasePointerCapture();
         cancelDrag();
     }
 }

@@ -16,6 +16,7 @@ public sealed class AttachmentSceneController(PhysicsPresentationFrame baseline)
     private bool paused;
     private long step;
     public string? LastError => entries.Values.Select(e => e.Error).FirstOrDefault(e => e is not null);
+    public bool IsHealthy(DangoEntityId id) => entries.TryGetValue(id, out var entry) && entry.Error is null;
 
     public void Synchronize(IReadOnlyList<DangoEntityId> ids)
     {

@@ -21,6 +21,7 @@ internal sealed class DesktopDangoSceneOverlayWindow : Window
     private readonly Func<DangoEntityId, LogicalPoint, bool> beginDrag;
     private readonly Action<LogicalPoint> moveDrag;
     private readonly Action endDrag;
+    private readonly Action<LogicalPoint>? completePointer;
     private readonly DeformableDangoVisual[] bodies = new DeformableDangoVisual[3];
     private readonly DangoHatVisual[] hats = new DangoHatVisual[3];
     private StackedPhysicsPresentationFrame? frame;
@@ -33,13 +34,15 @@ internal sealed class DesktopDangoSceneOverlayWindow : Window
         Func<LogicalPoint, Point> sceneToScreen,
         Func<DangoEntityId, LogicalPoint, bool> beginDrag,
         Action<LogicalPoint> moveDrag,
-        Action endDrag)
+        Action endDrag,
+        Action<LogicalPoint>? completePointer = null)
     {
         this.screenToScene = screenToScene;
         this.sceneToScreen = sceneToScreen;
         this.beginDrag = beginDrag;
         this.moveDrag = moveDrag;
         this.endDrag = endDrag;
+        this.completePointer = completePointer;
         Width = 160; Height = 120;
         AllowsTransparency = true;
         Background = Brushes.Transparent;
@@ -70,6 +73,7 @@ internal sealed class DesktopDangoSceneOverlayWindow : Window
         };
         IsVisibleChanged += (_, _) => { if (!IsVisible) CancelDrag(); };
         Closed += (_, _) => CancelDrag();
+        DpiChanged += (_, _) => { if (completePointer is not null) endDrag(); };
     }
 
     public void SetInteractionEnabled(bool value)
@@ -115,9 +119,21 @@ internal sealed class DesktopDangoSceneOverlayWindow : Window
     public void CancelDrag()
     {
         if (!dragging) return;
-        dragging = false;
-        _ = NativeMethods.ReleaseCapture();
+        ReleasePointerCapture();
         endDrag();
+    }
+
+    public bool TryCapturePointer()
+    {
+        if (!interactionEnabled || !IsVisible || handle == 0) return false;
+        _ = NativeMethods.SetCapture(handle);
+        return dragging = GetCapture() == handle;
+    }
+
+    public void ReleasePointerCapture()
+    {
+        dragging = false;
+        if (handle != 0 && GetCapture() == handle) _ = NativeMethods.ReleaseCapture();
     }
 
     private nint WindowMessageHook(nint window, int message, nint wp, nint lp, ref bool handled)
@@ -130,7 +146,7 @@ internal sealed class DesktopDangoSceneOverlayWindow : Window
         }
         if (message == 0x0201 && TryHit(out var id, out var point))
         {
-            if (beginDrag(id, point))
+            if (beginDrag(id, point) && completePointer is null)
             {
                 _ = NativeMethods.SetCapture(window);
                 dragging = GetCapture() == window;
@@ -145,10 +161,12 @@ internal sealed class DesktopDangoSceneOverlayWindow : Window
         }
         if (message == 0x0202 && dragging)
         {
-            CancelDrag();
+            if (completePointer is not null && NativeMethods.GetCursorPos(out var end))
+                completePointer(screenToScene(new(end.X, end.Y)));
+            else CancelDrag();
             handled = true;
         }
-        if (message == 0x0215 && dragging)
+        if (message == 0x0215 && dragging && GetCapture() != handle)
         {
             dragging = false;
             endDrag();

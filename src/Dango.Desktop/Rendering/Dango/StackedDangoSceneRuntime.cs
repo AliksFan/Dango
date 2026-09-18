@@ -1,6 +1,7 @@
 using System.IO;
 using Dango.Core.Animation;
 using Dango.Core.Coordinates;
+using Dango.Desktop.DesktopHost.Interaction;
 using Dango.Desktop.Physics.Presentation;
 using Dango.Desktop.Physics.Presentation.Attachments;
 using Dango.Desktop.Physics.Tuning;
@@ -39,6 +40,92 @@ public sealed class StackedDangoSceneRuntime : IDisposable
     public string? AttachmentError => attachments?.LastError;
     public event Action? HatPresetChanged;
 
+    private static long nextInteractionGeneration;
+    private long interactionGeneration = Interlocked.Increment(ref nextInteractionGeneration);
+    private readonly Dictionary<DangoEntityId, LightFeedback> lightFeedback = [];
+    private sealed class LightFeedback(LightInteractionTarget target, bool petting)
+    {
+        public LightInteractionTarget Target { get; } = target;
+        public bool Petting { get; } = petting;
+        public double Elapsed;
+        public double Cooldown = petting ? 1 : 0.3;
+        public bool Active = true;
+        public AttachmentChannel Channels => Petting
+            ? AttachmentChannel.LeftEyePose | AttachmentChannel.RightEyePose
+            : AttachmentChannel.LeftBlink | AttachmentChannel.RightBlink;
+    }
+
+    public bool LightInteractionsEnabled { get; private init; }
+    public bool HasLightFeedback => lightFeedback.Values.Any(value => value.Active);
+    public string? LightInteractionError { get; private set; }
+
+    public LightInteractionTarget? GetLightInteractionTarget(DangoEntityId id)
+    {
+        VerifyAccess();
+        return LightInteractionsEnabled && running && LastError is null && scene?.EntityIds.Contains(id) == true
+            ? new(id, interactionGeneration) : null;
+    }
+
+    public bool IsLightInteractionTargetCurrent(LightInteractionTarget target) =>
+        GetLightInteractionTarget(target.Entity) == target;
+
+    public bool TryReact(LightInteractionTarget target, bool petting)
+    {
+        VerifyAccess();
+        if (!IsLightInteractionTargetCurrent(target) || IsDragging || HasDirectionalInput ||
+            LightInteractionError is not null || attachments is null || !attachments.IsHealthy(target.Entity)) return false;
+        if (lightFeedback.TryGetValue(target.Entity, out var current) && (current.Active || current.Cooldown > 1e-9)) return false;
+        var result = attachments.Submit(target.Entity, petting
+            ? new SetEyes(EyeSelection.Both, 0.35, EyeShape.Soft, 1)
+            : Blink.Default(EyeSelection.Both));
+        if (!result.Accepted) return false;
+        lightFeedback[target.Entity] = new(target, petting);
+        return true;
+    }
+
+    public void CancelLightFeedback()
+    {
+        VerifyAccess();
+        foreach (var feedback in lightFeedback.Values)
+        {
+            // A failed world freezes its ledger until explicit Reset. Do not route
+            // cleanup through the public submission method's health guard.
+            if (!feedback.Active || LastError is not null || attachments?.IsHealthy(feedback.Target.Entity) != true) continue;
+            if (!attachments.Submit(feedback.Target.Entity, new Release(feedback.Channels)).Accepted)
+                LightInteractionError = "互动取消失败；请使用恢复团子清除旧状态。";
+        }
+        lightFeedback.Clear();
+    }
+
+    private bool HasDirectionalInput => directionalIntent.Left != directionalIntent.Right || directionalIntent.Jump || directionalIntent.Squash;
+
+    private void BeforeLightFeedbackStep()
+    {
+        foreach (var feedback in lightFeedback.Values)
+        {
+            if (!feedback.Active || feedback.Elapsed + 1e-9 < (feedback.Petting ? 0.6 : 0.13)) continue;
+            if (feedback.Petting && attachments?.IsHealthy(feedback.Target.Entity) == true &&
+                !attachments.Submit(feedback.Target.Entity, new Release(feedback.Channels)).Accepted)
+                LightInteractionError = "互动结束失败；请使用恢复团子清除旧状态。";
+            feedback.Active = false;
+        }
+    }
+
+    private void AfterLightFeedbackStep(double seconds)
+    {
+        foreach (var feedback in lightFeedback.Values.ToArray())
+        {
+            if (attachments?.IsHealthy(feedback.Target.Entity) != true)
+            {
+                lightFeedback.Remove(feedback.Target.Entity);
+                continue;
+            }
+            feedback.Elapsed += seconds;
+            feedback.Cooldown = Math.Max(0, feedback.Cooldown - seconds);
+            if (!feedback.Active && feedback.Cooldown <= 1e-9) lightFeedback.Remove(feedback.Target.Entity);
+        }
+    }
+
     public StackedDangoSceneRuntime(string? nativeLibraryPath = null, PhysicsPresentationFrame? attachmentBaseline = null)
     {
         this.nativeLibraryPath = nativeLibraryPath ?? Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName);
@@ -46,11 +133,11 @@ public sealed class StackedDangoSceneRuntime : IDisposable
     }
 
     public static StackedDangoSceneRuntime CreateProduct(string? nativeLibraryPath = null) =>
-        new(nativeLibraryPath) { requiresAttachments = true, RequiresInitialization = true };
+        new(nativeLibraryPath) { requiresAttachments = true, RequiresInitialization = true, LightInteractionsEnabled = true };
 
     public static StackedDangoSceneRuntime CreateEyeHatReview(string? nativeLibraryPath = null, bool deferInitialization = false)
     {
-        var runtime = CreateProduct(nativeLibraryPath);
+        var runtime = new StackedDangoSceneRuntime(nativeLibraryPath) { requiresAttachments = true, RequiresInitialization = true };
         runtime.TryApplyHatPreset("top-hat");
         if (!deferInitialization && !runtime.TryInitialize())
         {
@@ -146,6 +233,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         Environment.NewLine,
         $"场景初始化：{InitializationState}；标定步数：{CalibrationStepCount}",
         $"眼帽：{(AttachmentsEnabled ? "已启用" : "未启用")}；附件故障：{AttachmentError ?? "无"}",
+        $"轻量互动：{(LightInteractionsEnabled ? "已启用" : "未启用")}；互动故障：{LightInteractionError ?? "无"}",
         $"统一物理 world：{(running ? "运行" : "暂停")}",
         $"本地物理参与者：{DangoCount}；选中：{SelectedEntity}",
         $"contact：{LastFrame?.ContactCount ?? 0}",
@@ -159,6 +247,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         VerifyAccess();
         if (RequiresInitialization && InitializationState != SceneInitializationState.Ready)
             throw new InvalidOperationException(LastError ?? "场景尚未初始化，请重试。");
+        if (LightInteractionError is not null) throw new InvalidOperationException(LightInteractionError);
         if (running) return;
         running = true;
         scene?.SetPaused(false);
@@ -191,6 +280,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
     {
         VerifyAccess();
         if (viewport == bounds) return;
+        if (LightInteractionsEnabled) ClearPhysicalInput();
         viewport = bounds;
         layoutPending = true;
     }
@@ -240,6 +330,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
     {
         VerifyAccess();
         directionalIntent = LastError is null ? intent : DirectionalControlIntent.None;
+        if (HasDirectionalInput) CancelLightFeedback();
     }
 
     public void BeginPhysicalDrag(LogicalPoint pointer)
@@ -297,6 +388,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         scene?.Reset();
         pendingSpawns.Clear();
         attachments?.Reset();
+        LightInteractionError = null;
         LastFrame = null;
         LastError = null;
         layoutPending = true;
@@ -345,9 +437,11 @@ public sealed class StackedDangoSceneRuntime : IDisposable
                 LastError = $"物理故障已锁存：{frame.Physics.ErrorCode}；请显式重置或退出。";
                 ClearPhysicalInput();
             }
+            if (frame.Physics.Succeeded) BeforeLightFeedbackStep();
             var attachmentFrames = attachments?.Advance(frame, fixedStep.TotalSeconds, scene.SelectedEntity,
                 directionalIntent.Left == directionalIntent.Right ? DangoFacingDirection.Center :
                 directionalIntent.Left ? DangoFacingDirection.Left : DangoFacingDirection.Right);
+            if (frame.Physics.Succeeded) AfterLightFeedbackStep(fixedStep.TotalSeconds);
             LastFrame = new(
                 attachmentFrames ?? frame.Bodies.Select(body => body.Presentation).ToArray(),
                 frame.Bodies.Select(_ => primary.AuthoritativeBounds).ToArray(),
@@ -401,6 +495,8 @@ public sealed class StackedDangoSceneRuntime : IDisposable
 
     private void ClearPhysicalInput()
     {
+        CancelLightFeedback();
+        interactionGeneration = Interlocked.Increment(ref nextInteractionGeneration);
         directionalIntent = DirectionalControlIntent.None;
         IsDragging = false;
         scene?.CancelInput();
