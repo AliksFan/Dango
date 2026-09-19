@@ -11,6 +11,20 @@ public sealed class EyeArtworkTests
         new(new(0, 0), 12d / 160, 12d / 160, 0, openness, shape, 1, true);
 
     [TestMethod]
+    public void SleepingClosureBendsDownWhileOrdinaryBlinkKeepsItsArch()
+    {
+        static double Arc(EyeShape shape)
+        {
+            var points = EyeOutline.Create(Eye(shape, 0));
+            var middle = points.Where(p => Math.Abs(p.X) < .01).Average(p => p.Y);
+            var ends = points.Where(p => Math.Abs(p.X) > .03).Average(p => p.Y);
+            return middle - ends;
+        }
+        Assert.IsTrue(Arc(EyeShape.Sleeping) < -.003, "Sleeping eye center must sit below its ends.");
+        Assert.IsTrue(Arc(EyeShape.Round) > .003, "Normal blink must retain its accepted arch.");
+    }
+
+    [TestMethod]
     public void FinalClosureMeetsBelowCenterWithoutLiftingUpperLid()
     {
         var previousTop = double.NegativeInfinity;
@@ -45,7 +59,7 @@ public sealed class EyeArtworkTests
     [TestMethod]
     public void RedrawnKeyframesAreContinuousAndContoursDoNotCross()
     {
-        foreach (var shape in new[] { EyeShape.Round, EyeShape.Soft, EyeShape.Angry, EyeShape.Sleepy, EyeShape.Surprised })
+        foreach (var shape in new[] { EyeShape.Round, EyeShape.Soft, EyeShape.Angry, EyeShape.Sleepy, EyeShape.Surprised, EyeShape.Sleeping })
         {
             for (var step = 0; step <= 100; step++)
             {
@@ -87,7 +101,7 @@ public sealed class EyeArtworkTests
         var middle = closed.Where(p => Math.Abs(p.X) < 1d / 160).Average(p => p.Y);
         var ends = closed.Where(p => Math.Abs(p.X) > 4d / 160).Average(p => p.Y);
         Assert.IsTrue(middle - ends > 0.003, "The closed eye must arch upwards.");
-        var signatures = Enum.GetValues<EyeShape>().Select(shape => string.Join(';', EyeOutline.Create(Eye(shape)).Concat(EyeOutline.Create(Eye(shape) with { IsRight = true })).Select(p => $"{p.X:F6},{p.Y:F6}"))).ToArray();
+        var signatures = Enum.GetValues<EyeShape>().Select(shape => string.Join(';', EyeOutline.Create(Eye(shape, 0)).Concat(EyeOutline.Create(Eye(shape))).Concat(EyeOutline.Create(Eye(shape) with { IsRight = true })).Select(p => $"{p.X:F6},{p.Y:F6}"))).ToArray();
         Assert.AreEqual(signatures.Length, signatures.Distinct().Count());
     }
 

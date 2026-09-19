@@ -1,7 +1,7 @@
 namespace Dango.Core.Animation;
 
 public enum EyeSelection { Left = 1, Right = 2, Both = 3 }
-public enum EyeShape { Round, Soft, NaturalClosed, Tight, Happy, Sleepy, Deadpan, Angry, Surprised, Puzzled }
+public enum EyeShape { Round, Soft, NaturalClosed, Tight, Happy, Sleepy, Deadpan, Angry, Surprised, Puzzled, Sleeping }
 public enum HatBounceDirection { Left, Right, Down, Up }
 [Flags]
 public enum AttachmentChannel

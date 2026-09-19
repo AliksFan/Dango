@@ -10,6 +10,7 @@ public partial class DeformableDangoVisual : System.Windows.Controls.UserControl
     private readonly UIElement oldLeftEye;
     private readonly UIElement oldRightEye;
     private bool candidateEyes;
+    private readonly System.Windows.Controls.TextBlock[] dozeLetters;
     private HatAppearance appearance;
     public double HatSize { get; set; } = 1;
     public HatAppearance Appearance
@@ -24,6 +25,15 @@ public partial class DeformableDangoVisual : System.Windows.Controls.UserControl
         oldLeftEye = LeftEyeLayer.Children[0];
         oldRightEye = RightEyeLayer.Children[0];
         FallbackBodyPath.Data = FallbackGeometry;
+        dozeLetters = Enumerable.Range(0, 3).Select(i => new System.Windows.Controls.TextBlock
+        {
+            Text = "z",
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x72, 0x67, 0x83)),
+            IsHitTestVisible = false,
+        }).ToArray();
+        foreach (var letter in dozeLetters) DozeLayer.Children.Add(letter);
     }
 
     public DangoContourFailure LastContourFailure { get; private set; }
@@ -58,6 +68,7 @@ public partial class DeformableDangoVisual : System.Windows.Controls.UserControl
     {
         ArgumentNullException.ThrowIfNull(frame);
         Visibility = frame.IsVisible ? Visibility.Visible : Visibility.Collapsed;
+        DrawDoze(frame);
         if (!frame.IsVisible)
         {
             return;
@@ -99,6 +110,24 @@ public partial class DeformableDangoVisual : System.Windows.Controls.UserControl
             new PresentationPoint(PhysicsPresentationFrame.DefaultEyeHalfDistance, -0.05),
             false);
         HatLayer.RenderTransform = AttachmentGeometryFactory.ScaleHatTransform(AttachmentTransform(frame.Hat, new PresentationPoint(0, 0.82), true), HatSize, true);
+    }
+
+    private void DrawDoze(PhysicsPresentationFrame frame)
+    {
+        var visible = frame.IsVisible && ShowAccessories && frame.FallbackReason == PhysicsPresentationFallbackReason.None &&
+            frame.DozeSeconds is >= 0 && frame.Attachments?.Face is { Left.Openness: <= .03, Right.Openness: <= .03 };
+        DozeLayer.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        if (!visible) return;
+        for (var i = 0; i < dozeLetters.Length; i++)
+        {
+            var elapsed = frame.DozeSeconds!.Value - i * 1.0;
+            var phase = Math.Max(0, elapsed) % 3 / 3;
+            var letter = dozeLetters[i];
+            letter.FontSize = 12 + phase * 10;
+            letter.Opacity = elapsed < 0 ? 0 : .8 * (1 - phase) * Math.Min(1, phase * 30);
+            System.Windows.Controls.Canvas.SetLeft(letter, 112 + phase * 30);
+            System.Windows.Controls.Canvas.SetTop(letter, 32 - phase * 30);
+        }
     }
 
     private static void DrawEye(System.Windows.Controls.Canvas layer, Dango.Desktop.Physics.Presentation.Attachments.EyePresentationFrame eye)

@@ -12,6 +12,9 @@ public sealed record EyeArtwork(IReadOnlyList<IReadOnlyList<AttachmentPoint>> Fi
         P(2, -1.25), P(5.75, 0.2), P(5.75, 1),
         P(5.75, 1.8), P(2, 0.25), P(0, 0.25),
         P(-2, 0.25), P(-5.75, 1.8), P(-5.75, 1)).Select(p => p + P(0, 3.5)).ToArray();
+    // Mirror the resting curve vertically, preserving winding and the first contour point.
+    private static readonly AttachmentPoint[] SleepingClosed = Enumerable.Range(0, 128)
+        .Select(i => { var p = Closed[(128 - i) % 128]; return P(p.X, 7 - p.Y); }).ToArray();
     // Meet in the lower half of the open eye; avoid lifting the lid during the final closure.
     private static readonly AttachmentPoint[] Nearly = Four(P(-5, 1.7), P(-2, -0.3), P(2, -0.3), P(5, 1.7), P(3.6, 4.3), P(-3.6, 4.3), P(-5, 1.7)).Select(p => p + P(0, 1.5)).ToArray();
     private static readonly AttachmentPoint[] Half = Four(P(-6, 0), P(-3, -0.7), P(3, -0.7), P(6, 0),
@@ -26,6 +29,9 @@ public sealed record EyeArtwork(IReadOnlyList<IReadOnlyList<AttachmentPoint>> Fi
         var openness = eye.Openness;
         switch (eye.Shape)
         {
+            case EyeShape.Sleeping:
+                fills.Add(Mix(SleepingClosed, Normal(openness), Math.Min(1, openness / .2)));
+                break;
             case EyeShape.NaturalClosed: fills.Add(Closed); break;
             case EyeShape.Tight:
                 var sign = eye.IsRight ? -1 : 1;
