@@ -1,0 +1,53 @@
+<Window x:Class="Dango.Desktop.DesktopHost.StandardWindow.DangoSceneWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:visuals="clr-namespace:Dango.Desktop.Rendering.Visuals"
+        Title="Dango"
+        Width="800"
+        Height="600"
+        MinWidth="480"
+        MinHeight="360"
+        Background="#FFEAF4FF"
+        ResizeMode="CanResize"
+        ShowInTaskbar="True"
+        Topmost="False"
+        WindowStartupLocation="CenterScreen">
+    <Canvas x:Name="SceneCanvas" ClipToBounds="True">
+        <Border x:Name="IslandVisual"
+                Width="360"
+                Height="100"
+                Background="#FFE8D7B8"
+                BorderBrush="#FF6E5A3C"
+                BorderThickness="3"
+                CornerRadius="50">
+            <TextBlock HorizontalAlignment="Center"
+                       Margin="0,18,0,0"
+                       VerticalAlignment="Top"
+                       FontSize="14"
+                       Foreground="#FF4B3D2A"
+                       Text="Dango 悬浮岛" />
+        </Border>
+
+        <visuals:DeformableDangoVisual x:Name="DangoVisual"
+                                      Cursor="Hand"
+                                      MouseLeftButtonDown="OnDangoMouseLeftButtonDown"
+                                      MouseLeftButtonUp="OnDangoMouseLeftButtonUp"
+                                      MouseMove="OnDangoMouseMove"
+                                      LostMouseCapture="OnDangoLostMouseCapture" />
+        <visuals:DeformableDangoVisual x:Name="MiddleDangoVisual" Visibility="Collapsed"
+                                      Cursor="Hand"
+                                      MouseLeftButtonDown="OnDangoMouseLeftButtonDown"
+                                      MouseLeftButtonUp="OnDangoMouseLeftButtonUp"
+                                      MouseMove="OnDangoMouseMove"
+                                      LostMouseCapture="OnDangoLostMouseCapture" />
+        <visuals:DeformableDangoVisual x:Name="TopDangoVisual" Visibility="Collapsed"
+                                      Cursor="Hand"
+                                      MouseLeftButtonDown="OnDangoMouseLeftButtonDown"
+                                      MouseLeftButtonUp="OnDangoMouseLeftButtonUp"
+                                      MouseMove="OnDangoMouseMove"
+                                      LostMouseCapture="OnDangoLostMouseCapture" />
+        <visuals:DangoHatVisual x:Name="DangoHat" IsHitTestVisible="False" />
+        <visuals:DangoHatVisual x:Name="MiddleDangoHat" IsHitTestVisible="False" Visibility="Collapsed" />
+        <visuals:DangoHatVisual x:Name="TopDangoHat" IsHitTestVisible="False" Visibility="Collapsed" />
+    </Canvas>
+</Window>

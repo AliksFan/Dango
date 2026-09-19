@@ -1,0 +1,1774 @@
+{
+  "$schema": "../../placeholder/phase-1.asset.schema.json",
+  "assetVersion": 1,
+  "compatibility": {
+    "minimumRuntimeVersion": 1,
+    "maximumRuntimeVersion": 1
+  },
+  "canvas": {
+    "width": 160,
+    "height": 120,
+    "pixelDensity": 1,
+    "origin": {
+      "x": 0,
+      "y": 0
+    }
+  },
+  "layers": [
+    {
+      "id": "body-idle-rest-start",
+      "order": 0,
+      "source": "motion-samples/export/idle/body-rest.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-idle-inhale",
+      "order": 0,
+      "source": "motion-samples/export/idle/body-inhale.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-idle-rest-return",
+      "order": 0,
+      "source": "motion-samples/export/idle/body-rest.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-idle-blink",
+      "order": 0,
+      "source": "motion-samples/export/idle/body-rest.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-idle-rest-end",
+      "order": 0,
+      "source": "motion-samples/export/idle/body-rest.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-wander-rest",
+      "order": 0,
+      "source": "motion-samples/export/wander/body-rest.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-wander-lean",
+      "order": 0,
+      "source": "motion-samples/export/wander/body-lean.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-wander-compress",
+      "order": 0,
+      "source": "motion-samples/export/wander/body-compress.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-wander-glide",
+      "order": 0,
+      "source": "motion-samples/export/wander/body-glide.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-wander-settle",
+      "order": 0,
+      "source": "motion-samples/export/wander/body-settle.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-approach-island-travel",
+      "order": 0,
+      "source": "motion-samples/export/approach-island/body-travel.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-approach-island-slow",
+      "order": 0,
+      "source": "motion-samples/export/approach-island/body-slow.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-approach-island-lower",
+      "order": 0,
+      "source": "motion-samples/export/approach-island/body-lower.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-approach-island-align",
+      "order": 0,
+      "source": "motion-samples/export/approach-island/body-align.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-climb-up-approach",
+      "order": 0,
+      "source": "motion-samples/export/climb-up/body-approach.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-climb-up-grab",
+      "order": 0,
+      "source": "motion-samples/export/climb-up/body-grab.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-climb-up-transfer",
+      "order": 0,
+      "source": "motion-samples/export/climb-up/body-transfer.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-climb-up-cross",
+      "order": 0,
+      "source": "motion-samples/export/climb-up/body-cross.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-climb-up-stand",
+      "order": 0,
+      "source": "motion-samples/export/climb-up/body-stand.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-on-island-rest-start",
+      "order": 0,
+      "source": "motion-samples/export/on-island/body-rest-start.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-on-island-breathe",
+      "order": 0,
+      "source": "motion-samples/export/on-island/body-breathe.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-on-island-rest-end",
+      "order": 0,
+      "source": "motion-samples/export/on-island/body-rest-end.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-climb-down-stand",
+      "order": 0,
+      "source": "motion-samples/export/climb-down/body-stand.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-climb-down-peer",
+      "order": 0,
+      "source": "motion-samples/export/climb-down/body-peer.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-climb-down-edge-contact",
+      "order": 0,
+      "source": "motion-samples/export/climb-down/body-edge-contact.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-climb-down-release",
+      "order": 0,
+      "source": "motion-samples/export/climb-down/body-release.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-climb-down-fall",
+      "order": 0,
+      "source": "motion-samples/export/climb-down/body-fall.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-dragged-grabbed",
+      "order": 0,
+      "source": "motion-samples/export/dragged/body-grabbed.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-dragged-suspend",
+      "order": 0,
+      "source": "motion-samples/export/dragged/body-suspend.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-dragged-follow",
+      "order": 0,
+      "source": "motion-samples/export/dragged/body-follow.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-falling-fall-start",
+      "order": 0,
+      "source": "motion-samples/export/falling/body-fall-start.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-falling-stretch",
+      "order": 0,
+      "source": "motion-samples/export/falling/body-stretch.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-falling-pre-contact",
+      "order": 0,
+      "source": "motion-samples/export/falling/body-pre-contact.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-landing-fall",
+      "order": 0,
+      "source": "motion-samples/export/landing/body-fall.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-landing-contact",
+      "order": 0,
+      "source": "motion-samples/export/landing/body-contact.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-landing-compress",
+      "order": 0,
+      "source": "motion-samples/export/landing/body-compress.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-landing-rebound",
+      "order": 0,
+      "source": "motion-samples/export/landing/body-rebound.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-landing-settle",
+      "order": 0,
+      "source": "motion-samples/export/landing/body-settle.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-reacting-rest",
+      "order": 0,
+      "source": "motion-samples/export/reacting/body-rest.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-reacting-compress",
+      "order": 0,
+      "source": "motion-samples/export/reacting/body-compress.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-reacting-lift",
+      "order": 0,
+      "source": "motion-samples/export/reacting/body-lift.png",
+      "slot": "body"
+    },
+    {
+      "id": "body-reacting-settle",
+      "order": 0,
+      "source": "motion-samples/export/reacting/body-settle.png",
+      "slot": "body"
+    },
+    {
+      "id": "eyes-open",
+      "order": 1,
+      "source": "motion-samples/export/shared/eyes-open.png",
+      "slot": "face"
+    },
+    {
+      "id": "eyes-closed",
+      "order": 1,
+      "source": "motion-samples/export/shared/eyes-closed.png",
+      "slot": "face"
+    },
+    {
+      "id": "hat-sprout",
+      "order": 2,
+      "source": "motion-samples/export/shared/hat-sprout.png",
+      "slot": "accessory"
+    }
+  ],
+  "slots": [
+    {
+      "id": "body",
+      "x": 80,
+      "y": 60
+    },
+    {
+      "id": "face",
+      "x": 80,
+      "y": 48
+    },
+    {
+      "id": "accessory",
+      "x": 80,
+      "y": 16
+    }
+  ],
+  "clips": [
+    {
+      "id": "idle",
+      "durationMilliseconds": 2400,
+      "loop": true,
+      "frames": [
+        {
+          "timeMilliseconds": 0,
+          "layers": [
+            "body-idle-rest-start",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 1000,
+          "layers": [
+            "body-idle-inhale",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 1800,
+          "layers": [
+            "body-idle-rest-return",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 2100,
+          "layers": [
+            "body-idle-blink",
+            "eyes-closed",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 2200,
+          "layers": [
+            "body-idle-rest-end",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        }
+      ],
+      "transformTracks": [
+        {
+          "targetLayer": "eyes-open",
+          "property": "TranslationX",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 1000,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 1800,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 2100,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 2200,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "targetLayer": "eyes-open",
+          "property": "TranslationY",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 1000,
+              "value": -2
+            },
+            {
+              "timeMilliseconds": 1800,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 2100,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 2200,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "targetLayer": "hat-sprout",
+          "property": "TranslationX",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 1000,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 1800,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 2100,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 2200,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "targetLayer": "hat-sprout",
+          "property": "TranslationY",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 1000,
+              "value": -4
+            },
+            {
+              "timeMilliseconds": 1800,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 2100,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 2200,
+              "value": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wander",
+      "durationMilliseconds": 960,
+      "loop": true,
+      "frames": [
+        {
+          "timeMilliseconds": 0,
+          "layers": [
+            "body-wander-rest",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 180,
+          "layers": [
+            "body-wander-lean",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 360,
+          "layers": [
+            "body-wander-compress",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 620,
+          "layers": [
+            "body-wander-glide",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 900,
+          "layers": [
+            "body-wander-settle",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        }
+      ],
+      "transformTracks": [
+        {
+          "targetLayer": "eyes-open",
+          "property": "TranslationX",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 180,
+              "value": 5
+            },
+            {
+              "timeMilliseconds": 360,
+              "value": 3
+            },
+            {
+              "timeMilliseconds": 620,
+              "value": 11
+            },
+            {
+              "timeMilliseconds": 900,
+              "value": 1
+            }
+          ]
+        },
+        {
+          "targetLayer": "eyes-open",
+          "property": "TranslationY",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 180,
+              "value": 1
+            },
+            {
+              "timeMilliseconds": 360,
+              "value": 9
+            },
+            {
+              "timeMilliseconds": 620,
+              "value": 2
+            },
+            {
+              "timeMilliseconds": 900,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "targetLayer": "hat-sprout",
+          "property": "TranslationX",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 180,
+              "value": 5
+            },
+            {
+              "timeMilliseconds": 360,
+              "value": 3
+            },
+            {
+              "timeMilliseconds": 620,
+              "value": 11
+            },
+            {
+              "timeMilliseconds": 900,
+              "value": 1
+            }
+          ]
+        },
+        {
+          "targetLayer": "hat-sprout",
+          "property": "TranslationY",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": -2
+            },
+            {
+              "timeMilliseconds": 180,
+              "value": -1
+            },
+            {
+              "timeMilliseconds": 360,
+              "value": 7
+            },
+            {
+              "timeMilliseconds": 620,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 900,
+              "value": -2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "approach-island",
+      "durationMilliseconds": 640,
+      "loop": false,
+      "frames": [
+        {
+          "timeMilliseconds": 0,
+          "layers": [
+            "body-approach-island-travel",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 260,
+          "layers": [
+            "body-approach-island-slow",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 440,
+          "layers": [
+            "body-approach-island-lower",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 620,
+          "layers": [
+            "body-approach-island-align",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        }
+      ],
+      "transformTracks": [
+        {
+          "targetLayer": "eyes-open",
+          "property": "TranslationX",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 8
+            },
+            {
+              "timeMilliseconds": 260,
+              "value": 9
+            },
+            {
+              "timeMilliseconds": 440,
+              "value": 8
+            },
+            {
+              "timeMilliseconds": 620,
+              "value": 8
+            }
+          ]
+        },
+        {
+          "targetLayer": "eyes-open",
+          "property": "TranslationY",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 1
+            },
+            {
+              "timeMilliseconds": 260,
+              "value": 3
+            },
+            {
+              "timeMilliseconds": 440,
+              "value": 9
+            },
+            {
+              "timeMilliseconds": 620,
+              "value": 7
+            }
+          ]
+        },
+        {
+          "targetLayer": "hat-sprout",
+          "property": "TranslationX",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 8
+            },
+            {
+              "timeMilliseconds": 260,
+              "value": 9
+            },
+            {
+              "timeMilliseconds": 440,
+              "value": 8
+            },
+            {
+              "timeMilliseconds": 620,
+              "value": 8
+            }
+          ]
+        },
+        {
+          "targetLayer": "hat-sprout",
+          "property": "TranslationY",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": -1
+            },
+            {
+              "timeMilliseconds": 260,
+              "value": 1
+            },
+            {
+              "timeMilliseconds": 440,
+              "value": 7
+            },
+            {
+              "timeMilliseconds": 620,
+              "value": 5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "climb-up",
+      "durationMilliseconds": 720,
+      "loop": false,
+      "frames": [
+        {
+          "timeMilliseconds": 0,
+          "layers": [
+            "body-climb-up-approach",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 180,
+          "layers": [
+            "body-climb-up-grab",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 320,
+          "layers": [
+            "body-climb-up-transfer",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 500,
+          "layers": [
+            "body-climb-up-cross",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 720,
+          "layers": [
+            "body-climb-up-stand",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        }
+      ],
+      "transformTracks": [
+        {
+          "targetLayer": "eyes-open",
+          "property": "TranslationX",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 180,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 320,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 500,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 720,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "targetLayer": "eyes-open",
+          "property": "TranslationY",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 180,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 320,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 500,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 720,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "targetLayer": "hat-sprout",
+          "property": "TranslationX",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 180,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 320,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 500,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 720,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "targetLayer": "hat-sprout",
+          "property": "TranslationY",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 180,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 320,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 500,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 720,
+              "value": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "on-island",
+      "durationMilliseconds": 2200,
+      "loop": true,
+      "frames": [
+        {
+          "timeMilliseconds": 0,
+          "layers": [
+            "body-on-island-rest-start",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 1000,
+          "layers": [
+            "body-on-island-breathe",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 2100,
+          "layers": [
+            "body-on-island-rest-end",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        }
+      ],
+      "transformTracks": [
+        {
+          "targetLayer": "eyes-open",
+          "property": "TranslationX",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 1000,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 2100,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "targetLayer": "eyes-open",
+          "property": "TranslationY",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 1000,
+              "value": -2
+            },
+            {
+              "timeMilliseconds": 2100,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "targetLayer": "hat-sprout",
+          "property": "TranslationX",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 1000,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 2100,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "targetLayer": "hat-sprout",
+          "property": "TranslationY",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": -2
+            },
+            {
+              "timeMilliseconds": 1000,
+              "value": -4
+            },
+            {
+              "timeMilliseconds": 2100,
+              "value": -2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "climb-down",
+      "durationMilliseconds": 680,
+      "loop": false,
+      "frames": [
+        {
+          "timeMilliseconds": 0,
+          "layers": [
+            "body-climb-down-stand",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 150,
+          "layers": [
+            "body-climb-down-peer",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 300,
+          "layers": [
+            "body-climb-down-edge-contact",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 460,
+          "layers": [
+            "body-climb-down-release",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 640,
+          "layers": [
+            "body-climb-down-fall",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        }
+      ],
+      "transformTracks": [
+        {
+          "targetLayer": "eyes-open",
+          "property": "TranslationX",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 150,
+              "value": 6
+            },
+            {
+              "timeMilliseconds": 300,
+              "value": 10
+            },
+            {
+              "timeMilliseconds": 460,
+              "value": 9
+            },
+            {
+              "timeMilliseconds": 640,
+              "value": 7
+            }
+          ]
+        },
+        {
+          "targetLayer": "eyes-open",
+          "property": "TranslationY",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 150,
+              "value": 2
+            },
+            {
+              "timeMilliseconds": 300,
+              "value": 8
+            },
+            {
+              "timeMilliseconds": 460,
+              "value": -2
+            },
+            {
+              "timeMilliseconds": 640,
+              "value": -8
+            }
+          ]
+        },
+        {
+          "targetLayer": "hat-sprout",
+          "property": "TranslationX",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 150,
+              "value": 6
+            },
+            {
+              "timeMilliseconds": 300,
+              "value": 10
+            },
+            {
+              "timeMilliseconds": 460,
+              "value": 9
+            },
+            {
+              "timeMilliseconds": 640,
+              "value": 7
+            }
+          ]
+        },
+        {
+          "targetLayer": "hat-sprout",
+          "property": "TranslationY",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": -2
+            },
+            {
+              "timeMilliseconds": 150,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 300,
+              "value": 6
+            },
+            {
+              "timeMilliseconds": 460,
+              "value": -4
+            },
+            {
+              "timeMilliseconds": 640,
+              "value": -10
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "dragged",
+      "durationMilliseconds": 480,
+      "loop": true,
+      "frames": [
+        {
+          "timeMilliseconds": 0,
+          "layers": [
+            "body-dragged-grabbed",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 160,
+          "layers": [
+            "body-dragged-suspend",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 420,
+          "layers": [
+            "body-dragged-follow",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        }
+      ],
+      "transformTracks": [
+        {
+          "targetLayer": "eyes-open",
+          "property": "TranslationX",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 160,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 420,
+              "value": 7
+            }
+          ]
+        },
+        {
+          "targetLayer": "eyes-open",
+          "property": "TranslationY",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": -4
+            },
+            {
+              "timeMilliseconds": 160,
+              "value": -10
+            },
+            {
+              "timeMilliseconds": 420,
+              "value": -7
+            }
+          ]
+        },
+        {
+          "targetLayer": "hat-sprout",
+          "property": "TranslationX",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 160,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 420,
+              "value": 7
+            }
+          ]
+        },
+        {
+          "targetLayer": "hat-sprout",
+          "property": "TranslationY",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": -6
+            },
+            {
+              "timeMilliseconds": 160,
+              "value": -12
+            },
+            {
+              "timeMilliseconds": 420,
+              "value": -9
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "falling",
+      "durationMilliseconds": 360,
+      "loop": false,
+      "frames": [
+        {
+          "timeMilliseconds": 0,
+          "layers": [
+            "body-falling-fall-start",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 160,
+          "layers": [
+            "body-falling-stretch",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 330,
+          "layers": [
+            "body-falling-pre-contact",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        }
+      ],
+      "transformTracks": [
+        {
+          "targetLayer": "eyes-open",
+          "property": "TranslationX",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 160,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 330,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "targetLayer": "eyes-open",
+          "property": "TranslationY",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": -7
+            },
+            {
+              "timeMilliseconds": 160,
+              "value": -12
+            },
+            {
+              "timeMilliseconds": 330,
+              "value": -3
+            }
+          ]
+        },
+        {
+          "targetLayer": "hat-sprout",
+          "property": "TranslationX",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 160,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 330,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "targetLayer": "hat-sprout",
+          "property": "TranslationY",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": -9
+            },
+            {
+              "timeMilliseconds": 160,
+              "value": -14
+            },
+            {
+              "timeMilliseconds": 330,
+              "value": -5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "landing",
+      "durationMilliseconds": 420,
+      "loop": false,
+      "frames": [
+        {
+          "timeMilliseconds": 0,
+          "layers": [
+            "body-landing-fall",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 120,
+          "layers": [
+            "body-landing-contact",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 180,
+          "layers": [
+            "body-landing-compress",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 280,
+          "layers": [
+            "body-landing-rebound",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 420,
+          "layers": [
+            "body-landing-settle",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        }
+      ],
+      "transformTracks": [
+        {
+          "targetLayer": "eyes-open",
+          "property": "TranslationX",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 120,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 180,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 280,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 420,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "targetLayer": "eyes-open",
+          "property": "TranslationY",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": -6
+            },
+            {
+              "timeMilliseconds": 120,
+              "value": 2
+            },
+            {
+              "timeMilliseconds": 180,
+              "value": 16
+            },
+            {
+              "timeMilliseconds": 280,
+              "value": -4
+            },
+            {
+              "timeMilliseconds": 420,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "targetLayer": "hat-sprout",
+          "property": "TranslationX",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 120,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 180,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 280,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 420,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "targetLayer": "hat-sprout",
+          "property": "TranslationY",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": -4
+            },
+            {
+              "timeMilliseconds": 120,
+              "value": 4
+            },
+            {
+              "timeMilliseconds": 180,
+              "value": 32
+            },
+            {
+              "timeMilliseconds": 280,
+              "value": -6
+            },
+            {
+              "timeMilliseconds": 420,
+              "value": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "reacting",
+      "durationMilliseconds": 520,
+      "loop": false,
+      "frames": [
+        {
+          "timeMilliseconds": 0,
+          "layers": [
+            "body-reacting-rest",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 120,
+          "layers": [
+            "body-reacting-compress",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 260,
+          "layers": [
+            "body-reacting-lift",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        },
+        {
+          "timeMilliseconds": 480,
+          "layers": [
+            "body-reacting-settle",
+            "eyes-open",
+            "hat-sprout"
+          ]
+        }
+      ],
+      "transformTracks": [
+        {
+          "targetLayer": "eyes-open",
+          "property": "TranslationX",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 120,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 260,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 480,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "targetLayer": "eyes-open",
+          "property": "TranslationY",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 120,
+              "value": 10
+            },
+            {
+              "timeMilliseconds": 260,
+              "value": -8
+            },
+            {
+              "timeMilliseconds": 480,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "targetLayer": "hat-sprout",
+          "property": "TranslationX",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 120,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 260,
+              "value": 0
+            },
+            {
+              "timeMilliseconds": 480,
+              "value": 0
+            }
+          ]
+        },
+        {
+          "targetLayer": "hat-sprout",
+          "property": "TranslationY",
+          "keyframes": [
+            {
+              "timeMilliseconds": 0,
+              "value": -2
+            },
+            {
+              "timeMilliseconds": 120,
+              "value": 8
+            },
+            {
+              "timeMilliseconds": 260,
+              "value": -10
+            },
+            {
+              "timeMilliseconds": 480,
+              "value": -2
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "actions": {
+    "Idle": "idle",
+    "Wander": "wander",
+    "ApproachIsland": "approach-island",
+    "ClimbUp": "climb-up",
+    "OnIsland": "on-island",
+    "ClimbDown": "climb-down",
+    "Dragged": "dragged",
+    "Jumping": "falling",
+    "Falling": "falling",
+    "Landing": "landing",
+    "Reacting": "reacting"
+  },
+  "anchors": [
+    {
+      "id": "ground-contact",
+      "x": 80,
+      "y": 114
+    },
+    {
+      "id": "click",
+      "x": 80,
+      "y": 52
+    },
+    {
+      "id": "island-grab",
+      "x": 120,
+      "y": 58
+    },
+    {
+      "id": "island-stand",
+      "x": 80,
+      "y": 108
+    }
+  ],
+  "hitShapes": [
+    {
+      "id": "click",
+      "purpose": "Click",
+      "kind": "Ellipse",
+      "bounds": {
+        "x": 20,
+        "y": 10,
+        "width": 120,
+        "height": 104
+      }
+    },
+    {
+      "id": "drag",
+      "purpose": "Drag",
+      "kind": "Ellipse",
+      "bounds": {
+        "x": 16,
+        "y": 8,
+        "width": 128,
+        "height": 108
+      }
+    },
+    {
+      "id": "collision",
+      "purpose": "Collision",
+      "kind": "Rectangle",
+      "bounds": {
+        "x": 28,
+        "y": 18,
+        "width": 104,
+        "height": 96
+      }
+    }
+  ],
+  "events": [
+    {
+      "clip": "climb-up",
+      "timeMilliseconds": 180,
+      "name": "island-grabbed",
+      "anchor": "island-grab"
+    },
+    {
+      "clip": "climb-down",
+      "timeMilliseconds": 460,
+      "name": "island-released",
+      "anchor": "island-grab"
+    },
+    {
+      "clip": "landing",
+      "timeMilliseconds": 120,
+      "name": "landed",
+      "anchor": "ground-contact"
+    }
+  ],
+  "fallbacks": [
+    {
+      "from": "wander",
+      "to": "idle"
+    },
+    {
+      "from": "approach-island",
+      "to": "idle"
+    },
+    {
+      "from": "climb-up",
+      "to": "idle"
+    },
+    {
+      "from": "on-island",
+      "to": "idle"
+    },
+    {
+      "from": "climb-down",
+      "to": "idle"
+    },
+    {
+      "from": "dragged",
+      "to": "idle"
+    },
+    {
+      "from": "falling",
+      "to": "idle"
+    },
+    {
+      "from": "landing",
+      "to": "idle"
+    },
+    {
+      "from": "reacting",
+      "to": "idle"
+    }
+  ]
+}

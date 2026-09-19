@@ -25,6 +25,29 @@ public sealed class WorkspaceAcceptanceTests
     }
 
     [TestMethod]
+    public void CoreAssemblyDoesNotReferenceDesktopOrWindowsUiAssemblies()
+    {
+        var forbiddenReferences = new[]
+        {
+            "Dango.Desktop",
+            "PresentationCore",
+            "PresentationFramework",
+            "WindowsBase",
+            "System.Xaml",
+        };
+        var references = typeof(Dango.Core.Coordinates.LogicalPoint).Assembly
+            .GetReferencedAssemblies()
+            .Select(reference => reference.Name)
+            .Where(name => name is not null)
+            .ToArray();
+
+        foreach (var forbiddenReference in forbiddenReferences)
+        {
+            CollectionAssert.DoesNotContain(references, forbiddenReference);
+        }
+    }
+
+    [TestMethod]
     public void PlaceholderManifestExistsAndListsOnlyRepositoryFiles()
     {
         var repositoryRoot = FindRepositoryRoot();

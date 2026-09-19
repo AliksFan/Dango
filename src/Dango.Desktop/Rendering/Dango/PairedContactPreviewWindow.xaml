@@ -1,0 +1,37 @@
+<Window x:Class="Dango.Desktop.Rendering.Visuals.PairedContactPreviewWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Dango.Desktop.Rendering.Visuals"
+        Title="P2D-007 双体接触技术证明" Width="920" Height="560"
+        Background="#FFF5F1EA" WindowStartupLocation="CenterScreen">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <StackPanel>
+            <TextBlock FontSize="23" FontWeight="SemiBold" Foreground="#FF2B201E" Text="双体接触技术证明" />
+            <TextBlock Margin="0,6,0,14" Foreground="#FF74645E"
+                       Text="两只虚构团子按确定性时间线靠近、真实接触、互补挤压并释放；不代表多人或贴贴功能。" />
+        </StackPanel>
+        <Border Grid.Row="1" Background="White" CornerRadius="22" BorderBrush="#FFE9DED4" BorderThickness="1">
+            <Canvas x:Name="SceneCanvas" ClipToBounds="True">
+                <Rectangle Height="3" Width="820" Fill="#FFD7C7B8" Canvas.Left="24" Canvas.Top="345" />
+                <local:DeformableDangoVisual x:Name="FirstDango" Canvas.Top="247" />
+                <local:DeformableDangoVisual x:Name="SecondDango" Canvas.Top="247" Opacity="0.88" />
+                <TextBlock x:Name="PhaseText" Canvas.Left="28" Canvas.Top="24" FontSize="18" FontWeight="SemiBold" Foreground="#FF55443F" />
+                <TextBlock x:Name="ContactText" Canvas.Left="28" Canvas.Top="54" Foreground="#FF74645E" />
+                <TextBlock Canvas.Left="28" Canvas.Top="86" Foreground="#FF9A8981"
+                           Text="自动循环：分离 → 靠近 → 接触保持 → 释放 → 分离" />
+            </Canvas>
+        </Border>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="4,12,0,0">
+            <ToggleButton x:Name="ShowSkeletonToggle" Padding="12,6" Margin="0,0,12,0"
+                          Checked="OnSkeletonDisplayChanged" Unchecked="OnSkeletonDisplayChanged"
+                          Content="显示物理骨架" />
+            <TextBlock VerticalAlignment="Center" Foreground="#FF74645E"
+                       Text="关闭窗口即释放 paired native world；预览不连接账号、好友、房间或网络。" />
+        </StackPanel>
+    </Grid>
+</Window>

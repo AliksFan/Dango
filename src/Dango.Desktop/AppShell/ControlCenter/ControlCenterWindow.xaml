@@ -1,0 +1,554 @@
+<Window x:Class="Dango.Desktop.AppShell.ControlCenter.ControlCenterWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Dango 控制中心"
+        Width="960"
+        Height="640"
+        MinWidth="820"
+        MinHeight="560"
+        Background="#FFF9F3"
+        FontFamily="Segoe UI, Microsoft YaHei UI"
+        ShowInTaskbar="True"
+        Topmost="False"
+        WindowStartupLocation="CenterScreen"
+        Closing="OnClosing"
+        Loaded="OnLoaded">
+    <Window.Resources>
+        <SolidColorBrush x:Key="PrimaryBrush" Color="#F28C52" />
+        <SolidColorBrush x:Key="TextBrush" Color="#3F342D" />
+        <SolidColorBrush x:Key="MutedTextBrush" Color="#6B625C" />
+        <SolidColorBrush x:Key="BorderBrush" Color="#E9DED4" />
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="16,9" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonBorder"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#FFF1E7" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{StaticResource PrimaryBrush}" />
+                                <Setter TargetName="ButtonBorder" Property="BorderThickness" Value="2" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonBorder" Property="Opacity" Value="0.55" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="NavButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="FontSize" Value="15" />
+        </Style>
+        <Style x:Key="CardStyle" TargetType="Border">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="20" />
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="190" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0"
+                Padding="18,24"
+                Background="#FFF4EA"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="0,0,1,0">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top">
+                    <TextBlock Margin="10,0,0,26"
+                               FontSize="24"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextBrush}"
+                               Text="Dango" />
+                    <Button AutomationProperties.Name="打开概览"
+                            Click="OnOverviewNavigationClick"
+                            Content="●  概览"
+                            Style="{StaticResource NavButtonStyle}" />
+                    <Button x:Name="DesktopNavigation" AutomationProperties.Name="打开桌面体验"
+                            Click="OnDesktopNavigationClick"
+                            Content="桌面体验"
+                            Style="{StaticResource NavButtonStyle}" />
+                    <Button x:Name="VerificationNavigation" AutomationProperties.Name="打开实验与验收"
+                            Click="OnVerificationNavigationClick"
+                            Content="实验与验收"
+                            Style="{StaticResource NavButtonStyle}" />
+                    <Button x:Name="DiagnosticsNavigation" AutomationProperties.Name="打开诊断"
+                            Click="OnDiagnosticsNavigationClick"
+                            Content="诊断"
+                            Style="{StaticResource NavButtonStyle}" />
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Bottom">
+                    <TextBlock x:Name="SettingsSaveStatusText" Margin="10,0,10,8" TextWrapping="Wrap" />
+                    <TextBlock Margin="10,0,10,10"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               Text="本地运行 · 未连接服务器"
+                               TextWrapping="Wrap" />
+                    <Button AutomationProperties.Name="退出 Dango"
+                            Click="OnExitClick"
+                            Content="退出 Dango" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Column="1" Margin="30,24">
+            <Grid x:Name="OverviewPage">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel>
+                    <TextBlock x:Name="OverviewTitle" FontSize="28"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextBrush}"
+                               Text="团子正在你的桌面上" />
+                    <TextBlock x:Name="OverviewIntro" Margin="0,8,0,22"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               TextWrapping="Wrap"
+                               Text="当前是本地 Phase 1 原型，不包含账号、房间或联网功能。" />
+                </StackPanel>
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel>
+                                    <TextBlock Foreground="{StaticResource MutedTextBrush}" Text="桌面显示" />
+                                    <TextBlock x:Name="OverviewVisibilityText"
+                                               Margin="0,8,0,12"
+                                               FontSize="22"
+                                               FontWeight="SemiBold"
+                                               Text="已开启" />
+                                    <Button x:Name="OverviewVisibilityButton"
+                                            AutomationProperties.Name="切换桌面团子显示"
+                                            Click="OnOverviewVisibilityClick"
+                                            Content="隐藏桌面团子" />
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="2" Style="{StaticResource CardStyle}">
+                                <StackPanel>
+                                    <TextBlock Foreground="{StaticResource MutedTextBrush}" Text="交互模式" />
+                                    <TextBlock x:Name="OverviewInteractionText"
+                                               Margin="0,8,0,12"
+                                               FontSize="22"
+                                               FontWeight="SemiBold"
+                                               Text="已开启" />
+                                    <TextBlock Foreground="{StaticResource MutedTextBrush}"
+                                               Text="关闭后团子区域也应穿透。"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <Border Margin="0,16,0,0" Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <TextBlock FontSize="17" FontWeight="SemiBold" Text="运行状态" />
+                                <TextBlock x:Name="OverviewHostStatusText"
+                                           Margin="0,9,0,14"
+                                           Foreground="#B7791F"
+                                           TextWrapping="Wrap"
+                                           Text="壁纸层 · 正在运行 · 尚未完成人工验收" />
+                                <Button x:Name="ContinueVerificationButton" HorizontalAlignment="Left"
+                                        AutomationProperties.Name="继续人工验收"
+                                        Click="OnVerificationNavigationClick"
+                                        Content="继续验收" />
+                                <WrapPanel Margin="0,8,0,0">
+                                    <Button x:Name="RetrySceneButton" Content="重试初始化" AutomationProperties.Name="重试初始化"
+                                            Click="OnRetrySceneClick" Margin="0,0,8,0" />
+                                    <Button x:Name="RestoreDangoButton" Content="恢复团子" AutomationProperties.Name="恢复团子"
+                                            Click="OnRegenerateDangoClick" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock x:Name="OverviewCommandStatusText"
+                                   Margin="2,14,0,0"
+                                   Foreground="{StaticResource MutedTextBrush}"
+                                   Text="等待操作。" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+
+            <Grid x:Name="DesktopPage" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel>
+                    <TextBlock FontSize="28" FontWeight="SemiBold" Text="桌面体验" />
+                    <TextBlock Margin="0,8,0,22"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               Text="控制团子的本地显示方式，不会读取桌面内容。" />
+                </StackPanel>
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <Border Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <CheckBox x:Name="VisibilityCheckBox"
+                                          AutomationProperties.Name="桌面显示"
+                                          Checked="OnVisibilityCheckedChanged"
+                                          Content="桌面显示"
+                                          FontSize="17"
+                                          FontWeight="SemiBold"
+                                          Unchecked="OnVisibilityCheckedChanged" />
+                                <TextBlock Margin="24,6,0,18"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           Text="关闭后停止当前桌面宿主显示，托盘与控制中心仍保留。" />
+                                <CheckBox x:Name="InteractionCheckBox"
+                                          AutomationProperties.Name="允许与团子互动"
+                                          Checked="OnInteractionCheckedChanged"
+                                          Content="允许与团子互动"
+                                          FontSize="17"
+                                          FontWeight="SemiBold"
+                                          Unchecked="OnInteractionCheckedChanged" />
+                                <TextBlock Margin="24,6,0,18"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           Text="关闭后团子和岛区域也不应阻挡桌面操作。" />
+                                <CheckBox IsEnabled="False" Visibility="Collapsed"
+                                          AutomationProperties.Name="降低动画尚不可用"
+                                          Content="降低动画（P1-004 接入）"
+                                          FontSize="17" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border x:Name="PopulationCard" Margin="0,16,0,0" Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <TextBlock FontSize="17"
+                                           FontWeight="SemiBold"
+                                           Text="团子数量" />
+                                <TextBlock x:Name="DangoCountText"
+                                           Margin="0,6,0,14"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           Text="当前锁定 1 只；团子间碰撞阶段再开放数量调整。" />
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="AddDangoButton"
+                                            AutomationProperties.Name="添加团子"
+                                            Click="OnAddDangoClick"
+                                            Content="添加团子" />
+                                    <Button x:Name="RemoveDangoButton"
+                                            Margin="12,0,0,0"
+                                            AutomationProperties.Name="移除团子"
+                                            Click="OnRemoveDangoClick"
+                                            Content="移除团子" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border x:Name="SkeletonCard" Margin="0,16,0,0" Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <CheckBox x:Name="DebugSkeletonCheckBox"
+                                          AutomationProperties.Name="显示骨架"
+                                          Checked="OnDebugSkeletonChanged"
+                                          Content="显示骨架"
+                                          FontSize="17"
+                                          FontWeight="SemiBold"
+                                          Unchecked="OnDebugSkeletonChanged" />
+                                <TextBlock Margin="24,6,0,0"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           Text="直接叠加核心、16 条径向弹簧、16 条闭合轮廓弹簧和 16 个节点；仅用于当前桌面观察。"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border x:Name="PhysicsCard" Margin="0,16,0,0" Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <TextBlock FontSize="17" FontWeight="SemiBold" Text="已验收物理参数（只读）" />
+                                <TextBlock Margin="0,6,0,14"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           Text="正式桌面固定参数版本 1。面积保持、落地形变力、拖动力与跳跃冲量仅供查看；调参请使用实验工具。"
+                                           TextWrapping="Wrap" />
+                                <StackPanel x:Name="PhysicsTuningPanel" />
+                                <StackPanel Margin="0,14,0,0" Orientation="Horizontal">
+                                    <Button AutomationProperties.Name="恢复默认参数"
+                                            IsEnabled="False"
+                                            Click="OnRestoreDefaultPhysicsClick"
+                                            Content="恢复默认参数" />
+                                    <Button Margin="12,0,0,0"
+                                            AutomationProperties.Name="重置当前团子"
+                                            Click="OnRegenerateDangoClick"
+                                            ToolTip="保留当前数量和实体 ID，不恢复已移除团子。"
+                                            Content="重置当前团子" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border x:Name="HatCard" Margin="0,16,0,0" Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <TextBlock FontSize="17" FontWeight="SemiBold" Text="团子的帽子" />
+                                <ComboBox x:Name="HatPresetComboBox" Margin="0,12,0,0" MinHeight="32"
+                                          AutomationProperties.Name="团子的帽子" SelectionChanged="OnHatPresetChanged">
+                                    <ComboBoxItem Tag="sprout" Content="叶芽" />
+                                    <ComboBoxItem Tag="top-hat" Content="小礼帽" />
+                                    <ComboBoxItem Tag="bowler" Content="圆顶帽" />
+                                </ComboBox>
+                            </StackPanel>
+                        </Border>
+                        <Border Margin="0,16,0,0" Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <CheckBox x:Name="KeyboardControlCheckBox"
+                                          AutomationProperties.Name="键盘控制"
+                                          Checked="OnKeyboardControlChanged"
+                                          Content="键盘控制"
+                                          FontSize="17"
+                                          FontWeight="SemiBold"
+                                          Unchecked="OnKeyboardControlChanged" />
+                                <TextBlock Margin="24,6,0,14"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           Text="默认关闭；壁纸层仅在桌面获得焦点时生效，普通窗口仅在自身获得焦点时生效。"
+                                           TextWrapping="Wrap" />
+                                <StackPanel Margin="24,0,0,0" Orientation="Horizontal">
+                                    <RadioButton x:Name="ArrowKeysRadioButton"
+                                                 AutomationProperties.Name="使用方向键控制"
+                                                 Checked="OnKeyboardControlChanged"
+                                                 Content="方向键：↑ ↓ ← →"
+                                                 GroupName="KeyboardControlScheme" />
+                                    <RadioButton x:Name="WasdRadioButton"
+                                                 Margin="20,0,0,0"
+                                                 AutomationProperties.Name="使用 WASD 控制"
+                                                 Checked="OnKeyboardControlChanged"
+                                                 Content="WASD：W S A D"
+                                                 GroupName="KeyboardControlScheme" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Margin="0,16,0,0" Style="{StaticResource CardStyle}">
+                            <StackPanel x:Name="DesktopLayeringPanel">
+                                <TextBlock x:Name="LayeringTitle" FontSize="17" FontWeight="SemiBold" Text="对象层级（实验）" />
+                                <TextBlock x:Name="LayeringDescription" Margin="0,6,0,14"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           Text="仅用于验证技术能力，规则可能调整；选择会保存在本机。" />
+
+                                <TextBlock FontWeight="SemiBold" Text="团子层级" />
+                                <StackPanel Margin="0,6,0,14" Orientation="Horizontal">
+                                    <RadioButton x:Name="DangoBelowIconsRadioButton"
+                                                 AutomationProperties.Name="团子位于图标之下"
+                                                 Checked="OnObjectLayerChanged"
+                                                 Content="图标之下"
+                                                 GroupName="DangoLayer" />
+                                    <RadioButton x:Name="DangoAboveIconsRadioButton"
+                                                 Margin="20,0,0,0"
+                                                 AutomationProperties.Name="团子位于图标之上"
+                                                 Checked="OnObjectLayerChanged"
+                                                 Content="图标之上"
+                                                 GroupName="DangoLayer" />
+                                </StackPanel>
+
+                                <TextBlock x:Name="CushionTitle" FontWeight="SemiBold" Text="占位软垫" />
+                                <StackPanel x:Name="CushionOptions" Margin="0,6,0,14" Orientation="Horizontal">
+                                    <RadioButton x:Name="CushionBelowIconsRadioButton"
+                                                 AutomationProperties.Name="占位软垫位于图标之下"
+                                                 Checked="OnObjectLayerChanged"
+                                                 Content="图标之下"
+                                                 GroupName="CushionLayer" />
+                                    <RadioButton x:Name="CushionAboveIconsRadioButton"
+                                                 Margin="20,0,0,0"
+                                                 AutomationProperties.Name="占位软垫位于图标之上"
+                                                 Checked="OnObjectLayerChanged"
+                                                 Content="图标之上"
+                                                 GroupName="CushionLayer" />
+                                </StackPanel>
+
+                                <TextBlock x:Name="IslandTitle" FontWeight="SemiBold" Text="特殊悬浮岛" />
+                                <TextBlock x:Name="IslandDescription" Margin="0,6,0,0"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           Text="所有界面之上；全屏时隐藏" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Margin="0,16,0,0" Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <TextBlock FontSize="17" FontWeight="SemiBold" Text="显示模式" />
+                                <RadioButton x:Name="WallpaperHostRadioButton"
+                                             Margin="0,14,0,6"
+                                             AutomationProperties.Name="切换到壁纸层"
+                                             Checked="OnHostModeChanged"
+                                             Content="壁纸层 · 默认随桌面显示"
+                                             GroupName="DesktopHost" />
+                                <RadioButton x:Name="WindowHostRadioButton"
+                                             AutomationProperties.Name="切换到普通窗口"
+                                             Checked="OnHostModeChanged"
+                                             Content="普通窗口 · 可移动和调整大小"
+                                             GroupName="DesktopHost" />
+                                <Button x:Name="RetryWallpaperButton" Margin="0,14,0,0"
+                                        HorizontalAlignment="Left"
+                                        AutomationProperties.Name="重试壁纸层"
+                                        Click="OnRetryWallpaperClick"
+                                        Content="重试壁纸层" />
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock x:Name="DesktopCommandStatusText"
+                                   Margin="2,14,0,0"
+                                   Foreground="{StaticResource MutedTextBrush}"
+                                   Text="所有开关以宿主确认后的状态为准。" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+
+            <Grid x:Name="VerificationPage" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel>
+                    <TextBlock FontSize="28" FontWeight="SemiBold" Text="实验与验收" />
+                    <TextBlock x:Name="VerificationEnvironmentText"
+                               Margin="0,8,0,12"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               Text="壁纸层 · 环境待采集" />
+                </StackPanel>
+                <Grid Grid.Row="1" Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock x:Name="VerificationProgressText"
+                                   FontSize="17"
+                                   FontWeight="SemiBold"
+                                   Text="0 / 0 已确认" />
+                        <TextBlock x:Name="DraftStatusText"
+                                   Margin="0,4,0,0"
+                                   Foreground="{StaticResource MutedTextBrush}"
+                                   Text="尚未保存本地草稿。" />
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            Margin="8,0,0,0"
+                            AutomationProperties.Name="新建本次验收"
+                            Click="OnNewVerificationClick"
+                            Content="新建" />
+                    <Button Grid.Column="2"
+                            Margin="8,0,0,0"
+                            AutomationProperties.Name="保存验收草稿"
+                            Click="OnSaveDraftClick"
+                            Content="保存草稿" />
+                    <Button Grid.Column="3"
+                            Margin="8,0,0,0"
+                            AutomationProperties.Name="导出验收报告"
+                            Click="OnExportReportClick"
+                            Content="导出报告" />
+                </Grid>
+                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl x:Name="VerificationItemsControl">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,0,0,12" Style="{StaticResource CardStyle}">
+                                    <StackPanel>
+                                        <TextBlock Foreground="{StaticResource MutedTextBrush}"
+                                                   Text="{Binding Definition.Category}" />
+                                        <TextBlock Margin="0,4,0,8"
+                                                   FontSize="17"
+                                                   FontWeight="SemiBold"
+                                                   Text="{Binding Definition.Title}" />
+                                        <TextBlock Text="{Binding Definition.Instructions, StringFormat=操作：{0}}"
+                                                   TextWrapping="Wrap" />
+                                        <TextBlock Margin="0,4,0,10"
+                                                   Foreground="{StaticResource MutedTextBrush}"
+                                                   Text="{Binding Definition.Expected, StringFormat=预期：{0}}"
+                                                   TextWrapping="Wrap" />
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="170" />
+                                                <ColumnDefinition Width="12" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <ComboBox AutomationProperties.Name="人工验收结果"
+                                                      DisplayMemberPath="DisplayName"
+                                                      ItemsSource="{Binding OutcomeOptions}"
+                                                      SelectedValue="{Binding Outcome, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                      SelectedValuePath="Outcome"
+                                                      SelectionChanged="OnVerificationOutcomeChanged" />
+                                            <TextBox Grid.Column="2"
+                                                     MinHeight="32"
+                                                     Padding="8,5"
+                                                     AutomationProperties.Name="验收备注"
+                                                     Text="{Binding Notes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     ToolTip="失败时记录最小复现；无法执行时必须填写原因。" />
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+
+            <Grid x:Name="DiagnosticsPage" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel>
+                    <TextBlock FontSize="28" FontWeight="SemiBold" Text="诊断" />
+                    <TextBlock Margin="0,8,0,22"
+                               Foreground="{StaticResource MutedTextBrush}"
+                               Text="只显示 Dango 自身、系统和显示摘要，不采集桌面内容、窗口标题或用户输入。"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+                <Border Grid.Row="1" Style="{StaticResource CardStyle}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBox x:Name="DiagnosticsTextBox"
+                                 Padding="4"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 FontFamily="Consolas, Microsoft YaHei UI"
+                                 IsReadOnly="True"
+                                 Text="未采集"
+                                 TextWrapping="Wrap"
+                                 VerticalScrollBarVisibility="Auto" />
+                        <WrapPanel Grid.Row="1">
+                            <Button Margin="0,12,0,0"
+                                    HorizontalAlignment="Left"
+                                    AutomationProperties.Name="刷新诊断摘要"
+                                    Click="OnRefreshDiagnosticsClick"
+                                    Content="刷新诊断" />
+                            <Button x:Name="RetrySaveButton" Margin="8,12,0,0" Content="重试保存"
+                                    AutomationProperties.Name="重试保存" Click="OnRetrySaveClick" />
+                            <Button x:Name="RecoverSettingsButton" Margin="8,12,0,0" Content="备份原文件并恢复保存"
+                                    AutomationProperties.Name="备份原文件并恢复保存" Click="OnRecoverSettingsClick" />
+                        </WrapPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

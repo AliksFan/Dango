@@ -13,6 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Dango.Physics\Dango.Physics.csproj" />
     <ProjectReference Include="..\..\src\Dango.Desktop\Dango.Desktop.csproj" />
   </ItemGroup>
 

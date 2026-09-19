@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dango.local/schemas/phase-1-asset-v1.json",
+  "title": "Dango Phase 1 asset contract v1",
+  "type": "object",
+  "required": [
+    "assetVersion",
+    "compatibility",
+    "canvas",
+    "layers",
+    "slots",
+    "clips",
+    "actions",
+    "anchors",
+    "hitShapes",
+    "events",
+    "fallbacks"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "assetVersion": { "const": 1 },
+    "compatibility": {
+      "type": "object",
+      "required": ["minimumRuntimeVersion", "maximumRuntimeVersion"],
+      "properties": {
+        "minimumRuntimeVersion": { "type": "integer", "minimum": 1 },
+        "maximumRuntimeVersion": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "canvas": {
+      "type": "object",
+      "required": ["width", "height", "pixelDensity", "origin"],
+      "properties": {
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 },
+        "pixelDensity": { "type": "number", "exclusiveMinimum": 0 },
+        "origin": { "$ref": "#/$defs/point" }
+      },
+      "additionalProperties": false
+    },
+    "layers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "order", "source", "slot"],
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "order": { "type": "integer" },
+          "source": { "$ref": "#/$defs/id" },
+          "slot": { "$ref": "#/$defs/id" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "slots": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/namedPoint" }
+    },
+    "clips": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "durationMilliseconds", "loop", "frames", "transformTracks"],
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "durationMilliseconds": { "type": "integer", "minimum": 1 },
+          "loop": { "type": "boolean" },
+          "frames": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["timeMilliseconds", "layers"],
+              "properties": {
+                "timeMilliseconds": { "type": "integer", "minimum": 0 },
+                "layers": { "type": "array", "items": { "$ref": "#/$defs/id" } }
+              },
+              "additionalProperties": false
+            }
+          },
+          "transformTracks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["targetLayer", "property", "keyframes"],
+              "properties": {
+                "targetLayer": { "$ref": "#/$defs/id" },
+                "property": {
+                  "enum": ["TranslationX", "TranslationY", "RotationDegrees", "ScaleX", "ScaleY", "Opacity"]
+                },
+                "keyframes": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "required": ["timeMilliseconds", "value"],
+                    "properties": {
+                      "timeMilliseconds": { "type": "integer", "minimum": 0 },
+                      "value": { "type": "number" }
+                    },
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "actions": {
+      "type": "object",
+      "required": [
+        "Idle",
+        "Wander",
+        "ApproachIsland",
+        "ClimbUp",
+        "OnIsland",
+        "ClimbDown",
+        "Dragged",
+        "Falling",
+        "Landing",
+        "Reacting"
+      ],
+      "additionalProperties": { "$ref": "#/$defs/id" }
+    },
+    "anchors": {
+      "type": "array",
+      "minItems": 4,
+      "items": { "$ref": "#/$defs/namedPoint" }
+    },
+    "hitShapes": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["id", "purpose", "kind", "bounds"],
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "purpose": { "enum": ["Click", "Drag", "Collision"] },
+          "kind": { "enum": ["Rectangle", "Ellipse"] },
+          "bounds": { "$ref": "#/$defs/rect" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["clip", "timeMilliseconds", "name"],
+        "properties": {
+          "clip": { "$ref": "#/$defs/id" },
+          "timeMilliseconds": { "type": "integer", "minimum": 0 },
+          "name": { "$ref": "#/$defs/id" },
+          "anchor": { "$ref": "#/$defs/id" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "fallbacks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to"],
+        "properties": {
+          "from": { "$ref": "#/$defs/id" },
+          "to": { "$ref": "#/$defs/id" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1 },
+    "point": {
+      "type": "object",
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "namedPoint": {
+      "type": "object",
+      "required": ["id", "x", "y"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "rect": {
+      "type": "object",
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

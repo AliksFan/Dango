@@ -1,0 +1,173 @@
+# Phase 1 动画动作规格
+
+> 状态：AP-005 全动作手工 fallback 候选；等待 A5 人工静态预审
+>
+> 日期：2026-09-02
+
+## 1. 接口基线
+
+- 动画预生产分支基线：`d6df4ca`，设计与计划提交：`a5792e7`。
+- 最近核对的 Phase 1 阶段分支：`0e199d6`。
+- 动画分支与 `0e199d6` 之间，`Dango.Core` 动画/资产模型、`assets/placeholder` 和 Core 资产测试没有差异。
+- 当前运行时资产版本为 `1`，样例逻辑画布为 160 × 120、原点 `(0, 0)`、像素密度 `1`。
+- Core 解析器是语义事实来源；JSON Schema 只描述结构。
+
+本记录只冻结 AP-000 所见接口。实施中若阶段分支改变这些事实，必须停止并重新核对，不能以本文覆盖新代码。
+
+## 2. 首批状态映射
+
+| Core 状态 | Clip | 动作意图 | 关键语义 |
+|---|---|---|---|
+| `Idle` | `idle` | 安静待机、呼吸与低频眨眼 | 地面接触稳定；允许进入移动、接近、拖动或反应 |
+| `Wander` | `wander` | 低干扰桌面移动 | 移动由场景决定，动画不裁定位置结果 |
+| `ApproachIsland` | `approach-island` | 接近岛边并准备抓取 | 最终姿势对准岛边，不提前宣布登岛 |
+| `ClimbUp` | `climb-up` | 抓边、提身、翻越和站稳 | `island-grabbed` / `island-grab` |
+| `OnIsland` | `on-island` | 岛上安静待机 | 最终接触 `island-stand` |
+| `ClimbDown` | `climb-down` | 探身、离边并进入下落 | 结束进入 `Falling`，不直接落地 |
+| `Dragged` | `dragged` | 被抓取后的悬空和有限弹性 | 不采集或保存真实鼠标轨迹 |
+| `Falling` | `falling` | 下落姿势和方向可读性 | 落地点仍由 Core 决定 |
+| `Landing` | `landing` | 接触、压缩、回弹和恢复 | `landed` / `ground-contact` |
+| `Reacting` | `reacting` | 点击或抚摸后的短反应 | fallback 为 `idle` |
+| `Hidden` | 无 | 完全不可见并停止持续动画 | 不制作可见占位 clip |
+
+## 3. 图层与语义点
+
+- 用户确认的首版资产兼容要求：身体纯色和帽子是两个独立可配置类别；眼睛属于表情/动画层，不进入捏脸预设。
+- 团子没有脚、腿、爪或手臂，主体底部保持连续圆弧；移动、落地和爬岛通过整体重心、轮廓形变与接触面表达。
+- 必需图层职责收敛为 `body`、`eyes`、`hat`；运行时需映射到当前 `body`、`face`、`accessory` slot，当前不制作嘴或腮红。
+- 所有视觉只使用纯色，不包含光照、高光、渐变、材质明暗、接触影或地面阴影。
+- 当前 slot：`body`、`face`、`shadow`、`accessory`。
+- 当前契约仍定义 `shadow` slot，但预生产候选不提供对应图层；P1-004 接入时不得用空白假图制造阴影资产完成的假象。
+- 当前 anchor：`ground-contact`、`click`、`island-grab`、`island-stand`。
+- 当前 hit shape 用途：Click、Drag、Collision。
+- 首批候选不增加睡眠、醒来、贴贴、群体或情侣动作。
+
+### 3.1 Box2D 视觉软体边界
+
+- 手工关键姿势和动作事件决定动作语义并提供 fallback；Box2D 节点环与弹簧关节只生成连续碰撞、接触挤压、衰减回弹和次级晃动。
+- 求解输入使用统一交互坐标系中的语义锚点、接触法线、强度、共同时间线、参数版本和变体种子。
+- 视觉形变不得修改 Core 权威位置、碰撞、权限、状态转换或最终互动结果。
+- 身体由运动学核心锚点与有序动态节点环组成；节点数、质量、重力、关节参数、子步和形变上限等待 P1-004 比较，不得产生翻面、尖刺或肢体状轮廓。
+- 眼睛跟随局部身体形变但保持独立表情轨道；帽子通过动态挂点跟随并允许受限延迟。
+- 双团子接触只由一个 interaction director 生成成对约束，不能由双方独立求解同一接触。
+- 同一 Windows 构建的相同输入在固定步长下必须在批准容差内可重复；不要求跨客户端顶点逐值一致。native、模拟或渲染失败以及降低动画时回退到手工关键姿势。
+- 服务端只同步动作意图、参与者、开始时间、持续时间或速度、接触方向或锚点、种子和版本，不同步逐帧弹簧或顶点状态。
+- “贴贴”目前仅作为 P1-004 双体接触技术 Spike，不加入 AP-005 首批动作资产，也不代表多人功能完成。
+
+## 4. 待后续验证的参数
+
+以下内容仍需由 AP-005 资产包或 P1-004 真实运行验证，当前不得写成既定数值：
+
+- 正式导出像素倍数和缩小采样方式；
+- 呼吸幅度、眨眼间隔和轻晃频率；
+- `Landing` 压缩比例、回弹次数和事件时刻；
+- `ClimbUp` 轮廓帧数量、抓边接触区域和遮挡变化；
+- 每个轮廓帧是否需要独立 accessory anchor；
+- 脸部是否需要独立于身体 clip 的附加轨道；
+- 当前 Schema 如何表达身体调色和帽子资源集；
+- 表情动画中的眼睛是否需要独立于当前单一 `face` slot 播放；
+- 帽子逐帧挂点如何随轮廓形变更新；
+- 降低动画模式的刷新频率和次级运动删减规则。
+- Box2D profile、接触法线、参数版本、软体拓扑和动态帽子挂点的最小 Schema 表达；
+- 节点数、质量、重力、弹簧刚度、阻尼、子步、最大形变和帽子延迟的候选范围；
+
+这些问题暴露 Schema 缺口时记录为 P1-004 TODO，不在预生产中滥用字段。
+
+## 5. P1-004 Box2D 视觉软体 Spike 顺序
+
+1. 先验证固定版本 Box2D 的 native 构建、P/Invoke、self-contained 加载、释放和失败 fallback。
+2. 再用无 WPF 的单团子节点环验证固定步长、形变上限、衰减、休眠和容差重放。
+3. 使用 `Landing` 验证动态纯色轮廓、固定权威落点、眼睛/帽子挂点、降低动画和手工 fallback。
+4. 再用双团子贴贴验证共同接触法线、单一 interaction director 和互补形变。
+5. 最后运行 1、6、12 只场景；1 只对照产品预算，6/12 只记录设备相关预检，正式性能结论属于 P1-005。
+
+Spike 必须检查 native 加载/回收、非有限数、持续抖动、节点翻面、自交、穿模、帽子漂移、透明边缘、固定步长容差重放和降低动画。数值形变参数只作为候选范围记录，未经过真实桌面测量和人工验收前不得冻结为产品常量。详细任务顺序见 [Box2D 视觉软体实施计划](../phase-1-box2d-soft-body-implementation-plan.md)。
+
+## 6. AP-004 三类静态动作样本验收
+
+> 状态：视觉基准已由用户确认，允许制作关键姿势候选；静态姿势通过不等于 WPF 播放或桌面体验通过。
+
+### 6.1 `Idle`
+
+| 时刻 | 姿势 | 目的 |
+|---:|---|---|
+| 0 ms | `rest` | 标准静止轮廓，底部接触稳定 |
+| 1000 ms | `inhale` | 上半部轻微变高变窄，底部不抬起 |
+| 1800 ms | `rest` | 平缓回到标准轮廓 |
+| 2100 ms | `blink` | 仅替换眼睛图层，身体保持标准轮廓 |
+| 2200 ms | `rest` | 恢复睁眼并留出安静停顿 |
+
+- 候选周期 2400 ms，循环；只允许在 `rest` 停顿点自然切出。
+- 降低动画版本延长静止间隔、删除轻晃，只保留更低频的轮廓呼吸和眨眼。
+- 失败条件：整体等比缩放、底部接触上下漂移、帽子相对头顶跳动，或眨眼带动身体变形。
+
+### 6.2 `Landing`
+
+| 时刻 | 姿势 | 目的 |
+|---:|---|---|
+| 0 ms | `fall` | 轻微纵向拉长，准备接触 |
+| 120 ms | `contact` | 首次接地，同时触发 `landed` |
+| 180 ms | `compress` | 宽而低的短暂压缩 |
+| 280 ms | `rebound` | 小幅回弹，不超过下落拉伸幅度 |
+| 420 ms | `settle` | 回到标准轮廓并稳定接触 |
+
+- `ground-contact` 使用资产局部点 `(80, 114)`；候选运行时包需要把它映射到场景落地点。
+- 接触后到 `settle` 前不可被普通待机打断；降低动画版本保留 `contact`、`landed` 和最终落点，缩小压缩与回弹。
+- 失败条件：`landed` 绑定到最终静止而非首次接触、回弹次数过多、接地线漂移，或底部形变形成两只脚。
+
+### 6.3 `ClimbUp`
+
+| 时刻 | 姿势 | 目的 |
+|---:|---|---|
+| 0 ms | `approach` | 降低重心并靠近岛边 |
+| 180 ms | `grab` | 以整块上半身的宽接触形变抓边，触发 `island-grabbed` |
+| 320 ms | `transfer` | 重心越过接触点，身体保持连续轮廓 |
+| 500 ms | `cross` | 压缩越过边缘，不生成手脚 |
+| 720 ms | `stand` | 恢复标准轮廓并对齐 `island-stand` |
+
+- 静态审查图使用资产局部 `island-grab` 点 `(120, 58)`；最终 `island-stand` 使用 `(80, 114)`。
+- `grab` 后到 `stand` 前不可被普通待机打断；降低动画版本可以减小形变，但不得删除抓边事件或重量转移。
+- 失败条件：用手、脚、爪或细长凸起表达攀爬，抓边没有可读接触面，帽子穿过主体，或最终站立位置与语义点不一致。
+
+### 6.4 共同结构门禁
+
+- 每个轮廓帧为 160 × 120 透明 PNG，并具有真实透明像素和可见像素。
+- 运行时候选层只包含 `body`、`eyes`、`hat`；嘴、腮红、接触影和地面阴影均视为失败。
+- 身体轮廓帧、共享眼睛帧与共享帽子帧分别记录来源，组合审查板不得冒充运行时单层素材。
+- 所有时刻严格递增且位于 clip duration 内；`landed` 和 `island-grabbed` 必须绑定上述接触姿势。
+- 当前 Schema 没有逐帧帽子挂点；本样本用挂点表暴露该缺口，不把坐标塞进无关字段。
+
+## 7. AP-005 全动作手工 fallback 候选
+
+> 状态：`candidate`。本节补齐其余七个可见 Core 状态；`Hidden` 仍不生成可见 clip。
+
+| Clip | 关键姿势顺序 | 周期 / 循环 | 可打断点 |
+|---|---|---:|---|
+| `wander` | `rest → lean → compress → glide → settle` | 960 ms / 是 | `rest`、`settle` |
+| `approach-island` | `travel → slow → lower → align` | 640 ms / 否 | `travel`、`align` |
+| `on-island` | `rest-start → breathe → rest-end` | 2200 ms / 是 | 两个 rest |
+| `climb-down` | `stand → peer → edge-contact → release → fall` | 680 ms / 否 | `stand`、`fall` |
+| `dragged` | `grabbed → suspend → follow` | 480 ms / 是 | `grabbed`、`follow` |
+| `falling` | `fall-start → stretch → pre-contact` | 360 ms / 否 | `pre-contact` |
+| `reacting` | `rest → compress → lift → settle` | 520 ms / 否 | `rest`、`settle` |
+
+- `wander` 只表达重心偏移和压缩；位移结果仍由 Core 场景决定。
+- `approach-island` 结束于对齐姿势，不触发登岛结果。
+- `on-island` 使用比地面待机更紧凑的稳定轮廓，不引入新养成状态。
+- `climb-down` 在 460 ms 的 `release` 触发非权威视觉事件 `island-released`，随后进入 `Falling`；最终地面接触只用于 fallback 对齐，不代表已经落地。
+- `dragged` 不记录真实鼠标轨迹；三姿势只表现抓取、悬空与跟随。
+- `falling` 不决定落点，`Landing` 的 `landed` 仍是首次接触事件。
+- `reacting` 保持克制且回退到 `idle`，不加入嘴、腮红或高频表情。
+
+### 7.1 候选包和降级规则
+
+- `assets/preproduction/phase-1-dango/candidate.asset.json` 使用当前 runtime contract v1，并由真实 `AssetPackageParser` 解析；应用默认仍加载 `assets/placeholder`，候选不会自动接入桌面宿主。
+- 十个可见动作全部映射到同名 clip；除 `idle` 外的 clip 均可无环回退到 `idle`，保证没有物理时仍有静态手工姿势。
+- 降低动画模式使用每类动作的关键接触与最终姿势，不运行连续软体步进，但不得删除 `landed`、`island-grabbed` 或 `island-released` 语义时点。
+- 候选不创建 shadow layer，也不伪造 `Hidden` clip；身体、眼睛、帽子分别映射到 `body`、`face`、`accessory` slot。
+
+### 7.2 已暴露但不在 P2D-001 修改的契约缺口
+
+- runtime contract v1 仍不能表达身体纯色 tint、帽子 variant set、逐帧帽子挂点、独立眼睛附加轨道或 Box2D profile/软体拓扑。
+- P2D-001 只用现有 layer、frame、transform、event、anchor 与 fallback 字段形成可解析候选，没有将物理参数塞入无关字段，也没有提升 `assetVersion`。
+- 这些缺口进入后续 P2D-002/P2D-003 的最小版本化提案；在 Spike 证明真实需要前不改正式 Schema。

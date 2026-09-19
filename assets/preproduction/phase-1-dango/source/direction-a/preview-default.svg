@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" width="160" height="120">
+  <title>Dango direction A default composite preview</title>
+  <g id="body">
+    <path d="M80 16C109 16 132 38 132 70C132 91 120 106 99 111C88 114 72 114 61 111C40 106 28 91 28 70C28 38 51 16 80 16Z" fill="#FFE8C2" />
+  </g>
+  <g id="eyes">
+    <circle cx="61" cy="65" r="6" fill="#2B201E" />
+    <circle cx="99" cy="65" r="6" fill="#2B201E" />
+  </g>
+  <g id="hat">
+    <path d="M77 25C77 20 78 16 80 12C83 16 84 21 83 26Z" fill="#67B84E" />
+    <path d="M80 15C71 15 64 11 62 4C70 2 77 5 80 15Z" fill="#78C85A" />
+    <path d="M80 15C89 15 96 11 98 4C90 2 83 5 80 15Z" fill="#78C85A" />
+  </g>
+</svg>

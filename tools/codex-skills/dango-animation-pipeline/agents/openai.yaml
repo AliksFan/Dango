@@ -1,0 +1,4 @@
+interface:
+  display_name: "Dango Animation Pipeline"
+  short_description: "Design and validate Dango animation assets"
+  default_prompt: "Use $dango-animation-pipeline to prepare or validate a Dango animation asset."

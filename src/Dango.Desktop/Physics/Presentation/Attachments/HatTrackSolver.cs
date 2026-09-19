@@ -1,0 +1,150 @@
+namespace Dango.Desktop.Physics.Presentation.Attachments;
+
+public sealed record HatContactPose(AttachmentPoint Center, double Angle, double S, double ContactWidth,
+    double MaximumGap, double MaximumPenetration, IReadOnlyList<AttachmentPoint> ContactSamples)
+{
+    public IReadOnlyList<AttachmentPoint> FittingSamples { get; init; } = [];
+}
+
+public sealed class HatTrackSolver
+{
+    public const double BaseWidth = 6d / 160;
+    private readonly AttachmentPoint[] points;
+    private readonly double[] lengths;
+    private readonly double neutral;
+    private readonly bool strictSurface;
+    private HatTrackSolver(AttachmentPoint[] points, bool strictSurface)
+    {
+        this.points = points;
+        this.strictSurface = strictSurface;
+        lengths = new double[points.Length];
+        for (var i = 1; i < points.Length; i++) lengths[i] = lengths[i - 1] + (points[i] - points[i - 1]).Length;
+        var mid = (points[0].X + points[^1].X) / 2;
+        var centralWidth = (points[^1].X - points[0].X) * 0.15 / 0.35;
+        double total = 0, weightedX = 0;
+        for (var i = 1; i < points.Length; i++)
+        {
+            var p = (points[i] + points[i - 1]) * 0.5;
+            if (Math.Abs(p.X - mid) > centralWidth / 2) continue;
+            var weight = lengths[i] - lengths[i - 1];
+            total += weight; weightedX += p.X * weight;
+        }
+        var neutralX = total > 0 ? weightedX / total : mid;
+        var index = Enumerable.Range(1, points.Length - 1).First(i => points[i].X >= neutralX);
+        var dx = points[index].X - points[index - 1].X;
+        neutral = lengths[index - 1] + (dx > 1e-12 ? (neutralX - points[index - 1].X) / dx : 0) * (lengths[index] - lengths[index - 1]);
+        Minimum = Math.Max(-0.08, BaseWidth / 2 - neutral);
+        Maximum = Math.Min(0.08, lengths[^1] - BaseWidth / 2 - neutral);
+    }
+
+    public double Minimum { get; private set; }
+    public double Maximum { get; private set; }
+    public IReadOnlyList<AttachmentPoint> Track => Array.AsReadOnly(points);
+
+    // The original surface fit remains a historical geometry check, not visual placement.
+    public static HatTrackSolver? Create(AttachmentShapeGeometry shape) => Create(shape, true);
+    public static HatTrackSolver? CreateGeometryGuide(AttachmentShapeGeometry shape) => Create(shape, false);
+
+    private static HatTrackSolver? Create(AttachmentShapeGeometry shape, bool strictSurface)
+    {
+        ArgumentNullException.ThrowIfNull(shape);
+        var middle = (shape.Left + shape.Right) / 2;
+        bool Eligible(AttachmentPoint p) => Math.Abs(p.X - middle) <= shape.Width * 0.35 && p.Y >= shape.Bottom + shape.Height * 0.65;
+        var boundary = shape.Boundary;
+        var excluded = Enumerable.Range(0, boundary.Count).FirstOrDefault(i => !Eligible(boundary[i]));
+        var runs = new List<List<AttachmentPoint>>();
+        List<AttachmentPoint>? run = null;
+        for (var j = 1; j <= boundary.Count; j++)
+        {
+            var p = boundary[(excluded + j) % boundary.Count];
+            if (!Eligible(p)) { run = null; continue; }
+            if (run is null) { run = []; runs.Add(run); }
+            run.Add(p);
+        }
+        var crown = runs.Where(r => r.Count > 2 && r.Min(p => p.X) <= middle && r.Max(p => p.X) >= middle)
+            .OrderByDescending(r => r.Average(p => p.Y)).FirstOrDefault();
+        if (crown is null) return null;
+        if (crown[0].X > crown[^1].X) crown.Reverse();
+        if (crown.Zip(crown.Skip(1)).Any(pair => pair.Second.X < pair.First.X - 1e-12)) return null;
+        var track = new HatTrackSolver(crown.ToArray(), strictSurface);
+        if (track.Minimum > track.Maximum) return null;
+        // Select a single legal component, closest to the geometric neutral.
+        var legalRuns = new List<(double Min, double Max)>();
+        double? start = null;
+        double previous = track.Minimum;
+        const int subdivisions = 320;
+        for (var i = 0; i <= subdivisions; i++)
+        {
+            var s = track.Minimum + (track.Maximum - track.Minimum) * i / subdivisions;
+            if (track.FitRaw(s) is not null) start ??= s;
+            else if (start.HasValue) { legalRuns.Add((start.Value, previous)); start = null; }
+            previous = s;
+        }
+        if (start.HasValue) legalRuns.Add((start.Value, track.Maximum));
+        if (legalRuns.Count == 0) return null;
+        var selected = legalRuns.OrderBy(r => Math.Abs(Math.Clamp(0, r.Min, r.Max))).ThenBy(r => r.Min).First();
+        track.Minimum = selected.Min; track.Maximum = selected.Max;
+        return track;
+    }
+
+    public HatContactPose? Fit(double s) => !double.IsFinite(s) || s < Minimum || s > Maximum ? null : FitRaw(s);
+
+    private HatContactPose? FitRaw(double s)
+    {
+        var arc = neutral + s;
+        if (arc < BaseWidth / 2 || arc > lengths[^1] - BaseWidth / 2) return null;
+        var samples = Enumerable.Range(0, 65).Select(i => At(arc + BaseWidth * (i / 64d - 0.5))).ToArray();
+        var fittingSamples = Enumerable.Range(0, 9).Select(i => samples[i * 8]).ToArray();
+        var mean = new AttachmentPoint(0, 0);
+        double weightSum = 0;
+        for (var i = 0; i < 9; i++)
+        {
+            var weight = i is 0 or 8 ? 1 : 2;
+            mean += samples[i * 8] * weight; weightSum += weight;
+        }
+        mean *= 1 / weightSum;
+        double xx = 0, xy = 0, yy = 0;
+        for (var i = 0; i < 9; i++)
+        {
+            var d = samples[i * 8] - mean; var weight = i is 0 or 8 ? 1 : 2;
+            xx += weight * d.X * d.X; xy += weight * d.X * d.Y; yy += weight * d.Y * d.Y;
+        }
+        var angle = Math.Atan2(2 * xy, xx - yy) / 2;
+        if (Math.Abs(angle) > 0.35) return null;
+        var tangent = new AttachmentPoint(Math.Cos(angle), Math.Sin(angle));
+        var normal = new AttachmentPoint(-Math.Sin(angle), Math.Cos(angle));
+        // Evaluate the entire rigid base footprint, including polyline vertices.
+        // Arc length alone is insufficient: the rigid chord can extend beyond it.
+        var projected = points.Select(p => (p - mean).Dot(tangent)).ToArray();
+        if (projected[0] > -BaseWidth / 2 || projected[^1] < BaseWidth / 2 ||
+            projected.Zip(projected.Skip(1)).Any(pair => pair.Second <= pair.First)) return null;
+        AttachmentPoint SurfaceAt(double distance)
+        {
+            var index = Array.BinarySearch(projected, distance);
+            if (index >= 0) return points[index];
+            index = ~index;
+            var t = (distance - projected[index - 1]) / (projected[index] - projected[index - 1]);
+            return points[index - 1] * (1 - t) + points[index] * t;
+        }
+        samples = Enumerable.Range(0, 65).Select(i => SurfaceAt(BaseWidth * (i / 64d - 0.5)))
+            .Concat(points.Where((p, i) => Math.Abs(projected[i]) < BaseWidth / 2))
+            .OrderBy(p => (p - mean).Dot(tangent)).ToArray();
+        var residuals = samples.Select(p => (p - mean).Dot(normal)).ToArray();
+        var shift = (residuals.Min() + residuals.Max()) / 2;
+        var center = mean + normal * shift;
+        var gap = residuals.Max(r => shift - r) + AttachmentShapeGeometry.MaximumChordError;
+        var penetration = residuals.Max(r => r - shift) + 1d / 160 + AttachmentShapeGeometry.MaximumChordError;
+        if (strictSurface && (gap > 0.005 || penetration > 0.007)) return null;
+        return new HatContactPose(center, angle, s, BaseWidth, gap, penetration, Array.AsReadOnly(samples))
+        { FittingSamples = Array.AsReadOnly(fittingSamples) };
+    }
+
+    private AttachmentPoint At(double length)
+    {
+        var index = Array.BinarySearch(lengths, length);
+        if (index >= 0) return points[index];
+        index = Math.Clamp(~index, 1, points.Length - 1);
+        var fraction = (length - lengths[index - 1]) / (lengths[index] - lengths[index - 1]);
+        return points[index - 1] * (1 - fraction) + points[index] * fraction;
+    }
+}

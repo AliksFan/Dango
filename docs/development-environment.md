@@ -2,7 +2,7 @@
 
 > 适用阶段：Phase 0 及后续 Windows 客户端任务
 >
-> 最近核验：2026-09-01
+> 最近核验：2026-09-03
 
 ## 必要环境
 
@@ -13,6 +13,8 @@
 - x64 的 .NET 10 Windows Desktop Runtime。
 
 普通命令行 WPF 创建、构建和发布不要求安装额外 .NET workload、Visual Studio、C++ 工具链或 IDE。只有后续任务给出明确缺失证据并说明影响后，才单独安装必要组件。
+
+P1-004 起，普通 .NET 构建使用仓库内固定的 `win-x64` Box2D bridge DLL，仍不要求本机 C++ 工具链。只有显式重新构建 native 依赖时才需要 Visual Studio 2022 C++ Build Tools 及其 CMake 组件；固定来源、命令和哈希见 [Box2D native 依赖](../eng/native/box2d/README.md)。应用运行时不得下载编译器或 native 文件。
 
 ## SDK 锁定策略
 
@@ -64,6 +66,14 @@ Windows 版本必须用 Caption、DisplayVersion 和 Build 交叉核验。注册
 - Windows：Windows 11 Enterprise 24H2，Build `26100.9168`，x64。
 
 这些值是一次环境证据，不是所有开发机的固定要求。执行阶段任务时仍需重新运行核验命令。
+
+## 2026-09-03 Box2D native 重建能力
+
+- Visual Studio Build Tools：2022 `17.14.10`，已安装 x64 C++ 工具。
+- MSVC：`19.44.35213`。
+- CMake：Visual Studio 内置 `3.31.6-msvc6`；不依赖 PATH 中另一个 CMake。
+- P1-004 使用这些现有工具成功从官方固定 commit 重建 `win-x64` DLL，没有安装或修改系统组件。
+- 这些工具只属于 native 维护路径；普通贡献者可直接使用仓库固定二进制完成 .NET 构建、测试和 self-contained 发布。
 
 ## 最小 WPF 构建探针
 

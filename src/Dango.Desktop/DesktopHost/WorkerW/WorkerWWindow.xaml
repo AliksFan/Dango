@@ -1,0 +1,74 @@
+<UserControl x:Class="Dango.Desktop.DesktopHost.WorkerW.WorkerWWindow"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:visuals="clr-namespace:Dango.Desktop.Rendering.Visuals"
+             Background="#FFEAF4FF"
+             Focusable="True"
+             Opacity="0">
+    <Canvas x:Name="SceneCanvas">
+        <Border x:Name="IslandVisual"
+                Canvas.Left="80"
+                Canvas.Top="190"
+                Width="360"
+                Height="100"
+                Background="#E8D7B891"
+                BorderBrush="#FF6E5A3C"
+                BorderThickness="3"
+                CornerRadius="50">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="8"
+                                  Direction="270"
+                                  Opacity="0.2"
+                                  ShadowDepth="3" />
+            </Border.Effect>
+            <TextBlock HorizontalAlignment="Center"
+                       Margin="0,18,0,0"
+                       VerticalAlignment="Top"
+                       FontSize="14"
+                       Foreground="#FF4B3D2A"
+                       Text="P1-003 静态悬浮岛" />
+        </Border>
+
+        <visuals:DeformableDangoVisual x:Name="DangoVisual"
+                                      Canvas.Left="185"
+                                      Canvas.Top="55"
+                                      Cursor="Hand"
+                                      MouseLeftButtonDown="OnDangoMouseLeftButtonDown"
+                                      MouseLeftButtonUp="OnDangoMouseLeftButtonUp"
+                                      MouseMove="OnDangoMouseMove"
+                                      LostMouseCapture="OnDangoLostMouseCapture" />
+        <visuals:DeformableDangoVisual x:Name="MiddleDangoVisual" Visibility="Collapsed"
+                                      Cursor="Hand"
+                                      MouseLeftButtonDown="OnDangoMouseLeftButtonDown"
+                                      MouseLeftButtonUp="OnDangoMouseLeftButtonUp"
+                                      MouseMove="OnDangoMouseMove"
+                                      LostMouseCapture="OnDangoLostMouseCapture" />
+        <visuals:DeformableDangoVisual x:Name="TopDangoVisual" Visibility="Collapsed"
+                                      Cursor="Hand"
+                                      MouseLeftButtonDown="OnDangoMouseLeftButtonDown"
+                                      MouseLeftButtonUp="OnDangoMouseLeftButtonUp"
+                                      MouseMove="OnDangoMouseMove"
+                                      LostMouseCapture="OnDangoLostMouseCapture" />
+
+        <Border x:Name="CushionVisual"
+                Canvas.Left="30"
+                Canvas.Top="245"
+                Width="150"
+                Height="58"
+                Background="#FFB7D8F7"
+                BorderBrush="#FF6E5A3C"
+                BorderThickness="3"
+                CornerRadius="24"
+                IsHitTestVisible="False">
+            <TextBlock HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       FontSize="13"
+                       Foreground="#FF315878"
+                       Text="占位软垫" />
+        </Border>
+
+        <visuals:DangoHatVisual x:Name="DangoHat" IsHitTestVisible="False" />
+        <visuals:DangoHatVisual x:Name="MiddleDangoHat" IsHitTestVisible="False" Visibility="Collapsed" />
+        <visuals:DangoHatVisual x:Name="TopDangoHat" IsHitTestVisible="False" Visibility="Collapsed" />
+    </Canvas>
+</UserControl>

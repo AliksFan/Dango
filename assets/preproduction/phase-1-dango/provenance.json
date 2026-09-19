@@ -1,0 +1,25 @@
+{
+  "$schema": "./provenance.schema.json",
+  "version": 1,
+  "files": [
+    {
+      "path": "drafts/direction-a-selected-v2.png",
+      "sourceType": "ai-draft",
+      "source": "Generated from the user-selected outline-free rounded direction A",
+      "license": "OpenAI generated output; project use subject to applicable OpenAI terms",
+      "tool": "Codex built-in imagegen",
+      "createdOn": "2026-09-02",
+      "promptRecord": "docs/animation/phase-1-generation-record.md",
+      "modifications": "Targeted regeneration removed feet and eye customization options; gradients remain and require correction"
+    },
+    {
+      "path": "candidate.asset.json",
+      "sourceType": "project-code-generated",
+      "source": "AP-005 authored motion manifest and layered project-owned PNG exports",
+      "license": "Dango project-owned source",
+      "tool": "motion-samples/build_ap005_source_pack.py",
+      "createdOn": "2026-09-03",
+      "modifications": "Editor-neutral runtime contract v1 candidate; ten visible actions, no Hidden clip, no shadow layer, no Box2D fields"
+    }
+  ]
+}

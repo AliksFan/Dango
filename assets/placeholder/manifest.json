@@ -1,10 +1,20 @@
 {
   "$schema": "./manifest.schema.json",
   "manifestVersion": 1,
-  "purpose": "Phase 0 workspace validation only",
+  "purpose": "Repository-created placeholder files for workspace and Phase 1 contract validation",
   "files": [
     {
       "path": "placeholder.txt",
+      "source": "Created for the Dango repository",
+      "license": "MIT"
+    },
+    {
+      "path": "phase-1.asset.json",
+      "source": "Created for the Dango repository",
+      "license": "MIT"
+    },
+    {
+      "path": "phase-1.asset.schema.json",
       "source": "Created for the Dango repository",
       "license": "MIT"
     }
