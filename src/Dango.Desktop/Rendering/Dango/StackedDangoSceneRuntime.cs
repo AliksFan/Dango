@@ -40,6 +40,18 @@ public sealed class StackedDangoSceneRuntime : IDisposable
     public string? AttachmentError => attachments?.LastError;
     public event Action? HatPresetChanged;
     internal QuietIdleSceneController QuietIdle { get; } = new();
+    internal ShortWanderController Wander { get; } = new();
+    private double? wanderScreenWidth;
+    internal void UpdateWanderScreenWidth(object owner, double width)
+    {
+        VerifyAccess();
+        if (!ReferenceEquals(quietIdleHost, owner)) return;
+        if (!double.IsFinite(width) || width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
+        if (wanderScreenWidth == width) return;
+        Wander.Cancel();
+        wanderScreenWidth = width;
+    }
+    public bool HasAutonomousAction => HasQuietIdleAction || Wander.Active;
     private object? quietIdleHost;
     private bool quietIdleHostEnabled;
     private readonly Dictionary<DangoEntityId, long> lightPresses = [];
@@ -66,6 +78,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
     {
         VerifyAccess();
         if (!IsLightInteractionTargetCurrent(target)) return 0;
+        Wander.Cancel();
         QuietIdle.Cancel(target.Entity, LastError is null ? attachments : null);
         var session = ++nextLightPress;
         lightPresses[target.Entity] = session;
@@ -81,7 +94,11 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         QuietIdle.Cancel(target.Entity, LastError is null ? attachments : null);
     }
 
-    private void CancelQuietIdle() => QuietIdle.CancelAll(LastError is null ? attachments : null);
+    private void CancelQuietIdle()
+    {
+        Wander.Cancel();
+        QuietIdle.CancelAll(LastError is null ? attachments : null);
+    }
     public bool HasQuietIdleAction => QuietIdle.HasActive;
     public string? QuietIdleError => QuietIdle.Error;
 
@@ -120,6 +137,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         if (!IsLightInteractionTargetCurrent(target) || IsDragging || HasDirectionalInput ||
             LightInteractionError is not null || attachments is null || !attachments.IsHealthy(target.Entity)) return false;
         if (lightFeedback.TryGetValue(target.Entity, out var current) && (current.Active || current.Cooldown > 1e-9)) return false;
+        Wander.Cancel();
         if (!QuietIdle.Cancel(target.Entity, attachments)) return false;
         var result = attachments.Submit(target.Entity, petting
             ? new SetEyes(EyeSelection.Both, 0.35, EyeShape.Soft, 1)
@@ -311,6 +329,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         scene?.SetPaused(true);
         attachments?.SetPaused(true);
         quietIdleHost = null;
+        wanderScreenWidth = null;
         quietIdleHostEnabled = false;
     }
 
@@ -320,6 +339,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         EnsureHealthy();
         EnsureScene(new(0, 0, 160, 120));
         if (DangoCount == MaximumDangoCount) return false;
+        Wander.Cancel();
         var slot = Enumerable.Range(0, MaximumDangoCount).First(value => !colorSlots.ContainsValue(value));
         var id = scene!.Add(slot == 0 ? 0 : slot == 1 ? -2.8 : 2.8, 0);
         colorSlots.Add(id, slot);
@@ -346,6 +366,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         var worldPoint = scene.ToWorld(hostPoint);
         var slot = Enumerable.Range(0, MaximumDangoCount).First(value => !colorSlots.ContainsValue(value));
         var id = scene.Add(worldPoint.X, worldPoint.Y - Parameters.DropHeight);
+        Wander.Cancel();
         colorSlots.Add(id, slot);
         // UI actions can run twice before the next physics tick publishes new bounds.
         pendingSpawns.Add(id, new(hostPoint.X - 80, hostPoint.Y - 60, 160, 120));
@@ -469,7 +490,9 @@ public sealed class StackedDangoSceneRuntime : IDisposable
                 layoutPending = true;
             }
             scene!.SetInput(directionalIntent);
-            var frame = scene.Step(fixedStep);
+            if (!WanderEligible()) Wander.Cancel();
+            var autonomousHorizontal = Wander.Input(fixedStep.TotalSeconds);
+            var frame = scene.Step(fixedStep, autonomousHorizontal);
             if (frame.Physics.Succeeded) pendingSpawns.Clear();
             if (layoutPending && viewport is { } view && frame.Physics.Succeeded)
             {
@@ -497,11 +520,12 @@ public sealed class StackedDangoSceneRuntime : IDisposable
             {
                 attachments.Synchronize(scene.EntityIds);
                 QuietIdle.BeforeStep(frame, fixedStep.TotalSeconds, attachments, id =>
-                    quietIdleHostEnabled && !IsDragging && !HasDirectionalInput && LightInteractionError is null &&
+                    quietIdleHostEnabled && !Wander.Active && !IsDragging && !HasDirectionalInput && LightInteractionError is null &&
                     !lightPresses.ContainsKey(id) && !lightFeedback.ContainsKey(id));
             }
             var attachmentFrames = attachments?.Advance(frame, fixedStep.TotalSeconds, scene.SelectedEntity,
-                directionalIntent.Left == directionalIntent.Right ? DangoFacingDirection.Center :
+                directionalIntent.Left == directionalIntent.Right ?
+                    (autonomousHorizontal < 0 ? DangoFacingDirection.Left : autonomousHorizontal > 0 ? DangoFacingDirection.Right : DangoFacingDirection.Center) :
                 directionalIntent.Left ? DangoFacingDirection.Left : DangoFacingDirection.Right);
             if (frame.Physics.Succeeded) AfterLightFeedbackStep(fixedStep.TotalSeconds);
             if (frame.Physics.Succeeded && attachments is not null && LightInteractionsEnabled)
@@ -520,6 +544,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
                 EntityIds = frame.Bodies.Select(body => body.EntityId).ToArray(),
                 ColorSlots = frame.Bodies.Select(body => colorSlots[body.EntityId]).ToArray(),
             };
+            if (frame.Physics.Succeeded) AdvanceWander(fixedStep.TotalSeconds);
             return LastFrame;
         }
         catch (DangoPhysicsException exception)
@@ -527,6 +552,29 @@ public sealed class StackedDangoSceneRuntime : IDisposable
             LastError = $"物理模块不可用：{exception.Kind}（{exception.NativeErrorCode}）；请重置重试或退出。";
             ClearPhysicalInput();
             return LastFrame = LastFrame is null ? CreateUnavailable(primary) : LastFrame with { ConstraintsReleased = true };
+        }
+    }
+
+    private bool WanderEligible() => LightInteractionsEnabled && quietIdleHostEnabled && scene?.Count == 1 &&
+        viewport is not null && wanderScreenWidth is not null && LayoutWarning is null && LastError is null && AttachmentError is null &&
+        QuietIdleError is null && LightInteractionError is null && !IsDragging && !HasDirectionalInput &&
+        lightPresses.Count == 0 && lightFeedback.Count == 0;
+
+    private void AdvanceWander(double seconds)
+    {
+        if (!WanderEligible() || LastFrame is null || scene?.LastFrame is not { } physical || viewport is not { } view)
+        { Wander.Cancel(); return; }
+        var bounds = WanderVisibleBounds.Get(LastFrame.Bodies[0], DangoHostFrameBinding.Bounds(LastFrame, 0), DisplayHatSize);
+        if (bounds is not { } visible || visible.Y < view.Y || visible.Bottom > view.Bottom)
+        { Wander.Cancel(); return; }
+        var body = physical.Physics.Bodies[0];
+        var wasActive = Wander.Active;
+        Wander.Advance(new(body.CoreX, body.CoreY, body.IsGrounded,
+            visible.X - view.X - 16, view.Right - visible.Right - 16, wanderScreenWidth!.Value), seconds, true, QuietIdle.HasActive);
+        if (!wasActive && Wander.Active)
+        {
+            QuietIdle.CancelAll(attachments);
+            if (QuietIdleError is not null) Wander.Cancel();
         }
     }
 

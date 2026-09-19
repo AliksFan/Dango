@@ -771,9 +771,15 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         var desktopForeground = currentTarget is not null && NativeMethods.IsExplorerDesktopForeground(currentTarget);
         ObserveQuietIdleForeground(desktopForeground);
         motionRuntime.UpdateQuietIdleHost(this, isInteractionEnabled);
+        var center = motionRuntime.LastFrame is { Bodies.Count: > 0 } currentFrame
+            ? DangoHostFrameBinding.Bounds(currentFrame, 0).Center
+            : motionController.Snapshot.Dango.VisualBounds.Center;
+        var screenPoint = PointToScreen(new System.Windows.Point(center.X, center.Y));
+        var screen = System.Windows.Forms.Screen.FromPoint(new System.Drawing.Point((int)Math.Round(screenPoint.X), (int)Math.Round(screenPoint.Y)));
+        motionRuntime.UpdateWanderScreenWidth(this, screen.WorkingArea.Width / VisualTreeHelper.GetDpi(this).DpiScaleX);
         if ((motionRuntime.IsDragging || lightInteraction.IsActive || motionRuntime.HasLightFeedback) &&
             (NativeMethods.IsEscapePressed() || currentTarget is not null && !desktopForeground) ||
-            motionRuntime.HasQuietIdleAction && desktopForeground && NativeMethods.IsEscapePressed())
+            motionRuntime.HasAutonomousAction && desktopForeground && NativeMethods.IsEscapePressed())
         {
             CancelDrag(DragCancellationReason.WindowDeactivated);
         }

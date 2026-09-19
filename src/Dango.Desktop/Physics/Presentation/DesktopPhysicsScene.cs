@@ -173,7 +173,7 @@ public sealed class DesktopPhysicsScene : IDisposable
         return new(origin.X + worldPoint.X * width / 2, origin.Y - worldPoint.Y * height / 2);
     }
 
-    public DesktopPhysicsSceneFrame Step(TimeSpan fixedStep)
+    public DesktopPhysicsSceneFrame Step(TimeSpan fixedStep, double autonomousHorizontal = 0)
     {
         VerifyAccess();
         if (paused) throw new InvalidOperationException("场景已暂停；恢复后不得补算隐藏时间。");
@@ -184,7 +184,11 @@ public sealed class DesktopPhysicsScene : IDisposable
             ClearInput();
             return LastFrame ?? throw new InvalidOperationException("故障场景必须显式重置。");
         }
-        var horizontal = intent.Left == intent.Right ? 0 : intent.Left ? -1 : 1;
+        if (!double.IsFinite(autonomousHorizontal) || Math.Abs(autonomousHorizontal) > .35)
+            throw new ArgumentOutOfRangeException(nameof(autonomousHorizontal));
+        var horizontal = intent.Left == intent.Right ? 0d : intent.Left ? -1d : 1d;
+        if (horizontal == 0 && !intent.Jump && !intent.Squash && !dragActive && Count == 1)
+            horizontal = autonomousHorizontal;
         if (horizontal != 0)
             facing[SelectedEntity] = horizontal < 0 ? DangoFacingDirection.Left : DangoFacingDirection.Right;
         var jump = intent.Jump && !jumpWasHeld;

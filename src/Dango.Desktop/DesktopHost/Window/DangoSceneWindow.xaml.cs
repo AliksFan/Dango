@@ -371,6 +371,8 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
 
         motionRuntime.SetDirectionalControl(currentIntent);
         motionRuntime.UpdateQuietIdleHost(this, isInteractionEnabled);
+        var screen = Forms.Screen.FromHandle(new System.Windows.Interop.WindowInteropHelper(this).Handle);
+        motionRuntime.UpdateWanderScreenWidth(this, screen.WorkingArea.Width / System.Windows.Media.VisualTreeHelper.GetDpi(this).DpiScaleX);
         if (lightInteraction.IsActive)
             lightInteraction.RefreshButtons(NowMilliseconds(), NativeMethods.IsInputKeyPressed(0x10), leftDown: true);
         ApplyAuthoritativePosition();
