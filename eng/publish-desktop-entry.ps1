@@ -36,13 +36,15 @@ function Assert-Sha256([string]$Path, [string]$ExpectedHash, [string]$Descriptio
 function Get-PackageFileRecord([string]$Root, [string]$Path) {
     $item = Get-Item -LiteralPath $Path -ErrorAction Stop
     return [ordered]@{
-        path = [IO.Path]::GetRelativePath($Root, $item.FullName).Replace('\', '/')
+        path = $item.FullName.Substring($Root.TrimEnd([IO.Path]::DirectorySeparatorChar).Length + 1).Replace('\', '/')
         size = $item.Length
         sha256 = Get-Sha256 $item.FullName
     }
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+Import-Module (Join-Path $PSScriptRoot 'local-install\Dango.LocalInstall.psm1') -Force
+$settingsSourceHashes = Get-DangoSettingsSourceContract -RepositoryRoot $repoRoot
 $projectPath = Join-Path $repoRoot 'src\Dango.Desktop\Dango.Desktop.csproj'
 $oldLibraryPath = Join-Path $repoRoot 'src\Dango.Desktop\runtimes\win-x64\native\dango_box2d.dll'
 $licensePath = Join-Path $repoRoot 'eng\native\box2d\LICENSE.box2d.txt'
@@ -92,6 +94,7 @@ try {
     Assert-Sha256 $packageDependencyManifestPath $dependencyManifestHash 'Packaged Box2D dependency manifest'
     Assert-Sha256 $oldLibraryPath $acceptedBox2DHash 'Protected Box2D source library after publish'
     Assert-Sha256 $moduleFullPath $acceptedModuleHash 'Accepted physics module input after publish'
+    $null = Get-DangoSettingsSourceContract -RepositoryRoot $repoRoot
 
     $manifestPath = Join-Path $packageRoot 'package-manifest.json'
     $records = @(Get-ChildItem -LiteralPath $packageRoot -File -Recurse |
@@ -99,12 +102,14 @@ try {
         Sort-Object FullName |
         ForEach-Object { Get-PackageFileRecord $packageRoot $_.FullName })
     $packageManifest = [ordered]@{
-        packageFormat = 1
+        packageFormat = 2
         packageType = 'internal-candidate'
         sourceCommit = $sourceCommit
         sourceDirty = $sourceDirty
         runtime = 'win-x64'
         selfContained = $true
+        settingsContract = 'dango-desktop-settings-v4'
+        settingsSourceHashes = $settingsSourceHashes
         files = $records
     }
     [IO.File]::WriteAllText($manifestPath, (($packageManifest | ConvertTo-Json -Depth 4) + "`n"), [Text.UTF8Encoding]::new($false))

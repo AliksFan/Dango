@@ -14,6 +14,8 @@
 
 脚本不会重建 native、启动程序或覆盖旧输出。输出为 `artifacts/desktop-entry/<RunName>/package/`，普通启动使用其中的 `Dango.Desktop.exe`；设置位于当前 Windows 用户的本地应用数据目录，人工检查优先使用隔离测试用户。旧 DLL 导出失败和全仓格式基线问题仍保留，该包仅为内部候选。
 
+固定本地安装、版本切换和回退正在实施；Windows PowerShell 5.1 与 pwsh 各 22/22 自动测试通过，应用设置/单实例 21/21 通过，最终验证记录待补。方案见[本地启动、更新与回退设计](docs/planning/2026-09-20-local-launch-update-design.md)、[实施计划](docs/planning/2026-09-20-local-launch-update-plan.md)及[本地桌面安装说明](docs/local-desktop-install.md)。候选不代表已发布版本。
+
 项目希望让每位用户拥有一只代表自己的“团子”。团子平时生活在 Windows 桌面上；当好友进入同一房间后，多只团子会在一个持续存在的共享空间中相遇、陪伴并自动互动。
 
 Phase 0 工作区与技术基线已通过自动门禁并由用户验收。Phase 1 正在实施：P1-001 场景与资产契约、P1-002A 控制中心、P1-003 WorkerW 壁纸层、P2D-006 单团子动态动作、P2D-007 双体接触以及 P1-006 `Wallpaper/Window` 正式显示模式均已完成对应验收。后续统一物理模块与眼帽隔离预览的最新状态见下文；旧 P2D-007A 技术证明的待验收记录按原路线保留。多人功能尚未实现。阶段证据见 [本地验证入口](docs/verification/README.md)。
@@ -59,6 +61,7 @@ Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](d
 - [服务端设计基线 v0.1](docs/server-design-v0.1.md)：200 人在线容量、实时同步、部署与扩容。
 - [开发工作流 v0.1](docs/development-workflow-v0.1.md)：任务、分支、Worktree、提交和验收流程。
 - [分阶段开发计划 v0.1](docs/development-plan-v0.1.md)：Phase 0–5 的范围、交付物与阶段门禁。
+- [本地桌面安装说明](docs/local-desktop-install.md)：固定目录安装、启动、更新、状态检查与回退的日常操作。
 - [可复用团子物理模块](docs/phase-1-physics-module.md)：项目内 native/.NET 模块、固定配置、API、构建、显示适配与当前验收边界。
 - [Phase 1 桌面生命感原型详细设计](docs/phase-1-desktop-life-prototype-design.md)：已批准的桌面宿主对比、场景与资产边界、性能门槛和分层验收。
 - [Phase 1 实施计划](docs/phase-1-implementation-plan.md)：已批准的 P0-000 环境准备、P0-001 工作区脚手架与 P1 系列顺序任务；P1-002A 在 P1-003 前实现控制中心和图形化验收入口。

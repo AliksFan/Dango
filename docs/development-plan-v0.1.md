@@ -1,5 +1,7 @@
 # Dango 分阶段开发计划 v0.1
 
+> 2026-09-20：已批准固定本地启动、更新与回退的设计和实施计划，当前在 `codex/local-launch-update` 实施中。范围是内部桌面候选的固定安装目录、版本保留、桌面启动、显式激活与回退；Windows PowerShell 5.1 与 pwsh 各 22/22 自动测试通过，应用设置/单实例 21/21 通过，最终验证记录待补，不宣布发布或 Phase 1 验收。保留既有人工验收成果；旧 DLL 缺少导出是已知失败，第二种 DPI 与长期稳定性仍未验证。见[设计](planning/2026-09-20-local-launch-update-design.md)、[计划](planning/2026-09-20-local-launch-update-plan.md)和[使用说明](local-desktop-install.md)。
+
 > 2026-09-20：用户授权将已验收的基础陪伴版本合入本地 main。正式桌面分支先快进纳入 Phase 1 分支，再普通合并至 main；保留原 main 的 Phase 0 历史。本次不宣布整个 Phase 1 的所有专项门禁完成；已记录未验证项及旧 DLL 失败继续保留，未推送或部署。见[main 合并记录](verification/2026-09-20-main-integration.md)。
 
 > 2026-09-20：用户确认本地整合，入口及四批已验收陪伴功能已快进至 `codex/desktop-entry-integration`（代码基线 `d1ad48b`）；代码树与来源一致，无冲突。见[整合记录](verification/2026-09-20-desktop-companion-integration.md)。未合并 main、未推送；专项未验证项与旧门禁问题保留。
