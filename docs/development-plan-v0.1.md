@@ -1,5 +1,7 @@
 # Dango 分阶段开发计划 v0.1
 
+> 2026-09-20 后续方向备忘：岛的设计暂缓；未来区分最多两人的桌宠模式与不接触真实桌面的多人房间模式。桌宠模式考虑在双方画面稳定后选取线条作为活动平台，允许两端位置存在有限差异。仅作[简单记录](planning/2026-09-20-two-mode-direction-note.md)，具体设计以后开展；当前继续固定启动、更新与回退批次的收尾。
+
 > 2026-09-20：已批准固定本地启动、更新与回退的设计和实施计划，已在 `codex/local-launch-update` 实现，固定入口冷启动与重复打开已验证。范围是内部桌面候选的固定安装目录、版本保留、桌面启动、显式激活与回退；脚本与入口回归、设置/单实例测试及真实包切换通过，详见[本批验证记录](verification/2026-09-20-local-launch-update.md)，不宣布发布或 Phase 1 验收。保留既有人工验收成果；旧 DLL 缺少导出是已知失败，第二种 DPI 与长期稳定性仍未验证。见[设计](planning/2026-09-20-local-launch-update-design.md)、[计划](planning/2026-09-20-local-launch-update-plan.md)和[使用说明](local-desktop-install.md)。
 
 > 2026-09-20：用户授权将已验收的基础陪伴版本合入本地 main。正式桌面分支先快进纳入 Phase 1 分支，再普通合并至 main；保留原 main 的 Phase 0 历史。本次不宣布整个 Phase 1 的所有专项门禁完成；已记录未验证项及旧 DLL 失败继续保留，未推送或部署。见[main 合并记录](verification/2026-09-20-main-integration.md)。
