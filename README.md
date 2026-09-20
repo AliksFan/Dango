@@ -14,7 +14,7 @@
 
 脚本不会重建 native、启动程序或覆盖旧输出。输出为 `artifacts/desktop-entry/<RunName>/package/`，普通启动使用其中的 `Dango.Desktop.exe`；设置位于当前 Windows 用户的本地应用数据目录，人工检查优先使用隔离测试用户。旧 DLL 导出失败和全仓格式基线问题仍保留，该包仅为内部候选。
 
-固定本地安装、版本切换和回退正在实施；Windows PowerShell 5.1 与 pwsh 各 22/22 自动测试通过，应用设置/单实例 21/21 通过，最终验证记录待补。方案见[本地启动、更新与回退设计](docs/planning/2026-09-20-local-launch-update-design.md)、[实施计划](docs/planning/2026-09-20-local-launch-update-plan.md)及[本地桌面安装说明](docs/local-desktop-install.md)。候选不代表已发布版本。
+固定本地安装、版本切换和回退已实现，桌面快捷方式已通过真实冷启动及重复打开检查；脚本与入口回归、设置/单实例测试及真实包切换通过，详见[本批验证记录](docs/verification/2026-09-20-local-launch-update.md)。方案见[本地启动、更新与回退设计](docs/planning/2026-09-20-local-launch-update-design.md)、[实施计划](docs/planning/2026-09-20-local-launch-update-plan.md)及[本地桌面安装说明](docs/local-desktop-install.md)。候选不代表已发布版本。
 
 项目希望让每位用户拥有一只代表自己的“团子”。团子平时生活在 Windows 桌面上；当好友进入同一房间后，多只团子会在一个持续存在的共享空间中相遇、陪伴并自动互动。
 

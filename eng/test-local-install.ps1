@@ -118,6 +118,50 @@ Invoke-Case 'stage-only-initializes-null-state-without-activation' {
     Assert-True ($null -eq $state.current -and $null -eq $state.previous) 'StageOnly activated a version.'
     Assert-True (Test-Path -LiteralPath (Join-Path $installRoot "versions\\$($staged.VersionId)\\Dango.Desktop.exe")) 'Staged files are absent.'
 }
+Invoke-Case 'installed-management-status-works-without-install-root-parameter' {
+    $root = Join-Path $EvidenceRoot 'manage-entry-install'
+    $null = Install-DangoPackage -PackagePath $packageA -InstallRoot $root -StageOnly
+    $manager = Join-Path $root 'tools\\Manage-Dango.ps1'
+    $output = @(& powershell -NoProfile -NonInteractive -File $manager -Action Status 2>&1) | Out-String
+    Assert-Equal 0 $LASTEXITCODE 'Installed management Status failed without InstallRoot.'
+    Assert-True (-not [string]::IsNullOrWhiteSpace($output)) 'Installed management Status returned no readable state output.'
+}
+Invoke-Case 'installed-management-start-rejects-ordinary-mutex-without-running-fixture' {
+    $root = Join-Path $EvidenceRoot 'manage-entry-install'
+    $a = Test-DangoPackage -PackagePath $packageA; Set-DangoActiveVersion -InstallRoot $root -VersionId $a.VersionId
+    $manager = Join-Path $root 'tools\\Manage-Dango.ps1'; $stateBefore = Read-StateBytes $root
+    $processesBefore = @(Get-Process -Name 'Dango.Desktop' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
+    $mutex = New-Object Threading.Mutex($false, 'Local\Dango.Phase1.App.Mutex')
+    $savedPreference = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try { $output = @(& powershell -NoProfile -NonInteractive -File $manager -Action Start 2>&1) | Out-String }
+    finally { $ErrorActionPreference = $savedPreference; $mutex.Dispose() }
+    Assert-True ($LASTEXITCODE -ne 0) 'Installed management Start accepted an ordinary mutex without a matching process.'
+    Assert-True (-not [string]::IsNullOrWhiteSpace($output)) 'Installed management Start supplied no rejection output.'
+    Assert-BytesEqual $stateBefore (Read-StateBytes $root) 'Installed management Start changed state while rejecting the mutex owner.'
+    Assert-Equal ($processesBefore -join ',') (@(Get-Process -Name 'Dango.Desktop' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) -join ',') 'Installed management Start launched the fixture executable.'
+}
+Invoke-Case 'shell-style-management-entry-loads-utility-modules-and-rejects-real-other-instance' {
+    $root = Join-Path $EvidenceRoot 'manage-entry-install'
+    $manager = Join-Path $root 'tools\\Manage-Dango.ps1'
+    $modulePathBefore = $env:PSModulePath; $emptyModulePath = Join-Path $EvidenceRoot 'empty-psmodulepath'; New-Item -ItemType Directory -Path $emptyModulePath -Force | Out-Null
+    $processesBefore = @(Get-Process -Name 'Dango.Desktop' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
+    $env:PSModulePath = $emptyModulePath
+    $mutex = New-Object Threading.Mutex($false, 'Local\Dango.Phase1.App.Mutex')
+    try {
+        $statusOut = Join-Path $EvidenceRoot 'shell-status.stdout.txt'; $statusErr = Join-Path $EvidenceRoot 'shell-status.stderr.txt'
+        $status = Start-Process -FilePath powershell -ArgumentList @('-NoProfile', '-NonInteractive', '-File', $manager, '-Action', 'Status') -RedirectStandardOutput $statusOut -RedirectStandardError $statusErr -Wait -PassThru
+        Assert-Equal 0 $status.ExitCode 'Shell-style Status failed with an empty PSModulePath.'
+        $statusJson = [IO.File]::ReadAllText($statusOut) | ConvertFrom-Json
+        Assert-True ($statusJson.PSObject.Properties.Name -contains 'current') 'Shell-style Status did not return JSON state.'
+        $startOut = Join-Path $EvidenceRoot 'shell-start.stdout.txt'; $startErr = Join-Path $EvidenceRoot 'shell-start.stderr.txt'
+        $start = Start-Process -FilePath powershell -ArgumentList @('-NoProfile', '-NonInteractive', '-File', $manager, '-Action', 'Start') -RedirectStandardOutput $startOut -RedirectStandardError $startErr -Wait -PassThru
+        $startText = [IO.File]::ReadAllText($startOut) + [IO.File]::ReadAllText($startErr)
+        Assert-Equal 1 $start.ExitCode 'Shell-style Start did not reject the other Dango instance.'
+        Assert-True ($startText -match [regex]::Escape('Another Dango version is running')) 'Shell-style Start failed for a reason other than the existing Dango instance.'
+    }
+    finally { $mutex.Dispose(); $env:PSModulePath = $modulePathBefore }
+    Assert-Equal ($processesBefore -join ',') (@(Get-Process -Name 'Dango.Desktop' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id) -join ',') 'Shell-style management entry changed the Dango process list.'
+}
 Invoke-Case 'install-a-then-activate' {
     $a = Install-DangoPackage -PackagePath $packageA -InstallRoot $installRoot
     Set-DangoActiveVersion -InstallRoot $installRoot -VersionId $a.VersionId

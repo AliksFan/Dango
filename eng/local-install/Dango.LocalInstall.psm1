@@ -1,6 +1,10 @@
 # Windows PowerShell 5.1 compatible; no SDK or repository needed after installation.
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
+# Shell shortcuts can inherit a PowerShell 7 module path while running Windows PowerShell.
+# Load the host's own manifests, including Get-FileHash (a script function in PS 5.1).
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop
+Import-Module (Join-Path $PSHOME 'Modules/CimCmdlets/CimCmdlets.psd1') -ErrorAction Stop
 $script:SettingsContract = 'dango-desktop-settings-v4'
 $script:SettingsSourceHashes = @{
     'AppShell/ControlCenter/ControlCenterWindowSettingsStore.cs' = '4F7A837A22888A076A25A0491670872902769A0A14D9BF6C09CAE44DAB260C84'

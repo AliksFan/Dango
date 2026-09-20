@@ -1,20 +1,22 @@
 ﻿[CmdletBinding()]
 param(
     [ValidateSet('Status', 'Start', 'Activate', 'Rollback')][string]$Action = 'Status',
-    [string]$InstallRoot = (Split-Path -Parent $PSScriptRoot),
+    [string]$InstallRoot,
     [string]$VersionId,
     [switch]$ShowErrors
 )
 $ErrorActionPreference = 'Stop'
 try {
+    # Windows PowerShell 5.1 does not reliably populate PSScriptRoot in parameter defaults.
+    if ([string]::IsNullOrWhiteSpace($InstallRoot)) { $InstallRoot = Split-Path -Parent $PSScriptRoot }
     Import-Module (Join-Path $PSScriptRoot 'Dango.LocalInstall.psm1') -Force
     switch ($Action) {
-        'Status' { Get-DangoInstallState -InstallRoot $InstallRoot }
-        'Start' { Start-DangoInstalled -InstallRoot $InstallRoot }
-        'Activate' { Set-DangoActiveVersion -InstallRoot $InstallRoot -VersionId $VersionId }
+        'Status' { Get-DangoInstallState -InstallRoot $InstallRoot | ConvertTo-Json }
+        'Start' { Start-DangoInstalled -InstallRoot $InstallRoot | ConvertTo-Json }
+        'Activate' { Set-DangoActiveVersion -InstallRoot $InstallRoot -VersionId $VersionId | ConvertTo-Json }
         'Rollback' {
             $state = Undo-DangoUpdate -InstallRoot $InstallRoot
-            $state
+            $state | ConvertTo-Json
             if ($ShowErrors) {
                 Add-Type -AssemblyName PresentationFramework
                 $null = [Windows.MessageBox]::Show('已切换到上一版。双击桌面 Dango 启动，已保存的设置会保留。', 'Dango')
