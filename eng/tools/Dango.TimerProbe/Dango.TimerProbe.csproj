@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- Match the accepted package and current PerformanceProbe runtime. -->
+    <RuntimeFrameworkVersion>10.0.11</RuntimeFrameworkVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Dango.Desktop"><HintPath>$(DesktopPackagePath)/Dango.Desktop.dll</HintPath></Reference>
+    <Reference Include="Dango.Core"><HintPath>$(DesktopPackagePath)/Dango.Core.dll</HintPath></Reference>
+    <Reference Include="Dango.Physics"><HintPath>$(DesktopPackagePath)/Dango.Physics.dll</HintPath></Reference>
+    <Content Include="$(DesktopPackagePath)/dango_physics_module.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(DesktopPackagePath)/dango_box2d.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="RequirePublishedPackage" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(DesktopPackagePath)/package-manifest.json')" Text="DesktopPackagePath must name a published Dango package." />
+  </Target>
+</Project>
