@@ -25,16 +25,18 @@ $timerProcess = Start-Process -FilePath $timerProbe -ArgumentList ('"' + $timerO
 
 正常运行约四分钟加构造/清理时间。每段按单调墙钟计时；延迟只会延长。没有缩短时长的参数。运行完成退出后再读取产物；`complete.json` 仅表示工具四段运行并正常清理，**不代表达到 60 FPS、CPU 门槛或长期稳定性通过**。
 
-## 原处理器包装边界
+## 调度入口与原处理器边界
 
-工具使用 `MethodInfo.CreateDelegate<EventHandler>(workerWWindow)` 绑定原 `OnMotionTimerTick`，从此测试进程的 timer 移除同一方法/目标的原订阅，再添加包装器。包装器保持原 `sender` 与 `EventArgs`，每次只调用原处理器一次。处理器入口、出口各取 `Stopwatch` 时间戳，随后向预分配列表记录结构体。原处理器异常仍进入本工具的异常处理；不会吞掉并继续计作成功帧。退出时恢复原订阅并 Dispose 自己的宿主。
+旧包（schema 1）使用 `MethodInfo.CreateDelegate<EventHandler>(workerWWindow)` 绑定原 `OnMotionTimerTick`，仅在测试进程中移除原订阅并添加调用它一次的包装器。原 `sender` / `EventArgs` 保留；入口出口取 `Stopwatch` 时间戳。退出恢复订阅并释放自己的宿主。
 
-产品源码、程序集、物理 DLL、计时器间隔/优先级、物理算法和渲染后端均不变。包装器增加的两个时间戳、调用间接层以及回调后的缓冲写入会产生很小但非零的观测开销；后两项主要包含在“出口到下一入口”中。合成空段也包括观测开销。工具不逐帧写盘、不订阅 `CompositionTarget.Rendering`、不注入输入、不采集窗口标题或内容。
+候选包（schema 2）反射 `motionScheduler`，只订阅其 `CallbackCompleted` 事件并读取 `Snapshot`。工具不替换产品处理器，也不订阅 WPF 静态 Rendering 事件。处理器耗时采用产品记录的 `LastStartedTimestamp` / `LastFinishedTimestamp`；每次原始回调记录成功步、实际帧应用、重复回调、刷新、故障和丢弃时间的计数差。只有 `AppliedFrames` 增加 1 的回调进入应用帧间隔；多个物理步不会冒充多帧，故障回调不会冒充成功。未知或缺失候选契约直接失败。
+
+产品源码、程序集、物理 DLL、计时参数与渲染后端均不被工具修改。旧包装器的间接调用与所有版本的反射、快照转换、列表写入产生观测开销；完成通知后的开销主要进入出口到下一入口。工具不逐帧写盘、不注入输入、不采集窗口标题或内容。新旧测量分别保存，不改写旧记录。
 
 ## 产物与解释
 
-- `environment.json`：操作系统、显示配置、WPF render tier、运行时、DPI、产品/物理/探针/WPF 程序集 SHA-256，及诊断限制。
-- `timings.json`：每段实际时长、回调频率、均值/P50/P95/最大值，以及全部原始入口/出口 timestamp（相对进程 origin，单位为 `Stopwatch.Frequency` ticks）。原始数据全程在内存缓冲，结束后统一写入。
+- `environment.json`：操作系统、显示配置、WPF render tier、运行时、DPI、产品/物理/探针/WPF 程序集 SHA-256，及诊断限制；顶层 `schema` / `productEntry` 明确产品入口。
+- `timings.json`：每段实际时长、回调频率、均值/P50/P95/最大值，以及全部原始入口/出口 timestamp（相对进程 origin，单位为 `Stopwatch.Frequency` ticks）。候选另外保存每回调 counters、阶段计数和实际应用帧完成间隔；成功物理步、普通帧、取消刷新分别记账。原始数据全程在内存缓冲，结束后统一写入。
 - `disposal.json`：本宿主 runtime/scene/tray、timer、剩余窗口、附件内部条目数量与路由器 disposed 状态。
 - `complete.json`：四段完成且清理未抛异常；进程退出码仍须由调用方核实。
 - `failure.json` 或 `watchdog-failure.json`：错误类型或 15 秒无回调心跳。看门狗只退出本工具；硬退出时没有完整缓冲数据，不能判通过。系统睡眠/全局调度停顿造成的缺口不能直接归因于产品崩溃。

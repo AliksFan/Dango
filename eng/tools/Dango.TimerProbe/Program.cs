@@ -10,6 +10,7 @@ using System.Windows.Threading;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.DesktopHost;
 using Dango.Desktop.Rendering.Visuals;
+using Dango.ProbeDiagnostics;
 
 namespace Dango.TimerProbe;
 
@@ -46,7 +47,7 @@ internal static class Program
         path.StartsWith(root.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
 }
 
-// The product timer's original handler is called exactly once by the wrapper.
+// Legacy timers are wrapped once; candidate schedulers expose read-only snapshots.
 // No product input, physics step, interval, priority, rendering or binary is changed.
 internal sealed class TimerProbe(System.Windows.Application app, string output)
 {
@@ -63,6 +64,8 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
     private StackedDangoSceneRuntime? runtime;
     private DesktopHostCoordinator? coordinator;
     private DispatcherTimer? productTimer;
+    private SchedulerObserver? productScheduler;
+    private int schema = 1;
     private EventHandler? originalHandler;
     private System.Threading.Timer? watchdog;
     private long heartbeat;
@@ -98,7 +101,7 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
                 "Empty and busy controls have a WPF dispatcher but no visual host. They are scheduler controls, not product performance baselines.",
                 "All callback timestamps are buffered; there is no per-frame file IO, CPU sampling, CompositionTarget.Rendering subscription, or input injection.",
                 "The Product host uses fictional settings and the published binaries, bypassing the usual single-instance entrypoint.",
-                "The original OnMotionTimerTick event delegate is replaced only in this process by a wrapper calling it once with its original sender and EventArgs.",
+                "Legacy OnMotionTimerTick is wrapped once. Candidates are observed through CallbackCompleted and their original entry/exit timestamps, without replacing handlers.",
                 "Handler elapsed time includes preemption and synchronous native calls; it is not handler CPU time or complete rendering cost.",
                 "Exit-to-next-entry includes probe bookkeeping, WPF rearming/deferred work, timer waiting and dispatcher queueing; it is not a pure scheduler-delay measurement.",
                 "Callback frequency is not GPU presentation FPS. Synthetic busy work is diagnostic and does not validate product capacity or stability.",
@@ -144,10 +147,18 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
         }
     }
 
-    private void Record(long entry, long exit, bool handlerCompleted)
+    private void OnScheduledProduct(SchedulerSnapshot snapshot, SchedulerSnapshot delta)
+    {
+        if (!productTimingActive) return;
+        if (delta.Counters["faults"] != 0) Fail("ProductCallbackFault");
+        Record(snapshot.StartedTimestamp, snapshot.FinishedTimestamp, delta.Counters["faults"] == 0,
+            delta.Counters, snapshot.RemainderTicks);
+    }
+
+    private void Record(long entry, long exit, bool handlerCompleted, Dictionary<string, long>? counters = null, long? remainderTicks = null)
     {
         Interlocked.Exchange(ref heartbeat, exit);
-        current!.Ticks.Add(new(entry, exit, handlerCompleted));
+        current!.Ticks.Add(new(entry, exit, handlerCompleted, counters, remainderTicks));
         if (!handlerCompleted || Stopwatch.GetElapsedTime(current.Started, exit).TotalSeconds < PhaseSeconds) return;
         current.Completed = exit;
         current.CompletedUtc = DateTimeOffset.UtcNow;
@@ -160,7 +171,8 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
         if (current.Name == "product-measured")
         {
             VerifyProduct();
-            productTimer!.Stop();
+            productTimingActive = false;
+            productTimer?.Stop();
             finished = true;
             // Verify explicit host cleanup before Application.Shutdown can close
             // windows itself and hide a missed release.
@@ -196,15 +208,22 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
         coordinator = Field<DesktopHostCoordinator>(host, "desktopHost");
         runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
         var window = Field<object>(host, "workerWWindow");
-        productTimer = Field<DispatcherTimer>(window, "motionTimer");
-        if (productTimer.Interval != TimerInterval) throw new InvalidOperationException("Unexpected product timer interval.");
-        var method = window.GetType().GetMethod("OnMotionTimerTick", Flags)!;
-        originalHandler = method.CreateDelegate<EventHandler>(window);
-        // Delegate equality uses the same method and target as the constructor's
-        // subscription. Remove the original once, then wrap that exact delegate.
-        productTimer.Tick -= originalHandler;
-        productTimer.Tick += OnProductTick;
-        productWrapped = true;
+        if (SchedulerObserver.IsCandidate(window))
+        {
+            productScheduler = new(window, OnScheduledProduct);
+            schema = 2;
+        }
+        else
+        {
+            productTimer = Field<DispatcherTimer>(window, "motionTimer");
+            if (productTimer.Interval != TimerInterval) throw new InvalidOperationException("Unexpected product timer interval.");
+            var method = window.GetType().GetMethod("OnMotionTimerTick", Flags)!;
+            originalHandler = method.CreateDelegate<EventHandler>(window);
+            // Remove only the constructor's exact method/target subscription.
+            productTimer.Tick -= originalHandler;
+            productTimer.Tick += OnProductTick;
+            productWrapped = true;
+        }
         type.GetMethod("Start")!.Invoke(host, null);
         productDpi = VisualTreeHelper.GetDpi((Visual)window).PixelsPerInchX;
         VerifyProduct();
@@ -217,7 +236,7 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
     private void VerifyProduct()
     {
         if (runtime!.InitializationState != SceneInitializationState.Ready || !runtime.IsRunning ||
-            !coordinator!.GetSnapshot().IsVisible || productTimer?.IsEnabled != true || runtime.DangoCount != 1)
+            !coordinator!.GetSnapshot().IsVisible || (productScheduler?.IsRunning ?? productTimer?.IsEnabled) != true || runtime.DangoCount != 1)
             throw new InvalidOperationException("Isolated product host did not remain ready, visible and running with one Dango.");
         if (runtime.LastError is not null || runtime.AttachmentError is not null || runtime.QuietIdleError is not null ||
             runtime.LightInteractionError is not null || coordinator.GetSnapshot().LastError is not null)
@@ -251,10 +270,10 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
         catch (Exception error) { Fail("Dispose:" + error.GetType().Name); }
         try
         {
-            WriteJson("environment.json", new { metadata = environment, productDpi });
+            WriteJson("environment.json", new { schema, productEntry = schema == 2 ? "Rendering/CallbackCompleted" : "DispatcherTimer/wrapper", metadata = environment, productDpi });
             WriteJson("timings.json", new
             {
-                schema = 1,
+                schema,
                 startedUtc,
                 completedUtc = DateTimeOffset.UtcNow,
                 complete = finished && errors.Count == 0,
@@ -286,6 +305,7 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
                 productWrapped = false;
             }
         }
+        productScheduler?.Dispose();
         if (host is IDisposable ownedHost) ownedHost.Dispose();
         var runtimeDisposed = runtime is null || Field<bool>(runtime, "disposed");
         var runtimeRunning = runtime?.IsRunning ?? false;
@@ -297,7 +317,9 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
         var windowsRemaining = app.Windows.Count;
         disposal = new
         {
+            schema,
             productHostCreated = host is not null,
+            productSchedulerStopped = productScheduler?.IsRunning != true,
             runtimeDisposed,
             runtimeRunning,
             sceneReleased,
@@ -310,7 +332,7 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
         };
         hostDisposed = true;
         if (!runtimeDisposed || runtimeRunning || !sceneReleased || !trayReleased || controlTimer.IsEnabled ||
-            productTimer?.IsEnabled == true || windowsRemaining != 0 || attachmentEntriesRemaining != 0 || !attachmentRouterDisposed)
+            productTimer?.IsEnabled == true || productScheduler?.IsRunning == true || windowsRemaining != 0 || attachmentEntriesRemaining != 0 || !attachmentRouterDisposed)
             Fail("OwnedHostResourcesNotReleased");
     }
 
@@ -319,9 +341,17 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
         var handler = phase.Ticks.Select(t => Milliseconds(t.Exit - t.Entry)).ToArray();
         var periods = phase.Ticks.Zip(phase.Ticks.Skip(1), (previous, next) => Milliseconds(next.Entry - previous.Entry)).ToArray();
         var waits = phase.Ticks.Zip(phase.Ticks.Skip(1), (previous, next) => Milliseconds(next.Entry - previous.Exit)).ToArray();
+        var frameTicks = phase.Ticks.Where(t => t.Counters?.GetValueOrDefault("appliedFrames") == 1).ToArray();
+        var frameIntervals = frameTicks.Zip(frameTicks.Skip(1), (previous, next) => Milliseconds(next.Exit - previous.Exit)).ToArray();
         return new
         {
             name = phase.Name,
+            diagnosticSchema = phase.Synthetic ? 1 : schema,
+            counters = schema == 2 && !phase.Synthetic ? SchedulerSnapshot.Names.ToDictionary(
+                name => char.ToLowerInvariant(name[0]) + name[1..],
+                name => phase.Ticks.Sum(t => t.Counters![char.ToLowerInvariant(name[0]) + name[1..]])) : null,
+            appliedFrameCompletionIntervalsMs = Summary(frameIntervals),
+            applicationUpdateFps = frameIntervals.Length > 0 ? frameIntervals.Length * 1000 / frameIntervals.Sum() : (double?)null,
             synthetic = phase.Synthetic,
             phase.StartedUtc,
             phase.CompletedUtc,
@@ -338,6 +368,8 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
                 entryTimestamp = tick.Entry - origin,
                 exitTimestamp = tick.Exit - origin,
                 tick.HandlerCompleted,
+                counters = tick.Counters,
+                remainderTicks = tick.RemainderTicks,
                 entryElapsedSeconds = (double)(tick.Entry - origin) / Stopwatch.Frequency,
                 handlerElapsedMs = handler[index],
                 entryToEntryMs = index > 0 ? periods[index - 1] : (double?)null,
@@ -356,7 +388,8 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
     private static double Milliseconds(long ticks) => ticks * 1000d / Stopwatch.Frequency;
     private void WriteJson(string name, object? value) => File.WriteAllText(Path.Combine(output, name), JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true }));
     private static T Field<T>(object target, string name) => (T)target.GetType().GetField(name, Flags)!.GetValue(target)!;
-    private readonly record struct Tick(long Entry, long Exit, bool HandlerCompleted);
+    private readonly record struct Tick(long Entry, long Exit, bool HandlerCompleted,
+        Dictionary<string, long>? Counters, long? RemainderTicks);
     private sealed class Phase(string name, bool synthetic, long started, DateTimeOffset startedUtc)
     {
         internal string Name { get; } = name;

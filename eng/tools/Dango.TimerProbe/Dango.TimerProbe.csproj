@@ -8,6 +8,7 @@
     <RuntimeFrameworkVersion>10.0.11</RuntimeFrameworkVersion>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../Dango.PerformanceProbe/SchedulerObserver.cs" Link="SchedulerObserver.cs" />
     <Reference Include="Dango.Desktop"><HintPath>$(DesktopPackagePath)/Dango.Desktop.dll</HintPath></Reference>
     <Reference Include="Dango.Core"><HintPath>$(DesktopPackagePath)/Dango.Core.dll</HintPath></Reference>
     <Reference Include="Dango.Physics"><HintPath>$(DesktopPackagePath)/Dango.Physics.dll</HintPath></Reference>
