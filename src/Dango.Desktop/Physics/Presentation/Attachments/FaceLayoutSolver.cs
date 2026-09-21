@@ -29,8 +29,13 @@ public static class FaceLayoutSolver
             }
             return new(Eye(left, -1), Eye(right, 1), gaze, spacing, size, "Normal");
         }
-        bool Safe(FaceLayout f) => IsSafe(shape, f.Left) && IsSafe(shape, f.Right) &&
-            EyeOutline.Create(f.Right).Min(p => p.X) - EyeOutline.Create(f.Left).Max(p => p.X) >= 2d / 160;
+        bool Safe(FaceLayout f)
+        {
+            var leftOutline = EyeOutline.Create(f.Left);
+            if (!IsSafe(shape, leftOutline)) return false;
+            var rightOutline = EyeOutline.Create(f.Right);
+            return IsSafe(shape, rightOutline) && rightOutline.Min(p => p.X) - leftOutline.Max(p => p.X) >= 2d / 160;
+        }
         FaceLayout? Try(double gaze, double spacing, double size)
         {
             foreach (var center in centers)
@@ -81,9 +86,12 @@ public static class FaceLayoutSolver
     }
 
     public static bool IsSafe(AttachmentShapeGeometry shape, EyePresentationFrame eye)
+        => IsSafe(shape, EyeOutline.Create(eye));
+
+    private static bool IsSafe(AttachmentShapeGeometry shape, IReadOnlyList<AttachmentPoint> outline)
     {
         const double margin = 1d / 160 + EyeOutline.ChordError + AttachmentShapeGeometry.MaximumChordError;
-        foreach (var point in EyeOutline.Create(eye))
+        foreach (var point in outline)
         {
             var inside = false;
             for (var i = 0; i < shape.Boundary.Count; i++)
