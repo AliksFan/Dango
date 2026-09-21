@@ -46,3 +46,25 @@ $timerProcess = Start-Process -FilePath $timerProbe -ArgumentList ('"' + $timerO
 连续两个回调之间：`入口到入口 = 前一回调处理器耗时 + 前一出口到本次入口`。同一组相邻配对的平均值可相加：使用 `pairedPreviousHandlerElapsedMs` 的前 N−1 个处理器样本，与 N−1 个 `exitToNextEntryMs` 配对；`handlerElapsedMs` 则保留全部 N 个处理器样本。独立 P95 不能相加。处理器耗时是墙钟耗时，包含抢占和同步原生调用，并不等于 CPU 时间；渲染线程及延迟布局/呈现不全在该区间。出口到下一入口还包含探针记账、WPF 重排 timer、延迟工作、计时等待和 dispatcher 队列等待，最多支持队列层面的归因推断，不是纯 OS 调度延迟。回调频率不是 GPU 呈现 FPS。
 
 前两段没有产品窗口/渲染工作，是调度机制对照；不同段的桌面并存负载可能不同。若空 timer 已有相近低频，支持继续调查调度；若产品处理器耗时明显增大，支持再调查具体调用栈。单次结果不能证明某一层是唯一根因。
+
+## 可选的帧阶段诊断
+
+对包含可选时序契约的整合候选，在原输出目录参数后添加 `--frame-stages`：
+
+```powershell
+$timerProcess = Start-Process -FilePath $timerProbe -ArgumentList ('"' + $timerOutput + '" --frame-stages') -PassThru -WindowStyle Hidden
+```
+
+此开关仅在独立诊断进程中将调度器 `DetailedTimingEnabled` 设为 true，结束订阅时恢复原值。默认关闭，PerformanceProbe 原有双参数观察器不启用细粒度记录。关闭时调度器不增加高频时间戳读取或逐帧堆分配。没有此契约的旧包显式失败，不悄悄降级成不完整阶段数据。原四阶段、预热时间、退出和文件名保持不变；`schema=2` 原字段保留，新增字段通过 `stageTimingVersion=1` 标识。
+
+`timings.json` 每条产品 `rawTicks` 新增 `stageTiming`；合成阶段或未开启时为 null。它记录：
+
+- `renderingTimeTicks`：WPF `RenderingEventArgs.RenderingTime.Ticks`，单位为100ns，属于WPF时间轴，不可与Stopwatch时间戳直接相减。
+- `schedulerStartedTimestamp`、`startedTimestamp`、`finishedTimestamp` 及阶段边界：相对本探针origin，单位为 `stopwatchFrequency` ticks。`prepare`仅含原prepare委托；`loop`包含原input构造及整批固定步runtime推进；`apply`包含原帧应用委托，也记录取消/不健康帧刷新，但不含后续WPF布局或GPU呈现。
+- `previousFinishedTimestamp`、`previousObservedExitToEntryMs`：同一运行代、连续启用观测时的前次退出及间隔；跨预热/测量分段仍连续，Start/Stop重启或重新启用观测后首条为null。该间隔包含观察器记账和调度等待。
+- `requestedSteps`、`successfulSteps`、`remainderBeforeTicks`、`remainderAfterTicks`：计划步数、实际成功步数及入口/出口余量，余量以TimeSpan ticks计。`sameGenerationAtExit=false`时出口余量为null，避免把重启后新时钟余量归给旧批次。
+- 未执行阶段的起止与耗时为null，不写成0；阶段抛出异常仍保留结束边界，并标 `threw=true`。`refresh=true`表示刷新路径，不能计作健康应用。原counters继续负责重复回调、故障、过载、暂停和生命周期丢时，不由新增字段改写。
+
+`productStartEntryTimestamp` / `productStartExitTimestamp` 标出host.Start调用；其中发生的重入回调单独保存在 `startupCallbacks`。Start返回后的首批回调属于原 `product-warmup`。若Start内部没有回调，列表为空是正常事实，不能补造首帧。调度器clock.Start位置及首次推进策略均未改变。
+
+离线分析先核对完整/错误/退出记录，再分开统计startup、预热最初数秒和稳定测量。对每个连续运行代检查0/1/多步分布、相邻RenderingTime与入口间隔、余量接近固定步边界的0步事件；用原AppliedFrames筛选应用完成间隔，不能将多物理步或零步旧帧算作多帧。对启动过载配对查看前一prepare/loop/apply耗时及出口到入口间隔；阶段耗时不含全部回调工作，三段之和不应被强制当成handler耗时。阶段观测和反射增加额外成本，必须与正式轻采样串行分开，不据此降低60FPS或资源门禁。
