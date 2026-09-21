@@ -2,7 +2,7 @@
 
 日期：2026-09-21。用户已批准[设计](phase-1-hat-track-allocation-design.md)并授权进入实施。起点 `75de095`；保留既有探针 Worktree、候选、原始证据和原生库。
 
-进度：A0–A3完成，A4进行中，A5尚未启动。实际证据与未验证项见[验证报告](verification/2026-09-21-hat-track-allocation.md)。
+进度：A0–A3完成，A4两个宿主短测与独立热点诊断完成、性能未达标；按停止点A5不启动，本批尚未验收。实际证据与未验证项见[验证报告](verification/2026-09-21-hat-track-allocation.md)。
 
 | 步骤 | 文件与行为 | 验证和停止点 |
 |---|---|---|
