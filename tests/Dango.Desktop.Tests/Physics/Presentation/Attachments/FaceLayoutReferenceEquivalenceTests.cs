@@ -14,13 +14,13 @@ public sealed class FaceLayoutReferenceEquivalenceTests
     {
         var shape = AttachmentShapeGeometry.Create(AttachmentShapeGeometryTests.Oval());
         foreach (var eyeShape in Enum.GetValues<EyeShape>())
-        foreach (var (openness, strength) in new[] { (0d, 0d), (0.4d, 0.25d), (1d, 1d) })
-        {
-            var left = new EyeMotionSample(new(-1, 1), openness, eyeShape, strength);
-            var right = new EyeMotionSample(new(1, -1), openness, eyeShape, strength);
-            foreach (var angle in new[] { -Math.PI / 18, 0d, Math.PI / 18 })
-            foreach (var range in new[] { 5d, 7d }) AssertLayout(shape, left, right, angle, range);
-        }
+            foreach (var (openness, strength) in new[] { (0d, 0d), (0.4d, 0.25d), (1d, 1d) })
+            {
+                var left = new EyeMotionSample(new(-1, 1), openness, eyeShape, strength);
+                var right = new EyeMotionSample(new(1, -1), openness, eyeShape, strength);
+                foreach (var angle in new[] { -Math.PI / 18, 0d, Math.PI / 18 })
+                    foreach (var range in new[] { 5d, 7d }) AssertLayout(shape, left, right, angle, range);
+            }
     }
 
     [TestMethod]
@@ -49,7 +49,7 @@ public sealed class FaceLayoutReferenceEquivalenceTests
     }
 
     [TestMethod]
-    public void ThreeCandidateCentersAndTwelveSearchBoundariesMatchFrozen8f0ca91()
+    public void ShearedShapesAtRepresentativeAnglesMatchFrozen8f0ca91()
     {
         var shape = AttachmentShapeGeometry.Create(AttachmentShapeGeometryTests.Oval(shear: 0.16));
         var left = new EyeMotionSample(new(-1, 1), 1, EyeShape.Round, 0);
