@@ -101,6 +101,10 @@ and `targetStatus`, and add `minimumAcceptedFps`, `fpsMinusMinimumAccepted` and
 `acceptanceStatus`. Thus 59.4 FPS can be `below-target` while `meets-minimum` under
 an explicitly selected 59 FPS floor. Other state/phase summaries are descriptive;
 the existing overall FPS check still evaluates the aggregate active-state mean.
+`meets-minimum` is a numeric comparison, not proof of sufficient state coverage
+or valid complete evidence. Check `validGateSeconds` (active requires at least
+180 seconds), `insufficientGates`, data validity and the overall result before
+claiming acceptance; an empty `failedTargets` alone is insufficient.
 Rendering callback rate is not substituted for actual application updates, and
 neither is GPU-present FPS. CPU, peak working set, unplanned dropped time, faults,
 continuous observation, state duration, hide/restore, release, exit and data
