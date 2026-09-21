@@ -10,6 +10,7 @@ using System.Windows.Threading;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.DesktopHost;
 using Dango.Desktop.Rendering.Visuals;
+using Dango.ProbeDiagnostics;
 
 namespace Dango.PerformanceProbe;
 
@@ -59,6 +60,11 @@ internal sealed class Probe : IDisposable
     private readonly List<double> intervals = [];
     private readonly Dictionary<string, int> stateTicks = [];
     private readonly List<DispatcherTimer> motionTimers = [];
+    private readonly List<SchedulerObserver> schedulers = [];
+    private readonly List<double> callbackIntervals = [], handlerDurations = [];
+    private SchedulerSnapshot previousSample = SchedulerSnapshot.Zero;
+    private long lastAppliedTimestamp, lastCallbackTimestamp;
+    private int schema = 1;
     private object? host;
     private DesktopHostCoordinator? coordinator;
     private StackedDangoSceneRuntime? runtime;
@@ -96,15 +102,23 @@ internal sealed class Probe : IDisposable
         wander = Property<object>(runtime, "Wander");
         foreach (var name in new[] { "workerWWindow", "sceneWindow" })
         {
-            var timer = Field<DispatcherTimer>(Field<object>(host, name), "motionTimer");
-            motionTimers.Add(timer);
-            timer.Tick += Frame;
+            var window = Field<object>(host, name);
+            if (SchedulerObserver.IsCandidate(window)) schedulers.Add(new(window, ScheduledFrame));
+            else
+            {
+                var timer = Field<DispatcherTimer>(window, "motionTimer");
+                motionTimers.Add(timer);
+                timer.Tick += Frame;
+            }
         }
+        if (schedulers.Count != 0 && motionTimers.Count != 0)
+            throw new InvalidOperationException("Host diagnostic schemas differ.");
+        schema = schedulers.Count == 2 ? 2 : 1;
         type.GetMethod("Start")!.Invoke(host, null);
         var visual = (Visual)Field<object>(host, mode == DesktopDisplayMode.Wallpaper ? "workerWWindow" : "sceneWindow");
         WriteJson("environment.json", new
         {
-            schema = 1,
+            schema,
             startedUtc = started,
             processId = process.Id,
             mode = mode.ToString(),
@@ -119,7 +133,9 @@ internal sealed class Probe : IDisposable
             renderTier = RenderCapability.Tier >> 16,
             binaries = new[] { "Dango.Desktop.dll", "Dango.Core.dll", "Dango.Physics.dll", "dango_physics_module.dll", "dango_box2d.dll", "Dango.PerformanceProbe.dll" }
                 .Select(name => new { name, sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, name)))) }),
-            frameMetric = "Time between actual product motionTimer callbacks; not GPU presents or CPU render duration",
+            frameMetric = schema == 2 ? "Actual successful applied-frame completion intervals; not successful physics steps, Rendering callbacks, or GPU presents"
+                : "Time between actual product motionTimer callbacks; not GPU presents or CPU render duration",
+            counterContract = schema == 2 ? "frameCounters are sample deltas; frameTotals are monotonic lifetime totals; motionTicks/tickTotal alias appliedFrames only; dropped/remainder units are TimeSpan ticks" : null,
             settings = "Fictional isolated settings; keyboard control disabled; product defaults; no real settings loaded",
             observer = "One background sample/second; no CompositionTarget.Rendering subscriber; no global input injection",
         });
@@ -145,6 +161,25 @@ internal sealed class Probe : IDisposable
         if (!double.IsNaN(lastFrameTime)) intervals.Add((now - lastFrameTime) * 1000);
         lastFrameTime = now;
         motionTicks++; tickTotal++;
+        RecordFrameState(now);
+    }
+
+    private void ScheduledFrame(SchedulerSnapshot snapshot, SchedulerSnapshot delta)
+    {
+        if (lastCallbackTimestamp != 0 && snapshot.FinishedTimestamp > lastCallbackTimestamp)
+            callbackIntervals.Add((snapshot.FinishedTimestamp - lastCallbackTimestamp) * 1000d / Stopwatch.Frequency);
+        lastCallbackTimestamp = snapshot.FinishedTimestamp;
+        handlerDurations.Add(snapshot.HandlerElapsedMs);
+        if (delta.Counters["appliedFrames"] == 0) return;
+        if (lastAppliedTimestamp != 0)
+            intervals.Add((snapshot.FinishedTimestamp - lastAppliedTimestamp) * 1000d / Stopwatch.Frequency);
+        lastAppliedTimestamp = snapshot.FinishedTimestamp;
+        motionTicks++; tickTotal++;
+        RecordFrameState(clock.Elapsed.TotalSeconds);
+    }
+
+    private void RecordFrameState(double now)
+    {
         var state = State();
         stateTicks[state] = stateTicks.GetValueOrDefault(state) + 1;
         if (state == "doze" && firstSleep is null) { firstSleep = now; Event("first-sleep"); }
@@ -167,8 +202,18 @@ internal sealed class Probe : IDisposable
         var state = State();
         // A second crossing state boundaries is explicitly mixed, not credited as idle/doze.
         if (stateTicks.Count > 1 || stateTicks.Count == 1 && !stateTicks.ContainsKey(state)) state = "mixed";
+        var totals = SchedulerSnapshot.Sum(schedulers.Select(s => s.Read()));
+        var counters = totals.Subtract(previousSample);
+        if (schema == 2 && (counters.Counters["appliedFrames"] != motionTicks || totals.Counters["appliedFrames"] != tickTotal))
+            throw new InvalidOperationException("Applied-frame observation differs from scheduler counts.");
         samples.WriteLine(JsonSerializer.Serialize(new
         {
+            schemaVersion = schema,
+            schedulerEnabled = schema == 2 ? (bool?)totals.IsRunning : null,
+            frameCounters = schema == 2 ? counters.Counters : null,
+            frameTotals = schema == 2 ? totals.Counters : null,
+            remainderTicks = schema == 2 ? (long?)totals.RemainderTicks : null,
+            handlerElapsedMs = schema == 2 ? handlerDurations.ToArray() : null,
             utc = DateTimeOffset.UtcNow,
             elapsedSeconds = now,
             intervalSeconds = duration,
@@ -186,17 +231,19 @@ internal sealed class Probe : IDisposable
             userObjects = GetGuiResources(process.Handle, 1),
             visible = snapshot?.IsVisible ?? false,
             runtimeRunning = runtime.IsRunning,
-            motionTimerEnabled = motionTimers.Any(t => t.IsEnabled),
+            motionTimerEnabled = motionTimers.Any(t => t.IsEnabled) || totals.IsRunning,
             motionTicks,
             tickTotal,
             appIntervalsMs = intervals.ToArray(),
-            renderIntervalsMs = Array.Empty<double>(),
+            renderIntervalsMs = callbackIntervals.ToArray(),
             stateTicks,
             dozeSeconds = Property<bool>(doze!, "Sleeping") ? (double?)Property<double>(doze!, "SleepSeconds") : null,
             dangoCount = runtime.DangoCount,
             error,
         }));
+        previousSample = totals;
         lastSampleTime = now; lastCpu = cpu; intervals.Clear(); stateTicks.Clear(); motionTicks = 0;
+        callbackIntervals.Clear(); handlerDurations.Clear();
         if (error is not null) Event("runtime-error");
         var age = now - phaseStarted;
         if (phase == "warmup" && age >= 60) ChangePhase("observe");
@@ -213,10 +260,15 @@ internal sealed class Probe : IDisposable
         {
             DisposeHost();
             ChangePhase("disposed");
+            var attachments = Field<object?>(runtime, "attachments");
             WriteJson("disposal.json", new
             {
+                schema,
+                schedulersStopped = schedulers.All(s => !s.IsRunning),
+                attachmentEntriesRemaining = attachments is null ? 0 : Field<System.Collections.IDictionary>(attachments, "entries").Count,
+                attachmentRouterDisposed = attachments is null || Field<bool>(Field<object>(attachments, "router"), "disposed"),
                 runtimeRunning = runtime.IsRunning,
-                timersStopped = motionTimers.All(t => !t.IsEnabled),
+                timersStopped = motionTimers.All(t => !t.IsEnabled) && schedulers.All(s => !s.IsRunning),
                 runtimeDisposed = Field<bool>(runtime, "disposed"),
                 sceneReleased = Field<object?>(runtime, "scene") is null,
                 attachmentsReleased = Field<object?>(runtime, "attachments") is null,
@@ -226,7 +278,7 @@ internal sealed class Probe : IDisposable
         }
         else if (phase == "disposed" && age >= 30)
         {
-            WriteJson("complete.json", new { startedUtc = started, completedUtc = DateTimeOffset.UtcNow, elapsedSeconds = now, observationSeconds, tickTotal, firstSleep, cycles = cycle });
+            WriteJson("complete.json", new { schema, frameTotals = schema == 2 ? totals.Counters : null, startedUtc = started, completedUtc = DateTimeOffset.UtcNow, elapsedSeconds = now, observationSeconds, tickTotal, firstSleep, cycles = cycle });
             app.Shutdown(0);
         }
     }
@@ -234,14 +286,14 @@ internal sealed class Probe : IDisposable
     private void Visibility(bool visible)
     {
         coordinator!.SetVisibility(visible);
-        lastFrameTime = double.NaN;
+        lastFrameTime = double.NaN; lastAppliedTimestamp = lastCallbackTimestamp = 0;
         Event(visible ? "restored" : "hidden");
     }
 
     private void ChangePhase(string next)
     {
         phase = next; phaseStarted = clock.Elapsed.TotalSeconds;
-        lastFrameTime = double.NaN;
+        lastFrameTime = double.NaN; lastAppliedTimestamp = lastCallbackTimestamp = 0;
         Event("phase-change");
     }
 
@@ -261,6 +313,7 @@ internal sealed class Probe : IDisposable
         if (disposed) return;
         disposed = true; sampleTimer.Stop(); watchdog?.Dispose();
         foreach (var timer in motionTimers) timer.Tick -= Frame;
+        foreach (var scheduler in schedulers) scheduler.Dispose();
         DisposeHost(); samples.Dispose(); events.Dispose(); process.Dispose();
     }
     [DllImport("user32.dll")] private static extern uint GetGuiResources(nint process, uint flags);

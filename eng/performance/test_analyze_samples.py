@@ -347,5 +347,135 @@ class AnalysisTests(unittest.TestCase):
                 self.assertEqual(result["fullRunEvidence"]["processExit"], "not-confirmed")
 
 
+
+COUNTERS = ("callbacks", "duplicateCallbacks", "successfulSteps", "appliedFrames", "refreshFrames",
+            "overloads", "longPauses", "clockResets", "faults", "overloadDroppedTicks",
+            "pauseDroppedTicks", "faultDroppedTicks")
+
+
+def schema2_run():
+    rows, evidence = complete_run()
+    totals = dict.fromkeys(COUNTERS, 0)
+    for row in rows:
+        frames = row["motionTicks"]
+        counters = dict.fromkeys(COUNTERS, 0)
+        counters.update(callbacks=frames, successfulSteps=frames * 2, appliedFrames=frames)
+        for key, value in counters.items():
+            totals[key] += value
+        row.update(schemaVersion=2, schedulerEnabled=row["motionTimerEnabled"],
+                   frameCounters=counters, frameTotals=totals.copy(), remainderTicks=0,
+                   handlerElapsedMs=[2.0] * frames, tickTotal=totals["appliedFrames"],
+                   appIntervalsMs=[16.0] * frames)
+    evidence["environment"]["schema"] = 2
+    evidence["complete"].update(schema=2, tickTotal=totals["appliedFrames"], frameTotals=totals.copy())
+    evidence["disposal"].update(schema=2, schedulersStopped=True)
+    return rows, evidence
+
+
+class SchedulerSchemaTests(unittest.TestCase):
+    def test_two_steps_per_callback_still_means_one_applied_frame(self):
+        rows, evidence = schema2_run()
+        result = analyzer.analyze(rows, evidence=evidence)
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(result["schemaVersion"], 2)
+        self.assertEqual(result["scheduler"]["totals"]["successfulSteps"],
+                         result["scheduler"]["totals"]["appliedFrames"] * 2)
+        self.assertEqual(result["states"]["active"]["applicationUpdateIntervals"]["fps"], 62.5)
+
+    def test_missing_bad_and_unknown_schema_counters_are_invalid(self):
+        rows, evidence = schema2_run()
+        for field, value in (("successfulSteps", -1), ("callbacks", True), ("faults", "0")):
+            altered = copy.deepcopy(rows[:2])
+            altered[1]["frameCounters"][field] = value
+            with self.subTest(field=field):
+                self.assertEqual(analyzer.analyze(altered, 2)["status"], "invalid")
+        for field in COUNTERS:
+            altered = copy.deepcopy(rows[:2])
+            del altered[1]["frameCounters"][field]
+            with self.subTest(missing=field):
+                self.assertEqual(analyzer.analyze(altered, 2)["status"], "invalid")
+        rows[1]["schemaVersion"] = 3
+        self.assertEqual(analyzer.analyze(rows, evidence=evidence)["status"], "invalid")
+
+    def test_alias_step_confusion_and_counter_regression_are_invalid(self):
+        for mutation in (lambda row: row.update(motionTicks=120),
+                         lambda row: row["frameCounters"].update(appliedFrames=120),
+                         lambda row: row["frameTotals"].update(successfulSteps=0),
+                         lambda row: row.update(appIntervalsMs=[16.0] * 61),
+                         lambda row: row.update(schedulerEnabled=False),
+                         lambda row: row.update(handlerElapsedMs=[]),
+                         lambda row: row["frameCounters"].update(successfulSteps=361)):
+            rows, evidence = schema2_run()
+            mutation(rows[2])
+            self.assertEqual(analyzer.analyze(rows, evidence=evidence)["status"], "invalid")
+
+    def test_dropped_time_and_local_faults_never_pass_even_without_error_text(self):
+        for counter in ("overloadDroppedTicks", "pauseDroppedTicks", "faultDroppedTicks", "faults", "clockResets"):
+            rows, evidence = schema2_run()
+            rows[100]["frameCounters"][counter] = 1
+            for row in rows[100:]:
+                row["frameTotals"][counter] = 1
+            evidence["complete"]["frameTotals"][counter] = 1
+            with self.subTest(counter=counter):
+                result = analyzer.analyze(rows, evidence=evidence)
+                self.assertEqual(result["status"], "fail")
+                self.assertIn("scheduler/" + counter, result["failedGates"])
+
+    def test_hidden_callback_and_refresh_are_detected_without_applied_frames(self):
+        for counter in ("callbacks", "successfulSteps", "refreshFrames"):
+            rows, evidence = schema2_run()
+            index = next(i for i, row in enumerate(rows) if row["phase"] == "hidden" and row["phaseAgeSeconds"] == 10)
+            rows[index]["frameCounters"][counter] = 1
+            if counter == "callbacks":
+                rows[index]["handlerElapsedMs"] = [0.0]
+            if counter == "successfulSteps":
+                rows[index]["frameCounters"]["callbacks"] = 1
+                rows[index]["handlerElapsedMs"] = [0.0]
+            for row in rows[index:]:
+                row["frameTotals"][counter] += 1
+                if counter == "successfulSteps":
+                    row["frameTotals"]["callbacks"] += 1
+            evidence["complete"]["frameTotals"][counter] += 1
+            if counter == "successfulSteps":
+                evidence["complete"]["frameTotals"]["callbacks"] += 1
+            result = analyzer.analyze(rows, evidence=evidence)
+            self.assertIn("hidden/stopped", result["failedGates"])
+
+    def test_schema_mismatch_between_evidence_and_samples_is_invalid(self):
+        rows, evidence = schema2_run()
+        evidence["environment"]["schema"] = 1
+        self.assertEqual(analyzer.analyze(rows, evidence=evidence)["status"], "invalid")
+        rows[1].pop("schemaVersion")
+        self.assertEqual(analyzer.analyze(rows, evidence=evidence)["status"], "invalid")
+
+    def test_missing_totals_and_malformed_counter_groups_cannot_pass(self):
+        rows, _ = schema2_run()
+        for group, value in (("frameCounters", None), ("frameCounters", []), ("frameTotals", {})):
+            row = copy.deepcopy(rows[0])
+            row[group] = value
+            with self.subTest(group=group, value=value):
+                self.assertEqual(analyzer.analyze([row], 1)["status"], "invalid")
+
+    def test_schema2_cannot_replace_internal_release_with_null_reference_flag(self):
+        rows, evidence = schema2_run()
+        evidence["disposal"]["attachmentsReleased"] = True
+        del evidence["disposal"]["attachmentEntriesRemaining"]
+        self.assertEqual(analyzer.analyze(rows, evidence=evidence)["status"], "partial")
+
+    def test_schema2_missing_disposal_is_unobserved_not_measured_failure(self):
+        rows, evidence = schema2_run()
+        del evidence["disposal"]
+        result = analyzer.analyze(rows, evidence=evidence)
+        self.assertEqual(result["status"], "partial")
+        self.assertEqual(result["failedGates"], [])
+
+    def test_schema2_attachment_internal_failure_is_failure_not_partial(self):
+        rows, evidence = schema2_run()
+        evidence["disposal"]["attachmentEntriesRemaining"] = 1
+        result = analyzer.analyze(rows, evidence=evidence)
+        self.assertEqual(result["status"], "fail")
+        self.assertIn("disposal/attachments", result["failedGates"])
+
+
 if __name__ == "__main__":
     unittest.main()

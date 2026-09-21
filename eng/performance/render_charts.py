@@ -6,6 +6,8 @@ import argparse
 import json
 from pathlib import Path
 
+from analyze_samples import frame_count, schema_of, validate_sample
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -19,9 +21,12 @@ def main():
     if args.samples.resolve() == args.output.resolve():
         parser.error("input and output must differ")
     rows = [json.loads(line) for line in args.samples.read_text(encoding="utf-8-sig").splitlines()]
+    if not rows or any(validate_sample(row) for row in rows) or len({schema_of(row) for row in rows}) != 1:
+        parser.error("samples must have one supported schema and valid counters")
+    schema = schema_of(rows[0])
     x = [r["elapsedSeconds"] / 60 for r in rows]
     fig, axes = plt.subplots(4, 1, figsize=(13, 10), sharex=True, constrained_layout=True)
-    fig.suptitle("Dango | isolated Product Wallpaper host | real elapsed time", fontsize=15, weight="bold")
+    fig.suptitle("Dango | isolated Product host | real elapsed time", fontsize=15, weight="bold")
     for ax in axes:
         ax.grid(axis="y", alpha=.18)
         ax.spines[["top", "right"]].set_visible(False)
@@ -39,9 +44,9 @@ def main():
     axes[1].axhline(250, color="#b44839", linestyle="--", label="Idle working-set limit: 250 MB")
     axes[1].set_ylabel("Memory (decimal MB)")
     axes[1].legend(loc="lower right", ncol=3)
-    axes[2].plot(x, [r["motionTicks"] / r["intervalSeconds"] for r in rows], color="#7b4ea3", linewidth=.7)
+    axes[2].plot(x, [frame_count(r) / r["intervalSeconds"] for r in rows], color="#7b4ea3", linewidth=.7)
     axes[2].axhline(60, color="#b44839", linestyle="--", label="Active update target: 60")
-    axes[2].set_ylabel("App updates / second")
+    axes[2].set_ylabel("Applied frames / second" if schema == 2 else "Timer completions / second")
     axes[2].legend(loc="upper right")
     axes[3].plot(x, [r["handles"] for r in rows], color="#1d70a2", label="Handles")
     axes[3].set_ylabel("Handles")

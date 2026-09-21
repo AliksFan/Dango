@@ -32,30 +32,59 @@ process waiter to record actual exit code and confirm no test PID remains; a
 `complete.json` alone does not prove process exit. No system sleep prevention is
 installed. A missing UI heartbeat for 15 seconds fails this test process only.
 
-`samples.jsonl` records one sample per second and all product timer callback
-intervals since the preceding sample. Timer observers run **after** product tick
-handlers, so the metric is completion-to-completion application update interval,
-not time spent doing physics/rendering, a compositor callback, or GPU present FPS.
+`samples.jsonl` records one sample per second. Capability detection is explicit:
+legacy hosts expose `motionTimer` and produce schema 1; candidate hosts expose
+`motionScheduler` and produce schema 2. Missing or incompatible candidate diagnostic
+members fail the probe instead of silently falling back to the legacy timer.
+
+- Schema 1 retains the original timer completion-to-completion update metric.
+  It does not know whether each old callback successfully applied a frame.
+- Schema 2 subscribes only to `CallbackCompleted`, reads the product's immutable
+  diagnostic snapshot, and counts a frame only when `AppliedFrames` increases by
+  exactly one. It uses the original `LastFinishedTimestamp` for intervals. Multiple
+  successful fixed steps, duplicate rendering events, zero-step events, and refreshes
+  are not extra successful frames. `motionTicks`/`tickTotal` are checked aliases of
+  interval/cumulative applied frames, never aliases for successful physics steps.
+- `frameCounters` contains each sample's deltas; `frameTotals` contains monotonic
+  lifetime totals across both hosts. Fields distinguish callbacks, duplicates,
+  successful steps, applied/refresh frames, overloads, long pauses, invalid-clock
+  resets, faults, and the three dropped-time reasons. Dropped/remainder values use
+  TimeSpan ticks (10,000,000 per second). `schedulerEnabled` is the real scheduler
+  state; the retained `motionTimerEnabled` alias has exactly the same value.
+- `handlerElapsedMs` uses the original product entry/exit timestamps. Candidate
+  `renderIntervalsMs` contains completion intervals for all accepted scheduler
+  callbacks, including duplicates. Neither callback rate nor application update
+  rate measures GPU presentation or CPU execution time.
+
 The observer does not subscribe to `CompositionTarget.Rendering`, including while
-hidden. CPU/memory include observer overhead and the alternative process entry;
-report them as instrumented isolated-host measurements, not as an uninstrumented
-daily-executable benchmark. The normal single-instance/startup workflow is outside
-this harness.
+hidden. Reflection, diagnostic snapshot conversion and sampling add overhead; CPU,
+memory and waits include it. Report these as instrumented isolated-host measurements,
+not as an uninstrumented daily-executable benchmark. The normal single-instance and
+startup workflow remain outside this harness. The chart explicitly distinguishes
+legacy timer completions from candidate applied frames.
 
 `mixed` seconds cross state boundaries and are not credited to a pure idle/active/
 doze state. `active` means the product's own autonomous movement, eye activity or
 light feedback. This run sends no user gestures. Sleep is identified by the real
-controller, not by elapsed wall time. At less than 60 updates/second its fixed-step
-clock advances slower than the wall clock. Raw intervals are never filtered to
-make the FPS target pass.
+controller, not by elapsed wall time. The original schema 1 product's one-step-per-
+callback clock slows at less than 60 callbacks/second; the candidate's successful
+step count is recorded separately. Raw intervals are never filtered to make the
+FPS target pass.
 
-`disposal.json` checks actual timer/runtime/scene/tray/window release. In schema 1,
-`attachmentsReleased` tests whether the managed attachment-controller reference
-was set to null. Current product code disposes that object and retains its empty
-reference; `false` is therefore **not evidence of a resource leak**. Its internal
-entry/router cleanup is source-verified only in this version. Process exit is
-verified separately. Future probes should measure internal disposed state if a
-separate attachment lifetime investigation is required.
+`disposal.json` checks actual scheduler/timer, runtime, scene, tray and window
+release, attachment entry count and router disposed state. `attachmentsReleased`
+is only a null-reference test: retained references do not prove leaks. Old schema 1
+artifacts without internal attachment observations remain partial; new schema 2
+requires those observations. The old files are never rewritten or supplemented
+with measurements from a different run. Actual process exit is verified separately.
+
+Schema 2 analysis rejects missing, negative, noninteger, regressing or inconsistent
+counters; a step count substituted for frame count cannot pass. It reports dropped
+time and faults even when there is no runtime error string. Observed drops or faults
+prevent an overall pass, without inventing a frequency or duration allowance. These
+are diagnostic correctness failures, not new CPU, memory or FPS thresholds. Zero
+observed drops is not an independent proof that elapsed-time accounting is correct;
+controlled-clock product tests supply that separate evidence.
 
 The analysis requires valid complete evidence before an overall success result.
 Short or interrupted observations cannot represent 60 minutes. Synthetic unit

@@ -30,6 +30,20 @@ CPU_LIMITS = {"idle": 1.0, "active": 5.0}
 MIN_STATE_SECONDS = 180.0
 MAX_INTERVAL_SECONDS = 5.0
 RESOURCE_WINDOW_SECONDS = 60.0
+FRAME_COUNTERS = ("callbacks", "duplicateCallbacks", "successfulSteps", "appliedFrames", "refreshFrames",
+                  "overloads", "longPauses", "clockResets", "faults", "overloadDroppedTicks",
+                  "pauseDroppedTicks", "faultDroppedTicks")
+DROP_COUNTERS = ("overloadDroppedTicks", "pauseDroppedTicks", "faultDroppedTicks")
+
+
+def schema_of(row):
+    return row.get("schemaVersion", 1)
+
+
+def frame_count(row):
+    return row["frameCounters"]["appliedFrames"] if schema_of(row) == 2 else row["motionTicks"]
+
+
 MODULES = {"Dango.Desktop.dll", "Dango.Core.dll", "Dango.Physics.dll",
            "dango_physics_module.dll", "dango_box2d.dll", "Dango.PerformanceProbe.dll"}
 
@@ -51,6 +65,9 @@ def validate_sample(sample):
     """Return field-level reasons; never echo raw input or potentially sensitive errors."""
     if not isinstance(sample, dict):
         return ["sample must be an object"]
+    schema = schema_of(sample)
+    if type(schema) is not int or schema not in (1, 2):
+        return ["unknown sample schemaVersion"]
     errors = [f"missing {field}" for field in sorted(REQUIRED_FIELDS - sample.keys())]
     if errors:
         return errors
@@ -93,6 +110,44 @@ def validate_sample(sample):
     if finite_number(sample["elapsedSeconds"]) and finite_number(sample["intervalSeconds"]):
         if sample["elapsedSeconds"] + 0.05 < sample["intervalSeconds"]:
             errors.append("interval starts before elapsed time origin")
+    if schema == 2:
+        for group in ("frameCounters", "frameTotals"):
+            values = sample.get(group)
+            if not isinstance(values, dict):
+                errors.append(f"missing or invalid {group}")
+                continue
+            for key in FRAME_COUNTERS:
+                value = values.get(key)
+                if type(value) is not int or value < 0:
+                    errors.append(f"{group}/{key} must be a nonnegative integer")
+        if type(sample.get("remainderTicks")) is not int or sample["remainderTicks"] < 0:
+            errors.append("remainderTicks must be a nonnegative integer")
+        if not isinstance(sample.get("schedulerEnabled"), bool):
+            errors.append("schedulerEnabled must be boolean")
+        elif sample["schedulerEnabled"] != sample["motionTimerEnabled"]:
+            errors.append("motionTimerEnabled alias differs from schedulerEnabled")
+        values = sample.get("handlerElapsedMs")
+        if not isinstance(values, list) or any(not finite_number(v) or v < 0 for v in values):
+            errors.append("handlerElapsedMs must be an array of finite nonnegative durations")
+        if not errors:
+            counters, totals = sample["frameCounters"], sample["frameTotals"]
+            for group, values in (("frameCounters", counters), ("frameTotals", totals)):
+                if values["duplicateCallbacks"] > values["callbacks"]:
+                    errors.append(f"{group}/duplicateCallbacks exceeds callbacks")
+                if values["appliedFrames"] > values["callbacks"] - values["duplicateCallbacks"]:
+                    errors.append(f"{group}/appliedFrames exceeds distinct callbacks")
+                if values["appliedFrames"] > values["successfulSteps"]:
+                    errors.append(f"{group}/appliedFrames exceeds successfulSteps")
+                if values["successfulSteps"] > 6 * (values["callbacks"] - values["duplicateCallbacks"]):
+                    errors.append(f"{group}/successfulSteps exceeds the six-step callback budget")
+            if sample["motionTicks"] != counters["appliedFrames"] or sample["tickTotal"] != totals["appliedFrames"]:
+                errors.append("motionTicks/tickTotal aliases differ from appliedFrames")
+            if len(sample["handlerElapsedMs"]) != counters["callbacks"]:
+                errors.append("handler duration count differs from callbacks")
+            if len(sample["appIntervalsMs"]) > counters["appliedFrames"]:
+                errors.append("application intervals exceed applied frames")
+            if counters["appliedFrames"] > 1 and len(sample["appIntervalsMs"]) < counters["appliedFrames"] - 1:
+                errors.append("application intervals missing for applied frames")
     return errors
 
 
@@ -114,6 +169,14 @@ def interval_metrics(values, label):
         "targetStatus": "below-target" if fps < 60.0 else "met-target",
         "gpuPresentFps": False,
     }
+
+
+def duration_metrics(values):
+    if not values:
+        return {"count": 0, "meanMs": None, "p95Ms": None, "maximumMs": None}
+    ordered = sorted(values)
+    return {"count": len(values), "meanMs": statistics.fmean(values),
+            "p95Ms": ordered[math.ceil(.95 * len(ordered)) - 1], "maximumMs": ordered[-1]}
 
 
 def weighted_mean(rows, field):
@@ -193,6 +256,9 @@ def summarize_group(rows, state, valid_input):
             [value for row in usable for value in row["appIntervalsMs"]], "application-update"),
         "renderCallbackIntervals": interval_metrics(
             [value for row in usable for value in row.get("renderIntervalsMs", [])], "render-callback"),
+        "schedulerCounters": {key: sum(row["frameCounters"][key] for row in usable if schema_of(row) == 2)
+                              for key in FRAME_COUNTERS} if any(schema_of(row) == 2 for row in rows) else None,
+        "handlerElapsed": duration_metrics([value for row in usable if schema_of(row) == 2 for value in row["handlerElapsedMs"]]),
         "resourceGrowth": resource_growth(usable),
     }
 
@@ -292,6 +358,31 @@ def full_run_evidence(rows, evidence, expected_seconds):
     else:
         disposal_checks["attachments"] = "not-observed"
         missing.append("disposal/attachment-internal-release")
+    schema = schema_of(rows[0]) if rows else 1
+    if schema == 2:
+        for name, artifact in (("environment", env), ("complete", complete), ("disposal", disposal)):
+            if artifact and artifact.get("schema") != 2:
+                invalid.append(f"{name}/schema differs from samples")
+        if complete and complete.get("frameTotals") != rows[-1]["frameTotals"]:
+            invalid.append("complete/frameTotals differs from final sample")
+        if "schedulersStopped" not in disposal:
+            missing.append("disposal/schedulersStopped")
+        elif type(disposal["schedulersStopped"]) is not bool:
+            invalid.append("disposal/schedulersStopped has wrong type")
+        elif not disposal["schedulersStopped"]:
+            failed.append("disposal/schedulersStopped")
+        entries, router = disposal.get("attachmentEntriesRemaining"), disposal.get("attachmentRouterDisposed")
+        if entries is None or router is None:
+            missing.append("disposal/schema2-attachment-internal-release")
+            disposal_checks["attachments"] = "not-observed"
+        else:
+            if type(entries) is not int or entries < 0 or type(router) is not bool:
+                invalid.append("disposal/invalid-attachment-internal-release")
+            elif entries != 0 or not router:
+                failed.append("disposal/attachments")
+                disposal_checks["attachments"] = "fail"
+    elif env.get("schema", 1) != 1:
+        invalid.append("environment/schema differs from samples")
     phase_results = {}
     for phase, required in (("warmup", 60), ("hidden", 180), ("restored", 180), ("disposed", 30)):
         phase_rows = [row for row in rows if row["phase"] == phase]
@@ -351,6 +442,8 @@ def analyze(samples, expected_observe_seconds=3600.0, input_errors=None, evidenc
             errors.append({"line": line_number, "reasons": problems})
             continue
         if previous is not None:
+            if schema_of(row) != schema_of(previous):
+                errors.append({"line": line_number, "reasons": ["mixed sample schemas"]})
             elapsed_delta = row["elapsedSeconds"] - previous["elapsedSeconds"]
             if elapsed_delta <= 0:
                 errors.append({"line": line_number, "reasons": ["elapsed time is not strictly increasing"]})
@@ -358,6 +451,11 @@ def analyze(samples, expected_observe_seconds=3600.0, input_errors=None, evidenc
                 errors.append({"line": line_number, "reasons": ["interval does not match elapsed delta within 50 ms"]})
             if parse_utc(row["utc"]) <= parse_utc(previous["utc"]):
                 errors.append({"line": line_number, "reasons": ["UTC time is not strictly increasing"]})
+        if schema_of(row) == 2:
+            previous_totals = previous["frameTotals"] if previous is not None and schema_of(previous) == 2 else dict.fromkeys(FRAME_COUNTERS, 0)
+            for key in FRAME_COUNTERS:
+                if row["frameTotals"][key] - previous_totals[key] != row["frameCounters"][key]:
+                    errors.append({"line": line_number, "reasons": [f"frameTotals/{key} delta differs from frameCounters"]})
         valid.append(row)
         previous = row
     if not samples:
@@ -394,9 +492,12 @@ def analyze(samples, expected_observe_seconds=3600.0, input_errors=None, evidenc
     settled_hidden = [row for row in hidden_rows if row["phaseAgeSeconds"] >= 2]
     hidden_failures = [{"elapsedSeconds": row["elapsedSeconds"], "cycle": row["cycle"],
                         "motionTicks": row["motionTicks"], "motionTimerEnabled": row["motionTimerEnabled"],
-                        "runtimeRunning": row["runtimeRunning"], "visible": row["visible"]}
+                        "runtimeRunning": row["runtimeRunning"], "visible": row["visible"],
+                        "frameCounters": row.get("frameCounters")}
                        for row in settled_hidden if row["motionTicks"] != 0
-                       or row["motionTimerEnabled"] or row["runtimeRunning"] or row["visible"]]
+                       or row["motionTimerEnabled"] or row["runtimeRunning"] or row["visible"]
+                       or schema_of(row) == 2 and any(row["frameCounters"][key] != 0
+                           for key in ("callbacks", "successfulSteps", "refreshFrames"))]
     hidden_status = ("invalid" if not valid_input else "not-observed" if not settled_hidden
                      else "fail" if hidden_failures else "pass")
     failed_gates = [f"{state}/{gate}" for state, result in states.items() for gate in ("cpu", "memory")
@@ -405,6 +506,11 @@ def analyze(samples, expected_observe_seconds=3600.0, input_errors=None, evidenc
         failed_gates.append("hidden/stopped")
     if any(row["error"] is not None for row in valid):
         failed_gates.append("runtime/error")
+    scheduler_rows = [row for row in valid if schema_of(row) == 2]
+    scheduler_totals = scheduler_rows[-1]["frameTotals"] if scheduler_rows else {}
+    for counter in (*DROP_COUNTERS, "faults", "clockResets"):
+        if scheduler_totals.get(counter, 0):
+            failed_gates.append("scheduler/" + counter)
     completeness = full_run_evidence(valid, evidence, expected_observe_seconds)
     failed_gates.extend(completeness["failed"])
     insufficient_gates = [f"{state}/cpu" for state in CPU_LIMITS
@@ -420,7 +526,12 @@ def analyze(samples, expected_observe_seconds=3600.0, input_errors=None, evidenc
     status = ("invalid" if not valid_input or completeness["invalid"] else "fail" if failed_gates or failed_targets else
               "incomplete" if reasons or insufficient_gates else "partial" if completeness["missing"] else "pass")
     return {
-        "schemaVersion": 1, "status": status,
+        "schemaVersion": schema_of(valid[0]) if valid else 1, "status": status,
+        "scheduler": {"available": bool(scheduler_rows), "totals": scheduler_totals,
+                      "droppedSeconds": sum(scheduler_totals.get(key, 0) for key in DROP_COUNTERS) / 10_000_000,
+                      "clockStatus": "invalid" if not valid_input else "not-observed" if not scheduler_rows else "fail" if any(
+                          scheduler_totals[key] for key in (*DROP_COUNTERS, "faults", "clockResets")) else "no-observed-loss",
+                      "fpsSource": "applied-frame-completions" if scheduler_rows else "legacy-timer-completions"},
         "dataValidity": {"status": "valid" if valid_input else "invalid", "errors": errors,
                          "inputSampleCount": len(samples), "structurallyValidSampleCount": len(valid)},
         "observation": {"status": "complete" if not reasons else "incomplete", "reasons": reasons,
