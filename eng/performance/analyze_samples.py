@@ -32,7 +32,7 @@ MAX_INTERVAL_SECONDS = 5.0
 RESOURCE_WINDOW_SECONDS = 60.0
 FRAME_COUNTERS = ("callbacks", "duplicateCallbacks", "successfulSteps", "appliedFrames", "refreshFrames",
                   "overloads", "longPauses", "clockResets", "faults", "overloadDroppedTicks",
-                  "pauseDroppedTicks", "faultDroppedTicks")
+                  "pauseDroppedTicks", "faultDroppedTicks", "lifecycleDroppedTicks")
 DROP_COUNTERS = ("overloadDroppedTicks", "pauseDroppedTicks", "faultDroppedTicks")
 
 
@@ -529,6 +529,9 @@ def analyze(samples, expected_observe_seconds=3600.0, input_errors=None, evidenc
         "schemaVersion": schema_of(valid[0]) if valid else 1, "status": status,
         "scheduler": {"available": bool(scheduler_rows), "totals": scheduler_totals,
                       "droppedSeconds": sum(scheduler_totals.get(key, 0) for key in DROP_COUNTERS) / 10_000_000,
+                      "lifecycleDroppedSeconds": scheduler_totals.get("lifecycleDroppedTicks", 0) / 10_000_000,
+                      "totalDroppedSeconds": sum(scheduler_totals.get(key, 0) for key in
+                                                 (*DROP_COUNTERS, "lifecycleDroppedTicks")) / 10_000_000,
                       "clockStatus": "invalid" if not valid_input else "not-observed" if not scheduler_rows else "fail" if any(
                           scheduler_totals[key] for key in (*DROP_COUNTERS, "faults", "clockResets")) else "no-observed-loss",
                       "fpsSource": "applied-frame-completions" if scheduler_rows else "legacy-timer-completions"},

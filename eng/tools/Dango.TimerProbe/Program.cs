@@ -320,6 +320,7 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
             schema,
             productHostCreated = host is not null,
             productSchedulerStopped = productScheduler?.IsRunning != true,
+            schedulerFinalCounters = productScheduler?.Read().Counters,
             runtimeDisposed,
             runtimeRunning,
             sceneReleased,

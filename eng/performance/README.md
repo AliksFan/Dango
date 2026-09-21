@@ -48,7 +48,11 @@ members fail the probe instead of silently falling back to the legacy timer.
 - `frameCounters` contains each sample's deltas; `frameTotals` contains monotonic
   lifetime totals across both hosts. Fields distinguish callbacks, duplicates,
   successful steps, applied/refresh frames, overloads, long pauses, invalid-clock
-  resets, faults, and the three dropped-time reasons. Dropped/remainder values use
+  resets, faults, and the three unplanned dropped-time reasons plus
+  `lifecycleDroppedTicks`. The latter records unadvanced time/remainder at normal
+  Stop and unexecuted old-batch steps during a host switch or Stop/Start; expected
+  hide/exit cancellation can increase it without causing a timing failure.
+  Dropped/remainder values use
   TimeSpan ticks (10,000,000 per second). `schedulerEnabled` is the real scheduler
   state; the retained `motionTimerEnabled` alias has exactly the same value.
 - `handlerElapsedMs` uses the original product entry/exit timestamps. Candidate
@@ -80,10 +84,12 @@ with measurements from a different run. Actual process exit is verified separate
 
 Schema 2 analysis rejects missing, negative, noninteger, regressing or inconsistent
 counters; a step count substituted for frame count cannot pass. It reports dropped
-time and faults even when there is no runtime error string. Observed drops or faults
-prevent an overall pass, without inventing a frequency or duration allowance. These
+time and faults even when there is no runtime error string. The retained
+`scheduler.droppedSeconds` reports overload/pause/fault losses;
+`lifecycleDroppedSeconds` reports expected lifecycle cancellation separately, and
+`totalDroppedSeconds` sums both. Unplanned drops or faults prevent an overall pass, without inventing a frequency or duration allowance. These
 are diagnostic correctness failures, not new CPU, memory or FPS thresholds. Zero
-observed drops is not an independent proof that elapsed-time accounting is correct;
+observed unplanned drops is not an independent proof that elapsed-time accounting is correct;
 controlled-clock product tests supply that separate evidence.
 
 The analysis requires valid complete evidence before an overall success result.
