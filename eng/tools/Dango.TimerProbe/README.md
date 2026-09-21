@@ -25,6 +25,8 @@ $timerProcess = Start-Process -FilePath $timerProbe -ArgumentList ('"' + $timerO
 
 正常运行约四分钟加构造/清理时间。每段按单调墙钟计时；延迟只会延长。没有缩短时长的参数。运行完成退出后再读取产物；`complete.json` 仅表示工具四段运行并正常清理，**不代表达到 60 FPS、CPU 门槛或长期稳定性通过**。
 
+产品测量结束后，工具仅一次通过 `Dispatcher.BeginInvoke(Send)` 排队执行自有宿主清理和退出，使清理在当前产品回调返回后运行，并避免连续 Rendering 工作饿死 Background 收尾。该优先级只用于测量窗口结束后的清理；采样、心跳门槛、产品调度及帧统计保持原样。成功保存诊断文件不表示产品性能通过。
+
 ## 调度入口与原处理器边界
 
 旧包（schema 1）使用 `MethodInfo.CreateDelegate<EventHandler>(workerWWindow)` 绑定原 `OnMotionTimerTick`，仅在测试进程中移除原订阅并添加调用它一次的包装器。原 `sender` / `EventArgs` 保留；入口出口取 `Stopwatch` 时间戳。退出恢复订阅并释放自己的宿主。

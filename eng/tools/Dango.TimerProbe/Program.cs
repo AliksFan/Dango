@@ -174,9 +174,10 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
             productTimingActive = false;
             productTimer?.Stop();
             finished = true;
-            // Verify explicit host cleanup before Application.Shutdown can close
-            // windows itself and hide a missed release.
-            app.Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+            // Queue cleanup once, outside the current product callback. Send lets
+            // it run even if continuous Rendering work starves Background tasks.
+            // Dispose explicitly before Shutdown can hide a missed host release.
+            app.Dispatcher.BeginInvoke(DispatcherPriority.Send, new Action(() =>
             {
                 DisposeOwnedHost();
                 app.Shutdown(0);
