@@ -67,6 +67,10 @@ not as an uninstrumented daily-executable benchmark. The normal single-instance 
 startup workflow remain outside this harness. The chart explicitly distinguishes
 legacy timer completions from candidate applied frames.
 
+For the separate restoration-memory attribution mode, see
+[MEMORY-DIAGNOSTIC.md](MEMORY-DIAGNOSTIC.md). Its distinct output/protocol never
+substitutes for the formal resource gates described here.
+
 `mixed` seconds cross state boundaries and are not credited to a pure idle/active/
 doze state. `active` means the product's own autonomous movement, eye activity or
 light feedback. This run sends no user gestures. Sleep is identified by the real
