@@ -185,7 +185,7 @@ public sealed class HatSolverReferenceEquivalenceTests
         for (var i = 0; i < actual.FittingSamples.Count; i++) AssertPoint(actual.FittingSamples[i], expected.FittingSamples[i]);
     }
 
-    private static void AssertVisualPose(HatVisualPose? actual, HatVisualPose? expected)
+    private static void AssertVisualPose(HatVisualPose? actual, FrozenHatVisualPose? expected)
     {
         Assert.AreEqual(expected is null, actual is null);
         if (actual is null || expected is null) return;

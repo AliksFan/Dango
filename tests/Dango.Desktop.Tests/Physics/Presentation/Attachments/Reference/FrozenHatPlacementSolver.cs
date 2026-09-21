@@ -87,4 +87,3 @@ internal sealed class FrozenHatPlacementSolver
         return endpoint;
     }
 }
-
