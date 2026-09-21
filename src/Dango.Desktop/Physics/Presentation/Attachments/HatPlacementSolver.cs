@@ -47,7 +47,7 @@ public sealed class HatPlacementSolver
     {
         using var workspace = track.RentWorkspace();
         return track.TryFitScalars(s, workspace, out var surface) && InRange(s) &&
-            TryFitRaw(s, workspace, out var center, out _) ? Math.Max(0, (surface.Center.Y - center.Y) * 0.5) : 0;
+            TryCalibrate(surface, out var center, out _) ? Math.Max(0, (surface.Center.Y - center.Y) * 0.5) : 0;
     }
 
     private HatPlacementSolver(HatTrackSolver next, HatPlacementSolver calibration)
@@ -74,6 +74,11 @@ public sealed class HatPlacementSolver
     {
         center = default; angle = 0;
         if (!track.TryFitScalars(s, workspace, out var pose)) return false;
+        return TryCalibrate(pose, out center, out angle);
+    }
+
+    private bool TryCalibrate(HatFitValues pose, out AttachmentPoint center, out double angle)
+    {
         center = referenceCenter + (pose.Center - neutralGuide.Center);
         angle = referenceAngle + (pose.Angle - neutralGuide.Angle);
         return double.IsFinite(angle) && double.IsFinite(center.X) && double.IsFinite(center.Y) &&

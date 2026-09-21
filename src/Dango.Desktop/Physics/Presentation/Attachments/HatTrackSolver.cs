@@ -129,7 +129,9 @@ public sealed class HatTrackSolver
         var arc = neutral + s;
         if (arc < BaseWidth / 2 || arc > lengths[^1] - BaseWidth / 2) return false;
         var samples = workspace.Samples;
-        for (var i = 0; i < 65; i++) samples[i] = At(arc + BaseWidth * (i / 64d - 0.5));
+        // Only these nine arc samples participate in the fit. The full 65-point
+        // footprint is sampled separately below, before residual evaluation.
+        for (var i = 0; i < 65; i += 8) samples[i] = At(arc + BaseWidth * (i / 64d - 0.5));
         if (!fitting.IsEmpty)
             for (var i = 0; i < 9; i++) fitting[i] = samples[i * 8];
         var mean = new AttachmentPoint(0, 0);

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RuntimeFrameworkVersion>10.0.11</RuntimeFrameworkVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Dango.Desktop"><HintPath>$(DesktopPackagePath)/Dango.Desktop.dll</HintPath></Reference>
+    <Reference Include="Dango.Core"><HintPath>$(DesktopPackagePath)/Dango.Core.dll</HintPath></Reference>
+    <Reference Include="Dango.Physics"><HintPath>$(DesktopPackagePath)/Dango.Physics.dll</HintPath></Reference>
+  </ItemGroup>
+  <Target Name="RequirePublishedPackage" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(DesktopPackagePath)/package-manifest.json')" Text="DesktopPackagePath must name a published Dango package." />
+  </Target>
+</Project>
