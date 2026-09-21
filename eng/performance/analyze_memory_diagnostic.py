@@ -37,8 +37,19 @@ def resource_counts(resources):
     return result
 
 
+def metric_anomaly(row, field, line=None):
+    """Keep the original value as evidence; never replace a failed gauge with zero."""
+    value = row.get("metrics", {}).get(field)
+    # JSON cannot represent nonfinite numbers; preserve their spelling, not an invented value.
+    raw_value = repr(value) if isinstance(value, float) and not math.isfinite(value) else value
+    return {"line": line, "field": field, "rawValue": raw_value,
+            "phase": row.get("phase"), "restores": row.get("restores"),
+            "elapsedSeconds": row.get("elapsedSeconds"),
+            "reason": "nonnegative integer estimate unavailable; raw observation retained"}
+
+
 def validate(rows):
-    errors, identities = [], {}
+    errors, anomalies, identities = [], [], {}
     previous = None
     for index, row in enumerate(rows, 1):
         try:
@@ -54,7 +65,10 @@ def validate(rows):
             assert number(metrics["cpuSeconds"]) and metrics["cpuSeconds"] >= 0, "CPU seconds"
             assert integer(metrics["logicalProcessors"]) and metrics["logicalProcessors"] > 0, "logical processors"
             for field in (*RESOURCE_METRICS, "totalAllocatedBytes"):
-                assert integer(metrics[field]), field
+                if field == "managedBytesEstimate" and not integer(metrics.get(field)):
+                    anomalies.append(metric_anomaly(row, field, index))
+                else:
+                    assert integer(metrics[field]), field
             collections = metrics["collectionCounts"]
             assert len(collections) == 3 and all(integer(value) for value in collections), "collection counts"
             if previous is None:
@@ -94,13 +108,17 @@ def validate(rows):
                 identities[entry["id"]] = entry
             assert set(identities) == {entry["id"] for entry in resources}, "identity history omitted"
             assert metrics["resourceCounts"] == resource_counts(resources), "resource count mismatch"
-            previous = row
         except (AssertionError, KeyError, TypeError, ValueError) as error:
             errors.append({"line": index, "reason": str(error) if isinstance(error, AssertionError) else type(error).__name__})
-    return errors
+        finally:
+            # Deltas refer to the immediately preceding raw observation, even when another
+            # metric or the preceding delta was invalid. Never compare to the last wholly
+            # valid row: skipping one row would manufacture errors on all subsequent deltas.
+            previous = row
+    return errors, anomalies
 
 
-def summarize_segment(rows):
+def summarize_segment(rows, line_numbers=None):
     first, last = rows[0], rows[-1]
     elapsed = last["elapsedSeconds"] - first["elapsedSeconds"]
     samples = [row for row in rows if row["recordKind"] == "sample"]
@@ -111,11 +129,18 @@ def summarize_segment(rows):
                                                 for left, right in zip(rows, rows[1:])), default=0),
               "metrics": {}}
     for field in RESOURCE_METRICS:
+        unavailable = [metric_anomaly(row, field, (line_numbers or {}).get(id(row)))
+                       for row in rows if not integer(row["metrics"].get(field))]
+        if unavailable:
+            result["metrics"][field] = {"status": "metric-unavailable", "invalidObservations": unavailable,
+                                        "first": None, "last": None, "peak": None, "lastMinusFirst": None,
+                                        "tailWindowSeconds": None, "tailWeightedMean": None}
+            continue
         tail = [(row["metrics"][field], max(0, row["phaseAgeSeconds"] - max(tail_start, prior["phaseAgeSeconds"])))
                 for prior, row in zip(rows, rows[1:]) if row["recordKind"] == "sample"]
         covered = sum(weight for _, weight in tail)
         values = [row["metrics"][field] for row in rows]
-        result["metrics"][field] = {"first": values[0], "last": values[-1], "peak": max(values),
+        result["metrics"][field] = {"status": "available", "first": values[0], "last": values[-1], "peak": max(values),
                                       "lastMinusFirst": values[-1] - values[0],
                                       "tailWindowSeconds": covered,
                                       "tailWeightedMean": sum(value * weight for value, weight in tail) / covered if covered else None}
@@ -135,13 +160,16 @@ def summarize_segment(rows):
 
 
 def analyze(rows, evidence):
-    errors = validate(rows)
-    result = {"diagnosticSchema": 1, "runKind": "memory-diagnostic", "status": "invalid" if errors else "incomplete",
-              "dataValidity": {"status": "invalid" if errors else "valid", "errors": errors},
-              "acceptanceEvaluated": False, "checkpoints": {}, "incompleteReasons": [],
+    errors, anomalies = validate(rows)
+    result = {"diagnosticSchema": 1, "analysisVersion": 2, "runKind": "memory-diagnostic", "status": "invalid" if errors else "incomplete",
+              "dataValidity": {"status": "invalid" if errors else "partial" if anomalies else "valid", "errors": errors,
+                               "metricAnomalies": anomalies},
+              "protocolStatus": "not-evaluated", "acceptanceEvaluated": False,
+              "checkpoints": {}, "lifecycleSegments": {}, "incompleteReasons": [],
               "limitations": [
                   "This is attribution evidence, never CPU, memory, FPS or long-duration acceptance.",
                   "Managed estimate is GC.GetTotalMemory(false); lastCompletedGc metadata is from the last completed GC.",
+                  "An unavailable managed estimate is preserved as a metric anomaly, never filled, interpolated or interpreted as a leak. Its segment's entire managed-estimate statistics are unavailable; independent metrics remain separately checked.",
                   "Allocation is approximate cumulative process allocation including diagnostic overhead, not surviving memory.",
                   "Resource counts cover observed own-process identities, not all native/GPU/DWM objects or OS lifetime events.",
                   "Detached weak-alive or increasing private bytes alone do not prove a leak. No forced GC or trim is requested.",
@@ -156,12 +184,14 @@ def analyze(rows, evidence):
     seconds = protocol.get("stableSeconds")
     if not number(seconds) or seconds < 10 or protocol.get("checkpointRestoreCounts") != CHECKPOINTS or protocol.get("runKind") != "memory-diagnostic":
         reasons.append("missing or invalid memory protocol")
+        result["protocolStatus"] = "incomplete"
         return result
     result["stableSeconds"] = seconds
     result["mode"] = evidence.get("environment", {}).get("mode")
     if result["mode"] not in ("Window", "Wallpaper"):
         reasons.append("missing host mode")
     result["binaries"] = evidence.get("environment", {}).get("binaries", [])
+    line_numbers = {id(row): index for index, row in enumerate(rows, 1)}
     phase_rows = [row for row in rows if row["recordKind"] in ("phase-enter", "sample")]
     expected_phases = [("warmup", 0), ("memory-stable", 0)]
     for cycle in range(1, 21):
@@ -178,7 +208,7 @@ def analyze(rows, evidence):
         if segment:
             if any(not row["visible"] or not row["runtimeRunning"] or row["hostDisposed"] for row in segment):
                 reasons.append(f"checkpoint {checkpoint} not continuously visible/running")
-            result["checkpoints"][str(checkpoint)] = summarize_segment(segment)
+            result["checkpoints"][str(checkpoint)] = summarize_segment(segment, line_numbers)
     baseline = result["checkpoints"].get("0")
     if baseline:
         for segment in result["checkpoints"].values():
@@ -208,9 +238,11 @@ def analyze(rows, evidence):
                 reasons.append(f"{phase}/{cycle} did not stop")
             if phase in ("warmup", "memory-cycle-visible") and any(not row["visible"] or not row["runtimeRunning"] for row in segment):
                 reasons.append(f"{phase}/{cycle} not visible/running")
+            if segment:
+                result["lifecycleSegments"][f"{phase}/{cycle}"] = summarize_segment(segment, line_numbers)
     disposed_rows = [row for row in phase_rows if row["phase"] == "disposed"]
     if disposed_rows:
-        result["disposedObservation"] = summarize_segment(disposed_rows)
+        result["disposedObservation"] = summarize_segment(disposed_rows, line_numbers)
     complete = evidence.get("complete", {})
     if complete.get("runKind") != "memory-diagnostic" or complete.get("restores") != 20 or complete.get("stableSeconds") != seconds:
         reasons.append("missing or inconsistent completion record")
@@ -225,7 +257,8 @@ def analyze(rows, evidence):
         reasons.append("missing or failed matching external process exit")
     if any(row.get("error") for row in rows) or "failure" in evidence or "watchdog-failure" in evidence:
         reasons.append("runtime or watchdog failure")
-    result["status"] = "incomplete" if reasons else "complete"
+    result["protocolStatus"] = "incomplete" if reasons else "complete"
+    result["status"] = "incomplete" if reasons else "partial" if anomalies else "complete"
     return result
 
 

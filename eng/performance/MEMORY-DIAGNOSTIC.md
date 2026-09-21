@@ -109,9 +109,36 @@ GC, cannot by itself establish an unintended retaining path or a leak.
 
 The analyzer checks allocation/GC/CPU counter consistency, identity history/counts,
 phase order, actual visible/hidden states, all five checkpoint durations, disposal
-and a matching external process exit. `complete` means this diagnostic protocol
-has complete recorded evidence; **`acceptanceEvaluated` is always false**.
-Missing/failed evidence remains `incomplete`; malformed counters are `invalid`.
+and a matching external process exit. **`acceptanceEvaluated` is always false**.
+Analysis version 2 separates protocol coverage from individual metric quality:
+
+- `complete`: protocol complete and no observed metric-quality anomaly.
+- `partial`: protocol complete, but at least one managed estimate is unavailable;
+  `dataValidity.status` is `partial`, and `protocolStatus` separately records
+  `complete`. This is not an unconditional successful diagnostic result.
+- `incomplete`: missing/failed protocol, lifecycle or exit evidence; metric anomalies
+  remain separately visible even when protocol coverage is incomplete.
+- `invalid`: structural, allocation/GC/CPU-counter, identity or other integrity
+  errors; a managed-estimate anomaly never excuses a real counter error.
+
+`GC.GetTotalMemory(false)` produced negative observations in a real instrumented
+run. The analyzer preserves each value, source line, elapsed time, phase and restore
+count in `dataValidity.metricAnomalies`; it does not invent a cause or interpret a
+negative estimate as negative heap size, reclamation or evidence of a leak. No raw
+row is removed, filled with zero, clamped, interpolated or rewritten. Within any
+summarized segment containing an invalid managed estimate, that metric has
+`status: metric-unavailable` and **all** its statistics are null; independently
+valid working set, private bytes, CPU, allocation/GC and resource counts still use
+the full segment. An unavailable baseline also makes only that metric's relative
+comparison unavailable. Checkpoints and warmup/cycle/disposal segments are reported
+separately, so an anomaly outside a stable checkpoint remains explicit.
+
+Delta validation always compares immediately adjacent raw observations, not the
+last wholly valid row. This avoids manufacturing a chain of allocation errors
+after one unrelated invalid gauge; an actually wrong delta remains invalid.
+The original analyzer report remains an historical artifact. Write reanalysis to
+a new name such as `analysis-v2.json`; the CLI refuses existing output files.
+Exit codes are 0 for `complete`, 1 for `partial`/`incomplete`, and 2 for `invalid`.
 
 Each checkpoint reports first/last/peak values, its final half-window (capped at
 30 seconds) duration-weighted mean, change from checkpoint 0, cumulative-allocation
@@ -131,4 +158,8 @@ python -m unittest discover -s eng/performance -p 'test_*.py'
 
 Synthetic tests exercise incorrect rate denominators, regressing counters,
 incorrect release counts/identity reuse, interrupted checkpoints, lifecycle and
-exit failures, and separation from formal acceptance. They do not launch a desktop.
+exit failures, and separation from formal acceptance. The observed negative
+estimate/counter sequence also supplies a regression fixture: independent counters
+must remain valid, while a deliberately incorrect delta must still fail without
+contaminating following rows. Tests preserve raw input and the historical invalid
+report. They do not launch a desktop.
