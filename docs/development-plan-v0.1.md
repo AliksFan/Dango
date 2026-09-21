@@ -1,5 +1,7 @@
 # Dango 分阶段开发计划 v0.1
 
+> 2026-09-22：用户在查看Window/Wallpaper正式短测结果后表示“我觉得目前的性能算合格了”，当前候选`8c46a0f`的性能用户验收通过，本轮优化与复测收尾。自动门禁中的CPU、Wallpaper内存和丢时差异保留；Wallpaper活动覆盖不足、60分钟长测等专项仍未验证。详见[性能验收记录](verification/2026-09-21-performance-acceptance-near60.md)。仅本地记录，不宣布整个Phase 1验收，不包含main合并、推送、部署或日常安装更新。
+
 > 2026-09-20 后续方向备忘：岛的设计暂缓；未来区分最多两人的桌宠模式与不接触真实桌面的多人房间模式。桌宠模式考虑在双方画面稳定后选取线条作为活动平台，允许两端位置存在有限差异。仅作[简单记录](planning/2026-09-20-two-mode-direction-note.md)，具体设计以后开展。
 
 > 2026-09-20：固定本地启动、更新与回退已实现，本批人工验收通过；用户回复“授权”后，已将 `codex/local-launch-update` 经阶段分支快进合入本地 main。范围是内部桌面候选的固定安装目录、版本保留、桌面启动、显式激活与回退；脚本与入口回归、设置/单实例测试、真实包切换、固定入口冷启动与重复打开均有通过证据，详见[本批验证记录](verification/2026-09-20-local-launch-update.md)。本次整合沿用已有验证，未推送、部署或宣布整个 Phase 1 验收。旧 DLL 缺少导出是已知失败，第二种 DPI 与长期稳定性仍未验证。见[设计](planning/2026-09-20-local-launch-update-design.md)、[计划](planning/2026-09-20-local-launch-update-plan.md)和[使用说明](local-desktop-install.md)。
