@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -33,7 +33,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
     private readonly DesktopInteractionController interactionController = new();
     private readonly WorkerWRecoveryStateMachine recoveryState = new(TimeSpan.FromSeconds(8), 8);
     private readonly DispatcherTimer shellTimer;
-    private readonly DispatcherTimer motionTimer;
+    private readonly HostFrameScheduler motionScheduler;
     private readonly DesktopDangoSceneOverlayWindow dangoAboveWindow;
     private readonly DesktopObjectOverlayWindow cushionAboveWindow;
     private readonly IslandOverlayWindow islandOverlayWindow;
@@ -84,11 +84,12 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
 
         cushionAboveWindow = new DesktopObjectOverlayWindow(PrototypeDesktopObject.Cushion);
         islandOverlayWindow = new IslandOverlayWindow();
-        motionTimer = new DispatcherTimer(DispatcherPriority.Render)
+        motionScheduler = new(motionRuntime, PrepareMotionFrame, CreateMotionInput, frame =>
         {
-            Interval = TimeSpan.FromSeconds(1d / 60d),
-        };
-        motionTimer.Tick += OnMotionTimerTick;
+            ApplyPresentationFrame(frame);
+            RebuildHitTestPolicy();
+            motionController?.ObservePresentationFrame();
+        });
         shellTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromSeconds(1),
@@ -332,8 +333,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
             !NativeMethods.IsValidDesktopTarget(currentTarget))
         {
             Opacity = 0;
-            motionRuntime.Stop();
-            motionTimer.Stop();
+            StopMotion();
             DisposeSurface();
             currentTarget = null;
             recoveryState.NotifyShellHandleLost(DateTimeOffset.Now);
@@ -451,8 +451,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         isClosed = true;
         shellTimer.Stop();
         CancelDrag(DragCancellationReason.WindowClosing);
-        motionTimer.Stop();
-        motionRuntime.Stop();
+        StopMotion();
         DisposeSurface();
         currentTarget = null;
         recoveryState.Stop();
@@ -506,8 +505,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
     {
         isVisible = false;
         Opacity = 0;
-        motionTimer.Stop();
-        motionRuntime.Stop();
+        StopMotion();
         foreach (var proxy in inputProxies.Values.ToArray()) proxy.Dispose();
         inputProxies.Clear();
         HideLayeredObjectWindows();
@@ -546,7 +544,8 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
 
     private void CancelDrag(DragCancellationReason reason)
     {
-        motionRuntime.CancelInput();
+        if (motionScheduler.OwnsRuntime || motionRuntime.FrameDriver is null) motionRuntime.CancelInput();
+        else ClearHostInput();
     }
 
     private void ClearHostInput()
@@ -746,6 +745,8 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
 
     private void StartMotion(double surfaceWidth, double surfaceHeight)
     {
+        if (motionScheduler.IsRunning) return;
+        motionScheduler.VerifyCanStart();
         var now = NowMilliseconds();
         motionRuntime.SetViewport(new(0, 0, surfaceWidth, surfaceHeight));
         sceneSession.AttachSurface(new LogicalRect(0, 0, surfaceWidth, surfaceHeight), now);
@@ -754,14 +755,21 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         motionRuntime.Start();
         lastDesktopForeground = null;
         motionRuntime.AttachQuietIdleHost(this, isInteractionEnabled);
-        motionTimer.Start();
+        motionScheduler.Start();
     }
 
-    private void OnMotionTimerTick(object? sender, EventArgs e)
+    private void StopMotion()
+    {
+        var mayStopRuntime = motionScheduler.OwnsRuntime || motionRuntime.FrameDriver is null;
+        motionScheduler.Stop();
+        if (mayStopRuntime) motionRuntime.Stop();
+    }
+
+    private bool PrepareMotionFrame()
     {
         if (!isVisible || motionController is null || !motionRuntime.IsRunning)
         {
-            return;
+            return false;
         }
 
         var now = NowMilliseconds();
@@ -784,23 +792,16 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
             CancelDrag(DragCancellationReason.WindowDeactivated);
         }
         if (lightInteraction.IsActive) lightInteraction.RefreshButtons(now, ShiftPressed, leftDown: true);
-        var step = TimeSpan.FromSeconds(1d / 60d);
         motionRuntime.SetDirectionalControl(
             keyboardInputBridge?.CurrentIntent ?? DirectionalControlIntent.None);
         AdvanceNonDirectionalAction(motionController, now);
         ApplyAuthoritativePosition();
-        var frame = motionRuntime.Tick(
-            PhysicsPresentationInput.FromSnapshot(
-                motionController.Snapshot,
-                motionController.SquashAmount,
-                motionController.GroundFrictionCue,
-                motionController.FacingDirection,
-                null),
-            step);
-        ApplyPresentationFrame(frame);
-        RebuildHitTestPolicy();
-        motionController.ObservePresentationFrame();
+        return true;
     }
+
+    private PhysicsPresentationInput CreateMotionInput() => PhysicsPresentationInput.FromSnapshot(
+        motionController!.Snapshot, motionController.SquashAmount, motionController.GroundFrictionCue,
+        motionController.FacingDirection, null);
 
     private void AdvanceNonDirectionalAction(SingleDangoMotionController controller, long now)
     {

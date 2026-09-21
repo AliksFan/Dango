@@ -16,6 +16,7 @@ public sealed class AttachmentSceneController(PhysicsPresentationFrame baseline)
     private readonly Dictionary<DangoEntityId, Entry> entries = [];
     private bool paused;
     private long step;
+    internal long FaultRevision { get; private set; }
     public string? LastError => entries.Values.Select(e => e.Error).FirstOrDefault(e => e is not null);
     public bool IsHealthy(DangoEntityId id) => entries.TryGetValue(id, out var entry) && entry.Error is null;
 
@@ -82,6 +83,7 @@ public sealed class AttachmentSceneController(PhysicsPresentationFrame baseline)
                 catch (Exception error) when (error is ArgumentException or InvalidOperationException or ArithmeticException)
                 {
                     entry.Error = $"实体 {body.EntityId} 附件已冻结：{error.Message}";
+                    FaultRevision++;
                 }
             }
             return body.Presentation with { Attachments = entry.Motion.Current };

@@ -27,6 +27,16 @@ public sealed class StackedDangoSceneRuntime : IDisposable
     private DirectionalControlIntent directionalIntent;
     private bool running;
     private bool disposed;
+    internal object? FrameDriver { get; set; }
+    internal (string? Physics, long Attachments, string? Idle, string? Interaction) FrameFaultState =>
+        (LastError, attachments?.FaultRevision ?? 0, QuietIdleError, LightInteractionError);
+    internal static bool HasNewFrameFault(
+        (string? Physics, long Attachments, string? Idle, string? Interaction) before,
+        (string? Physics, long Attachments, string? Idle, string? Interaction) after) =>
+        after.Attachments > before.Attachments ||
+        after.Physics is not null && after.Physics != before.Physics ||
+        after.Idle is not null && after.Idle != before.Idle ||
+        after.Interaction is not null && after.Interaction != before.Interaction;
     private AttachmentSceneController? attachments;
     private bool requiresAttachments;
     public bool RequiresInitialization { get; private init; }

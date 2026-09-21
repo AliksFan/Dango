@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -21,11 +21,10 @@ namespace Dango.Desktop.DesktopHost.StandardWindow;
 
 public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostControl, IKeyboardControl, IDesktopHostSwitchGuard, IPhysicsDebugControl, IDangoPopulationControl, IDangoPhysicsTuningControl
 {
-    private static readonly TimeSpan FixedStep = TimeSpan.FromSeconds(1d / 60d);
     private readonly DesktopSceneSession sceneSession;
     private readonly StackedDangoSceneRuntime motionRuntime;
     private readonly LightInteractionSession lightInteraction;
-    private readonly DispatcherTimer motionTimer;
+    private readonly HostFrameScheduler motionScheduler;
     private KeyboardControlSettings keyboardSettings = KeyboardControlSettings.CreateDefault();
     private DirectionalControlIntent currentIntent;
     private LogicalPoint dragPointer;
@@ -49,8 +48,11 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
         TopDangoVisual.ShowHat = false;
         MiddleDangoVisual.BodyFill = new SolidColorBrush(System.Windows.Media.Color.FromRgb(201, 226, 255));
         TopDangoVisual.BodyFill = new SolidColorBrush(System.Windows.Media.Color.FromRgb(221, 204, 248));
-        motionTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = FixedStep };
-        motionTimer.Tick += OnMotionTimerTick;
+        motionScheduler = new(motionRuntime, PrepareMotionFrame, CreateMotionInput, frame =>
+        {
+            ApplyPresentationFrame(frame);
+            sceneSession.Controller?.ObservePresentationFrame();
+        });
         Loaded += OnLoaded;
         SizeChanged += OnSizeChanged;
         StateChanged += OnStateChanged;
@@ -320,7 +322,8 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
     private void ClearInput()
     {
         currentIntent = DirectionalControlIntent.None;
-        motionRuntime.CancelInput();
+        if (motionScheduler.OwnsRuntime || motionRuntime.FrameDriver is null) motionRuntime.CancelInput();
+        else ClearHostInput();
     }
 
     private void ClearHostInput()
@@ -335,22 +338,25 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
 
     private void StartMotion()
     {
+        if (motionScheduler.IsRunning) return;
         if (!loaded || !IsVisible || WindowState == WindowState.Minimized)
         {
             return;
         }
 
+        motionScheduler.VerifyCanStart();
         AttachSurface();
         ApplyAuthoritativePosition();
         motionRuntime.Start();
         motionRuntime.AttachQuietIdleHost(this, isInteractionEnabled);
-        motionTimer.Start();
+        motionScheduler.Start();
     }
 
     private void StopMotion()
     {
-        motionTimer.Stop();
-        motionRuntime.Stop();
+        var mayStopRuntime = motionScheduler.OwnsRuntime || motionRuntime.FrameDriver is null;
+        motionScheduler.Stop();
+        if (mayStopRuntime) motionRuntime.Stop();
     }
 
     private void AttachSurface()
@@ -361,12 +367,12 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
         sceneSession.AttachSurface(new LogicalRect(0, 0, width, height), NowMilliseconds());
     }
 
-    private void OnMotionTimerTick(object? sender, EventArgs e)
+    private bool PrepareMotionFrame()
     {
         var controller = sceneSession.Controller;
         if (!IsVisible || WindowState == WindowState.Minimized || controller is null || !motionRuntime.IsRunning)
         {
-            return;
+            return false;
         }
 
         motionRuntime.SetDirectionalControl(currentIntent);
@@ -376,16 +382,14 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
         if (lightInteraction.IsActive)
             lightInteraction.RefreshButtons(NowMilliseconds(), NativeMethods.IsInputKeyPressed(0x10), leftDown: true);
         ApplyAuthoritativePosition();
-        var frame = motionRuntime.Tick(
-            PhysicsPresentationInput.FromSnapshot(
-                controller.Snapshot,
-                controller.SquashAmount,
-                controller.GroundFrictionCue,
-                controller.FacingDirection,
-                null),
-            FixedStep);
-        ApplyPresentationFrame(frame);
-        controller.ObservePresentationFrame();
+        return true;
+    }
+
+    private PhysicsPresentationInput CreateMotionInput()
+    {
+        var controller = sceneSession.Controller!;
+        return PhysicsPresentationInput.FromSnapshot(controller.Snapshot, controller.SquashAmount,
+            controller.GroundFrictionCue, controller.FacingDirection, null);
     }
 
     private void OnDangoMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
