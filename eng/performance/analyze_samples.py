@@ -30,6 +30,7 @@ CPU_LIMITS = {"idle": 1.0, "active": 5.0}
 MIN_STATE_SECONDS = 180.0
 MAX_INTERVAL_SECONDS = 5.0
 RESOURCE_WINDOW_SECONDS = 60.0
+APPLICATION_TARGET_FPS = 60.0
 FRAME_COUNTERS = ("callbacks", "duplicateCallbacks", "successfulSteps", "appliedFrames", "refreshFrames",
                   "overloads", "longPauses", "clockResets", "faults", "overloadDroppedTicks",
                   "pauseDroppedTicks", "faultDroppedTicks", "lifecycleDroppedTicks")
@@ -50,6 +51,19 @@ MODULES = {"Dango.Desktop.dll", "Dango.Core.dll", "Dango.Physics.dll",
 
 def finite_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def validate_min_application_fps(value):
+    if not finite_number(value) or not 1 <= value <= APPLICATION_TARGET_FPS:
+        raise ValueError("minimum application FPS must be finite and between 1 and 60 inclusive")
+    return float(value)
+
+
+def application_fps_argument(value):
+    try:
+        return validate_min_application_fps(float(value))
+    except (ValueError, TypeError) as error:
+        raise argparse.ArgumentTypeError("minimum application FPS must be finite and between 1 and 60 inclusive") from error
 
 
 def parse_utc(value):
@@ -164,11 +178,19 @@ def interval_metrics(values, label):
         "p95Ms": ordered[math.ceil(0.95 * len(ordered)) - 1],
         "p95Method": "nearest-rank",
         "fps": fps,
-        "targetFps": 60.0,
-        "fpsMinusTarget": fps - 60.0,
-        "targetStatus": "below-target" if fps < 60.0 else "met-target",
+        "targetFps": APPLICATION_TARGET_FPS,
+        "fpsMinusTarget": fps - APPLICATION_TARGET_FPS,
+        "targetStatus": "below-target" if fps < APPLICATION_TARGET_FPS else "met-target",
         "gpuPresentFps": False,
     }
+
+
+def application_interval_metrics(values, minimum):
+    result = interval_metrics(values, "application-update")
+    fps = result["fps"]
+    result.update(minimumAcceptedFps=minimum, fpsMinusMinimumAccepted=fps - minimum if fps is not None else None,
+                  acceptanceStatus="not-observed" if fps is None else "below-minimum" if fps < minimum else "meets-minimum")
+    return result
 
 
 def duration_metrics(values):
@@ -218,7 +240,7 @@ def resource_growth(rows):
     return result
 
 
-def summarize_group(rows, state, valid_input):
+def summarize_group(rows, state, valid_input, min_application_fps=APPLICATION_TARGET_FPS):
     # Warmup/disposed and interrupted/error intervals are not state gate evidence.
     usable = [row for row in rows if row["phase"] not in ("warmup", "disposed")
               and row["intervalSeconds"] <= MAX_INTERVAL_SECONDS and row["error"] is None]
@@ -252,8 +274,8 @@ def summarize_group(rows, state, valid_input):
     return {
         "sampleCount": len(rows), "validGateSampleCount": len(usable), "validGateSeconds": duration,
         "cpu": cpu, "memory": memory,
-        "applicationUpdateIntervals": interval_metrics(
-            [value for row in usable for value in row["appIntervalsMs"]], "application-update"),
+        "applicationUpdateIntervals": application_interval_metrics(
+            [value for row in usable for value in row["appIntervalsMs"]], min_application_fps),
         "renderCallbackIntervals": interval_metrics(
             [value for row in usable for value in row.get("renderIntervalsMs", [])], "render-callback"),
         "schedulerCounters": {key: sum(row["frameCounters"][key] for row in usable if schema_of(row) == 2)
@@ -485,9 +507,10 @@ def full_run_evidence(rows, evidence, expected_seconds):
             and process_exit["exitCode"] == 0 else "not-confirmed"}
 
 
-def analyze(samples, expected_observe_seconds=3600.0, input_errors=None, evidence=None):
+def analyze(samples, expected_observe_seconds=3600.0, input_errors=None, evidence=None, *, min_application_fps=APPLICATION_TARGET_FPS):
     if not finite_number(expected_observe_seconds) or expected_observe_seconds <= 0:
         raise ValueError("expected observe seconds must be finite and positive")
+    min_application_fps = validate_min_application_fps(min_application_fps)
     errors = list(input_errors or [])
     valid = []
     previous = None
@@ -542,11 +565,11 @@ def analyze(samples, expected_observe_seconds=3600.0, input_errors=None, evidenc
     groups = {}
     for row in valid:
         groups.setdefault((row["phase"], row["state"]), []).append(row)
-    phase_states = {f"{phase}/{state}": summarize_group(rows, state, valid_input)
+    phase_states = {f"{phase}/{state}": summarize_group(rows, state, valid_input, min_application_fps)
                     for (phase, state), rows in sorted(groups.items())}
-    states = {state: summarize_group([row for row in valid if row["state"] == state], state, valid_input)
+    states = {state: summarize_group([row for row in valid if row["state"] == state], state, valid_input, min_application_fps)
               for state in sorted({row["state"] for row in valid})}
-    phases = {phase: summarize_group([row for row in valid if row["phase"] == phase], "mixed", valid_input)
+    phases = {phase: summarize_group([row for row in valid if row["phase"] == phase], "mixed", valid_input, min_application_fps)
               for phase in sorted({row["phase"] for row in valid})}
     hidden_rows, settled_hidden = hidden_sample_groups(valid)
     hidden_failures = [{"elapsedSeconds": row["elapsedSeconds"], "cycle": row["cycle"],
@@ -582,12 +605,18 @@ def analyze(samples, expected_observe_seconds=3600.0, input_errors=None, evidenc
         active_fps = active["applicationUpdateIntervals"]["fps"]
         if active_fps is None:
             insufficient_gates.append("active/application-update-FPS")
-        elif active_fps < 60:
-            failed_targets.append("active/application-update-FPS-below-60")
+        elif active_fps < min_application_fps:
+            failed_targets.append(f"active/application-update-FPS-below-{min_application_fps:g}")
     status = ("invalid" if not valid_input or completeness["invalid"] else "fail" if failed_gates or failed_targets else
               "incomplete" if reasons or insufficient_gates else "partial" if completeness["missing"] else "pass")
     return {
         "schemaVersion": schema_of(valid[0]) if valid else 1, "status": status,
+        "acceptancePolicy": {"version": 1, "applicationFps": {
+            "targetFps": APPLICATION_TARGET_FPS, "minimumAcceptedFps": min_application_fps,
+            "comparison": ">=", "evaluatedState": "active", "minimumStateSeconds": MIN_STATE_SECONDS,
+            "metric": "applied-frame-completions" if scheduler_rows else "legacy-timer-completions",
+            "gpuPresentFps": False,
+        }},
         "scheduler": {"available": bool(scheduler_rows), "totals": scheduler_totals,
                       "droppedSeconds": sum(scheduler_totals.get(key, 0) for key in DROP_COUNTERS) / 10_000_000,
                       "lifecycleDroppedSeconds": scheduler_totals.get("lifecycleDroppedTicks", 0) / 10_000_000,
@@ -629,6 +658,8 @@ def main(argv=None):
     parser.add_argument("samples", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--expected-observe-seconds", type=float, default=3600.0)
+    parser.add_argument("--min-application-fps", type=application_fps_argument, default=APPLICATION_TARGET_FPS,
+                        help="Explicit active application FPS acceptance floor (1..60, default 60); target remains 60")
     args = parser.parse_args(argv)
     if args.samples.resolve() == args.output.resolve():
         parser.error("input and output must be different files")
@@ -653,7 +684,7 @@ def main(argv=None):
         if hardware_path.exists():
             with hardware_path.open(encoding="utf-8-sig") as source:
                 evidence["hardware"] = json.load(source)
-        result = analyze(rows, args.expected_observe_seconds, errors, evidence)
+        result = analyze(rows, args.expected_observe_seconds, errors, evidence, min_application_fps=args.min_application_fps)
     except (OSError, UnicodeError, ValueError) as error:
         # Do not include error text: file exceptions can expose local usernames/paths.
         result = {"schemaVersion": 1, "status": "invalid",

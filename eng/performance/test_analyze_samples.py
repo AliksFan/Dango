@@ -569,5 +569,99 @@ class SchedulerSchemaTests(unittest.TestCase):
         self.assertIn("disposal/attachments", result["failedGates"])
 
 
+class ApplicationFpsPolicyTests(unittest.TestCase):
+    @staticmethod
+    def with_fps(fps, scheduler=False):
+        rows, evidence = schema2_run() if scheduler else complete_run()
+        for row in rows:
+            if row["state"] == "active":
+                row["appIntervalsMs"] = [1000 / fps] * len(row["appIntervalsMs"])
+        return rows, evidence
+
+    def test_default_60_still_fails_59_but_explicit_59_accepts_it(self):
+        rows, evidence = self.with_fps(59.4, scheduler=True)
+        default = analyzer.analyze(rows, evidence=evidence)
+        self.assertEqual("fail", default["status"])
+        self.assertEqual(["active/application-update-FPS-below-60"], default["failedTargets"])
+        result = analyzer.analyze(rows, evidence=evidence, min_application_fps=59)
+        self.assertEqual("pass", result["status"])
+        self.assertEqual([], result["failedTargets"])
+        metric = result["states"]["active"]["applicationUpdateIntervals"]
+        self.assertAlmostEqual(59.4, metric["fps"])
+        self.assertEqual(60, metric["targetFps"])
+        self.assertEqual("below-target", metric["targetStatus"])
+        self.assertEqual(59, metric["minimumAcceptedFps"])
+        self.assertEqual("meets-minimum", metric["acceptanceStatus"])
+        policy = result["acceptancePolicy"]["applicationFps"]
+        self.assertEqual(60, policy["targetFps"])
+        self.assertEqual(59, policy["minimumAcceptedFps"])
+        self.assertEqual("active", policy["evaluatedState"])
+        self.assertEqual("applied-frame-completions", policy["metric"])
+
+    def test_58_fails_59_and_only_explicit_58_changes_that_decision(self):
+        rows, evidence = self.with_fps(58.5)
+        result = analyzer.analyze(rows, evidence=evidence, min_application_fps=59)
+        self.assertEqual("fail", result["status"])
+        self.assertEqual(["active/application-update-FPS-below-59"], result["failedTargets"])
+        self.assertEqual("below-minimum", result["states"]["active"]["applicationUpdateIntervals"]["acceptanceStatus"])
+        self.assertEqual("pass", analyzer.analyze(rows, evidence=evidence, min_application_fps=58)["status"])
+
+    def test_fps_minimum_does_not_relax_resource_or_dropped_time_gates(self):
+        for defect, gate in (("cpu", "idle/cpu"), ("memory", "idle/memory"), ("drop", "scheduler/overloadDroppedTicks")):
+            rows, evidence = self.with_fps(59.4, scheduler=True)
+            if defect == "cpu":
+                for row in rows:
+                    if row["state"] == "idle":
+                        row["cpuMachinePercent"] = 1.01
+            elif defect == "memory":
+                next(row for row in rows if row["phase"] == "observe" and row["state"] == "idle")["workingSetBytes"] = 250_000_001
+            else:
+                rows[100]["frameCounters"]["overloadDroppedTicks"] = 1
+                for row in rows[100:]:
+                    row["frameTotals"]["overloadDroppedTicks"] = 1
+                evidence["complete"]["frameTotals"]["overloadDroppedTicks"] = 1
+            with self.subTest(defect=defect):
+                result = analyzer.analyze(rows, evidence=evidence, min_application_fps=59)
+                self.assertEqual("fail", result["status"])
+                self.assertEqual([], result["failedTargets"])
+                self.assertIn(gate, result["failedGates"])
+
+    def test_fps_minimum_does_not_replace_integrity_or_exit_evidence(self):
+        rows, evidence = self.with_fps(59.4)
+        del evidence["process-exit"]
+        self.assertEqual("partial", analyzer.analyze(rows, evidence=evidence, min_application_fps=59)["status"])
+        rows[100]["workingSetBytes"] = -1
+        self.assertEqual("invalid", analyzer.analyze(rows, evidence=evidence, min_application_fps=59)["status"])
+
+    def test_api_rejects_invalid_minimum_before_reading_samples(self):
+        for minimum in (0, -1, 0.5, 60.1, 100, float("nan"), float("inf"), True, "59", None):
+            with self.subTest(minimum=minimum), self.assertRaises(ValueError):
+                analyzer.analyze([], min_application_fps=minimum)
+
+    def test_cli_records_explicit_policy_and_retains_60_target(self):
+        rows, evidence = self.with_fps(59.4)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, output = root / "samples.jsonl", root / "analysis.json"
+            source.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+            for name, value in evidence.items():
+                (root / f"{name}.json").write_text(json.dumps(value), encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = analyzer.main([str(source), str(output), "--min-application-fps", "59"])
+            self.assertEqual(0, code)
+            result = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(59, result["acceptancePolicy"]["applicationFps"]["minimumAcceptedFps"])
+            self.assertEqual(60, result["states"]["active"]["applicationUpdateIntervals"]["targetFps"])
+
+    def test_cli_rejects_invalid_minimum_without_creating_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for minimum in ("0", "0.5", "61", "nan", "inf", "invalid"):
+                with self.subTest(minimum=minimum), contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as raised:
+                    analyzer.main([str(root / "missing.jsonl"), str(root / "output.json"), "--min-application-fps", minimum])
+                self.assertEqual(2, raised.exception.code)
+                self.assertFalse((root / "output.json").exists())
+
+
 if __name__ == "__main__":
     unittest.main()
