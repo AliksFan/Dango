@@ -92,6 +92,16 @@ public sealed class HatSolverReferenceEquivalenceTests
         var saved = track.Fit(0)!;
         var contact = saved.ContactSamples.ToArray(); var fitting = saved.FittingSamples.ToArray();
         var positions = Enumerable.Range(0, 33).Select(i => track.Minimum + (track.Maximum - track.Minimum) * i / 32d).ToArray();
+        // Exercise reuse on the saving thread too: ArrayPool has per-thread caches.
+        var otherShape = AttachmentShapeGeometry.Create(AttachmentShapeGeometryTests.Oval(height: 0.6, shear: -0.08));
+        var otherTrack = HatTrackSolver.CreateGeometryGuide(otherShape)!;
+        var placement = HatPlacementSolver.Create(shape, new(new(0, 0.8), 0))!;
+        foreach (var s in positions)
+        {
+            _ = track.Fit(s);
+            _ = otherTrack.Fit(Math.Clamp(s, otherTrack.Minimum, otherTrack.Maximum));
+            _ = placement.Remap(otherShape);
+        }
         var results = Task.WhenAll(positions.Select(s => Task.Run(() => track.Fit(s)))).GetAwaiter().GetResult();
         Assert.AreEqual(positions.Length, results.Length);
         CollectionAssert.AreEqual(contact, saved.ContactSamples.ToArray());

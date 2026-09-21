@@ -62,6 +62,7 @@ Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](d
 - [开发工作流 v0.1](docs/development-workflow-v0.1.md)：任务、分支、Worktree、提交和验收流程。
 - [分阶段开发计划 v0.1](docs/development-plan-v0.1.md)：Phase 0–5 的范围、交付物与阶段门禁。
 - [本地桌面安装说明](docs/local-desktop-install.md)：固定目录安装、启动、更新、状态检查与回退的日常操作。
+- [帽子轨道分配优化](docs/phase-1-hat-track-allocation-design.md)及[实施计划](docs/phase-1-hat-track-allocation-plan.md)：已批准的局部优化与等价、分配、真实宿主性能验收顺序。
 - [可复用团子物理模块](docs/phase-1-physics-module.md)：项目内 native/.NET 模块、固定配置、API、构建、显示适配与当前验收边界。
 - [Phase 1 桌面生命感原型详细设计](docs/phase-1-desktop-life-prototype-design.md)：已批准的桌面宿主对比、场景与资产边界、性能门槛和分层验收。
 - [Phase 1 实施计划](docs/phase-1-implementation-plan.md)：已批准的 P0-000 环境准备、P0-001 工作区脚手架与 P1 系列顺序任务；P1-002A 在 P1-003 前实现控制中心和图形化验收入口。

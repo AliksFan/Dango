@@ -73,10 +73,11 @@ public sealed class HatTrackSolver
         double? start = null;
         double previous = track.Minimum;
         const int subdivisions = 320;
+        using var workspace = track.RentWorkspace();
         for (var i = 0; i <= subdivisions; i++)
         {
             var s = track.Minimum + (track.Maximum - track.Minimum) * i / subdivisions;
-            if (track.FitRaw(s) is not null) start ??= s;
+            if (track.Evaluate(s, workspace, true, [], out _, out _)) start ??= s;
             else if (start.HasValue) { legalRuns.Add((start.Value, previous)); start = null; }
             previous = s;
         }
@@ -87,14 +88,50 @@ public sealed class HatTrackSolver
         return track;
     }
 
-    public HatContactPose? Fit(double s) => !double.IsFinite(s) || s < Minimum || s > Maximum ? null : FitRaw(s);
-
-    private HatContactPose? FitRaw(double s)
+    public HatContactPose? Fit(double s)
     {
+        if (!InRange(s)) return null;
+        using var workspace = RentWorkspace();
+        Span<AttachmentPoint> fitting = stackalloc AttachmentPoint[9];
+        if (!Evaluate(s, workspace, false, fitting, out var pose, out var count)) return null;
+        return new(pose.Center, pose.Angle, pose.S, pose.ContactWidth, pose.MaximumGap, pose.MaximumPenetration,
+            Array.AsReadOnly(workspace.Samples[..count].ToArray()))
+        { FittingSamples = Array.AsReadOnly(fitting.ToArray()) };
+    }
+
+    internal HatFitWorkspace RentWorkspace() => new(points.Length);
+    private bool InRange(double s) => double.IsFinite(s) && s >= Minimum && s <= Maximum;
+
+    internal bool IsLegal(double s)
+    {
+        if (!InRange(s)) return false;
+        using var workspace = RentWorkspace();
+        return Evaluate(s, workspace, true, [], out _, out _);
+    }
+
+    internal bool TryFitScalars(double s, out HatFitValues pose)
+    {
+        using var workspace = RentWorkspace();
+        return TryFitScalars(s, workspace, out pose);
+    }
+
+    internal bool TryFitScalars(double s, in HatFitWorkspace workspace, out HatFitValues pose)
+    {
+        pose = default;
+        return InRange(s) && Evaluate(s, workspace, false, [], out pose, out _);
+    }
+
+    private bool Evaluate(double s, in HatFitWorkspace workspace, bool legalityOnly,
+        Span<AttachmentPoint> fitting, out HatFitValues pose, out int sampleCount)
+    {
+        pose = default;
+        sampleCount = 0;
         var arc = neutral + s;
-        if (arc < BaseWidth / 2 || arc > lengths[^1] - BaseWidth / 2) return null;
-        var samples = Enumerable.Range(0, 65).Select(i => At(arc + BaseWidth * (i / 64d - 0.5))).ToArray();
-        var fittingSamples = Enumerable.Range(0, 9).Select(i => samples[i * 8]).ToArray();
+        if (arc < BaseWidth / 2 || arc > lengths[^1] - BaseWidth / 2) return false;
+        var samples = workspace.Samples;
+        for (var i = 0; i < 65; i++) samples[i] = At(arc + BaseWidth * (i / 64d - 0.5));
+        if (!fitting.IsEmpty)
+            for (var i = 0; i < 9; i++) fitting[i] = samples[i * 8];
         var mean = new AttachmentPoint(0, 0);
         double weightSum = 0;
         for (var i = 0; i < 9; i++)
@@ -110,33 +147,66 @@ public sealed class HatTrackSolver
             xx += weight * d.X * d.X; xy += weight * d.X * d.Y; yy += weight * d.Y * d.Y;
         }
         var angle = Math.Atan2(2 * xy, xx - yy) / 2;
-        if (Math.Abs(angle) > 0.35) return null;
+        if (Math.Abs(angle) > 0.35) return false;
         var tangent = new AttachmentPoint(Math.Cos(angle), Math.Sin(angle));
         var normal = new AttachmentPoint(-Math.Sin(angle), Math.Cos(angle));
         // Evaluate the entire rigid base footprint, including polyline vertices.
         // Arc length alone is insufficient: the rigid chord can extend beyond it.
-        var projected = points.Select(p => (p - mean).Dot(tangent)).ToArray();
-        if (projected[0] > -BaseWidth / 2 || projected[^1] < BaseWidth / 2 ||
-            projected.Zip(projected.Skip(1)).Any(pair => pair.Second <= pair.First)) return null;
-        AttachmentPoint SurfaceAt(double distance)
+        var projected = workspace.Projected;
+        for (var i = 0; i < points.Length; i++) projected[i] = (points[i] - mean).Dot(tangent);
+        if (projected[0] > -BaseWidth / 2 || projected[^1] < BaseWidth / 2) return false;
+        for (var i = 1; i < projected.Length; i++)
+            if (projected[i] <= projected[i - 1]) return false;
+        // Guide evaluation has no later rejection. Strict contact still needs all residual gates.
+        if (legalityOnly && !strictSurface) return true;
+        for (var i = 0; i < 65; i++) samples[i] = SurfaceAt(projected, BaseWidth * (i / 64d - 0.5));
+        sampleCount = 65;
+        for (var i = 0; i < points.Length; i++)
+            if (Math.Abs(projected[i]) < BaseWidth / 2) samples[sampleCount++] = points[i];
+        var residuals = workspace.KeysAndResiduals[..sampleCount];
+        for (var i = 0; i < sampleCount; i++) residuals[i] = (samples[i] - mean).Dot(tangent);
+        // Stable insertion order matches OrderBy, including equal projected keys.
+        for (var i = 1; i < sampleCount; i++)
         {
-            var index = Array.BinarySearch(projected, distance);
-            if (index >= 0) return points[index];
-            index = ~index;
-            var t = (distance - projected[index - 1]) / (projected[index] - projected[index - 1]);
-            return points[index - 1] * (1 - t) + points[index] * t;
+            var point = samples[i]; var key = residuals[i]; var j = i - 1;
+            while (j >= 0 && key.CompareTo(residuals[j]) < 0)
+            {
+                samples[j + 1] = samples[j]; residuals[j + 1] = residuals[j]; j--;
+            }
+            samples[j + 1] = point; residuals[j + 1] = key;
         }
-        samples = Enumerable.Range(0, 65).Select(i => SurfaceAt(BaseWidth * (i / 64d - 0.5)))
-            .Concat(points.Where((p, i) => Math.Abs(projected[i]) < BaseWidth / 2))
-            .OrderBy(p => (p - mean).Dot(tangent)).ToArray();
-        var residuals = samples.Select(p => (p - mean).Dot(normal)).ToArray();
-        var shift = (residuals.Min() + residuals.Max()) / 2;
+        for (var i = 0; i < sampleCount; i++) residuals[i] = (samples[i] - mean).Dot(normal);
+        var minimum = residuals[0]; var maximum = residuals[0];
+        for (var i = 1; i < sampleCount; i++)
+        {
+            var value = residuals[i];
+            if (value < minimum || double.IsNaN(value)) minimum = value;
+            if (value > maximum || double.IsNaN(maximum)) maximum = value;
+        }
+        var shift = (minimum + maximum) / 2;
         var center = mean + normal * shift;
-        var gap = residuals.Max(r => shift - r) + AttachmentShapeGeometry.MaximumChordError;
-        var penetration = residuals.Max(r => r - shift) + 1d / 160 + AttachmentShapeGeometry.MaximumChordError;
-        if (strictSurface && (gap > 0.005 || penetration > 0.007)) return null;
-        return new HatContactPose(center, angle, s, BaseWidth, gap, penetration, Array.AsReadOnly(samples))
-        { FittingSamples = Array.AsReadOnly(fittingSamples) };
+        // Preserve subtraction and addition order; do not derive these from half the range.
+        var gap = shift - residuals[0]; var penetration = residuals[0] - shift;
+        for (var i = 1; i < sampleCount; i++)
+        {
+            var nextGap = shift - residuals[i]; var nextPenetration = residuals[i] - shift;
+            if (nextGap > gap || double.IsNaN(gap)) gap = nextGap;
+            if (nextPenetration > penetration || double.IsNaN(penetration)) penetration = nextPenetration;
+        }
+        gap += AttachmentShapeGeometry.MaximumChordError;
+        penetration = penetration + 1d / 160 + AttachmentShapeGeometry.MaximumChordError;
+        if (strictSurface && (gap > 0.005 || penetration > 0.007)) return false;
+        pose = new(center, angle, s, BaseWidth, gap, penetration);
+        return true;
+    }
+
+    private AttachmentPoint SurfaceAt(ReadOnlySpan<double> projected, double distance)
+    {
+        var index = projected.BinarySearch(distance);
+        if (index >= 0) return points[index];
+        index = ~index;
+        var t = (distance - projected[index - 1]) / (projected[index] - projected[index - 1]);
+        return points[index - 1] * (1 - t) + points[index] * t;
     }
 
     private AttachmentPoint At(double length)
