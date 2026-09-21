@@ -59,7 +59,7 @@ internal sealed record SchedulerSnapshot(Dictionary<string, long> Counters, long
 {
     internal static readonly string[] Names = ["Callbacks", "DuplicateCallbacks", "SuccessfulSteps", "AppliedFrames",
         "RefreshFrames", "Overloads", "LongPauses", "ClockResets", "Faults", "OverloadDroppedTicks",
-        "PauseDroppedTicks", "FaultDroppedTicks"];
+        "PauseDroppedTicks", "FaultDroppedTicks", "LifecycleDroppedTicks"];
     internal static SchedulerSnapshot Zero => new(Names.ToDictionary(Camel, _ => 0L), 0, 0, 0, false);
     private static string Camel(string name) => char.ToLowerInvariant(name[0]) + name[1..];
 

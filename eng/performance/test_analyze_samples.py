@@ -350,7 +350,7 @@ class AnalysisTests(unittest.TestCase):
 
 COUNTERS = ("callbacks", "duplicateCallbacks", "successfulSteps", "appliedFrames", "refreshFrames",
             "overloads", "longPauses", "clockResets", "faults", "overloadDroppedTicks",
-            "pauseDroppedTicks", "faultDroppedTicks")
+            "pauseDroppedTicks", "faultDroppedTicks", "lifecycleDroppedTicks")
 
 
 def schema2_run():
@@ -381,6 +381,31 @@ class SchedulerSchemaTests(unittest.TestCase):
         self.assertEqual(result["scheduler"]["totals"]["successfulSteps"],
                          result["scheduler"]["totals"]["appliedFrames"] * 2)
         self.assertEqual(result["states"]["active"]["applicationUpdateIntervals"]["fps"], 62.5)
+
+    def test_normal_hidden_lifecycle_discard_is_reported_without_timing_failure(self):
+        rows, evidence = schema2_run()
+        index = next(i for i, row in enumerate(rows) if row["phase"] == "hidden")
+        rows[index]["frameCounters"]["lifecycleDroppedTicks"] = 125_000
+        for row in rows[index:]:
+            row["frameTotals"]["lifecycleDroppedTicks"] = 125_000
+        evidence["complete"]["frameTotals"]["lifecycleDroppedTicks"] = 125_000
+        result = analyzer.analyze(rows, evidence=evidence)
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(result["failedGates"], [])
+        self.assertEqual(result["scheduler"]["droppedSeconds"], 0)
+        self.assertEqual(result["scheduler"]["lifecycleDroppedSeconds"], .0125)
+        self.assertEqual(result["scheduler"]["totalDroppedSeconds"], .0125)
+
+    def test_missing_lifecycle_counter_is_rejected_in_each_counter_group(self):
+        rows, _ = schema2_run()
+        for group in ("frameCounters", "frameTotals"):
+            row = copy.deepcopy(rows[0])
+            del row[group]["lifecycleDroppedTicks"]
+            with self.subTest(group=group):
+                result = analyzer.analyze([row], 1)
+                self.assertEqual(result["status"], "invalid")
+                self.assertIn(group + "/lifecycleDroppedTicks must be a nonnegative integer",
+                              result["dataValidity"]["errors"][0]["reasons"])
 
     def test_missing_bad_and_unknown_schema_counters_are_invalid(self):
         rows, evidence = schema2_run()
