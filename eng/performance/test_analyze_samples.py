@@ -167,6 +167,64 @@ class AnalysisTests(unittest.TestCase):
         result = analyzer.analyze([row], 1)
         self.assertEqual(result["status"], "invalid")
 
+    def test_each_observe_visibility_or_running_signal_breaks_continuous_observation(self):
+        for field in ("visible", "runtimeRunning", "motionTimerEnabled"):
+            rows = run_rows(360)
+            rows[99][field] = False
+            with self.subTest(field=field):
+                result = analyzer.analyze(rows, 360)
+                self.assertEqual(result["status"], "fail")
+                self.assertEqual(result["observation"]["recordedSeconds"], 360)
+                self.assertEqual(result["observation"]["status"], "incomplete")
+                self.assertLess(result["observation"]["maximumContinuousVisibleSeconds"], 360)
+                self.assertIn("observation-not-continuously-visible-running", result["observation"]["reasons"])
+                self.assertIn("observe/visible-running", result["failedGates"])
+
+    def test_unplanned_hidden_tail_cannot_complete_visible_observation(self):
+        rows = run_rows(900)
+        for row in rows[857:]:
+            row.update(state="hidden", visible=False, runtimeRunning=False, motionTimerEnabled=False,
+                       motionTicks=5 if row["elapsedSeconds"] == 858 else 0, appIntervalsMs=[])
+        result = analyzer.analyze(rows, 900)
+        self.assertEqual(result["observation"]["recordedSeconds"], 900)
+        self.assertEqual(result["observation"]["visibleRunningSeconds"], 857)
+        self.assertEqual(result["observation"]["maximumContinuousVisibleSeconds"], 857)
+        self.assertEqual(result["observation"]["status"], "incomplete")
+        self.assertEqual(result["status"], "fail")
+        self.assertEqual(result["hiddenStopped"]["status"], "pass")
+        self.assertNotIn("hidden/stopped", result["failedGates"])
+
+    def test_unplanned_hidden_transition_does_not_borrow_observe_phase_age(self):
+        rows = [sample(1)]
+        rows += [sample(second, "hidden", visible=False, runtimeRunning=False,
+                        motionTimerEnabled=False, motionTicks=5 if second == 2 else 0,
+                        appIntervalsMs=[], phaseAgeSeconds=1000 + second) for second in (2, 3, 4)]
+        result = analyzer.analyze(rows, 4)
+        self.assertEqual(result["hiddenStopped"]["status"], "pass")
+        self.assertEqual(result["hiddenStopped"]["settledSamples"], 1)
+        self.assertEqual(result["hiddenStopped"]["transitionSamplesExcluded"], 2)
+        rows[-1]["motionTicks"] = 1
+        self.assertEqual(analyzer.analyze(rows, 4)["hiddenStopped"]["status"], "fail")
+
+    def test_unplanned_hidden_age_restarts_after_visible_record(self):
+        rows = [sample(second) if second in (1, 4) else
+                sample(second, "hidden", visible=False, runtimeRunning=False, motionTimerEnabled=False,
+                       motionTicks=5 if second in (2, 5) else 0, appIntervalsMs=[], phaseAgeSeconds=1000)
+                for second in range(1, 7)]
+        result = analyzer.analyze(rows, 6)
+        self.assertEqual(result["hiddenStopped"]["status"], "not-observed")
+        self.assertEqual(result["hiddenStopped"]["settledSamples"], 0)
+        self.assertNotIn("hidden/stopped", result["failedGates"])
+
+    def test_unplanned_hidden_age_does_not_bridge_missing_sample_gap(self):
+        rows = [sample(1, "hidden", visible=False, runtimeRunning=False, motionTimerEnabled=False,
+                       motionTicks=0, appIntervalsMs=[], phaseAgeSeconds=1000),
+                sample(7, "hidden", intervalSeconds=6, visible=False, runtimeRunning=False,
+                       motionTimerEnabled=False, motionTicks=5, appIntervalsMs=[], phaseAgeSeconds=1006)]
+        result = analyzer.analyze(rows, 7)
+        self.assertEqual(result["hiddenStopped"]["status"], "not-observed")
+        self.assertNotIn("hidden/stopped", result["failedGates"])
+
     def test_gap_or_runtime_error_prevents_observation_completion(self):
         gap = [sample(1), sample(7, intervalSeconds=6)]
         result = analyzer.analyze(gap, 7)
@@ -395,6 +453,15 @@ class SchedulerSchemaTests(unittest.TestCase):
         self.assertEqual(result["scheduler"]["droppedSeconds"], 0)
         self.assertEqual(result["scheduler"]["lifecycleDroppedSeconds"], .0125)
         self.assertEqual(result["scheduler"]["totalDroppedSeconds"], .0125)
+
+    def test_schema2_stopped_scheduler_invalidates_visible_observation(self):
+        rows, evidence = schema2_run()
+        rows[100].update(schedulerEnabled=False, motionTimerEnabled=False)
+        result = analyzer.analyze(rows, evidence=evidence)
+        self.assertEqual(result["dataValidity"]["status"], "valid")
+        self.assertEqual(result["status"], "fail")
+        self.assertEqual(result["observation"]["status"], "incomplete")
+        self.assertIn("observe/visible-running", result["failedGates"])
 
     def test_missing_lifecycle_counter_is_rejected_in_each_counter_group(self):
         rows, _ = schema2_run()

@@ -272,6 +272,61 @@ def scenario_seconds(rows):
     return sum(row["intervalSeconds"] for row in rows)
 
 
+def visible_and_running(row):
+    # Schema 2 validates this retained alias against schedulerEnabled.
+    return row["visible"] and row["runtimeRunning"] and row["motionTimerEnabled"] and row["state"] not in ("hidden", "disposed")
+
+
+def visible_observation_seconds(rows):
+    """Conservative coverage: restoration's first interval may still contain hidden time."""
+    total, longest, current = 0.0, 0.0, 0.0
+    previous = None
+    for row in rows:
+        if (row["phase"] == "observe" and visible_and_running(row) and row["error"] is None
+                and row["intervalSeconds"] <= MAX_INTERVAL_SECONDS):
+            covered = min(row["intervalSeconds"], row.get("phaseAgeSeconds", row["intervalSeconds"]))
+            if previous is not None and previous["phase"] == "observe" and not visible_and_running(previous):
+                covered = 0.0
+            total += covered
+            current += covered
+            longest = max(longest, current)
+        else:
+            current = 0.0
+        previous = row
+    return total, longest
+
+
+def hidden_sample_groups(rows):
+    """Only explicitly planned hidden phases may use phaseAgeSeconds as hidden age."""
+    hidden, settled = [], []
+    unplanned_start = None
+    previous_unplanned = None
+    for row in rows:
+        if row["phase"] in ("hidden", "cycle-hidden"):
+            hidden.append(row)
+            if row["phaseAgeSeconds"] >= 2:
+                settled.append(row)
+            unplanned_start = previous_unplanned = None
+        elif row["phase"] != "disposed" and (row["state"] == "hidden" or
+                not row["visible"] and not row["runtimeRunning"] and not row["motionTimerEnabled"]):
+            hidden.append(row)
+            uninterrupted = (previous_unplanned is not None
+                             and row["phase"] == previous_unplanned["phase"]
+                             and row["cycle"] == previous_unplanned["cycle"]
+                             and 0 < row["elapsedSeconds"] - previous_unplanned["elapsedSeconds"] <= MAX_INTERVAL_SECONDS
+                             and row["intervalSeconds"] <= MAX_INTERVAL_SECONDS)
+            if not uninterrupted:
+                # The transition interval may contain frames from before hiding.
+                # Start at this first hidden endpoint, never its phase's age.
+                unplanned_start = row["elapsedSeconds"]
+            if row["elapsedSeconds"] - unplanned_start >= 2:
+                settled.append(row)
+            previous_unplanned = row
+        else:
+            unplanned_start = previous_unplanned = None
+    return hidden, settled
+
+
 def full_run_evidence(rows, evidence, expected_seconds):
     """Separate missing evidence from measured failures; retained references are not leaks."""
     missing, invalid, failed = [], [], []
@@ -463,6 +518,8 @@ def analyze(samples, expected_observe_seconds=3600.0, input_errors=None, evidenc
     valid_input = not errors
     observed = [row for row in valid if row["phase"] == "observe"]
     seconds = scenario_seconds(observed)
+    visible_seconds, longest_visible_seconds = visible_observation_seconds(valid)
+    visibility_interruptions = [row for row in observed if not visible_and_running(row)]
     gaps = [row for row in observed if row["intervalSeconds"] > MAX_INTERVAL_SECONDS]
     runtime_errors = [row for row in observed if row["error"] is not None]
     reasons = []
@@ -470,6 +527,10 @@ def analyze(samples, expected_observe_seconds=3600.0, input_errors=None, evidenc
         reasons.append("invalid-input")
     if seconds < expected_observe_seconds:
         reasons.append("observation-too-short")
+    if longest_visible_seconds < expected_observe_seconds:
+        reasons.append("continuous-visible-observation-too-short")
+    if visibility_interruptions:
+        reasons.append("observation-not-continuously-visible-running")
     if gaps:
         reasons.append("sample-interval-over-5-seconds")
     if runtime_errors:
@@ -487,9 +548,7 @@ def analyze(samples, expected_observe_seconds=3600.0, input_errors=None, evidenc
               for state in sorted({row["state"] for row in valid})}
     phases = {phase: summarize_group([row for row in valid if row["phase"] == phase], "mixed", valid_input)
               for phase in sorted({row["phase"] for row in valid})}
-    hidden_rows = [row for row in valid if row["state"] == "hidden"
-                   or row["phase"] in ("hidden", "cycle-hidden")]
-    settled_hidden = [row for row in hidden_rows if row["phaseAgeSeconds"] >= 2]
+    hidden_rows, settled_hidden = hidden_sample_groups(valid)
     hidden_failures = [{"elapsedSeconds": row["elapsedSeconds"], "cycle": row["cycle"],
                         "motionTicks": row["motionTicks"], "motionTimerEnabled": row["motionTimerEnabled"],
                         "runtimeRunning": row["runtimeRunning"], "visible": row["visible"],
@@ -504,6 +563,8 @@ def analyze(samples, expected_observe_seconds=3600.0, input_errors=None, evidenc
                     if result[gate]["status"] == "fail"]
     if hidden_status == "fail":
         failed_gates.append("hidden/stopped")
+    if visibility_interruptions:
+        failed_gates.append("observe/visible-running")
     if any(row["error"] is not None for row in valid):
         failed_gates.append("runtime/error")
     scheduler_rows = [row for row in valid if schema_of(row) == 2]
@@ -539,6 +600,9 @@ def analyze(samples, expected_observe_seconds=3600.0, input_errors=None, evidenc
                          "inputSampleCount": len(samples), "structurallyValidSampleCount": len(valid)},
         "observation": {"status": "complete" if not reasons else "incomplete", "reasons": reasons,
                         "expectedSeconds": expected_observe_seconds, "recordedSeconds": seconds,
+                        "visibleRunningSeconds": visible_seconds,
+                        "maximumContinuousVisibleSeconds": longest_visible_seconds,
+                        "notVisibleRunningSampleTimes": [row["elapsedSeconds"] for row in visibility_interruptions],
                         "sampleCount": len(observed), "maximumIntervalSeconds": max(
                             (row["intervalSeconds"] for row in observed), default=None),
                         "intervalOver5SecondsCount": len(gaps), "runtimeErrorCount": len(runtime_errors)},
