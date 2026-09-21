@@ -19,14 +19,14 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        if (args.Length != 1) return 2;
+        if (args.Length is < 1 or > 2 || args.Length == 2 && args[1] != "--frame-stages") return 2;
         var output = Path.GetFullPath(args[0]);
         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         if (Within(output, Path.Combine(local, "Programs", "Dango")) || Within(output, Path.Combine(local, "Dango"))) return 4;
         if (Directory.Exists(output) || File.Exists(output)) return 3;
         Directory.CreateDirectory(output);
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        var probe = new TimerProbe(app, output);
+        var probe = new TimerProbe(app, output, args.Length == 2);
         app.Startup += (_, _) => probe.Start();
         app.DispatcherUnhandledException += (_, e) =>
         {
@@ -49,7 +49,7 @@ internal static class Program
 
 // Legacy timers are wrapped once; candidate schedulers expose read-only snapshots.
 // No product input, physics step, interval, priority, rendering or binary is changed.
-internal sealed class TimerProbe(System.Windows.Application app, string output)
+internal sealed class TimerProbe(System.Windows.Application app, string output, bool frameStages = false)
 {
     private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
     private const double PhaseSeconds = 60;
@@ -58,6 +58,7 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
     private readonly DateTimeOffset startedUtc = DateTimeOffset.UtcNow;
     private readonly DispatcherTimer controlTimer = new(DispatcherPriority.Render) { Interval = TimerInterval };
     private readonly List<Phase> phases = [];
+    private readonly List<Tick> startupTicks = [];
     private readonly List<string> errors = [];
     private Phase? current;
     private object? host;
@@ -73,6 +74,8 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
     private object? environment;
     private object? disposal;
     private double? productDpi;
+    private bool captureStartup;
+    private long? productStartEntry, productStartExit;
 
     internal void Start()
     {
@@ -95,6 +98,7 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
                 .Select(name => new { name, sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, name)))) }).ToArray(),
             requestedTimerIntervalMs = TimerInterval.TotalMilliseconds,
             priority = DispatcherPriority.Render.ToString(),
+            frameStageTimingRequested = frameStages,
             conditions = new[]
             {
                 "Sequential 60 s empty timer, 60 s synthetic 5 ms busy handler, 60 s Product Wallpaper warmup, 60 s Product Wallpaper measurement.",
@@ -106,6 +110,8 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
                 "Exit-to-next-entry includes probe bookkeeping, WPF rearming/deferred work, timer waiting and dispatcher queueing; it is not a pure scheduler-delay measurement.",
                 "Callback frequency is not GPU presentation FPS. Synthetic busy work is diagnostic and does not validate product capacity or stability.",
                 "A 15 s callback-heartbeat gap fails this probe only; a system suspend or scheduling outage cannot be attributed to a product crash from this flag alone.",
+                "Optional --frame-stages adds monotonic timestamps in the isolated scheduler. Loop includes input creation and fixed-step runtime work; apply excludes deferred WPF rendering.",
+                "Detailed timing retains callbacks inside host.Start separately and preserves the four phases and full warmup. Its additional overhead cannot be used as budget evidence.",
             },
         };
         controlTimer.Tick += OnControlTick;
@@ -149,16 +155,26 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
 
     private void OnScheduledProduct(SchedulerSnapshot snapshot, SchedulerSnapshot delta)
     {
+        var completed = delta.Counters["faults"] == 0 && snapshot.StageTiming?.Threw != true;
+        if (captureStartup)
+        {
+            Interlocked.Exchange(ref heartbeat, snapshot.FinishedTimestamp);
+            startupTicks.Add(new(snapshot.StartedTimestamp, snapshot.FinishedTimestamp, completed,
+                delta.Counters, snapshot.RemainderTicks, snapshot.StageTiming));
+            if (!completed) Fail("ProductStartupCallbackFault");
+            return;
+        }
         if (!productTimingActive) return;
-        if (delta.Counters["faults"] != 0) Fail("ProductCallbackFault");
-        Record(snapshot.StartedTimestamp, snapshot.FinishedTimestamp, delta.Counters["faults"] == 0,
-            delta.Counters, snapshot.RemainderTicks);
+        if (!completed) Fail("ProductCallbackFault");
+        Record(snapshot.StartedTimestamp, snapshot.FinishedTimestamp, completed,
+            delta.Counters, snapshot.RemainderTicks, snapshot.StageTiming);
     }
 
-    private void Record(long entry, long exit, bool handlerCompleted, Dictionary<string, long>? counters = null, long? remainderTicks = null)
+    private void Record(long entry, long exit, bool handlerCompleted, Dictionary<string, long>? counters = null, long? remainderTicks = null,
+        SchedulerStageTiming? stageTiming = null)
     {
         Interlocked.Exchange(ref heartbeat, exit);
-        current!.Ticks.Add(new(entry, exit, handlerCompleted, counters, remainderTicks));
+        current!.Ticks.Add(new(entry, exit, handlerCompleted, counters, remainderTicks, stageTiming));
         if (!handlerCompleted || Stopwatch.GetElapsedTime(current.Started, exit).TotalSeconds < PhaseSeconds) return;
         current.Completed = exit;
         current.CompletedUtc = DateTimeOffset.UtcNow;
@@ -211,11 +227,12 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
         var window = Field<object>(host, "workerWWindow");
         if (SchedulerObserver.IsCandidate(window))
         {
-            productScheduler = new(window, OnScheduledProduct);
+            productScheduler = new(window, OnScheduledProduct, detailedTiming: frameStages);
             schema = 2;
         }
         else
         {
+            if (frameStages) throw new InvalidOperationException("Detailed timing requires a candidate scheduler.");
             productTimer = Field<DispatcherTimer>(window, "motionTimer");
             if (productTimer.Interval != TimerInterval) throw new InvalidOperationException("Unexpected product timer interval.");
             var method = window.GetType().GetMethod("OnMotionTimerTick", Flags)!;
@@ -225,11 +242,14 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
             productTimer.Tick += OnProductTick;
             productWrapped = true;
         }
-        type.GetMethod("Start")!.Invoke(host, null);
+        captureStartup = frameStages;
+        productStartEntry = Stopwatch.GetTimestamp();
+        try { type.GetMethod("Start")!.Invoke(host, null); }
+        finally { productStartExit = Stopwatch.GetTimestamp(); captureStartup = false; }
         productDpi = VisualTreeHelper.GetDpi((Visual)window).PixelsPerInchX;
         VerifyProduct();
         // Initialization time is outside the full 60-second warmup. Any
-        // reentrant startup callback still calls the original without recording.
+        // reentrant startup callback is recorded separately only with --frame-stages.
         BeginPhase("product-warmup", synthetic: false);
         productTimingActive = true;
     }
@@ -281,6 +301,18 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
                 errors,
                 stopwatchFrequency = Stopwatch.Frequency,
                 phaseSeconds = PhaseSeconds,
+                stageTimingVersion = frameStages ? 1 : (int?)null,
+                productStartEntryTimestamp = productStartEntry - origin,
+                productStartExitTimestamp = productStartExit - origin,
+                startupCallbacks = startupTicks.Select(tick => new
+                {
+                    entryTimestamp = tick.Entry - origin,
+                    exitTimestamp = tick.Exit - origin,
+                    tick.HandlerCompleted,
+                    counters = tick.Counters,
+                    remainderTicks = tick.RemainderTicks,
+                    stageTiming = DescribeTiming(tick.StageTiming),
+                }),
                 phases = phases.Select(DescribePhase),
             });
             WriteJson("disposal.json", disposal);
@@ -376,7 +408,42 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
                 handlerElapsedMs = handler[index],
                 entryToEntryMs = index > 0 ? periods[index - 1] : (double?)null,
                 previousExitToEntryMs = index > 0 ? waits[index - 1] : (double?)null,
+                stageTiming = DescribeTiming(tick.StageTiming),
             }),
+        };
+    }
+
+    private object? DescribeTiming(SchedulerStageTiming? timing)
+    {
+        if (timing is null) return null;
+        double? Elapsed(long? start, long? end) => start.HasValue && end.HasValue ? Milliseconds(end.Value - start.Value) : null;
+        return new
+        {
+            version = timing.Version,
+            callback = timing.Callback,
+            generation = timing.Generation,
+            schedulerStartedTimestamp = timing.SchedulerStartedTimestamp - origin,
+            renderingTimeTicks = timing.RenderingTimeTicks,
+            startedTimestamp = timing.StartedTimestamp - origin,
+            finishedTimestamp = timing.FinishedTimestamp - origin,
+            previousFinishedTimestamp = timing.PreviousFinishedTimestamp - origin,
+            previousObservedExitToEntryMs = Elapsed(timing.PreviousFinishedTimestamp, timing.StartedTimestamp),
+            prepareStartedTimestamp = timing.PrepareStartedTimestamp - origin,
+            prepareFinishedTimestamp = timing.PrepareFinishedTimestamp - origin,
+            prepareElapsedMs = Elapsed(timing.PrepareStartedTimestamp, timing.PrepareFinishedTimestamp),
+            loopStartedTimestamp = timing.LoopStartedTimestamp - origin,
+            loopFinishedTimestamp = timing.LoopFinishedTimestamp - origin,
+            loopElapsedMs = Elapsed(timing.LoopStartedTimestamp, timing.LoopFinishedTimestamp),
+            applyStartedTimestamp = timing.ApplyStartedTimestamp - origin,
+            applyFinishedTimestamp = timing.ApplyFinishedTimestamp - origin,
+            applyElapsedMs = Elapsed(timing.ApplyStartedTimestamp, timing.ApplyFinishedTimestamp),
+            requestedSteps = timing.RequestedSteps,
+            successfulSteps = timing.SuccessfulSteps,
+            remainderBeforeTicks = timing.RemainderBeforeTicks,
+            remainderAfterTicks = timing.RemainderAfterTicks,
+            sameGenerationAtExit = timing.SameGenerationAtExit,
+            refresh = timing.Refresh,
+            threw = timing.Threw,
         };
     }
 
@@ -391,7 +458,7 @@ internal sealed class TimerProbe(System.Windows.Application app, string output)
     private void WriteJson(string name, object? value) => File.WriteAllText(Path.Combine(output, name), JsonSerializer.Serialize(value, new JsonSerializerOptions { WriteIndented = true }));
     private static T Field<T>(object target, string name) => (T)target.GetType().GetField(name, Flags)!.GetValue(target)!;
     private readonly record struct Tick(long Entry, long Exit, bool HandlerCompleted,
-        Dictionary<string, long>? Counters, long? RemainderTicks);
+        Dictionary<string, long>? Counters, long? RemainderTicks, SchedulerStageTiming? StageTiming = null);
     private sealed class Phase(string name, bool synthetic, long started, DateTimeOffset startedUtc)
     {
         internal string Name { get; } = name;

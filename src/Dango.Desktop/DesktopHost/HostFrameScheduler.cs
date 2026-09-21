@@ -25,6 +25,33 @@ internal readonly record struct HostFrameDiagnostics(
     long OverloadDroppedTicks, long PauseDroppedTicks, long FaultDroppedTicks, long LifecycleDroppedTicks, long RemainderTicks,
     long LastStartedTimestamp, long LastFinishedTimestamp, bool IsRunning);
 
+// Optional wall-clock observation only. All timestamps use the scheduler's timestamp
+// provider; RenderingTimeTicks and remainder values instead use TimeSpan ticks.
+internal readonly record struct HostFrameStageTiming
+{
+    public int Version => 1;
+    public long Callback { get; init; }
+    public long Generation { get; init; }
+    public long SchedulerStartedTimestamp { get; init; }
+    public long? RenderingTimeTicks { get; init; }
+    public long StartedTimestamp { get; init; }
+    public long FinishedTimestamp { get; init; }
+    public long? PreviousFinishedTimestamp { get; init; }
+    public long? PrepareStartedTimestamp { get; init; }
+    public long? PrepareFinishedTimestamp { get; init; }
+    public long? LoopStartedTimestamp { get; init; }
+    public long? LoopFinishedTimestamp { get; init; }
+    public long? ApplyStartedTimestamp { get; init; }
+    public long? ApplyFinishedTimestamp { get; init; }
+    public int RequestedSteps { get; init; }
+    public int SuccessfulSteps { get; init; }
+    public long RemainderBeforeTicks { get; init; }
+    public long? RemainderAfterTicks { get; init; }
+    public bool SameGenerationAtExit { get; init; }
+    public bool Refresh { get; init; }
+    public bool Threw { get; init; }
+}
+
 internal sealed class HostFrameScheduler
 {
     private readonly StackedDangoSceneRuntime runtime;
@@ -40,6 +67,9 @@ internal sealed class HostFrameScheduler
     private long generation;
     private bool inCallback;
     private HostFrameDiagnostics counters;
+    private bool detailedTimingEnabled;
+    private long schedulerStartedTimestamp;
+    private long? previousDetailedFinish;
 
     internal HostFrameScheduler(StackedDangoSceneRuntime runtime, Func<bool> prepare,
         Func<PhysicsPresentationInput> input, Action<StackedPhysicsPresentationFrame> apply,
@@ -59,6 +89,18 @@ internal sealed class HostFrameScheduler
     internal bool OwnsRuntime => ReferenceEquals(runtime.FrameDriver, this);
     internal event EventHandler? CallbackCompleted;
     internal HostFrameDiagnostics Snapshot => counters with { IsRunning = IsRunning, RemainderTicks = clock.RemainderTicks };
+    internal HostFrameStageTiming? LastStageTiming { get; private set; }
+    internal bool DetailedTimingEnabled
+    {
+        get => detailedTimingEnabled;
+        set
+        {
+            if (detailedTimingEnabled == value) return;
+            detailedTimingEnabled = value;
+            previousDetailedFinish = null;
+            LastStageTiming = null;
+        }
+    }
 
     internal void VerifyCanStart()
     {
@@ -72,7 +114,9 @@ internal sealed class HostFrameScheduler
         VerifyCanStart();
         if (!runtime.IsRunning) throw new InvalidOperationException("场景尚未启动。");
         runtime.FrameDriver = this;
-        clock.Start(timestamp());
+        schedulerStartedTimestamp = timestamp();
+        clock.Start(schedulerStartedTimestamp);
+        previousDetailedFinish = null;
         lastRenderingTime = null;
         var currentGeneration = ++generation;
         Func<bool> isCurrent = () => IsRunning && OwnsRuntime && currentGeneration == generation && runtime.IsRunning;
@@ -103,9 +147,20 @@ internal sealed class HostFrameScheduler
         if (!isCurrent() || inCallback) return;
         inCallback = true;
         counters = counters with { Callbacks = counters.Callbacks + 1, LastStartedTimestamp = timestamp() };
+        var observe = detailedTimingEnabled;
+        var timing = observe ? new HostFrameStageTiming
+        {
+            Callback = counters.Callbacks,
+            Generation = generation,
+            SchedulerStartedTimestamp = schedulerStartedTimestamp,
+            StartedTimestamp = counters.LastStartedTimestamp,
+            PreviousFinishedTimestamp = previousDetailedFinish,
+            RemainderBeforeTicks = clock.RemainderTicks,
+        } : default;
         try
         {
             if (args is not RenderingEventArgs rendering) throw new InvalidOperationException("无效呈现事件。");
+            if (observe) timing = timing with { RenderingTimeTicks = rendering.RenderingTime.Ticks };
             if (lastRenderingTime == rendering.RenderingTime)
             {
                 counters = counters with { DuplicateCallbacks = counters.DuplicateCallbacks + 1 };
@@ -113,8 +168,13 @@ internal sealed class HostFrameScheduler
             }
             lastRenderingTime = rendering.RenderingTime;
             var beforePrepare = runtime.FrameFaultState;
-            if (!prepare() || !isCurrent()) return;
+            bool prepared;
+            if (observe) timing = timing with { PrepareStartedTimestamp = timestamp() };
+            try { prepared = prepare(); }
+            finally { if (observe) timing = timing with { PrepareFinishedTimestamp = timestamp() }; }
+            if (!prepared || !isCurrent()) return;
             var batch = clock.Advance(counters.LastStartedTimestamp);
+            if (observe) timing = timing with { RequestedSteps = batch.Steps };
             if (StackedDangoSceneRuntime.HasNewFrameFault(beforePrepare, runtime.FrameFaultState))
             {
                 counters = counters with
@@ -122,7 +182,7 @@ internal sealed class HostFrameScheduler
                     Faults = counters.Faults + 1,
                     FaultDroppedTicks = counters.FaultDroppedTicks + batch.DroppedTicks + clock.Discard(batch.Steps),
                 };
-                if (isCurrent() && runtime.LastFrame is { } safe) Refresh(safe);
+                if (isCurrent() && runtime.LastFrame is { } safe) Refresh(safe, observe, ref timing);
                 return;
             }
             if (batch.Reset)
@@ -137,13 +197,18 @@ internal sealed class HostFrameScheduler
                 runtime.CancelInput();
                 if (StackedDangoSceneRuntime.HasNewFrameFault(beforeCancel, runtime.FrameFaultState))
                     counters = counters with { Faults = counters.Faults + 1 };
-                if (isCurrent() && runtime.LastFrame is { } cancelled) Refresh(cancelled);
+                if (isCurrent() && runtime.LastFrame is { } cancelled) Refresh(cancelled, observe, ref timing);
                 return;
             }
             if (batch.DroppedTicks > 0)
                 counters = counters with { Overloads = counters.Overloads + 1, OverloadDroppedTicks = counters.OverloadDroppedTicks + batch.DroppedTicks };
             if (batch.Steps == 0) return;
-            var result = loop.Advance(batch.Steps, input(), isCurrent);
+            HostFrameResult result;
+            // Includes input construction and every requested fixed step, not just native physics.
+            if (observe) timing = timing with { LoopStartedTimestamp = timestamp() };
+            try { result = loop.Advance(batch.Steps, input(), isCurrent); }
+            finally { if (observe) timing = timing with { LoopFinishedTimestamp = timestamp() }; }
+            if (observe) timing = timing with { SuccessfulSteps = result.SuccessfulSteps };
             counters = counters with
             {
                 SuccessfulSteps = counters.SuccessfulSteps + result.SuccessfulSteps,
@@ -165,21 +230,44 @@ internal sealed class HostFrameScheduler
                     FaultDroppedTicks = counters.FaultDroppedTicks + clock.Discard(batch.Steps - result.SuccessfulSteps),
                 };
             if (result.Frame is null) return;
-            if (!result.Healthy) { Refresh(result.Frame); return; }
-            apply(result.Frame);
+            if (!result.Healthy) { Refresh(result.Frame, observe, ref timing); return; }
+            ApplyObserved(result.Frame, false, observe, ref timing);
             counters = counters with { AppliedFrames = counters.AppliedFrames + 1 };
+        }
+        catch
+        {
+            if (observe) timing = timing with { Threw = true };
+            throw;
         }
         finally
         {
             counters = counters with { LastFinishedTimestamp = timestamp() };
+            if (observe)
+            {
+                var sameGeneration = timing.Generation == generation;
+                LastStageTiming = timing with
+                {
+                    FinishedTimestamp = counters.LastFinishedTimestamp,
+                    SameGenerationAtExit = sameGeneration,
+                    RemainderAfterTicks = sameGeneration ? clock.RemainderTicks : null,
+                };
+                if (sameGeneration && detailedTimingEnabled) previousDetailedFinish = counters.LastFinishedTimestamp;
+            }
             inCallback = false;
             CallbackCompleted?.Invoke(this, EventArgs.Empty);
         }
     }
 
-    private void Refresh(StackedPhysicsPresentationFrame frame)
+    private void Refresh(StackedPhysicsPresentationFrame frame, bool observe, ref HostFrameStageTiming timing)
     {
-        apply(frame);
+        ApplyObserved(frame, true, observe, ref timing);
         counters = counters with { RefreshFrames = counters.RefreshFrames + 1 };
+    }
+
+    private void ApplyObserved(StackedPhysicsPresentationFrame frame, bool refresh, bool observe, ref HostFrameStageTiming timing)
+    {
+        if (observe) timing = timing with { ApplyStartedTimestamp = timestamp(), Refresh = refresh };
+        try { apply(frame); }
+        finally { if (observe) timing = timing with { ApplyFinishedTimestamp = timestamp() }; }
     }
 }
