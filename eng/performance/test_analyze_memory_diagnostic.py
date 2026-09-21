@@ -1,6 +1,11 @@
 """Synthetic negative/positive evidence tests, never desktop acceptance."""
 
 import copy
+import contextlib
+import io
+import json
+from pathlib import Path
+import tempfile
 import unittest
 
 import analyze_memory_diagnostic as analyzer
@@ -75,6 +80,34 @@ def fixture():
         "process-exit": {"processId": 123, "exited": True, "exitCode": 0},
     }
     return rows, evidence
+
+
+def observed_counter_triplet():
+    """Real allocation/GC/estimate values around the first observed anomaly; other fields synthetic."""
+    seed = fixture()[0][0]
+    observations = [
+        # Leading baseline reconstructed from the preceding sample's delta/interval.
+        (207.5803013, 1_989_917_040, [159, 23, 2], 2_090_032),
+        (208.5762248, 1_999_596_816, [159, 23, 2], 2_090_032),
+        (209.5765730, 2_009_634_608, [160, 23, 2], -348_224),
+        (210.5763569, 2_019_903_376, [160, 23, 2], 13_949_992),
+    ]
+    rows = []
+    for seconds, allocated, collections, managed in observations:
+        row = copy.deepcopy(seed)
+        row.update(elapsedSeconds=seconds, phase="memory-cycle-visible", restores=4, recordKind="sample")
+        prior = rows[-1] if rows else None
+        duration = seconds - prior["elapsedSeconds"] if prior else None
+        delta = allocated - prior["metrics"]["totalAllocatedBytes"] if prior else None
+        row["metrics"].update(managedBytesEstimate=managed, totalAllocatedBytes=allocated,
+                              allocatedDeltaBytes=delta, allocationIntervalSeconds=duration,
+                              allocationBytesPerSecond=delta / duration if prior else None,
+                              collectionCounts=collections,
+                              collectionDeltas=[value - old for value, old in zip(collections, prior["metrics"]["collectionCounts"])] if prior else None,
+                              cpuSeconds=seconds / 10,
+                              cpuMachinePercent=(seconds / 10 - prior["metrics"]["cpuSeconds"]) / duration / 20 * 100 if prior else None)
+        rows.append(row)
+    return rows
 
 
 class MemoryDiagnosticTests(unittest.TestCase):
@@ -181,6 +214,91 @@ class MemoryDiagnosticTests(unittest.TestCase):
         rows, evidence = fixture()
         rows[0] = {"schemaVersion": 2}
         self.assertEqual("invalid", analyzer.analyze(rows, evidence)["status"])
+
+    def test_observed_negative_estimate_does_not_manufacture_allocation_errors(self):
+        rows = observed_counter_triplet()
+        original = copy.deepcopy(rows)
+        errors, anomalies = analyzer.validate(rows)
+        self.assertEqual([], errors)
+        self.assertEqual(1, len(anomalies))
+        self.assertEqual({"line": 3, "field": "managedBytesEstimate", "rawValue": -348_224,
+                          "phase": "memory-cycle-visible", "restores": 4, "elapsedSeconds": 209.576573,
+                          "reason": "nonnegative integer estimate unavailable; raw observation retained"}, anomalies[0])
+        self.assertEqual(original, rows)
+
+    def test_real_bad_delta_still_fails_without_contaminating_following_row(self):
+        rows = observed_counter_triplet()
+        rows[2]["metrics"]["allocatedDeltaBytes"] += 1
+        errors, anomalies = analyzer.validate(rows)
+        self.assertEqual([{"line": 3, "reason": "allocation delta"}], errors)
+        self.assertEqual(-348_224, anomalies[0]["rawValue"])
+
+    def test_all_three_observed_negative_values_remain_explicit_partial_evidence(self):
+        rows, evidence = fixture()
+        cycle_row = next(row for row in rows if row["phase"] == "memory-cycle-visible" and row["restores"] == 4 and row["recordKind"] == "sample")
+        cycle_row["metrics"]["managedBytesEstimate"] = -348_224
+        stable_rows = [row for row in rows if row["phase"] == "memory-stable" and row["restores"] == 5 and row["recordKind"] == "sample"]
+        for row, value in zip(stable_rows, [-248_104, -695_120]):
+            row["metrics"]["managedBytesEstimate"] = value
+        original = copy.deepcopy(rows)
+        result = analyzer.analyze(rows, evidence)
+        self.assertEqual("partial", result["status"])
+        self.assertEqual("partial", result["dataValidity"]["status"])
+        self.assertEqual("complete", result["protocolStatus"])
+        self.assertFalse(result["acceptanceEvaluated"])
+        self.assertEqual([], result["dataValidity"]["errors"])
+        self.assertEqual([-348_224, -248_104, -695_120], [item["rawValue"] for item in result["dataValidity"]["metricAnomalies"]])
+        for segment in (result["lifecycleSegments"]["memory-cycle-visible/4"], result["checkpoints"]["5"]):
+            estimate = segment["metrics"]["managedBytesEstimate"]
+            self.assertEqual("metric-unavailable", estimate["status"])
+            self.assertTrue(all(estimate[field] is None for field in ("first", "last", "peak", "lastMinusFirst", "tailWeightedMean")))
+            self.assertEqual("available", segment["metrics"]["workingSetBytes"]["status"])
+            self.assertGreater(segment["allocation"]["bytesPerSecond"], 0)
+            self.assertGreater(segment["cpuMachinePercent"], 0)
+        self.assertIsNone(result["checkpoints"]["5"]["tailMeanChangeFromBaseline"]["managedBytesEstimate"])
+        self.assertEqual("available", result["checkpoints"]["10"]["metrics"]["managedBytesEstimate"]["status"])
+        self.assertEqual(original, rows)
+
+    def test_unavailable_baseline_only_suppresses_that_metric_comparison(self):
+        rows, evidence = fixture()
+        row = next(row for row in rows if row["phase"] == "memory-stable" and row["restores"] == 0)
+        row["metrics"]["managedBytesEstimate"] = -348_224
+        result = analyzer.analyze(rows, evidence)
+        self.assertEqual("partial", result["status"])
+        for checkpoint in result["checkpoints"].values():
+            self.assertIsNone(checkpoint["tailMeanChangeFromBaseline"]["managedBytesEstimate"])
+        self.assertAlmostEqual(20_000_000, result["checkpoints"]["20"]["tailMeanChangeFromBaseline"]["workingSetBytes"])
+
+    def test_partial_metric_does_not_hide_invalid_counter_or_missing_exit(self):
+        for defect in ("counter", "exit"):
+            rows, evidence = fixture()
+            rows[2]["metrics"]["managedBytesEstimate"] = -348_224
+            if defect == "counter":
+                rows[2]["metrics"]["allocatedDeltaBytes"] += 1
+            else:
+                evidence.pop("process-exit")
+            result = analyzer.analyze(rows, evidence)
+            self.assertEqual("invalid" if defect == "counter" else "incomplete", result["status"])
+            self.assertFalse(result["acceptanceEvaluated"])
+            self.assertEqual(1, len(result["dataValidity"]["metricAnomalies"]))
+
+    def test_cli_preserves_original_invalid_report_and_raw_file(self):
+        rows, evidence = fixture()
+        rows[2]["metrics"]["managedBytesEstimate"] = -348_224
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            raw = "\n".join(json.dumps(row) for row in rows) + "\n"
+            (root / "memory-samples.jsonl").write_text(raw, encoding="utf-8")
+            for name, value in evidence.items():
+                (root / f"{name}.json").write_text(json.dumps(value), encoding="utf-8")
+            prior_report = '{"status":"invalid","historical":true}\n'
+            (root / "analysis.json").write_text(prior_report, encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = analyzer.main([str(root), str(root / "analysis-v2.json")])
+            self.assertEqual(1, code)
+            self.assertEqual("partial", json.loads((root / "analysis-v2.json").read_text(encoding="utf-8"))["status"])
+            self.assertEqual(raw, (root / "memory-samples.jsonl").read_text(encoding="utf-8"))
+            self.assertEqual(prior_report, (root / "analysis.json").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
