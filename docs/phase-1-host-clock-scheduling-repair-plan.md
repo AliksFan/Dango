@@ -1,6 +1,6 @@
 # 宿主时钟与帧调度修复实施计划
 
-日期：2026-09-21。状态：用户已确认设计并明确“开始实施”；本计划正在执行，实际完成和未验证项以验证报告为准。
+日期：2026-09-21。状态：用户已确认设计并明确“开始实施”。H0–H3 实现与自动回归已完成；H4 真实短测未通过，按停止点保留候选和证据，H5 未启动。实际完成和未验证项见[验证报告](verification/2026-09-21-host-clock-scheduling-repair.md)。
 
 依据：[已批准设计](phase-1-host-clock-scheduling-repair-design.md)、[原始验证报告](verification/2026-09-20-performance-stability.md)。起点为 `codex/performance-stability` / `584549b`；当前唯一既有未提交文件是本任务的设计文档。
 

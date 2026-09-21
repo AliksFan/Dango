@@ -1,6 +1,6 @@
 # 宿主时钟与帧调度修复设计
 
-状态：2026-09-21 用户确认设计并授权实施；时钟、调度、宿主集成与诊断适配已实现，正在执行隔离候选性能验证，尚未验收。步骤与停止点见[实施计划](phase-1-host-clock-scheduling-repair-plan.md)。
+状态：2026-09-21 用户确认设计并授权实施；时钟、调度、宿主集成与诊断适配已实现。H4 真实短测未通过，按停止点不进入新候选60分钟验证，尚未验收。实际证据见[验证报告](verification/2026-09-21-host-clock-scheduling-repair.md)，步骤与停止点见[实施计划](phase-1-host-clock-scheduling-repair-plan.md)。
 
 日期：2026-09-20。设计起点：`codex/performance-stability`，`584549b`，开始时工作区干净。所属范围：Phase 1 单机桌面性能问题修复；不改变阶段验收状态。
 
