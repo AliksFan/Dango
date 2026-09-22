@@ -2,7 +2,7 @@
 
 `Dango` 是一个多人联机桌面宠物项目的开发代号。
 
-2026-09-22 规划：已确认[步态与外观分批路线](docs/planning/2026-09-22-gait-and-customization-roadmap.md)和[行走自然感设计](docs/planning/2026-09-22-gait-sample-design.md)的首轮取舍，现已制定[小样实施计划](docs/planning/2026-09-22-gait-sample-plan.md)并获用户授权实施。单团子自主/键盘轻微步态及隔离项目入口已完成，Desktop 373/373、Core 37/37 通过；人工观感待项目小样确认。见[本批验证](docs/verification/2026-09-22-gait-sample.md)。
+2026-09-22 规划：已确认[步态与外观分批路线](docs/planning/2026-09-22-gait-and-customization-roadmap.md)和[行走自然感设计](docs/planning/2026-09-22-gait-sample-design.md)的首轮取舍，现已制定[小样实施计划](docs/planning/2026-09-22-gait-sample-plan.md)并获用户授权实施。单团子自主/键盘轻微步态及隔离项目入口已完成，Desktop 373/373、Core 37/37 通过；用户已确认当前小样整体观感并保留此版。见[本批验证](docs/verification/2026-09-22-gait-sample.md)。
 
 2026-09-22：已验收性能改动已按授权经阶段分支合入本地 main，并更新日常安装；真实启动、Window/Wallpaper 切换、设置保留和正常退出检查通过，旧版本可回退。见[本地交付记录](docs/verification/2026-09-22-performance-local-delivery.md)。原自动失败和专项未验证项继续保留，未推送或部署。
 
