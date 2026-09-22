@@ -1,5 +1,7 @@
 # Dango 分阶段开发计划 v0.1
 
+> 2026-09-22 本地交付：按用户后续授权，将已验收性能来源 `e598ae3` 经 `phase/1-desktop-life-prototype` 快进整合至本地 main，日常安装更新为 `8c46a0f8b85d-066a12d5a250`。真实快捷方式启动、重复打开、Window/Wallpaper 往返切换、设置字节保留和正常退出检查通过；旧版本与回退入口保留。详见[本地交付记录](verification/2026-09-22-performance-local-delivery.md)。未推送、部署；原自动失败和专项未验证边界保留，Phase 1 仍实施中。
+
 > 2026-09-22：用户在查看Window/Wallpaper正式短测结果后表示“我觉得目前的性能算合格了”，当前候选`8c46a0f`的性能用户验收通过，本轮优化与复测收尾。自动门禁中的CPU、Wallpaper内存和丢时差异保留；Wallpaper活动覆盖不足、60分钟长测等专项仍未验证。详见[性能验收记录](verification/2026-09-21-performance-acceptance-near60.md)。仅本地记录，不宣布整个Phase 1验收，不包含main合并、推送、部署或日常安装更新。
 
 > 2026-09-20 后续方向备忘：岛的设计暂缓；未来区分最多两人的桌宠模式与不接触真实桌面的多人房间模式。桌宠模式考虑在双方画面稳定后选取线条作为活动平台，允许两端位置存在有限差异。仅作[简单记录](planning/2026-09-20-two-mode-direction-note.md)，具体设计以后开展。

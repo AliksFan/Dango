@@ -2,6 +2,8 @@
 
 `Dango` 是一个多人联机桌面宠物项目的开发代号。
 
+2026-09-22：已验收性能改动已按授权经阶段分支合入本地 main，并更新日常安装；真实启动、Window/Wallpaper 切换、设置保留和正常退出检查通过，旧版本可回退。见[本地交付记录](docs/verification/2026-09-22-performance-local-delivery.md)。原自动失败和专项未验证项继续保留，未推送或部署。
+
 2026-09-18：本分支已加入轻点眨眼、Shift＋左键横向轻抚眯眼，并获用户整体人工验收通过；普通移动达到 3 DIP 后沿用原拖动。见[点击与抚摸验证记录](docs/verification/2026-09-17-light-interaction.md)。本批 32 项用例通过，完整回归无新增失败；历史门禁问题和未逐项执行的专项矩阵仍保留。
 
 本分支已实现单人正式雏形的第一批入口整合：普通无参数启动接入一只团子及新眼帽，提供既有拖放/方向控制、三种帽型、基础偏好保存、隐藏/恢复和故障重试。多体、骨架、物理参数和验收工具只在显式评审模式展示。用户于 2026-09-17 确认本批人工验收通过；完整互动、自主生活和真实上下岛继续后置，专项矩阵及整个 Phase 1 尚未完成。见[第一批设计](docs/planning/2026-09-17-desktop-entry-integration-design.md)、[实施计划](docs/planning/2026-09-17-desktop-entry-integration-plan.md)和[实施验证](docs/verification/2026-09-17-desktop-entry-integration.md)。下文原有验收说明保留各自历史范围。
