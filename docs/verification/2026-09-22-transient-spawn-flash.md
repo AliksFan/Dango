@@ -66,12 +66,24 @@
 
 既有 `Test-DangoPackage` 校验 478 文件通过，设置契约 `dango-desktop-settings-v4` 与五项设置源哈希一致。真实观察器和候选包的三份 Dango 程序集、两份 native DLL、`coreclr.dll` 指纹逐项相同，见 `package-probe-fingerprints.json`。
 
-设置基于本次问题调查开始时的 `protection-before.json` 核对，SHA-256 保持 `6FE69CF9D5B4CFC15E6EB35239458AA25392FE97EAC21A08F1685017BB8632AC`；不沿用用户操作前的历史设置指纹。统一模块 SHA-256 仍为 `00FF064A9A1A4DB67712403A8D01F19845A9EDF6B582D5FCA7CB9D0B567EF69C`，旧 DLL 仍为 `6712D66ECEF9588123CAFCD868455080598B5B58711A698FB8AF022A0CDA191A`。日常安装和两份 DLL 均未替换。
+设置基于本次问题调查开始时的 `protection-before.json` 核对，SHA-256 保持 `6FE69CF9D5B4CFC15E6EB35239458AA25392FE97EAC21A08F1685017BB8632AC`；不沿用用户操作前的历史设置指纹。统一模块 SHA-256 仍为 `00FF064A9A1A4DB67712403A8D01F19845A9EDF6B582D5FCA7CB9D0B567EF69C`，旧 DLL 仍为 `6712D66ECEF9588123CAFCD868455080598B5B58711A698FB8AF022A0CDA191A`。调查与候选验证期间未更新日常安装；后续授权交付如下。
+
+## 后续授权的本地交付
+
+用户收到修复及验证结论后，对“合入本地 main，并更新日常版本”回复“合入”。据此执行本地整合与日常安装更新，不据此补记尚未发生的人工视觉验收。
+
+- 开始时任务分支为 `1f59be4`，阶段分支与 main 均为 `3ccfd19`，三处工作区干净。先将 `phase/1-desktop-life-prototype` 快进至 `1f59be4`，再将 main 快进至阶段分支，无冲突。范围仅已批准的测试延期文档、闪回修复与回归、验证记录；产品代码与实测候选 `8329397` 完全一致。
+- 再次校验候选 478 文件、设置契约与源哈希，执行现有安装器 `-StageOnly`；确认 current 未变化、设置字节未变化后激活。当前版本变为 `83293977ad19-63945cc70d88`，previous 为 `8c46a0f8b85d-066a12d5a250`；更早的 `333ec9c2eeee-8b67926bf3bd` 也保留在原目录。没有实际执行回退。
+- 更新前已无日常实例运行。通过实际桌面快捷方式冷启动，启动器退出 0，唯一产品 PID `15744` 来自修复版本目录；重复打开启动器退出 0，仍为同一实例并显示控制中心。
+- 通过仅限该 PID 的 UI Automation 执行 Wallpaper → Window → Wallpaper。两个模式均报告场景 Ready、统一物理 world 运行、附件/互动/待机无故障、原生错误 0；Wallpaper 附着成功且父句柄有效。恢复原 Wallpaper 模式后，设置 SHA-256 与更新前完全一致，未用备份回拷。
+- 运行进程实际加载修复目录中的统一物理模块，两份 native DLL 指纹仍与上文一致。关闭检查用控制中心后，保留该日常实例供用户使用，探针残留为 0。本轮没有执行日常进程退出测试，也未重跑无代码变化的 74 项回归和性能长测。
+
+交付证据位于本工作区 `artifacts/flash-regression/local-delivery/`：`before.json`、`package-validation.json`、`staged.json`、`activated.json`、`cold-start.json`、`repeat-start.json`、`capture-ui.json`、`window-ui.json`、`wallpaper-ui.json`、`final.json`。初次旧 UI 脚本只从桌面根的直接子节点查找，漏掉了已存在的控制中心；随后改为补充读取经 PID/路径核对的主窗口句柄，再完成检查，未修改产品。
 
 ## 交付边界
 
-- 修复已本地提交于 `codex/fix-transient-spawn-flash`，候选包可供后续更新；尚未合并至阶段分支或 `main`，未推送或部署。
-- 日常安装仍为 `8c46a0f8b85d-066a12d5a250`，原日常实例继续运行，回退版本 `333ec9c2eeee-8b67926bf3bd` 保留。因此日常实例仍可能出现旧问题。
+- 修复和本记录已按授权经阶段分支合入本地 main，日常安装已更新并启动；未推送远端或部署。
+- 当前日常版本为 `83293977ad19-63945cc70d88`，旧版本和设置保留。当前 previous 是带该闪回问题的更新前版本，回退会重新带回该已知问题。
 - 真实坐标观察通过不等于用户人工视觉验收；该修复的人工观感待用户确认。
 - 未重跑性能长测，未宣布 GPU 呈现、第二 DPI、多屏、Windows 10、长期稳定性或整个 Phase 1 通过；此前原始失败与延期安排保留。
 - 未启动网络服务、数据库或外部资源；本地证据和候选文件保留，不删除其他版本、数据或工作树。
