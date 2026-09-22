@@ -535,8 +535,11 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         var top = Math.Max(0, ActualHeight - 320);
         WpfCanvas.SetLeft(IslandVisual, left + 80);
         WpfCanvas.SetTop(IslandVisual, top + 190);
-        WpfCanvas.SetLeft(DangoVisual, left + 185);
-        WpfCanvas.SetTop(DangoVisual, top + 55);
+        if (motionRuntime.LastFrame is null)
+        {
+            WpfCanvas.SetLeft(DangoVisual, left + 185);
+            WpfCanvas.SetTop(DangoVisual, top + 55);
+        }
         WpfCanvas.SetLeft(CushionVisual, left + 30);
         WpfCanvas.SetTop(CushionVisual, top + 245);
         scenePositionInitialized = true;
@@ -795,7 +798,6 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         motionRuntime.SetDirectionalControl(
             keyboardInputBridge?.CurrentIntent ?? DirectionalControlIntent.None);
         AdvanceNonDirectionalAction(motionController, now);
-        ApplyAuthoritativePosition();
         return true;
     }
 
@@ -826,9 +828,18 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
             return;
         }
 
-        var bounds = motionController.Snapshot.Dango.VisualBounds;
-        WpfCanvas.SetLeft(DangoVisual, bounds.X);
-        WpfCanvas.SetTop(DangoVisual, bounds.Y);
+        // Preserve the complete last physical pose until the next fixed step;
+        // Core coordinates are only a fallback before any frame exists.
+        if (motionRuntime.LastFrame is { } frame)
+        {
+            ApplyPresentationFrame(frame);
+        }
+        else
+        {
+            var bounds = motionController.Snapshot.Dango.VisualBounds;
+            WpfCanvas.SetLeft(DangoVisual, bounds.X);
+            WpfCanvas.SetTop(DangoVisual, bounds.Y);
+        }
         UpdateInputProxyBounds();
     }
 

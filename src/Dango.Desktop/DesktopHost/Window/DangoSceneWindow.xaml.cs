@@ -381,7 +381,6 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
         motionRuntime.UpdateWanderScreenWidth(this, screen.WorkingArea.Width / System.Windows.Media.VisualTreeHelper.GetDpi(this).DpiScaleX);
         if (lightInteraction.IsActive)
             lightInteraction.RefreshButtons(NowMilliseconds(), NativeMethods.IsInputKeyPressed(0x10), leftDown: true);
-        ApplyAuthoritativePosition();
         return true;
     }
 
@@ -477,8 +476,17 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
             return;
         }
 
-        WpfCanvas.SetLeft(DangoVisual, snapshot.Dango.VisualBounds.X);
-        WpfCanvas.SetTop(DangoVisual, snapshot.Dango.VisualBounds.Y);
+        // A render callback may have no fixed step. Only a complete presentation
+        // frame may replace an existing body/hat pose, including after host changes.
+        if (motionRuntime.LastFrame is { } frame)
+        {
+            ApplyPresentationFrame(frame);
+        }
+        else
+        {
+            WpfCanvas.SetLeft(DangoVisual, snapshot.Dango.VisualBounds.X);
+            WpfCanvas.SetTop(DangoVisual, snapshot.Dango.VisualBounds.Y);
+        }
         WpfCanvas.SetLeft(IslandVisual, snapshot.Island.VisualBounds.X);
         WpfCanvas.SetTop(IslandVisual, snapshot.Island.VisualBounds.Y);
     }
