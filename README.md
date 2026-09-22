@@ -2,6 +2,8 @@
 
 `Dango` 是一个多人联机桌面宠物项目的开发代号。
 
+2026-09-22 规划：已确认[步态与外观分批路线](docs/planning/2026-09-22-gait-and-customization-roadmap.md)，当前下一小步的[行走自然感设计与验收条件](docs/planning/2026-09-22-gait-sample-design.md)已形成草案，待用户确认；本次仅文档，不代表步态已实现或获编码授权。
+
 2026-09-22：已验收性能改动已按授权经阶段分支合入本地 main，并更新日常安装；真实启动、Window/Wallpaper 切换、设置保留和正常退出检查通过，旧版本可回退。见[本地交付记录](docs/verification/2026-09-22-performance-local-delivery.md)。原自动失败和专项未验证项继续保留，未推送或部署。
 
 2026-09-18：本分支已加入轻点眨眼、Shift＋左键横向轻抚眯眼，并获用户整体人工验收通过；普通移动达到 3 DIP 后沿用原拖动。见[点击与抚摸验证记录](docs/verification/2026-09-17-light-interaction.md)。本批 32 项用例通过，完整回归无新增失败；历史门禁问题和未逐项执行的专项矩阵仍保留。
