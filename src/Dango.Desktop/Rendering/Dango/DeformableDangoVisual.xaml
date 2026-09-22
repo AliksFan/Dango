@@ -4,14 +4,22 @@
              Width="160"
              Height="120"
              Background="Transparent">
+    <UserControl.Template>
+        <ControlTemplate TargetType="UserControl">
+            <ContentPresenter IsHitTestVisible="False" />
+        </ControlTemplate>
+    </UserControl.Template>
     <Grid ClipToBounds="False">
+        <Grid x:Name="GaitBodyLayer" IsHitTestVisible="False">
         <Path x:Name="FallbackBodyPath"
               Fill="#FFFFE8C2"
               IsHitTestVisible="False" />
         <Path x:Name="BodyPath"
               Fill="#FFFFE8C2"
               IsHitTestVisible="False" />
+        </Grid>
         <Canvas x:Name="DebugLayer" Width="160" Height="120" IsHitTestVisible="False" />
+        <Grid x:Name="GaitAttachmentLayer" IsHitTestVisible="False">
         <Canvas x:Name="LeftEyeLayer"
                 Width="160"
                 Height="120"
@@ -33,6 +41,7 @@
             <Path Data="M80,15 C71,15 64,11 62,4 C70,2 77,5 80,15 Z" Fill="#FF78C85A" />
             <Path Data="M80,15 C89,15 96,11 98,4 C90,2 83,5 80,15 Z" Fill="#FF78C85A" />
         </Canvas>
+        </Grid>
         <Canvas x:Name="DozeLayer" Width="160" Height="120" IsHitTestVisible="False" Visibility="Collapsed" />
     </Grid>
 </UserControl>

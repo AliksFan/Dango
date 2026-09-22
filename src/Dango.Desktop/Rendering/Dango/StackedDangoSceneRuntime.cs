@@ -59,6 +59,9 @@ public sealed class StackedDangoSceneRuntime : IDisposable
             LastFrame = LastFrame with { Bodies = LastFrame.Bodies.Select(body => body with { DozeSeconds = null }).ToArray() };
     }
     internal ShortWanderController Wander { get; } = new();
+    internal GaitController Gait { get; } = new();
+    internal bool GaitEnabled { get; set; } = true;
+    public string? GaitError => Gait.Error;
     private double? wanderScreenWidth;
     internal void UpdateWanderScreenWidth(object owner, double width)
     {
@@ -66,6 +69,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         if (!ReferenceEquals(quietIdleHost, owner)) return;
         if (!double.IsFinite(width) || width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
         if (wanderScreenWidth == width) return;
+        Gait.InvalidateSampling();
         CancelDoze();
         Wander.Cancel();
         wanderScreenWidth = width;
@@ -90,6 +94,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         VerifyAccess();
         if (!ReferenceEquals(quietIdleHost, owner) || quietIdleHostEnabled == enabled) return;
         quietIdleHostEnabled = enabled;
+        Gait.InvalidateSampling();
         CancelQuietIdle();
     }
 
@@ -361,6 +366,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         EnsureHealthy();
         EnsureScene(new(0, 0, 160, 120));
         if (DangoCount == MaximumDangoCount) return false;
+        Gait.ClearMotion();
         CancelDoze();
         Wander.Cancel();
         var slot = Enumerable.Range(0, MaximumDangoCount).First(value => !colorSlots.ContainsValue(value));
@@ -383,6 +389,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         VerifyAccess();
         EnsureHealthy();
         if (DangoCount == MaximumDangoCount) return false;
+        Gait.ClearMotion();
         if (scene?.LastFrame is not { } frame)
             throw new InvalidOperationException("请等待场景首帧完成后再添加团子。");
         var hostPoint = DangoHostLayout.FindSpawn(bounds, frame.Bodies.Select(body => body.Bounds).Concat(pendingSpawns.Values).ToArray());
@@ -489,6 +496,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         attachments?.Reset();
         QuietIdle.Reset();
         Doze.Reset();
+        Gait.Reset();
         LightInteractionError = null;
         LastFrame = null;
         LastError = null;
@@ -503,6 +511,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         if (fixedStep <= TimeSpan.Zero || fixedStep > TimeSpan.FromMilliseconds(100))
             throw new ArgumentOutOfRangeException(nameof(fixedStep));
         if (LastError is not null) return LastFrame ?? CreateUnavailable(primary);
+        var previousGait = LastFrame?.Gait;
         try
         {
             EnsureScene(primary.AuthoritativeBounds);
@@ -587,6 +596,8 @@ public sealed class StackedDangoSceneRuntime : IDisposable
                 ColorSlots = frame.Bodies.Select(body => colorSlots[body.EntityId]).ToArray(),
             };
             if (frame.Physics.Succeeded) AdvanceWander(fixedStep.TotalSeconds);
+            if (frame.Physics.Succeeded) UpdateGait(frame, autonomousHorizontal, fixedStep.TotalSeconds);
+            else LastFrame = LastFrame with { Gait = previousGait };
             return LastFrame;
         }
         catch (DangoPhysicsException exception)
@@ -601,6 +612,41 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         viewport is not null && wanderScreenWidth is not null && LayoutWarning is null && LastError is null && AttachmentError is null &&
         QuietIdleError is null && LightInteractionError is null && !IsDragging && !HasDirectionalInput &&
         lightPresses.Count == 0 && lightFeedback.Count == 0;
+
+    private void UpdateGait(DesktopPhysicsSceneFrame physical, double autonomousHorizontal, double seconds)
+    {
+        if (LastFrame is null) return;
+        if (!GaitEnabled || !LightInteractionsEnabled || physical.Bodies.Count != 1)
+        { Gait.ClearMotion(); return; }
+        if (AttachmentError is not null) { Gait.Fail(); return; }
+        try
+        {
+            var body = physical.Physics.Bodies[0];
+            var presentation = LastFrame.Bodies[0];
+            if (presentation.Attachments?.SourceShape is not { } shape || viewport is not { } view)
+            { Gait.InvalidateSampling(); return; }
+            var manual = directionalIntent.Left != directionalIntent.Right;
+            var direction = manual ? (directionalIntent.Left ? -1 : 1) :
+                Wander.Driving ? Math.Sign(autonomousHorizontal) : 0;
+            var pressed = lightPresses.Count > 0 || lightFeedback.Count > 0;
+            var strain = Gait.Advance(new(body.CoreX * 80d, body.CoreY * 60d,
+                body.IsGrounded, shape.Width * 160, shape.Height * 160, body.SignedArea,
+                direction, quietIdleHostEnabled && LayoutWarning is null && QuietIdleError is null &&
+                    LightInteractionError is null && !Doze.Active && !pressed,
+                IsDragging || directionalIntent.Jump || directionalIntent.Squash || !body.IsGrounded,
+                pressed, !manual), seconds);
+            var descriptor = GaitGeometry.Create(presentation, body.EntityId,
+                DangoHostFrameBinding.Bounds(LastFrame, 0), view, strain, !manual && Wander.Active, DisplayHatSize);
+            Gait.AcceptDisplayed((descriptor?.ScaleY ?? 1) - 1);
+            LastFrame = LastFrame with { Gait = descriptor };
+        }
+        catch (Exception exception) when (exception is ArgumentException or ArithmeticException or InvalidOperationException)
+        {
+            // A visual fault must not enter FrameFaultState and discard physical steps.
+            Gait.Fail();
+            LastFrame = LastFrame with { Gait = null };
+        }
+    }
 
     private void AdvanceWander(double seconds)
     {
@@ -649,6 +695,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
 
     private void ClearPhysicalInput()
     {
+        Gait.InvalidateSampling();
         CancelQuietIdle();
         lightPresses.Clear();
         CancelLightFeedback();

@@ -38,6 +38,12 @@ public partial class DeformableDangoVisual : System.Windows.Controls.UserControl
 
     public DangoContourFailure LastContourFailure { get; private set; }
 
+    // The default WPF template can hit the union of transformed descendant bounds,
+    // even when those drawing layers ignore input. Keep the existing root rectangle
+    // as the sole input surface; this does not clip the hat or move the drag threshold.
+    protected override HitTestResult? HitTestCore(PointHitTestParameters parameters) =>
+        new Rect(RenderSize).Contains(parameters.HitPoint) ? new PointHitTestResult(this, parameters.HitPoint) : null;
+
     public bool ShowDebugGeometry { get; set; }
 
     public System.Windows.Media.Brush BodyFill
@@ -64,9 +70,13 @@ public partial class DeformableDangoVisual : System.Windows.Controls.UserControl
         set => HatLayer.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    public void ApplyFrame(PhysicsPresentationFrame frame)
+    public void ApplyFrame(PhysicsPresentationFrame frame) => ApplyFrame(frame, null);
+
+    public void ApplyFrame(PhysicsPresentationFrame frame, GaitPresentationFrame? gait)
     {
         ArgumentNullException.ThrowIfNull(frame);
+        var transform = CreateGaitTransform(frame, gait);
+        GaitBodyLayer.RenderTransform = GaitAttachmentLayer.RenderTransform = transform;
         Visibility = frame.IsVisible ? Visibility.Visible : Visibility.Collapsed;
         DrawDoze(frame);
         if (!frame.IsVisible)
@@ -110,6 +120,15 @@ public partial class DeformableDangoVisual : System.Windows.Controls.UserControl
             new PresentationPoint(PhysicsPresentationFrame.DefaultEyeHalfDistance, -0.05),
             false);
         HatLayer.RenderTransform = AttachmentGeometryFactory.ScaleHatTransform(AttachmentTransform(frame.Hat, new PresentationPoint(0, 0.82), true), HatSize, true);
+    }
+
+    internal static Transform CreateGaitTransform(PhysicsPresentationFrame frame, GaitPresentationFrame? gait)
+    {
+        if (gait is null || !gait.Matches(frame, gait.EntityId) || !frame.IsVisible ||
+            frame.FallbackReason != PhysicsPresentationFallbackReason.None) return Transform.Identity;
+        var transform = new ScaleTransform(gait.ScaleX, gait.ScaleY, gait.CenterX, gait.BottomY);
+        transform.Freeze();
+        return transform;
     }
 
     private void DrawDoze(PhysicsPresentationFrame frame)

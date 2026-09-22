@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/eng/">
+    <Project Path="eng/tools/Dango.GaitSample/Dango.GaitSample.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/Dango.Core/Dango.Core.csproj" />
     <Project Path="src/Dango.Physics/Dango.Physics.csproj" />

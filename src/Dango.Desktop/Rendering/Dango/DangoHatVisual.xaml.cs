@@ -17,9 +17,12 @@ public partial class DangoHatVisual : System.Windows.Controls.UserControl
         InitializeComponent();
     }
 
-    public void ApplyFrame(PhysicsPresentationFrame frame)
+    public void ApplyFrame(PhysicsPresentationFrame frame) => ApplyFrame(frame, null);
+
+    public void ApplyFrame(PhysicsPresentationFrame frame, GaitPresentationFrame? gait)
     {
         ArgumentNullException.ThrowIfNull(frame);
+        GaitLayer.RenderTransform = DeformableDangoVisual.CreateGaitTransform(frame, gait);
         Visibility = frame.IsVisible ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
         if (!AttachmentGeometryFactory.ApplyHatFrame(HatLayer,
             frame.FallbackReason == PhysicsPresentationFallbackReason.None ? frame.Attachments?.Hat : null, HatSize))

@@ -15,6 +15,7 @@ public sealed record StackedPhysicsPresentationFrame(
 {
     public IReadOnlyList<Dango.Physics.DangoEntityId> EntityIds { get; init; } = [];
     public IReadOnlyList<int> ColorSlots { get; init; } = [];
+    public GaitPresentationFrame? Gait { get; init; }
 }
 
 public sealed class Box2DStackedContactPresentationWorld : IDisposable

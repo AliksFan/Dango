@@ -40,8 +40,10 @@ internal static class DangoHostFrameBinding
         Canvas.SetLeft(body, bounds.X); Canvas.SetTop(body, bounds.Y);
         Canvas.SetLeft(hat, bounds.X); Canvas.SetTop(hat, bounds.Y);
         if (index < frame.ColorSlots.Count) body.BodyFill = Colors[frame.ColorSlots[index]];
-        body.ApplyFrame(frame.Bodies[index]);
-        hat.ApplyFrame(frame.Bodies[index]);
+        var gait = frame.Gait is { } candidate && index < frame.EntityIds.Count &&
+            candidate.Matches(frame.Bodies[index], frame.EntityIds[index]) ? candidate : null;
+        body.ApplyFrame(frame.Bodies[index], gait);
+        hat.ApplyFrame(frame.Bodies[index], gait);
     }
 
     private static SolidColorBrush CreateBrush(byte r, byte g, byte b)

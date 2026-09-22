@@ -78,7 +78,7 @@ public sealed class AttachmentMotionController(AttachmentCommandRouter router, A
                 if (eye.Y.Position * eye.Y.Velocity > 0) eye.Y = eye.Y with { Velocity = 0 };
             }
         }
-        return Current = new(stepIndex, target.Generation, signal with { Angle = tilt.Position }, layout) { Hat = hat?.Current };
+        return Current = new(stepIndex, target.Generation, signal with { Angle = tilt.Position }, layout) { Hat = hat?.Current, SourceShape = shape };
 
         void AdvanceEye(EyeState eye, AttachmentChannel gazeChannel, AttachmentChannel poseChannel, AttachmentTimeSlice slice)
         {

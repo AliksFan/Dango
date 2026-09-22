@@ -9,6 +9,7 @@ public sealed record FaceLayout(EyePresentationFrame Left, EyePresentationFrame 
     double GazeScale, double SpacingScale, double SizeScale, string Safety);
 public sealed record AttachmentPresentationFrame(long StepIndex, int Generation, ShapeTilt ShapeTilt, FaceLayout Face)
 {
+    internal AttachmentShapeGeometry? SourceShape { get; init; }
     public HatMotionFrame? Hat { get; init; }
 }
 
