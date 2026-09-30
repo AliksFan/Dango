@@ -12,7 +12,7 @@ public sealed class NetworkScenePresenter(string nativeLibraryPath) : IDisposabl
     private bool paused;
     private bool disposed;
     public IReadOnlyList<NetworkPetFrame> Sample(RoomSnapshot snapshot, long serverTimeMs,
-        LogicalRect viewport, TimeSpan fixedStep, bool reducedMotion = false)
+        LogicalRect viewport, TimeSpan frameElapsed, bool reducedMotion = false)
     {
         VerifyAccess();
         if (paused) throw new InvalidOperationException("Network scene is paused.");
@@ -25,7 +25,7 @@ public sealed class NetworkScenePresenter(string nativeLibraryPath) : IDisposabl
         {
             if (!pets.TryGetValue(pet.PetId, out var presentation))
                 pets.Add(pet.PetId, presentation = new(pet.PetId, nativeLibraryPath));
-            frames.Add(presentation.Sample(pet, serverTimeMs, viewport, fixedStep, reducedMotion));
+            frames.Add(presentation.Sample(pet, serverTimeMs, viewport, frameElapsed, reducedMotion));
         }
         return frames.AsReadOnly();
     }
