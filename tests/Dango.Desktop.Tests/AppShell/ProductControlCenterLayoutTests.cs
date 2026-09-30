@@ -29,10 +29,10 @@ public sealed class ProductControlCenterLayoutTests
             window.ShowOverview();
             RenderAndAssert(window, content, "OverviewPage", "product-overview", width, height);
 
-            Click(Element<Button>(window, "DesktopNavigation"));
+            Click(Element<Button>(window, "ProductSettingsNavigation"));
             RenderAndAssert(window, content, "DesktopPage", "product-desktop-settings", width, height);
 
-            Click(Element<Button>(window, "DiagnosticsNavigation"));
+            Click(Element<Button>(window, "ProductHelpNavigation"));
             RenderAndAssert(window, content, "DiagnosticsPage", "product-diagnostics", width, height);
         }
         finally
@@ -53,7 +53,8 @@ public sealed class ProductControlCenterLayoutTests
         var page = Element<FrameworkElement>(window, pageName);
         Assert.AreEqual(Visibility.Visible, page.Visibility, pageName);
         AssertInside(content, page, size, pageName);
-        AssertInside(content, FindButton(window, "退出 Dango"), size, "exit");
+        AssertInside(content, Element<Grid>(window, "ProductHeader"), size, "product-header");
+        AssertInside(content, Element<Button>(window, "ProductExitButton"), size, "exit");
 
         var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
         var background = new DrawingVisual();

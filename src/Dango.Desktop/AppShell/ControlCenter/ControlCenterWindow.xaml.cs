@@ -52,6 +52,10 @@ public partial class ControlCenterWindow : Window
         this.saveSettings = saveSettings;
         refreshingHostState = true;
         InitializeComponent();
+        ProductHome.VisibilityRequested += (_, _) => OnOverviewVisibilityClick(this, new RoutedEventArgs());
+        ProductHome.SettingsRequested += (_, _) => OnDesktopNavigationClick(this, new RoutedEventArgs());
+        ProductHome.RetryRequested += (_, _) => OnRetrySceneClick(this, new RoutedEventArgs());
+        ProductHome.RestoreRequested += (_, _) => OnRegenerateDangoClick(this, new RoutedEventArgs());
         if (commandController.UiMode == ApplicationUiMode.DeveloperReview) BuildPhysicsTuningPanel();
         ApplyUiMode();
         if (settingsSession is not null)
@@ -100,6 +104,7 @@ public partial class ControlCenterWindow : Window
         {
             OverviewCommandStatusText.Text = settingsSession.StartupWarning;
             DesktopCommandStatusText.Text = settingsSession.StartupWarning;
+            ProductHome.SetCommandStatus(settingsSession.StartupWarning);
         }
         RefreshDiagnostics();
         ApplyAccessibilityTheme();
@@ -136,8 +141,7 @@ public partial class ControlCenterWindow : Window
 
     private void OnOverviewNavigationClick(object sender, RoutedEventArgs e)
     {
-        RefreshHostState();
-        ShowPage(OverviewPage);
+        ShowOverview();
     }
 
     private void OnDesktopNavigationClick(object sender, RoutedEventArgs e)
@@ -395,6 +399,7 @@ public partial class ControlCenterWindow : Window
             : result.Error ?? "操作失败，宿主状态未确认。";
         OverviewCommandStatusText.Text = status;
         DesktopCommandStatusText.Text = status;
+        ProductHome.SetCommandStatus(status);
         if (result.State == CommandApplicationState.Applied) SaveWindowSettings();
         RefreshHostState();
     }
@@ -414,6 +419,13 @@ public partial class ControlCenterWindow : Window
             WindowHostRadioButton.IsEnabled = ready;
             RetryWallpaperButton.IsEnabled = ready;
             SettingsSaveStatusText.Text = settingsSession?.StatusMessage ?? "";
+            ProductSettingsSaveStatusText.Text = settingsSession?.StatusMessage ?? "";
+            ProductDiagnosticsSaveStatusText.Text = settingsSession?.StatusMessage ?? "";
+            var saveMessage = settingsSession?.StatusMessage;
+            ProductSaveNotice.Visibility = saveMessage?.Contains("未保存", StringComparison.Ordinal) == true ||
+                saveMessage?.Contains("失败", StringComparison.Ordinal) == true
+                ? Visibility.Visible : Visibility.Collapsed;
+            ProductSaveNotice.ToolTip = saveMessage;
             RetrySaveButton.IsEnabled = settingsSession is not null && !settingsSession.IsWriteProtected;
             RecoverSettingsButton.Visibility = settingsSession?.IsWriteProtected == true ? Visibility.Visible : Visibility.Collapsed;
             HatPresetComboBox.SelectedItem = HatPresetComboBox.Items.OfType<ComboBoxItem>()
@@ -448,6 +460,7 @@ public partial class ControlCenterWindow : Window
             var modeLabel = snapshot.Mode == "Wallpaper" ? "桌面模式" : snapshot.Mode == "Window" ? "窗口模式" : snapshot.Mode;
             OverviewHostStatusText.Text =
                 $"{modeLabel} · {(snapshot.IsVisible ? "正在运行" : "已隐藏")} · {snapshot.LastError ?? snapshot.VerificationStatus}";
+            ProductHome.SetState(snapshot, ready, settingsSession?.StatusMessage);
         }
         finally
         {
@@ -734,16 +747,35 @@ public partial class ControlCenterWindow : Window
         VerificationPage.Visibility = Visibility.Collapsed;
         DiagnosticsPage.Visibility = Visibility.Collapsed;
         page.Visibility = Visibility.Visible;
+        if (commandController.UiMode == ApplicationUiMode.Product)
+        {
+            ProductHomeNavigation.FontWeight = page == OverviewPage ? FontWeights.SemiBold : FontWeights.Normal;
+            ProductSettingsNavigation.FontWeight = page == DesktopPage ? FontWeights.SemiBold : FontWeights.Normal;
+            ProductHelpNavigation.FontWeight = page == DiagnosticsPage ? FontWeights.SemiBold : FontWeights.Normal;
+        }
     }
 
     private void ApplyUiMode()
     {
         if (commandController.UiMode != ApplicationUiMode.Product) return;
+        ReviewSidebar.Visibility = Visibility.Collapsed;
+        SidebarColumn.Width = new GridLength(0);
+        ProductHeader.Visibility = Visibility.Visible;
+        LegacyOverviewHeader.Visibility = Visibility.Collapsed;
+        LegacyOverviewScroll.Visibility = Visibility.Collapsed;
+        ProductHome.Visibility = Visibility.Visible;
+        ProductSettingsSaveStatusText.Visibility = Visibility.Visible;
+        ProductDiagnosticsSaveStatusText.Visibility = Visibility.Visible;
+        foreach (var page in new FrameworkElement[] { OverviewPage, DesktopPage, DiagnosticsPage })
+            page.Margin = new Thickness(0, 68, 0, 0);
         foreach (var element in new UIElement[] { VerificationNavigation, ContinueVerificationButton,
             PopulationCard, SkeletonCard, PhysicsCard, CushionTitle, CushionOptions, IslandTitle, IslandDescription })
             element.Visibility = Visibility.Collapsed;
         DesktopNavigation.Content = "桌面与团子设置";
         DiagnosticsNavigation.Content = "帮助与诊断";
+        DesktopPageTitle.Text = "设置";
+        DesktopPageIntro.Text = "桌面显示与互动";
+        DiagnosticsPageTitle.Text = "帮助与诊断";
         OverviewTitle.Text = "你的桌面团子";
         OverviewIntro.Text = "轻点团子会眨眼；按住 Shift 和鼠标左键，在团子身上横向轻抚会眯眼。不操作时，团子偶尔眨眼、左右看看；单只团子也会偶尔走一小段。直接拖动团子后松手；在设置中开启键盘控制。关闭窗口只是隐藏，可从托盘找回；结束使用请选择退出 Dango。";
         LayeringTitle.Text = "图标层级";
