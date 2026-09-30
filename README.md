@@ -63,7 +63,7 @@ Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](d
 - [产品企划概要 v0.1](docs/product-brief-v0.1.md)：定位、用户、价值、市场参照与长期方向。
 - [产品设计基线 v0.1](docs/product-design-v0.1.md)：对象规则、房间权限、体验流程与首版边界。
 - [服务端设计基线 v0.1](docs/server-design-v0.1.md)：200 人在线容量、实时同步、部署与扩容。
-- [Phase 2A 最小多人同步详细设计](docs/planning/2026-09-24-minimal-multiplayer-sync-design.md)、[实施计划](docs/planning/2026-09-30-minimal-multiplayer-sync-plan.md)及[实施验证记录](docs/verification/2026-09-30-minimal-multiplayer-sync.md)：本地真实 SignalR、内存权威房间、移动/招呼/重连与隔离双 WPF 小样已实现，同机小样人工验收通过；双机 M7 仍待安排，日常入口仍为单机版本。
+- [Phase 2A 最小多人同步详细设计](docs/planning/2026-09-24-minimal-multiplayer-sync-design.md)、[实施计划](docs/planning/2026-09-30-minimal-multiplayer-sync-plan.md)、[实施验证记录](docs/verification/2026-09-30-minimal-multiplayer-sync.md)及[UI 前置排期记录](docs/planning/2026-09-30-ui-before-dual-machine-note.md)：本地真实 SignalR、内存权威房间、移动/招呼/重连与隔离双 WPF 小样已实现，同机小样人工验收通过；正式双机 M7 排在完整可用的 Windows UI（创作编辑器后置）之后且仍待验收，日常入口仍为单机版本。
 - [开发工作流 v0.1](docs/development-workflow-v0.1.md)：任务、分支、Worktree、提交和验收流程。
 - [分阶段开发计划 v0.1](docs/development-plan-v0.1.md)：Phase 0–5 的范围、交付物与阶段门禁。
 - [本地桌面安装说明](docs/local-desktop-install.md)：固定目录安装、启动、更新、状态检查与回退的日常操作。
