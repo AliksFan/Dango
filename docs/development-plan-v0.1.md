@@ -1,6 +1,6 @@
 # Dango 分阶段开发计划 v0.1
 
-> 2026-09-30 Phase 2A 最小多人同步：按用户授权在独立任务分支实现内存权威房间、真实 SignalR、客户端恢复和两份隔离 WPF 窗口；同机 Server+A+B 的 native/native 与 native/fallback 路径、移动/招呼/重连已完成自动验证。旧 `dango_box2d.dll` 缺 `dango_box2d_self_bodies_create` 的完整 Desktop 回归失败仍在，历史 Physics 比较 DLL 缺失项未验证。第二台 Windows、不同 DPI/真实断网和用户观感留待 M7；Phase 2A 尚未人工验收、未合并 main、未推送/部署或更新日常安装。见[实施记录](verification/2026-09-30-minimal-multiplayer-sync.md)。
+> 2026-09-30 Phase 2A 最小多人同步：按用户授权在独立任务分支实现内存权威房间、真实 SignalR、客户端恢复和两份隔离 WPF 窗口；同机 Server+A+B 的 native/native 与 native/fallback 路径、移动/招呼/重连已完成自动验证，用户确认同机小样人工验收通过。旧 `dango_box2d.dll` 缺 `dango_box2d_self_bodies_create` 的完整 Desktop 回归失败仍在，历史 Physics 比较 DLL 缺失项未验证。第二台 Windows、不同 DPI/真实断网及 M7 双机人工确认仍待安排；Phase 2A 整体未验收，未合并 main、未推送/部署或更新日常安装。见[实施记录](verification/2026-09-30-minimal-multiplayer-sync.md)。
 
 > 2026-09-22 步态小样：单团子自主/键盘的贴地压缩、舒展和起停已实现，用户回复“效果不错，先这样吧”，当前整体观感通过并保留此版。正式整合复跑中，仍运行的小样曾使 4 项隔离入口测试按互斥设计失败，完整套件另保留 1 项旧 DLL 缺少 `dango_box2d_self_bodies_create` 导出的既有失败；获后续合并授权并正常结束小样后，同一 `782b1c3` 构建的目标 Desktop 373/373、Core 37/37 通过且无跳过。已按授权经 `phase/1-desktop-life-prototype` 整合至本地 `main`，日常版本更新为 `782b1c3b85cb-c798eb8da10d`；真实快捷方式冷启动、重复打开、Window/Wallpaper 往返、隐藏恢复与设置字节保留均通过。未推送、未部署，专项未验证项和 Phase 1 状态不变，不开始外观或多人实现。见[验证记录](verification/2026-09-22-gait-sample.md)。
 
