@@ -1,7 +1,6 @@
 <Window x:Class="Dango.Desktop.AppShell.ControlCenter.ControlCenterWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:home="clr-namespace:Dango.Desktop.AppShell.ControlCenter"
         Title="Dango 控制中心"
         Width="960"
         Height="640"
@@ -73,11 +72,11 @@
 
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition x:Name="SidebarColumn" Width="190" />
+            <ColumnDefinition Width="190" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <Border x:Name="ReviewSidebar" Grid.Column="0"
+        <Border Grid.Column="0"
                 Padding="18,24"
                 Background="#FFF4EA"
                 BorderBrush="{StaticResource BorderBrush}"
@@ -125,7 +124,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <StackPanel x:Name="LegacyOverviewHeader">
+                <StackPanel>
                     <TextBlock x:Name="OverviewTitle" FontSize="28"
                                FontWeight="SemiBold"
                                Foreground="{StaticResource TextBrush}"
@@ -135,7 +134,7 @@
                                TextWrapping="Wrap"
                                Text="当前是本地 Phase 1 原型，不包含账号、房间或联网功能。" />
                 </StackPanel>
-                <ScrollViewer x:Name="LegacyOverviewScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                     <StackPanel>
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -199,7 +198,6 @@
                                    Text="等待操作。" />
                     </StackPanel>
                 </ScrollViewer>
-                <home:ProductHomeView x:Name="ProductHome" Grid.RowSpan="2" Visibility="Collapsed" />
             </Grid>
 
             <Grid x:Name="DesktopPage" Visibility="Collapsed">
@@ -208,8 +206,8 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <StackPanel>
-                    <TextBlock x:Name="DesktopPageTitle" FontSize="28" FontWeight="SemiBold" Text="桌面体验" />
-                    <TextBlock x:Name="DesktopPageIntro" Margin="0,8,0,22"
+                    <TextBlock FontSize="28" FontWeight="SemiBold" Text="桌面体验" />
+                    <TextBlock Margin="0,8,0,22"
                                Foreground="{StaticResource MutedTextBrush}"
                                Text="控制团子的本地显示方式，不会读取桌面内容。" />
                 </StackPanel>
@@ -411,9 +409,6 @@
                             </StackPanel>
                         </Border>
 
-                        <TextBlock x:Name="ProductSettingsSaveStatusText" Visibility="Collapsed"
-                                   Margin="2,12,0,0" TextWrapping="Wrap"
-                                   Foreground="{StaticResource MutedTextBrush}" />
                         <TextBlock x:Name="DesktopCommandStatusText"
                                    Margin="2,14,0,0"
                                    Foreground="{StaticResource MutedTextBrush}"
@@ -519,14 +514,11 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <StackPanel>
-                    <TextBlock x:Name="DiagnosticsPageTitle" FontSize="28" FontWeight="SemiBold" Text="诊断" />
+                    <TextBlock FontSize="28" FontWeight="SemiBold" Text="诊断" />
                     <TextBlock Margin="0,8,0,22"
                                Foreground="{StaticResource MutedTextBrush}"
                                Text="只显示 Dango 自身、系统和显示摘要，不采集桌面内容、窗口标题或用户输入。"
                                TextWrapping="Wrap" />
-                    <TextBlock x:Name="ProductDiagnosticsSaveStatusText" Visibility="Collapsed"
-                               Margin="0,0,0,8" TextWrapping="Wrap"
-                               Foreground="{StaticResource MutedTextBrush}" />
                 </StackPanel>
                 <Border Grid.Row="1" Style="{StaticResource CardStyle}">
                     <Grid>
@@ -556,35 +548,6 @@
                         </WrapPanel>
                     </Grid>
                 </Border>
-            </Grid>
-
-            <Grid x:Name="ProductHeader" Height="56" VerticalAlignment="Top" Visibility="Collapsed"
-                  Panel.ZIndex="1">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock VerticalAlignment="Center" FontSize="22" FontWeight="SemiBold"
-                           Foreground="{StaticResource TextBrush}" Text="Dango" />
-                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center"
-                            VerticalAlignment="Center">
-                    <Button x:Name="ProductHomeNavigation" AutomationProperties.Name="打开我的团子"
-                            Click="OnOverviewNavigationClick" Content="我的团子"
-                            Background="Transparent" BorderBrush="Transparent" />
-                    <Button x:Name="ProductSettingsNavigation" Margin="10,0,0,0"
-                            AutomationProperties.Name="打开桌面设置" Click="OnDesktopNavigationClick"
-                            Content="设置" Background="Transparent" BorderBrush="Transparent" />
-                    <Button x:Name="ProductHelpNavigation" Margin="10,0,0,0"
-                            AutomationProperties.Name="打开帮助与诊断" Click="OnDiagnosticsNavigationClick"
-                            Content="帮助" Background="Transparent" BorderBrush="Transparent" />
-                </StackPanel>
-                <TextBlock x:Name="ProductSaveNotice" Grid.Column="1" HorizontalAlignment="Right"
-                           VerticalAlignment="Center" Margin="0,0,12,0" MaxWidth="145"
-                           FontSize="12" Text="设置未保存" Foreground="#9D3F31"
-                           ToolTip="设置未保存，可在帮助中重试" Visibility="Collapsed" />
-                <Button x:Name="ProductExitButton" Grid.Column="2" AutomationProperties.Name="退出 Dango"
-                        Click="OnExitClick" Content="退出 Dango" />
             </Grid>
         </Grid>
     </Grid>
