@@ -1,5 +1,7 @@
 # Dango 分阶段开发计划 v0.1
 
+> 2026-09-30 Phase 2A 最小多人同步：按用户授权在独立任务分支实现内存权威房间、真实 SignalR、客户端恢复和两份隔离 WPF 窗口；同机 Server+A+B 的 native/native 与 native/fallback 路径、移动/招呼/重连已完成自动验证。旧 `dango_box2d.dll` 缺 `dango_box2d_self_bodies_create` 的完整 Desktop 回归失败仍在，历史 Physics 比较 DLL 缺失项未验证。第二台 Windows、不同 DPI/真实断网和用户观感留待 M7；Phase 2A 尚未人工验收、未合并 main、未推送/部署或更新日常安装。见[实施记录](verification/2026-09-30-minimal-multiplayer-sync.md)。
+
 > 2026-09-22 步态小样：单团子自主/键盘的贴地压缩、舒展和起停已实现，用户回复“效果不错，先这样吧”，当前整体观感通过并保留此版。正式整合复跑中，仍运行的小样曾使 4 项隔离入口测试按互斥设计失败，完整套件另保留 1 项旧 DLL 缺少 `dango_box2d_self_bodies_create` 导出的既有失败；获后续合并授权并正常结束小样后，同一 `782b1c3` 构建的目标 Desktop 373/373、Core 37/37 通过且无跳过。已按授权经 `phase/1-desktop-life-prototype` 整合至本地 `main`，日常版本更新为 `782b1c3b85cb-c798eb8da10d`；真实快捷方式冷启动、重复打开、Window/Wallpaper 往返、隐藏恢复与设置字节保留均通过。未推送、未部署，专项未验证项和 Phase 1 状态不变，不开始外观或多人实现。见[验证记录](verification/2026-09-22-gait-sample.md)。
 
 > 2026-09-22 后续优先级确认：用户批准记录“步态小样 → 基础外观轻量版 → 最小多人同步 → 体型与柔软度 DIY → 完整创建/编辑流程”。当前下一小步为轻微行走形变和起停姿态；颜色、帽子、基础眼睛大小与眼型在多人实现前分小批加入。真实快慢节奏与多人移动规则共同设计，真实大小/形状/柔软度待多人同步与碰撞稳定后开放。详见[分批路线](planning/2026-09-22-gait-and-customization-roadmap.md)。本次只更新方向与排期，各批详细设计与实施计划尚待制定，不启动功能编码；既有专项延期安排不变。
