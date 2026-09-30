@@ -23,26 +23,60 @@ public sealed class RoomHub(RoomRuntime room, ConnectionAdmission admission) : H
         return base.OnConnectedAsync();
     }
 
-    public async Task<JoinRoomResponse> JoinRoom(JoinRoomRequest? request) => request is null ? throw new HubException("invalid_command") : await Bind(() =>
-        room.JoinAsync(Context.ConnectionId, request, () => Groups.AddToGroupAsync(Context.ConnectionId, RoomProtocol.RoomId, Context.ConnectionAborted)));
+    public async Task<JoinRoomResponse> JoinRoom(JoinRoomRequest? request) => request is null ? throw new HubException("invalid_command") : await Bind(subscribe =>
+        room.JoinAsync(Context.ConnectionId, request, subscribe));
 
-    public async Task<JoinRoomResponse> ResumeRoom(ResumeRoomRequest? request) => request is null ? throw new HubException("invalid_command") : await Bind(() =>
-        room.ResumeAsync(Context.ConnectionId, request, () => Groups.AddToGroupAsync(Context.ConnectionId, RoomProtocol.RoomId, Context.ConnectionAborted)));
+    public async Task<JoinRoomResponse> ResumeRoom(ResumeRoomRequest? request) => request is null ? throw new HubException("invalid_command") : await Bind(subscribe =>
+        room.ResumeAsync(Context.ConnectionId, request, subscribe));
 
     public Task<CommandResult> SendCommand(RoomCommand command) => Adapt(() => room.CommandAsync(Context.ConnectionId, command));
     public Task<RoomSnapshot> GetSnapshot() => Adapt(() => room.SnapshotAsync(Context.ConnectionId));
     public Task<TimeSample> GetRoomTime() => Adapt(() => room.TimeAsync(Context.ConnectionId));
 
-    private async Task<JoinRoomResponse> Bind(Func<Task<JoinRoomResponse>> action)
+    private async Task<JoinRoomResponse> Bind(Func<Func<Task>, Task<JoinRoomResponse>> action)
     {
-        var response = await Adapt(action);
-        Context.Items[GenerationKey] = response.ConnectionGeneration;
-        if (Context.ConnectionAborted.IsCancellationRequested)
+        var ownsSubscriptionAttempt = false;
+        async Task Subscribe()
         {
-            await room.DisconnectAsync(Context.ConnectionId, response.ConnectionGeneration);
-            throw new HubException("not_joined");
+            // The runtime holds this identity's JoinGate while invoking this callback. A successful
+            // probe therefore describes the current binding, not a possibly superseded Items entry.
+            try
+            {
+                await room.TimeAsync(Context.ConnectionId);
+                return; // Same-transport retry owns no new group membership to roll back.
+            }
+            catch (RoomRejectedException ex) when (ex.Code == "not_joined") { }
+            // A full room queue or any other probe failure propagates without adding a subscription.
+            ownsSubscriptionAttempt = true;
+            await Groups.AddToGroupAsync(Context.ConnectionId, RoomProtocol.RoomId, Context.ConnectionAborted);
         }
-        return response;
+
+        try
+        {
+            var response = await Adapt(() => action(Subscribe));
+            Context.Items[GenerationKey] = response.ConnectionGeneration;
+            if (Context.ConnectionAborted.IsCancellationRequested)
+            {
+                await room.DisconnectAsync(Context.ConnectionId, response.ConnectionGeneration);
+                throw new HubException("not_joined");
+            }
+            return response;
+        }
+        catch
+        {
+            if (ownsSubscriptionAttempt)
+            {
+                // Do not use ConnectionAborted: cleanup is also required after transport cancellation.
+                using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                try { await Groups.RemoveFromGroupAsync(Context.ConnectionId, RoomProtocol.RoomId, cleanup.Token).WaitAsync(cleanup.Token); }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    // Closing only this new transport lets SignalR remove any partially added group.
+                    Context.Abort();
+                }
+            }
+            throw;
+        }
     }
 
     private static async Task<T> Adapt<T>(Func<Task<T>> action)
