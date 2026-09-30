@@ -54,6 +54,7 @@ public sealed class RoomReplica
         lock (_gate)
         {
             if (!IsCurrent(fence.Connection) || fence.Attempt != _frame.SyncAttemptId) return ReplicaUpdate.Ignored;
+            if (snapshot.ProtocolVersion != RoomProtocol.Version || snapshot.SnapshotSchemaVersion != 1) return Incompatible();
             if (snapshot.RoomEpoch != _epoch) return Reset();
             if (!RoomProtocol.IsSnapshot(snapshot) || snapshot.RoomId != _roomId ||
                 (_frame.Snapshot is { } existing && (snapshot.SelfPetId != existing.SelfPetId ||
@@ -76,6 +77,7 @@ public sealed class RoomReplica
         lock (_gate)
         {
             if (!IsCurrent(connection)) return ReplicaUpdate.Ignored;
+            if (value.ProtocolVersion != RoomProtocol.Version) return Incompatible();
             if (value.RoomEpoch != _epoch) return Reset();
             if (!RoomProtocol.IsEvent(value) || value.RoomId != _roomId) return Invalid("invalid_event");
             var fingerprint = JsonSerializer.Serialize(value, RoomProtocol.Json);
@@ -138,6 +140,14 @@ public sealed class RoomReplica
     {
         _buffer.Clear();
         _frame = _frame with { State = ReplicaState.Faulted, Reason = reason, SyncAttemptId = _frame.SyncAttemptId + 1 };
+        return ReplicaUpdate.Invalid;
+    }
+
+    private ReplicaUpdate Incompatible()
+    {
+        _buffer.Clear();
+        _frame = _frame with { State = ReplicaState.Incompatible, Reason = "unsupported_protocol",
+            SyncAttemptId = _frame.SyncAttemptId + 1 };
         return ReplicaUpdate.Invalid;
     }
 

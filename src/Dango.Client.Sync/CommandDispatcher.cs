@@ -3,7 +3,7 @@ using Dango.Protocol;
 namespace Dango.Client.Sync;
 
 public enum CommandDisposition { Ignored, Completed, Retry, ResumeRequired, ResetRequired }
-public enum ResumeDisposition { Ready, QueryConsumedPending, DiscardedUnconsumedPending, LedgerMismatch }
+public enum ResumeDisposition { Ready, QueryConsumedPending, DiscardedUnconsumedPending, ConsumedReceiptExpired, LedgerMismatch }
 public sealed class CommandDispatcher
 {
     public const int RetryWindowMs = 30000;
@@ -18,6 +18,7 @@ public sealed class CommandDispatcher
     private (string Type, string? Direction)? _intent;
     private RoomCommand? _pending;
     private double _pendingSince;
+    private bool _pendingRetryExpired;
     private string? _lastMoveDirection;
     private double _lastMoveAt = double.NegativeInfinity;
     private string? _lastOutcome;
@@ -28,7 +29,8 @@ public sealed class CommandDispatcher
     public string? LastOutcome { get { lock (_gate) return _lastOutcome; } }
     public string? LastError { get { lock (_gate) return _lastError; } }
 
-    public ResumeDisposition BeginSession(long connectionFence, string roomId, string epoch, long generation, long nextOrdinal)
+    public ResumeDisposition BeginSession(long connectionFence, string roomId, string epoch, long generation, long nextOrdinal,
+        double? nowMs = null)
     {
         lock (_gate)
         {
@@ -58,6 +60,15 @@ public sealed class CommandDispatcher
             {
                 _pending = null;
                 return ResumeDisposition.DiscardedUnconsumedPending;
+            }
+            if (_pendingRetryExpired || (nowMs.HasValue && nowMs.Value - _pendingSince > RetryWindowMs))
+            {
+                // Resume proves consumption but not acceptance. Its snapshot is authoritative; do not fabricate a receipt
+                // or keep reconnecting forever once the documented retry window is over.
+                _pending = null;
+                _lastOutcome = "unknown";
+                _lastError = "command_receipt_expired";
+                return ResumeDisposition.ConsumedReceiptExpired;
             }
             _pending = _pending with { ConnectionGeneration = generation };
             return ResumeDisposition.QueryConsumedPending;
@@ -89,6 +100,7 @@ public sealed class CommandDispatcher
             {
                 if (nowMs - _pendingSince > RetryWindowMs)
                 {
+                    _pendingRetryExpired = true;
                     _needsResume = true;
                     _online = false;
                     _intent = null;
@@ -102,6 +114,7 @@ public sealed class CommandDispatcher
                 return null;
             _intent = null;
             _pendingSince = nowMs;
+            _pendingRetryExpired = false;
             if (intent.Type == RoomProtocol.Move) { _lastMoveAt = nowMs; _lastMoveDirection = intent.Direction; }
             _pending = new(RoomProtocol.Version, _roomId!, _epoch!, _generation, Guid.NewGuid().ToString("N"),
                 _nextOrdinal, lastSequence, intent.Type, new(intent.Direction));
@@ -146,7 +159,7 @@ public sealed class CommandDispatcher
                 return CommandDisposition.ResumeRequired;
             }
             _lastOutcome = result.Outcome == "duplicate" ? result.OriginalOutcome : result.Outcome;
-            _lastError = result.Error?.Code;
+            _lastError = SafeError(result.Error?.Code);
             if (result.OrdinalConsumed)
             {
                 _nextOrdinal = Math.Max(_nextOrdinal, result.NextCommandOrdinal);
@@ -159,4 +172,14 @@ public sealed class CommandDispatcher
             return CommandDisposition.ResumeRequired;
         }
     }
+
+    private static string? SafeError(string? code) => code switch
+    {
+        null => null,
+        "unsupported_protocol" or "invalid_ticket" or "invalid_resume_token" or "not_joined" or
+        "superseded_connection" or "room_epoch_mismatch" or "command_order_mismatch" or "invalid_command" or
+        "forbidden" or "action_conflict" or "rate_limited" or "command_id_conflict" or "resync_required" or
+        "room_reset_required" => code,
+        _ => "unknown_protocol_error",
+    };
 }
