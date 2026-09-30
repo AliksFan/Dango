@@ -155,4 +155,27 @@ public sealed class ReplicaTests
         replica.Disconnect(connection);
         Assert.AreEqual(ReplicaState.Incompatible, replica.Frame.State);
     }
+
+    [TestMethod]
+    public void OverflowInvalidatesInflightSnapshotAndNewSnapshotMustCoverDiscardedEvents()
+    {
+        var (replica, connection) = Live();
+        var beforeOverflow = replica.BeginSynchronization(connection);
+        for (var sequence = 11; sequence <= 75; sequence++) replica.Receive(connection, Event(sequence));
+        Assert.AreEqual("buffer_overflow", replica.Frame.Reason);
+        Assert.AreEqual(ReplicaUpdate.Ignored, replica.ApplySnapshot(beforeOverflow, Snapshot(10)),
+            "A snapshot requested before discarded events cannot erase the overflow recovery barrier.");
+        Assert.AreEqual(ReplicaState.Resyncing, replica.Frame.State);
+        Assert.AreEqual(10L, replica.Frame.LastSequence);
+
+        var afterOverflow = replica.BeginSynchronization(connection);
+        Assert.AreEqual(ReplicaUpdate.ResyncRequired, replica.ApplySnapshot(afterOverflow, Snapshot(74)),
+            "Even a new request must cover the highest discarded confirmed event before returning Live.");
+        Assert.AreEqual(10L, replica.Frame.LastSequence);
+        Assert.AreEqual(ReplicaUpdate.Applied,
+            replica.ApplySnapshot(replica.BeginSynchronization(connection), Snapshot(75, .6)));
+        Assert.AreEqual(ReplicaState.Live, replica.Frame.State);
+        Assert.AreEqual(75L, replica.Frame.LastSequence);
+        Assert.AreEqual(.6, replica.Frame.Snapshot!.Pets[0].AnchorPosition.X);
+    }
 }
