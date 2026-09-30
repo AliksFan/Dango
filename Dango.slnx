@@ -3,11 +3,13 @@
     <Project Path="eng/tools/Dango.GaitSample/Dango.GaitSample.csproj" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/Dango.Protocol/Dango.Protocol.csproj" />
     <Project Path="src/Dango.Core/Dango.Core.csproj" />
     <Project Path="src/Dango.Physics/Dango.Physics.csproj" />
     <Project Path="src/Dango.Desktop/Dango.Desktop.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Dango.Protocol.Tests/Dango.Protocol.Tests.csproj" />
     <Project Path="tests/Dango.Core.Tests/Dango.Core.Tests.csproj" />
     <Project Path="tests/Dango.Physics.Tests/Dango.Physics.Tests.csproj" />
     <Project Path="tests/Dango.Desktop.Tests/Dango.Desktop.Tests.csproj" />
