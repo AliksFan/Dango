@@ -30,8 +30,8 @@
 | 类别 | 已运行结果 | 证据目录 |
 | --- | --- | --- |
 | Protocol | 6/6；JSON `1e999` 溢出先失败后由有限数字转换器修复 | `m1-finite-green` |
-| Server | 18/18；含真实 Kestrel 子进程、强制 WebSockets、双连接与重启新 epoch | `m3-server` |
-| Client.Sync | 30/30；27 单元/可控传输 + 3 真进程网络矩阵 | `m4-final-overflow` |
+| Server | 24/24；含真实 Kestrel 子进程、强制 WebSockets、双连接、重启新 epoch 与加组失败撤销 | `m3-join-final` |
+| Client.Sync | 30/30；27 单元/可控传输 + 3 真进程网络矩阵 | `m4-join-final` |
 | 多人 Desktop/隔离 | 14/14；12 表现/输入 + 2 会话目录隔离 | `m5-desktop` |
 | Core 回归 | 37/37 | `m0-core` |
 | Native M0 探针 | 1/1；600 步，两世界无跨团子接触、有限且有界的 core-local 轮廓 | `m0-native-local` |
@@ -49,7 +49,7 @@
 5. 丢最后事件而无时间水位检查：同上。
 6. 使用 native CoreX/CoreY 放置网络团子：`delegated-presentation/red`。
 
-另有固定步长、数字溢出、30 秒过期回执、诊断白名单，以及事件缓冲溢出后旧快照不能恢复 Live 等先行红/绿证据。缓冲溢出的有效红例见 `delegated-client/red-overflow-fence`，新快照水位不低于已丢失的事件后才能恢复；红例没有作为故障开关留在生产路径。
+另有固定步长、数字溢出、30 秒过期回执、诊断白名单，以及事件缓冲溢出后旧快照不能恢复 Live 等先行红/绿证据。缓冲溢出的有效红例见 `delegated-client/red-overflow-fence`，新快照水位不低于已丢失的事件后才能恢复。Join/Resume 加组后绑定被房间队列拒绝时，原实现留有组成员；`delegated-server/join-rollback-red` 有三条有效红例，修复后仅撤销本次新订阅，保留同连接重试的有效绑定。红例没有作为故障开关留在生产路径。
 
 M0 曾错误地以“平移两个 native 世界后逐顶点相等”判断 core-local 契约，600 步后差异达约 0.014；原失败记录保留。native 源码明确输出 node-core，实测同起点两世界零差、平移后误差随浮点求解累积。因此改为直接验证局部包络和无接触，并在 M5 对**同一 body 只变 CoreX/CoreY**，严格断言网络落点完全不变；不是增大原来的误差容忍值。
 
@@ -73,6 +73,6 @@ pwsh -NoProfile -File ./eng/run-multiplayer-review.ps1 -RunName review-unique-na
 
 自动真实窗口验证附加 `-Verify`；验证另一端降级再附加 `-FallbackB`。关闭 A/B 后服务通过私有 STOP 正常退出；超时只报告本会话 PID/端口，不杀其他 Dango、不删除证据。
 
-最终构建同机证据：`artifacts/multiplayer-sync/m6-window-native-01/` 和 `m6-window-final-01/`。manifest 含实际 Server DLL/客户端/Protocol/native 指纹；状态对照、窗口自身 PNG、恢复用时和 teardown 各自保存。双 native 与一端 fallback 均通过，teardown 均确认三进程退出、code 0；服务器分别在动态回环端口监听，仅会话期间存在。首轮 `m6-native-01`、`m6-fallback-01` 和截图修正前 `m6-final-fallback-01` 证据也保留用于追溯，不以窗口 RenderTargetBitmap 留图误差冒充运行显示问题。
+最终构建同机证据：`artifacts/multiplayer-sync/m6-join-native-01/` 和 `m6-join-final-01/`。manifest 含实际 Server DLL/客户端/Protocol/native 指纹；状态对照、窗口自身 PNG、恢复用时和 teardown 各自保存。双 native 与一端 fallback 均通过，teardown 均确认三进程退出、code 0；服务器分别在动态回环端口监听，仅会话期间存在。首轮 `m6-native-01`、`m6-fallback-01` 和截图修正前 `m6-final-fallback-01` 证据也保留用于追溯，不以窗口 RenderTargetBitmap 留图误差冒充运行显示问题。
 
 SDK 实测 10.0.303；SignalR.Client 固定 10.0.11，官方文档/包兼容与 MIT 许可证已核查。统一 native SHA-256：`00FF064A9A1A4DB67712403A8D01F19845A9EDF6B582D5FCA7CB9D0B567EF69C`。旧 DLL 保持原样。
