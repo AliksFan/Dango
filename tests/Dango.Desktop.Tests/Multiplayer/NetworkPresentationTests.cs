@@ -169,6 +169,63 @@ public sealed class NetworkPresentationTests
         Assert.AreEqual(165, frame.Bounds.X, 1e-10);
     }
 
+    [TestMethod]
+    public void VariableRenderingRatesUseSameFixedNativeAndAttachmentSteps()
+    {
+        var final = new List<NetworkPetFrame>();
+        foreach (var rate in new[] { 30, 60, 144 })
+        {
+            using var presentation = new NetworkPetPresentation("pet-a", NativePath);
+            var frame = presentation.Sample(Pet(), 0, Viewport, TimeSpan.Zero);
+            var previous = TimeSpan.Zero;
+            for (var i = 1; i <= rate; i++)
+            {
+                var now = TimeSpan.FromSeconds((double)i / rate);
+                frame = presentation.Sample(Pet(), (long)now.TotalMilliseconds, Viewport, now - previous);
+                previous = now;
+            }
+            Assert.IsFalse(frame.IsFallback);
+            Assert.AreEqual(61, frame.Presentation.Diagnostics.SimulatedStepCount);
+            Assert.AreEqual(60, frame.Presentation.Attachments!.StepIndex);
+            final.Add(frame);
+        }
+        foreach (var frame in final.Skip(1))
+        {
+            CollectionAssert.AreEqual(final[0].Presentation.Contour.ToArray(), frame.Presentation.Contour.ToArray());
+            Assert.AreEqual(final[0].Presentation.Attachments!.Face, frame.Presentation.Attachments!.Face);
+            Assert.AreEqual(final[0].Bounds, frame.Bounds);
+        }
+    }
+
+    [TestMethod]
+    public void RenderStallAndDuplicateFramesDoNotReplayNativeOrAuthoritativeAction()
+    {
+        var world = new RecordingWorld(ActualBody());
+        using var presentation = new NetworkPetPresentation("pet-a", () => world);
+        var pet = Pet() with { Action = Wave };
+        presentation.Sample(pet, 100, Viewport, TimeSpan.Zero);
+        Assert.AreEqual(1, world.Steps.Count);
+        presentation.Sample(pet, 100, Viewport, TimeSpan.Zero);
+        Assert.AreEqual(1, world.Steps.Count, "Repeated render notification must reuse the frame.");
+        presentation.Sample(pet, 190, Viewport, TimeSpan.FromMilliseconds(90));
+        Assert.AreEqual(5, world.Steps.Count, "Catch-up is capped at four fixed steps.");
+        var resumed = presentation.Sample(pet, 10000, Viewport, TimeSpan.FromSeconds(9.81));
+        Assert.AreEqual(5, world.Steps.Count, "Long stalls discard the native backlog.");
+        Assert.IsFalse(resumed.Wave.IsActive, "Authoritative time does not freeze with local physics.");
+        presentation.Sample(pet, 10000, Viewport, TimeSpan.Zero);
+        Assert.AreEqual(5, world.Steps.Count);
+        presentation.Sample(pet, 10017, Viewport, Step);
+        Assert.AreEqual(6, world.Steps.Count);
+        Assert.IsTrue(world.Steps.All(step => step == NetworkPetPresentation.NativeFixedStep));
+    }
+
+    private sealed class RecordingWorld(DangoBodyState body) : INetworkPhysicsWorld
+    {
+        internal List<TimeSpan> Steps { get; } = [];
+        public DangoBodyState Step(TimeSpan step) { Steps.Add(step); return body; }
+        public void Dispose() { }
+    }
+
     private sealed class FixedWorld(DangoBodyState body, int failAfter = int.MaxValue) : INetworkPhysicsWorld
     {
         private int count;

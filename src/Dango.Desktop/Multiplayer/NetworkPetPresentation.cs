@@ -39,6 +39,8 @@ internal sealed class NetworkNativeWorld : INetworkPhysicsWorld
 /// <summary>One native world and independent eye/hat history per network pet, owned by the UI thread.</summary>
 public sealed class NetworkPetPresentation : IDisposable
 {
+    public static TimeSpan NativeFixedStep { get; } = TimeSpan.FromSeconds(1d / 60);
+    private const int MaximumCatchUpSteps = 4;
     private readonly string petId;
     private readonly int thread = Environment.CurrentManagedThreadId;
     private readonly DangoPhysicsPresentationAdapter adapter = new(DangoPhysicsDefaults.Current);
@@ -47,6 +49,9 @@ public sealed class NetworkPetPresentation : IDisposable
     private INetworkPhysicsWorld? world;
     private PhysicsPresentationFallbackReason failure;
     private long frameNumber;
+    private long nativeStepNumber;
+    private long accumulatedTicks;
+    private PhysicsPresentationFrame? lastNativeFrame;
     private bool paused;
     private bool disposed;
 
@@ -64,13 +69,13 @@ public sealed class NetworkPetPresentation : IDisposable
     }
 
     public NetworkPetFrame Sample(PetState pet, long serverTimeMs, LogicalRect viewport,
-        TimeSpan fixedStep, bool reducedMotion = false)
+        TimeSpan frameElapsed, bool reducedMotion = false)
     {
         VerifyAccess();
         if (paused) throw new InvalidOperationException("Presentation is paused; do not catch up hidden frames.");
         if (!RoomProtocol.IsPet(pet) || pet.PetId != petId) throw new ArgumentException("Invalid pet state.", nameof(pet));
-        if (serverTimeMs < 0 || fixedStep <= TimeSpan.Zero || fixedStep > TimeSpan.FromMilliseconds(100))
-            throw new ArgumentOutOfRangeException(nameof(fixedStep));
+        if (serverTimeMs < 0 || frameElapsed < TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(frameElapsed));
         ValidateViewport(viewport);
         var sampled = RoomSampling.At(pet, serverTimeMs);
         var facing = sampled.Facing switch { "left" => DangoFacingDirection.Left, "right" => DangoFacingDirection.Right, _ => DangoFacingDirection.Center };
@@ -79,20 +84,33 @@ public sealed class NetworkPetPresentation : IDisposable
         {
             try
             {
-                var native = world.Step(fixedStep);
-                presentation = adapter.Present(native, fixedStep, facing);
-                if (!DangoStreamGeometryFactory.TryCreate(presentation.Contour, 160, 120).Succeeded)
-                    throw new InvalidOperationException("Native contour cannot be safely drawn.");
-                presentation = presentation with { Attachments = attachmentMotion.Update(presentation,
-                    frameNumber, fixedStep.TotalSeconds, facing) };
+                // Server time always advances independently. A UI stall never replays old native frames.
+                accumulatedTicks = frameElapsed > TimeSpan.FromMilliseconds(100)
+                    ? 0 : accumulatedTicks + frameElapsed.Ticks;
+                var steps = (int)Math.Min(MaximumCatchUpSteps, accumulatedTicks / NativeFixedStep.Ticks);
+                accumulatedTicks %= NativeFixedStep.Ticks;
+                // One fixed initialization step supplies the first real local contour, even at render dt=0.
+                if (lastNativeFrame is null && steps == 0) steps = 1;
+                for (var i = 0; i < steps; i++)
+                {
+                    var native = world.Step(NativeFixedStep);
+                    var next = adapter.Present(native, NativeFixedStep, facing);
+                    if (!DangoStreamGeometryFactory.TryCreate(next.Contour, 160, 120).Succeeded)
+                        throw new InvalidOperationException("Native contour cannot be safely drawn.");
+                    lastNativeFrame = next with { Attachments = attachmentMotion.Update(next,
+                        nativeStepNumber++, NativeFixedStep.TotalSeconds, facing) };
+                }
+                presentation = lastNativeFrame;
             }
             catch (Exception error) when (IsPresentationFailure(error))
             {
                 failure = PhysicsPresentationFallbackReason.SimulationUnstable;
                 presentation = null;
+                lastNativeFrame = null;
                 ReleaseWorld();
             }
         }
+        else accumulatedTicks = 0;
         presentation ??= AuthoredPoseSampler.CreateFallback(new(petId, new(0, 0, 160, 120),
             DangoActionState.Idle, sampled.Action?.StartedAtServerTimeMs ?? 0,
             sampled.Action?.VariantSeed ?? 0, "room-ground", new(0, -1), 0, 1, reducedMotion,
@@ -126,7 +144,8 @@ public sealed class NetworkPetPresentation : IDisposable
 
     public void SetPaused(bool value)
     {
-        VerifyAccess(); paused = value; attachmentMotion.Paused = value; attachments.SetPaused(value);
+        VerifyAccess(); paused = value; accumulatedTicks = 0;
+        attachmentMotion.Paused = value; attachments.SetPaused(value);
     }
     private static void ValidateViewport(LogicalRect viewport)
     {
