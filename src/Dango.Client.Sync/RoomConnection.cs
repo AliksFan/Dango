@@ -225,7 +225,7 @@ public sealed class RoomConnection : IAsyncDisposable
             _generation = response.ConnectionGeneration;
             _resumeToken = response.ResumeToken;
             var resumed = _commands.BeginSession(fence, _bootstrap.RoomId, _bootstrap.RoomEpoch,
-                response.ConnectionGeneration, response.NextCommandOrdinal);
+                response.ConnectionGeneration, response.NextCommandOrdinal, Clock.MonotonicMilliseconds);
             if (resumed == ResumeDisposition.LedgerMismatch) throw new InvalidOperationException("command_ledger_mismatch");
             var rtt = Clock.MonotonicMilliseconds - started;
             Clock.Rebase(response.Snapshot.ServerTimeMs + (long)(rtt <= ServerClockEstimator.MaximumRttMs ? rtt / 2 : 0));
@@ -283,6 +283,7 @@ public sealed class RoomConnection : IAsyncDisposable
             var disposition = _commands.ApplyResult(fence, result);
             if (disposition == CommandDisposition.Ignored) return;
             _lastResponseMs = Clock.MonotonicMilliseconds;
+            _errorCode = null;
             if (disposition == CommandDisposition.ResetRequired)
             {
                 Replica.ResetRequired(fence);

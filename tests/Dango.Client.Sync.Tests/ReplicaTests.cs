@@ -145,4 +145,14 @@ public sealed class ReplicaTests
         Assert.AreEqual(ReplicaState.ResetRequired, replica.Frame.State);
         Assert.IsNull(replica.Frame.Snapshot);
     }
+
+    [TestMethod]
+    public void UnsupportedProtocolSnapshotIsIncompatibleNotReconnectable()
+    {
+        var (replica, connection) = Live();
+        replica.ApplySnapshot(replica.BeginSynchronization(connection), Snapshot() with { SnapshotSchemaVersion = 99 });
+        Assert.AreEqual(ReplicaState.Incompatible, replica.Frame.State);
+        replica.Disconnect(connection);
+        Assert.AreEqual(ReplicaState.Incompatible, replica.Frame.State);
+    }
 }

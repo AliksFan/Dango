@@ -130,7 +130,13 @@ public sealed class ClockAndDispatcherTests
         Assert.IsTrue(dispatcher.NeedsResume);
         dispatcher.BeginSession(2, RoomProtocol.RoomId, "epoch", 2, 2);
         Assert.IsNull(dispatcher.Prepare(2, 1, 30002));
-        Assert.IsTrue(dispatcher.NeedsResume);
+        Assert.IsFalse(dispatcher.NeedsResume, "An expired but proven-consumed pending must not cause an endless Resume loop.");
+        Assert.AreEqual("command_receipt_expired", dispatcher.LastError);
+        Assert.AreEqual("unknown", dispatcher.LastOutcome);
+        dispatcher.EnqueueMove("stopped");
+        var fresh = dispatcher.Prepare(2, 1, 30003)!;
+        Assert.AreEqual(2L, fresh.CommandOrdinal);
+        Assert.AreNotEqual(command.CommandId, fresh.CommandId);
     }
 
     [TestMethod]
@@ -161,6 +167,20 @@ public sealed class ClockAndDispatcherTests
         Assert.AreEqual(1400L, clock.EstimatedServerTimeMs);
         Assert.IsFalse(clock.AddSample(400, 410, 9000));
         Assert.IsTrue(clock.NeedsResync);
+    }
+
+    [TestMethod]
+    public void UnknownServerErrorNeverBecomesDiagnosticPayload()
+    {
+        var dispatcher = new CommandDispatcher();
+        dispatcher.BeginSession(1, RoomProtocol.RoomId, "epoch", 1, 1);
+        dispatcher.EnqueueWave();
+        var command = dispatcher.Prepare(1, 0, 0)!;
+        dispatcher.ApplyResult(1, Result(command, true) with
+        {
+            Outcome = "rejected", StateChanged = false, Error = new("unexpected-payload-fictional-secret"),
+        });
+        Assert.AreEqual("unknown_protocol_error", dispatcher.LastError);
     }
 
     private static CommandResult Result(RoomCommand command, bool consumed) => new(RoomProtocol.Version,
