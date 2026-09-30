@@ -50,4 +50,34 @@ public sealed class ProtocolTests
     }
 
     private static PetState Pet() => new("pet-a", "participant-a", new(.3, .12), "center", null, null, PresetRef.Default, PresetRef.Default);
+
+    [TestMethod]
+    public void SnapshotAndEventsRejectUnknownRequiredSemanticsAndDuplicateIdentity()
+    {
+        var a = Pet();
+        var b = a with { PetId = "pet-b", ParticipantId = "participant-b", AnchorPosition = new(.7, .12) };
+        var snapshot = new RoomSnapshot("0.1", 1, RoomProtocol.RoomId, "epoch", 0, 100, a.PetId, CoordinateSpace.Default, [a, b]);
+        Assert.IsTrue(RoomProtocol.IsSnapshot(JsonSerializer.Deserialize<RoomSnapshot>(JsonSerializer.Serialize(snapshot, RoomProtocol.Json), RoomProtocol.Json)));
+        Assert.IsFalse(RoomProtocol.IsSnapshot(snapshot with { SnapshotSchemaVersion = 2 }));
+        Assert.IsFalse(RoomProtocol.IsSnapshot(snapshot with { Pets = [a, a] }));
+        Assert.IsFalse(RoomProtocol.IsSnapshot(snapshot with { SelfPetId = "absent" }));
+        var change = new RoomEvent("0.1", "event", RoomProtocol.RoomId, "epoch", 1, 100, null, RoomProtocol.MotionChanged, a);
+        Assert.IsTrue(RoomProtocol.IsEvent(change));
+        Assert.IsFalse(RoomProtocol.IsEvent(change with { Type = "unknown" }));
+        Assert.IsFalse(RoomProtocol.IsEvent(change with { Sequence = 0 }));
+        Assert.IsFalse(RoomProtocol.IsEvent(change with { Payload = a with { AnchorPosition = new(double.PositiveInfinity, .12) } }));
+    }
+
+    [TestMethod]
+    public void InvalidJsonAndPayloadAuthorityFieldsFailClosed()
+    {
+        Assert.ThrowsExactly<JsonException>(() => JsonSerializer.Deserialize<RoomPoint>("{\"x\":NaN,\"y\":0.12}", RoomProtocol.Json));
+        Assert.ThrowsExactly<JsonException>(() => JsonSerializer.Deserialize<RoomPoint>("{\"x\":1e999,\"y\":0.12}", RoomProtocol.Json));
+        foreach (var field in new[] { "actorId", "petId", "position", "speed", "duration", "participants", "from", "to" })
+        {
+            var extra = new Dictionary<string, JsonElement> { [field] = JsonSerializer.SerializeToElement("spoofed") };
+            var command = new RoomCommand("0.1", "room", "epoch", 1, "c1", 1, 0, RoomProtocol.Move, new("left") { Extra = extra });
+            Assert.AreEqual("forbidden", RoomProtocol.Validate(command), field);
+        }
+    }
 }

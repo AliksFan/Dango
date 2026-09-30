@@ -18,6 +18,7 @@ public static class RoomProtocol
         PropertyNameCaseInsensitive = false,
         RespectRequiredConstructorParameters = true,
         MaxDepth = 16,
+        Converters = { new FiniteDoubleConverter() },
     };
 
     public static bool IsId(string? value) => !string.IsNullOrWhiteSpace(value) && value.Length <= 128;
@@ -67,6 +68,21 @@ public static class RoomProtocol
         && IsId(value.EventId) && IsId(value.RoomId) && IsId(value.RoomEpoch) && value.Sequence > 0 && value.ServerTimeMs >= 0
         && value.Type is MotionChanged or ActionStarted && IsPet(value.Payload)
         && (value.Type != ActionStarted || value.Payload.Action is not null);
+}
+
+internal sealed class FiniteDoubleConverter : JsonConverter<double>
+{
+    public override double Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.Number || !reader.TryGetDouble(out var value) || !double.IsFinite(value))
+            throw new JsonException("finite_number_required");
+        return value;
+    }
+    public override void Write(Utf8JsonWriter writer, double value, JsonSerializerOptions options)
+    {
+        if (!double.IsFinite(value)) throw new JsonException("finite_number_required");
+        writer.WriteNumberValue(value);
+    }
 }
 
 public sealed record RoomPoint(double X, double Y);
