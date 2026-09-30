@@ -23,6 +23,7 @@ public sealed class RoomReplica
     private ReplicaFrame _frame = new(null, ReplicaState.Disconnected, 0, 0, null);
     private string? _roomId;
     private string? _epoch;
+    private long _minimumSnapshotSequence;
     public ReplicaFrame Frame { get { lock (_gate) return _frame; } }
     public long BeginConnection(string roomId, string epoch)
     {
@@ -33,7 +34,7 @@ public sealed class RoomReplica
             _roomId = roomId;
             _epoch = epoch;
             _buffer.Clear();
-            if (!sameRoom) _seen.Clear();
+            if (!sameRoom) { _seen.Clear(); _minimumSnapshotSequence = 0; }
             _frame = _frame with { Snapshot = sameRoom ? _frame.Snapshot : null,
                 ConnectionFence = _frame.ConnectionFence + 1, SyncAttemptId = _frame.SyncAttemptId + 1,
                 State = ReplicaState.Joining, Reason = null };
@@ -46,7 +47,7 @@ public sealed class RoomReplica
         {
             if (!IsCurrent(connection)) return new(connection, -1, _frame.LastSequence);
             _frame = _frame with { SyncAttemptId = _frame.SyncAttemptId + 1, State = ReplicaState.Resyncing };
-            return new(connection, _frame.SyncAttemptId, _frame.LastSequence);
+            return new(connection, _frame.SyncAttemptId, Math.Max(_frame.LastSequence, _minimumSnapshotSequence));
         }
     }
     public ReplicaUpdate ApplySnapshot(SnapshotFence fence, RoomSnapshot snapshot)
@@ -61,7 +62,7 @@ public sealed class RoomReplica
                     !snapshot.Pets.Select(p => (p.PetId, p.ParticipantId)).Order().SequenceEqual(
                         existing.Pets.Select(p => (p.PetId, p.ParticipantId)).Order()))))
                 return Invalid("invalid_snapshot");
-            if (snapshot.LastSequence < Math.Max(fence.MinimumSequence, _frame.LastSequence))
+            if (snapshot.LastSequence < Math.Max(_minimumSnapshotSequence, Math.Max(fence.MinimumSequence, _frame.LastSequence)))
                 return RequireResync("snapshot_rollback");
             _frame = _frame with { Snapshot = Freeze(snapshot), State = ReplicaState.Live, Reason = null };
             foreach (var key in _buffer.Keys.Where(k => k <= snapshot.LastSequence).ToArray()) _buffer.Remove(key);
@@ -91,7 +92,11 @@ public sealed class RoomReplica
                 return Apply(value) ? ReplicaUpdate.Applied : Invalid("invalid_event_identity");
             if (_buffer.Count == BufferCapacity)
             {
+                // Some confirmed events are about to be discarded. An already-in-flight snapshot may predate
+                // them, so it cannot make this replica Live even if it still passes the old sequence barrier.
+                _minimumSnapshotSequence = Math.Max(_minimumSnapshotSequence, Math.Max(value.Sequence, _buffer.Keys.Last()));
                 _buffer.Clear();
+                _frame = _frame with { SyncAttemptId = _frame.SyncAttemptId + 1 };
                 return RequireResync("buffer_overflow");
             }
             _buffer.Add(value.Sequence, Freeze(value));
@@ -155,6 +160,7 @@ public sealed class RoomReplica
     {
         _buffer.Clear();
         _seen.Clear();
+        _minimumSnapshotSequence = 0;
         _frame = _frame with { Snapshot = null, State = ReplicaState.ResetRequired,
             Reason = "room_reset_required", SyncAttemptId = _frame.SyncAttemptId + 1 };
         return ReplicaUpdate.ResetRequired;
