@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using Dango.Desktop.DesktopHost;
 using Button = System.Windows.Controls.Button;
 using Color = System.Windows.Media.Color;
 using ColorConverter = System.Windows.Media.ColorConverter;
@@ -15,14 +16,33 @@ namespace Dango.Desktop.AppShell.ControlCenter;
 
 public enum HomeEditor { Face, Wardrobe }
 
-/// <summary>The approved home composition. Preview choices never mutate the desktop or persist settings.</summary>
+public enum ProductSettingsAction
+{
+    ToggleVisibility, ToggleInteraction, WallpaperMode, WindowMode, BelowIcons, AboveIcons,
+    ToggleKeyboard, ArrowKeys, Wasd, SproutHat, TopHat, BowlerHat,
+    RetryInitialization, RestoreDango, RetryWallpaper, RetrySave, RecoverSettings,
+    RefreshDiagnostics, Exit,
+}
+
+public sealed record ProductSettingsState(
+    bool SceneReady, bool IsVisible, bool IsInteractionEnabled, string Mode,
+    KeyboardControlSettings Keyboard, DesktopObjectLayer DangoLayer, string HatPresetId,
+    string? LastError, bool HasSaveWarning, bool IsWriteProtected, string SaveMessage);
+
+/// <summary>The product shell: home previews stay local; settings requests go through the host.</summary>
 public partial class ProductHomeView : UserControl
 {
     private int transitionVersion;
     private bool reduceMotion;
+    private bool highContrast;
+    private ProductSettingsState? settingsState;
+    private string? settingsCommandError;
     public event Action? SettingsRequested;
+    public event Action? HomeRequested;
     public event Action? NoticeRequested;
+    public event Action<ProductSettingsAction>? SettingsActionRequested;
     public bool IsEditing { get; private set; }
+    public bool IsSettingsOpen { get; private set; }
     public HomeEditor SelectedEditor { get; private set; }
     public Color PreviewColor { get; private set; } = Color.FromRgb(245, 213, 165);
     public bool ReduceMotion
@@ -37,6 +57,7 @@ public partial class ProductHomeView : UserControl
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         UpdateColorSelection();
+        UpdateNavigationSelection();
     }
 
     public void ShowEditor(HomeEditor editor)
@@ -52,20 +73,197 @@ public partial class ProductHomeView : UserControl
         UpdateTransition(true);
     }
 
-    public void CloseEditor()
+    public void CloseEditor() => CloseEditor(restoreLauncherFocus: true);
+
+    private void CloseEditor(bool restoreLauncherFocus)
     {
         if (!IsEditing) return;
-        FocusLauncher();
+        if (restoreLauncherFocus) FocusLauncher();
         IsEditing = false;
         UpdateTransition(true);
+    }
+
+    public void ShowSettingsPage(bool showDiagnostics = false)
+    {
+        if (IsEditing) CloseEditor(restoreLauncherFocus: false);
+        if (!IsSettingsOpen) SettingsPage.ScrollToTop();
+        IsSettingsOpen = true;
+        HomeContent.Visibility = Visibility.Collapsed;
+        HomeFooter.Visibility = Visibility.Collapsed;
+        SettingsPage.Visibility = Visibility.Visible;
+        UpdateNavigationSelection();
+        UpdateSettingsFeedback();
+        if (showDiagnostics)
+        {
+            OpenDiagnostics();
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (IsSettingsOpen && SettingsDiagnosticsText.Visibility == Visibility.Visible)
+                    SettingsDiagnosticsText.Focus();
+            }, System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+        else Dispatcher.BeginInvoke(() =>
+        {
+            if (IsSettingsOpen) BackFromSettingsButton.Focus();
+        }, System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    public void ShowHomePage()
+    {
+        IsSettingsOpen = false;
+        SettingsPage.Visibility = Visibility.Collapsed;
+        HomeContent.Visibility = Visibility.Visible;
+        HomeFooter.Visibility = Visibility.Visible;
+        settingsCommandError = null;
+        SettingsFeedbackBar.Visibility = Visibility.Collapsed;
+        SettingsCommandStatus.Visibility = Visibility.Collapsed;
+        UpdateNavigationSelection();
+        HomeNavigation.Focus();
+    }
+
+    public void UpdateSettings(ProductSettingsState state)
+    {
+        settingsState = state;
+        var ready = state.SceneReady;
+        DisplayToggleButton.Content = state.IsVisible ? "已显示" : "已隐藏";
+        InteractionToggleButton.Content = state.IsInteractionEnabled ? "已开启" : "已关闭";
+        KeyboardToggleButton.Content = state.Keyboard.IsEnabled ? "已开启" : "已关闭";
+        AutomationProperties.SetName(DisplayToggleButton, $"桌面团子，{DisplayToggleButton.Content}，点击切换");
+        AutomationProperties.SetHelpText(DisplayToggleButton, "仅本次会话");
+        AutomationProperties.SetName(InteractionToggleButton, $"鼠标互动，{InteractionToggleButton.Content}，点击切换");
+        AutomationProperties.SetName(KeyboardToggleButton, $"键盘控制，{KeyboardToggleButton.Content}，点击切换");
+        foreach (var button in new[] { DisplayToggleButton, InteractionToggleButton, KeyboardToggleButton,
+                     WallpaperModeButton, WindowModeButton, SproutHatButton, TopHatButton, BowlerHatButton })
+            button.IsEnabled = ready;
+        ArrowsButton.IsEnabled = WasdButton.IsEnabled = ready && state.Keyboard.IsEnabled;
+        var wallpaper = string.Equals(state.Mode, "Wallpaper", StringComparison.Ordinal);
+        BelowIconsButton.IsEnabled = AboveIconsButton.IsEnabled = ready && wallpaper;
+        RetryInitializationButton.Visibility = ready ? Visibility.Collapsed : Visibility.Visible;
+        RetryInitializationButton.IsEnabled = !ready;
+        RestoreDangoSettingsButton.IsEnabled = RetryWallpaperSettingsButton.IsEnabled = ready;
+        SettingRunState.Text = ready ? state.LastError is null ? "团子正在运行" : state.LastError
+            : state.LastError ?? "团子尚未启动";
+        SaveWarningRow.Visibility = state.HasSaveWarning ? Visibility.Visible : Visibility.Collapsed;
+        SaveWarningText.Text = state.SaveMessage;
+        RetrySaveSettingsButton.IsEnabled = !state.IsWriteProtected;
+        RecoverSettingsButton.Visibility = state.IsWriteProtected ? Visibility.Visible : Visibility.Collapsed;
+        ShowDiagnosticsButton.IsEnabled = SettingsExitButton.IsEnabled = true;
+        Select(WallpaperModeButton, wallpaper);
+        Select(WindowModeButton, string.Equals(state.Mode, "Window", StringComparison.Ordinal));
+        Select(BelowIconsButton, state.DangoLayer == DesktopObjectLayer.BelowDesktopIcons);
+        Select(AboveIconsButton, state.DangoLayer == DesktopObjectLayer.AboveDesktopIcons);
+        Select(ArrowsButton, state.Keyboard.Scheme == KeyboardControlScheme.ArrowKeys);
+        Select(WasdButton, state.Keyboard.Scheme == KeyboardControlScheme.Wasd);
+        Select(SproutHatButton, state.HatPresetId == "sprout");
+        Select(TopHatButton, state.HatPresetId == "top-hat");
+        Select(BowlerHatButton, state.HatPresetId == "bowler");
+        UpdateSettingsFeedback();
+    }
+
+    public void ShowSettingsStatus(string text, bool failed)
+    {
+        SettingsCommandStatus.Text = text;
+        SettingsCommandStatus.Visibility = Visibility.Visible;
+        settingsCommandError = failed ? text : null;
+        UpdateSettingsFeedback();
+    }
+
+    public void SetDiagnosticsText(string text) => SettingsDiagnosticsText.Text = text;
+
+    private void UpdateSettingsFeedback()
+    {
+        if (!IsSettingsOpen)
+        {
+            SettingsFeedbackBar.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var warning = settingsState?.HasSaveWarning == true ? "设置未保存，请在下方重试保存。" : null;
+        SettingsFeedbackText.Text = settingsCommandError is null ? warning ?? string.Empty
+            : warning is null ? settingsCommandError : $"{settingsCommandError}\n{warning}";
+        SettingsFeedbackBar.Visibility = string.IsNullOrEmpty(SettingsFeedbackText.Text)
+            ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void Select(Button button, bool selected)
+    {
+        button.Background = selected ? (System.Windows.Media.Brush)Resources["HomeSelected"] : Brushes.Transparent;
+        button.Foreground = selected ? highContrast ? System.Windows.SystemColors.HighlightTextBrush
+            : (System.Windows.Media.Brush)Resources["HomeAccent"]
+            : (System.Windows.Media.Brush)Resources["HomeInk"];
+        button.Tag = selected ? "Selected" : null;
+        AutomationProperties.SetItemStatus(button, selected ? "已选" : "未选");
+    }
+
+    private void Request(ProductSettingsAction action)
+    {
+        if (settingsState is not null) SettingsActionRequested?.Invoke(action);
+    }
+
+    private void OnBackFromSettingsClick(object sender, RoutedEventArgs e)
+    {
+        HomeRequested?.Invoke();
+        if (IsSettingsOpen) ShowHomePage();
+    }
+    private void OnDisplayToggleClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.ToggleVisibility);
+    private void OnInteractionToggleClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.ToggleInteraction);
+    private void OnWallpaperModeClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.WallpaperMode);
+    private void OnWindowModeClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.WindowMode);
+    private void OnBelowIconsClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.BelowIcons);
+    private void OnAboveIconsClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.AboveIcons);
+    private void OnKeyboardToggleClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.ToggleKeyboard);
+    private void OnArrowsClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.ArrowKeys);
+    private void OnWasdClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.Wasd);
+    private void OnSproutHatClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.SproutHat);
+    private void OnTopHatClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.TopHat);
+    private void OnBowlerHatClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.BowlerHat);
+    private void OnRetryInitializationClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.RetryInitialization);
+    private void OnRestoreDangoClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.RestoreDango);
+    private void OnRetryWallpaperClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.RetryWallpaper);
+    private void OnRetrySaveClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.RetrySave);
+    private void OnRecoverSettingsClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.RecoverSettings);
+    private void OnExitSettingsClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.Exit);
+    private void OnShowDiagnosticsClick(object sender, RoutedEventArgs e)
+    {
+        if (SettingsDiagnosticsText.Visibility == Visibility.Visible)
+        {
+            SettingsDiagnosticsText.Visibility = Visibility.Collapsed;
+            ShowDiagnosticsButton.Content = "查看诊断";
+            return;
+        }
+        OpenDiagnostics();
+    }
+
+    private void OpenDiagnostics()
+    {
+        SettingsDiagnosticsText.Visibility = Visibility.Visible;
+        ShowDiagnosticsButton.Content = "收起诊断";
+        Request(ProductSettingsAction.RefreshDiagnostics);
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (IsSettingsOpen && SettingsDiagnosticsText.Visibility == Visibility.Visible)
+                SettingsDiagnosticsText.BringIntoView();
+        }, System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     private void FocusLauncher() => (SelectedEditor == HomeEditor.Face ? FaceButton : WardrobeButton).Focus();
     private void OnFaceClick(object sender, RoutedEventArgs e) => ShowEditor(HomeEditor.Face);
     private void OnWardrobeClick(object sender, RoutedEventArgs e) => ShowEditor(HomeEditor.Wardrobe);
     private void OnCloseClick(object sender, RoutedEventArgs e) => CloseEditor();
-    private void OnHomeClick(object sender, RoutedEventArgs e) => CloseEditor();
-    private void OnSettingsClick(object sender, RoutedEventArgs e) => SettingsRequested?.Invoke();
+    private void OnHomeClick(object sender, RoutedEventArgs e)
+    {
+        if (IsSettingsOpen)
+        {
+            HomeRequested?.Invoke();
+            if (IsSettingsOpen) ShowHomePage();
+        }
+        else CloseEditor();
+    }
+    private void OnSettingsClick(object sender, RoutedEventArgs e)
+    {
+        SettingsRequested?.Invoke();
+        if (!IsSettingsOpen) ShowSettingsPage();
+    }
     private void OnNoticeClick(object sender, RoutedEventArgs e) => NoticeRequested?.Invoke();
     public void SetNotice(string? text, string? detail)
     {
@@ -75,8 +273,14 @@ public partial class ProductHomeView : UserControl
     }
     private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        if (e.Key != Key.Escape || !IsEditing) return;
-        CloseEditor();
+        if (e.Key != Key.Escape) return;
+        if (IsSettingsOpen)
+        {
+            HomeRequested?.Invoke();
+            if (IsSettingsOpen) ShowHomePage();
+        }
+        else if (IsEditing) CloseEditor();
+        else return;
         e.Handled = true;
     }
 
@@ -105,7 +309,12 @@ public partial class ProductHomeView : UserControl
 
     private void UpdateTheme()
     {
-        var contrast = SystemParameters.HighContrast;
+        ApplyTheme(SystemParameters.HighContrast);
+    }
+
+    internal void ApplyTheme(bool contrast)
+    {
+        highContrast = contrast;
         Background = contrast ? System.Windows.SystemColors.WindowBrush : Brush("#FDFCF9");
         Foreground = contrast ? System.Windows.SystemColors.WindowTextBrush : Brush("#443D34");
         Resources["HomeInk"] = Foreground;
@@ -116,6 +325,7 @@ public partial class ProductHomeView : UserControl
         Resources["HomeSelected"] = contrast ? System.Windows.SystemColors.HighlightBrush : Brush("#EFE3D4");
         UpdateLauncherSelection();
         UpdateColorSelection();
+        if (settingsState is not null) UpdateSettings(settingsState);
     }
 
     private void OnColorClick(object sender, RoutedEventArgs e)
@@ -143,9 +353,24 @@ public partial class ProductHomeView : UserControl
         {
             var selected = IsEditing && SelectedEditor == editor;
             button.Background = selected ? (System.Windows.Media.Brush)Resources["HomeSelected"] : Brushes.Transparent;
-            button.Foreground = selected ? SystemParameters.HighContrast ? System.Windows.SystemColors.HighlightTextBrush
+            button.Foreground = selected ? highContrast ? System.Windows.SystemColors.HighlightTextBrush
                 : (System.Windows.Media.Brush)Resources["HomeAccent"] : (System.Windows.Media.Brush)Resources["HomeInk"];
             AutomationProperties.SetItemStatus(button, selected ? "已展开" : "已收起");
+        }
+    }
+
+    private void UpdateNavigationSelection()
+    {
+        foreach (var (button, selected) in new[]
+                 {
+                     (HomeNavigation, !IsSettingsOpen),
+                     (SettingsButton, IsSettingsOpen),
+                 })
+        {
+            button.BorderThickness = selected ? new Thickness(0, 0, 0, 2) : new Thickness(0);
+            if (selected) button.SetResourceReference(System.Windows.Controls.Control.BorderBrushProperty, "HomeAccent");
+            else button.BorderBrush = Brushes.Transparent;
+            AutomationProperties.SetItemStatus(button, selected ? "当前页面" : string.Empty);
         }
     }
 
@@ -185,6 +410,10 @@ public partial class ProductHomeView : UserControl
         EditorPanel.Margin = new Thickness(4, compact ? 18 : 22, 4, 24);
         EditorPanel.MinHeight = compact ? 338 : 374;
         HomeFooter.Margin = new Thickness(compact ? 22 : 30, 10, 30, 16);
+        SettingsInner.Margin = narrow ? new Thickness(12, 8, 12, 20)
+            : compact ? new Thickness(16, 12, 16, 24) : new Thickness(38, 10, 38, 24);
+        SettingsFeedbackBar.Margin = narrow ? new Thickness(12, 0, 12, 0)
+            : compact ? new Thickness(16, 0, 16, 0) : new Thickness(38, 0, 38, 0);
         UpdateTransition(false);
     }
 

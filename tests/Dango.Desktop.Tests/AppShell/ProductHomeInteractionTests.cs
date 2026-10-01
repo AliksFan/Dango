@@ -142,11 +142,11 @@ public sealed class ProductHomeInteractionTests
             Assert.IsNotNull(home.FindName("WardrobeButton"), "换装 must not be deferred out of the approved home.");
             Assert.IsNotNull(home.FindName("EditorPanel"), "The horizontal detail panel is part of this increment.");
             Assert.AreEqual(336, window.MinWidth);
-            Click(home, "NoticeButton");
-            Assert.AreEqual(Visibility.Visible, ((UIElement)window.FindName("DesktopPage")).Visibility);
-            Assert.AreSame(window.FindName("RecoveryActions"), ((Border)window.FindName("ProductRecoverySlot")).Child,
-                "Real retry/restore actions remain reachable through existing settings.");
-            Assert.AreEqual(820, window.MinWidth, "Existing settings keep their supported minimum size.");
+            Click(home, "SettingsButton");
+            Assert.AreEqual(Visibility.Visible, ((UIElement)home.FindName("SettingsPage")).Visibility);
+            Assert.AreEqual(Visibility.Collapsed, ((UIElement)window.FindName("LegacyShell")).Visibility);
+            Assert.IsNotNull(home.FindName("RetryInitializationButton"), "Recovery stays reachable in the accepted shell.");
+            Assert.AreEqual(336, window.MinWidth);
             window.ShowOverview();
             Assert.AreEqual(Visibility.Visible, home.Visibility);
         }

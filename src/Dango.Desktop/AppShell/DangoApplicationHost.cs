@@ -65,7 +65,8 @@ internal sealed class DangoApplicationHost : IDisposable
         geometrySaveTimer.Tick += (_, _) => { geometrySaveTimer.Stop(); SaveSettings(); };
         sceneWindow.SizeChanged += (_, _) => ScheduleSave();
         sceneWindow.LocationChanged += (_, _) => ScheduleSave();
-        stackedRuntime.HatPresetChanged += () => { if (started) SaveSettings(); };
+        // A control-center command saves immediately; an external hat change still saves after the debounce.
+        stackedRuntime.HatPresetChanged += ScheduleSave;
     }
 
     public void Start()
@@ -162,6 +163,7 @@ internal sealed class DangoApplicationHost : IDisposable
     private bool SaveSettings()
     {
         if (disposed) return true;
+        geometrySaveTimer.Stop();
         var current = settings.Current;
         var size = controlCenterWindow?.CaptureSize() ?? (current.Width, current.Height);
         var saved = settings.TrySave(current with

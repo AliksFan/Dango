@@ -35,6 +35,13 @@
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HomeSoft}" />
                             </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                    <Condition Property="Tag" Value="Selected" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HomeSelected}" />
+                            </MultiTrigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
                                 <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource HomeAccent}" />
                             </Trigger>
@@ -123,9 +130,15 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="SettingsRow" TargetType="Border">
+            <Setter Property="BorderBrush" Value="{DynamicResource HomeLine}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="Padding" Value="0,14" />
+        </Style>
     </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -147,7 +160,12 @@
                 <Button Content="登录" Style="{StaticResource ToolButton}" IsEnabled="False" ToolTip="登录 · 未开发" AutomationProperties.Name="登录，未开发" />
             </StackPanel>
         </Grid>
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False"
+        <Border x:Name="SettingsFeedbackBar" Grid.Row="1" Visibility="Collapsed" Margin="38,0,38,0" Padding="12,8"
+                Background="{DynamicResource HomeSoft}" BorderBrush="{DynamicResource HomeLine}" BorderThickness="1" CornerRadius="7">
+            <TextBlock x:Name="SettingsFeedbackText" TextWrapping="Wrap" Foreground="{DynamicResource HomeInk}"
+                       AutomationProperties.LiveSetting="Polite" />
+        </Border>
+        <ScrollViewer x:Name="HomeContent" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False"
                       HorizontalContentAlignment="Stretch" VerticalContentAlignment="Top">
             <Grid x:Name="Stage" Margin="38,20,38,30" MinHeight="420" SizeChanged="OnStageSizeChanged" ClipToBounds="False">
                 <Grid.ColumnDefinitions>
@@ -221,7 +239,129 @@
                 </Grid>
             </Grid>
         </ScrollViewer>
-        <StackPanel x:Name="HomeFooter" Grid.Row="2" Margin="30,10,30,16">
+        <ScrollViewer x:Name="SettingsPage" Grid.Row="2" Visibility="Collapsed" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+            <Grid x:Name="SettingsInner" Margin="38,10,38,24">
+                <Grid MaxWidth="610" HorizontalAlignment="Stretch">
+                <StackPanel>
+                    <Button x:Name="BackFromSettingsButton" Content="返回" HorizontalAlignment="Left" BorderBrush="Transparent"
+                            Padding="0,8" Click="OnBackFromSettingsClick" AutomationProperties.Name="返回我的团子" />
+                    <TextBlock Text="设置" FontSize="20" Margin="0,12,0,16" />
+
+                    <TextBlock Text="桌面与显示" FontSize="15" Margin="0,0,0,4" />
+                    <Border Style="{StaticResource SettingsRow}">
+                        <Grid>
+                            <TextBlock Text="桌面团子" VerticalAlignment="Center" />
+                            <Button x:Name="DisplayToggleButton" Content="未连接" IsEnabled="False" HorizontalAlignment="Right"
+                                    Click="OnDisplayToggleClick" ToolTip="仅本次会话" AutomationProperties.Name="桌面团子，未连接" />
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource SettingsRow}">
+                        <StackPanel>
+                            <TextBlock Text="显示位置" Margin="0,0,0,10" />
+                            <WrapPanel>
+                                <Button x:Name="WallpaperModeButton" Content="壁纸层" IsEnabled="False" Margin="0,0,8,4"
+                                        Click="OnWallpaperModeClick" AutomationProperties.Name="显示位置：壁纸层" />
+                                <Button x:Name="WindowModeButton" Content="普通窗口" IsEnabled="False" Margin="0,0,0,4"
+                                        Click="OnWindowModeClick" AutomationProperties.Name="显示位置：普通窗口" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource SettingsRow}">
+                        <StackPanel>
+                            <TextBlock Text="团子与图标" Margin="0,0,0,10" />
+                            <WrapPanel>
+                                <Button x:Name="BelowIconsButton" Content="图标下" IsEnabled="False" Margin="0,0,8,4"
+                                        Click="OnBelowIconsClick" AutomationProperties.Name="团子位于图标下" />
+                                <Button x:Name="AboveIconsButton" Content="图标上" IsEnabled="False" Margin="0,0,0,4"
+                                        Click="OnAboveIconsClick" AutomationProperties.Name="团子位于图标上" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="交互" FontSize="15" Margin="0,26,0,4" />
+                    <Border Style="{StaticResource SettingsRow}">
+                        <Grid>
+                            <TextBlock Text="鼠标互动" VerticalAlignment="Center" />
+                            <Button x:Name="InteractionToggleButton" Content="未连接" IsEnabled="False" HorizontalAlignment="Right"
+                                    Click="OnInteractionToggleClick" AutomationProperties.Name="鼠标互动，未连接" />
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource SettingsRow}">
+                        <Grid>
+                            <TextBlock Text="键盘控制" VerticalAlignment="Center" />
+                            <Button x:Name="KeyboardToggleButton" Content="未连接" IsEnabled="False" HorizontalAlignment="Right"
+                                    Click="OnKeyboardToggleClick" AutomationProperties.Name="键盘控制，未连接" />
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource SettingsRow}">
+                        <StackPanel>
+                            <TextBlock Text="控制按键" Margin="0,0,0,10" />
+                            <WrapPanel>
+                                <Button x:Name="ArrowsButton" Content="方向键" IsEnabled="False" Margin="0,0,8,4"
+                                        Click="OnArrowsClick" AutomationProperties.Name="使用方向键控制" />
+                                <Button x:Name="WasdButton" Content="WASD" IsEnabled="False" Margin="0,0,0,4"
+                                        Click="OnWasdClick" AutomationProperties.Name="使用 WASD 控制" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="外观" FontSize="15" Margin="0,26,0,4" />
+                    <Border Style="{StaticResource SettingsRow}">
+                        <StackPanel>
+                            <TextBlock Text="现有帽型" Margin="0,0,0,10" />
+                            <WrapPanel>
+                                <Button x:Name="SproutHatButton" Content="叶芽" IsEnabled="False" Margin="0,0,8,4"
+                                        Click="OnSproutHatClick" AutomationProperties.Name="使用叶芽帽型" />
+                                <Button x:Name="TopHatButton" Content="小礼帽" IsEnabled="False" Margin="0,0,8,4"
+                                        Click="OnTopHatClick" AutomationProperties.Name="使用小礼帽帽型" />
+                                <Button x:Name="BowlerHatButton" Content="圆顶帽" IsEnabled="False" Margin="0,0,0,4"
+                                        Click="OnBowlerHatClick" AutomationProperties.Name="使用圆顶帽型" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="帮助与诊断" FontSize="15" Margin="0,26,0,4" />
+                    <Border Style="{StaticResource SettingsRow}">
+                        <StackPanel>
+                            <TextBlock x:Name="SettingRunState" Text="未连接" Foreground="{DynamicResource HomeMuted}" TextWrapping="Wrap" />
+                            <TextBlock x:Name="SettingsCommandStatus" Visibility="Collapsed" Margin="0,10,0,0"
+                                       Foreground="{DynamicResource HomeMuted}" TextWrapping="Wrap" />
+                            <WrapPanel Margin="0,12,0,0">
+                                <Button x:Name="RetryInitializationButton" Content="重试初始化" IsEnabled="False" Visibility="Collapsed"
+                                        Margin="0,0,8,4" Click="OnRetryInitializationClick" />
+                                <Button x:Name="RestoreDangoSettingsButton" Content="恢复团子" IsEnabled="False"
+                                        Margin="0,0,8,4" Click="OnRestoreDangoClick" />
+                                <Button x:Name="RetryWallpaperSettingsButton" Content="重试壁纸层" IsEnabled="False"
+                                        Margin="0,0,0,4" Click="OnRetryWallpaperClick" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                    <Border x:Name="SaveWarningRow" Style="{StaticResource SettingsRow}" Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock x:Name="SaveWarningText" TextWrapping="Wrap" Foreground="{DynamicResource HomeMuted}" />
+                            <WrapPanel Margin="0,12,0,0">
+                                <Button x:Name="RetrySaveSettingsButton" Content="重试保存" Click="OnRetrySaveClick" Margin="0,0,8,4" />
+                                <Button x:Name="RecoverSettingsButton" Content="备份并恢复保存" Click="OnRecoverSettingsClick" Visibility="Collapsed" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource SettingsRow}">
+                        <StackPanel>
+                            <Button x:Name="ShowDiagnosticsButton" Content="查看诊断" IsEnabled="False" HorizontalAlignment="Left"
+                                    Click="OnShowDiagnosticsClick" />
+                            <TextBox x:Name="SettingsDiagnosticsText" Visibility="Collapsed" IsReadOnly="True" TextWrapping="Wrap"
+                                     Margin="0,12,0,0" Padding="8" BorderBrush="{DynamicResource HomeLine}"
+                                     Background="Transparent" MinHeight="90" MaxHeight="240" VerticalScrollBarVisibility="Auto" />
+                        </StackPanel>
+                    </Border>
+                    <Button x:Name="SettingsExitButton" Content="退出 Dango" IsEnabled="False" HorizontalAlignment="Left"
+                            Margin="0,24,0,20" Click="OnExitSettingsClick" AutomationProperties.Name="退出 Dango" />
+                </StackPanel>
+                </Grid>
+            </Grid>
+        </ScrollViewer>
+        <StackPanel x:Name="HomeFooter" Grid.Row="3" Margin="30,10,30,16">
             <Button x:Name="NoticeButton" Visibility="Collapsed" Style="{StaticResource ToolButton}" FontSize="12"
                     Content="需要处理 · 查看" HorizontalAlignment="Left" Click="OnNoticeClick" />
             <TextBlock x:Name="PreviewStatus" Text="交互预览 · 未应用" FontSize="12" Foreground="{DynamicResource HomeMuted}" />

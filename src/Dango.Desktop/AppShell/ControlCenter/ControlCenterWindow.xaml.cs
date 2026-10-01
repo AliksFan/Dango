@@ -53,11 +53,13 @@ public partial class ControlCenterWindow : Window
         refreshingHostState = true;
         InitializeComponent();
         ProductHome.SettingsRequested += () => OnDesktopNavigationClick(this, new RoutedEventArgs());
+        ProductHome.HomeRequested += ShowOverview;
         ProductHome.NoticeRequested += () =>
         {
             if (settingsSession?.HasWarning == true) ShowDiagnostics();
             else OnDesktopNavigationClick(this, new RoutedEventArgs());
         };
+        ProductHome.SettingsActionRequested += OnProductSettingsAction;
         if (commandController.UiMode == ApplicationUiMode.DeveloperReview) BuildPhysicsTuningPanel();
         ApplyUiMode();
         if (settingsSession is not null)
@@ -198,12 +200,7 @@ public partial class ControlCenterWindow : Window
         var settings = new KeyboardControlSettings(
             KeyboardControlCheckBox.IsChecked.Value,
             WasdRadioButton.IsChecked == true ? KeyboardControlScheme.Wasd : KeyboardControlScheme.ArrowKeys);
-        var result = commandController.ApplyKeyboardControlSettings(settings);
-        ApplyCommand(result);
-        if (result.State == CommandApplicationState.Applied)
-        {
-            SaveWindowSettings();
-        }
+        ApplyCommand(commandController.ApplyKeyboardControlSettings(settings));
     }
 
     private void OnDebugSkeletonChanged(object sender, RoutedEventArgs e)
@@ -241,12 +238,7 @@ public partial class ControlCenterWindow : Window
         var mode = WindowHostRadioButton.IsChecked == true
             ? DesktopDisplayMode.Window
             : DesktopDisplayMode.Wallpaper;
-        var result = commandController.SetHostMode(mode);
-        ApplyCommand(result);
-        if (result.State == CommandApplicationState.Applied)
-        {
-            SaveWindowSettings();
-        }
+        ApplyCommand(commandController.SetHostMode(mode));
     }
 
     private void OnRetryWallpaperClick(object sender, RoutedEventArgs e)
@@ -255,10 +247,6 @@ public partial class ControlCenterWindow : Window
             ? commandController.SetVisibility(true)
             : commandController.SetHostMode(DesktopDisplayMode.Wallpaper);
         ApplyCommand(result);
-        if (result.State == CommandApplicationState.Applied)
-        {
-            SaveWindowSettings();
-        }
     }
 
     private void OnObjectLayerChanged(object sender, RoutedEventArgs e)
@@ -281,12 +269,7 @@ public partial class ControlCenterWindow : Window
                         ? DesktopObjectLayer.AboveDesktopIcons
                         : DesktopObjectLayer.BelowDesktopIcons,
             });
-        var result = commandController.ApplyLayeringSettings(settings);
-        ApplyCommand(result);
-        if (result.State == CommandApplicationState.Applied)
-        {
-            SaveWindowSettings();
-        }
+        ApplyCommand(commandController.ApplyLayeringSettings(settings));
     }
 
     private void OnVerificationOutcomeChanged(object sender, SelectionChangedEventArgs e) =>
@@ -374,6 +357,77 @@ public partial class ControlCenterWindow : Window
 
     private void OnExitClick(object sender, RoutedEventArgs e) => requestExit();
 
+    private void OnProductSettingsAction(ProductSettingsAction action)
+    {
+        switch (action)
+        {
+            case ProductSettingsAction.ToggleVisibility:
+                ApplyCommand(commandController.SetVisibility(!commandController.GetSnapshot().IsVisible));
+                break;
+            case ProductSettingsAction.ToggleInteraction:
+                ApplyCommand(commandController.SetInteractionEnabled(!commandController.GetSnapshot().IsInteractionEnabled));
+                break;
+            case ProductSettingsAction.WallpaperMode:
+            case ProductSettingsAction.WindowMode:
+                ApplyCommand(commandController.SetHostMode(action == ProductSettingsAction.WallpaperMode
+                    ? DesktopDisplayMode.Wallpaper : DesktopDisplayMode.Window));
+                break;
+            case ProductSettingsAction.BelowIcons:
+            case ProductSettingsAction.AboveIcons:
+                var currentLayering = commandController.GetLayeringSettings();
+                ApplyCommand(commandController.ApplyLayeringSettings(currentLayering with
+                {
+                    DangoLayer = action == ProductSettingsAction.BelowIcons
+                        ? DesktopObjectLayer.BelowDesktopIcons : DesktopObjectLayer.AboveDesktopIcons,
+                }));
+                break;
+            case ProductSettingsAction.ToggleKeyboard:
+            case ProductSettingsAction.ArrowKeys:
+            case ProductSettingsAction.Wasd:
+                var currentKeyboard = commandController.GetKeyboardControlSettings();
+                var updatedKeyboard = action switch
+                {
+                    ProductSettingsAction.ToggleKeyboard => currentKeyboard with { IsEnabled = !currentKeyboard.IsEnabled },
+                    ProductSettingsAction.ArrowKeys => currentKeyboard with { Scheme = KeyboardControlScheme.ArrowKeys },
+                    _ => currentKeyboard with { Scheme = KeyboardControlScheme.Wasd },
+                };
+                ApplyCommand(commandController.ApplyKeyboardControlSettings(updatedKeyboard));
+                break;
+            case ProductSettingsAction.SproutHat:
+            case ProductSettingsAction.TopHat:
+            case ProductSettingsAction.BowlerHat:
+                var hatId = action switch
+                {
+                    ProductSettingsAction.SproutHat => "sprout",
+                    ProductSettingsAction.TopHat => "top-hat",
+                    _ => "bowler",
+                };
+                ApplyCommand(commandController.ApplyHatPreset(hatId));
+                break;
+            case ProductSettingsAction.RetryInitialization:
+                OnRetrySceneClick(this, new RoutedEventArgs());
+                break;
+            case ProductSettingsAction.RestoreDango:
+                OnRegenerateDangoClick(this, new RoutedEventArgs());
+                break;
+            case ProductSettingsAction.RetryWallpaper:
+                OnRetryWallpaperClick(this, new RoutedEventArgs());
+                break;
+            case ProductSettingsAction.RetrySave:
+                OnRetrySaveClick(this, new RoutedEventArgs());
+                break;
+            case ProductSettingsAction.RecoverSettings:
+                OnRecoverSettingsClick(this, new RoutedEventArgs());
+                break;
+            case ProductSettingsAction.RefreshDiagnostics:
+                RefreshDiagnostics();
+                break;
+            case ProductSettingsAction.Exit:
+                requestExit();
+                break;
+        }
+    }
+
     private void OnHatPresetChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!refreshingHostState && HatPresetComboBox.SelectedItem is ComboBoxItem { Tag: string id })
@@ -401,6 +455,8 @@ public partial class ControlCenterWindow : Window
             : result.Error ?? "操作失败，宿主状态未确认。";
         OverviewCommandStatusText.Text = status;
         DesktopCommandStatusText.Text = status;
+        if (ProductHome.IsSettingsOpen)
+            ProductHome.ShowSettingsStatus(status, result.State != CommandApplicationState.Applied);
         if (result.State == CommandApplicationState.Applied) SaveWindowSettings();
         RefreshHostState();
     }
@@ -456,6 +512,11 @@ public partial class ControlCenterWindow : Window
             var modeLabel = snapshot.Mode == "Wallpaper" ? "桌面模式" : snapshot.Mode == "Window" ? "窗口模式" : snapshot.Mode;
             OverviewHostStatusText.Text =
                 $"{modeLabel} · {(snapshot.IsVisible ? "正在运行" : "已隐藏")} · {snapshot.LastError ?? snapshot.VerificationStatus}";
+            ProductHome.UpdateSettings(new ProductSettingsState(
+                ready, snapshot.IsVisible, snapshot.IsInteractionEnabled, snapshot.Mode,
+                keyboard, layering.DangoLayer, commandController.HatPresetId,
+                snapshot.LastError, settingsSession?.HasWarning == true,
+                settingsSession?.IsWriteProtected == true, settingsSession?.StatusMessage ?? string.Empty));
         }
         finally
         {
@@ -651,8 +712,12 @@ public partial class ControlCenterWindow : Window
         new(nameof(DangoSelfPhysicsParameters.JumpCooldownMilliseconds), "跳跃冷却 ms", 100, 1500, 10, "F0"),
     ];
 
-    private void RefreshDiagnostics() =>
-        DiagnosticsTextBox.Text = commandController.CreateDiagnosticSummary();
+    private void RefreshDiagnostics()
+    {
+        var summary = commandController.CreateDiagnosticSummary();
+        DiagnosticsTextBox.Text = summary;
+        ProductHome.SetDiagnosticsText(summary);
+    }
 
     private void LoadOrCreateVerificationSession()
     {
@@ -737,15 +802,18 @@ public partial class ControlCenterWindow : Window
 
     private void ShowPage(UIElement page)
     {
-        var showHome = commandController.UiMode == ApplicationUiMode.Product && ReferenceEquals(page, OverviewPage);
-        ProductHome.Visibility = showHome ? Visibility.Visible : Visibility.Collapsed;
-        LegacyShell.Visibility = showHome ? Visibility.Collapsed : Visibility.Visible;
-        MinWidth = showHome ? ControlCenterWindowSettingsValidator.MinimumWidth : 820;
+        var product = commandController.UiMode == ApplicationUiMode.Product;
+        ProductHome.Visibility = product ? Visibility.Visible : Visibility.Collapsed;
+        LegacyShell.Visibility = product ? Visibility.Collapsed : Visibility.Visible;
+        MinWidth = product ? ControlCenterWindowSettingsValidator.MinimumWidth : 820;
         OverviewPage.Visibility = Visibility.Collapsed;
         DesktopPage.Visibility = Visibility.Collapsed;
         VerificationPage.Visibility = Visibility.Collapsed;
         DiagnosticsPage.Visibility = Visibility.Collapsed;
         page.Visibility = Visibility.Visible;
+        if (!product) return;
+        if (ReferenceEquals(page, OverviewPage)) ProductHome.ShowHomePage();
+        else ProductHome.ShowSettingsPage(ReferenceEquals(page, DiagnosticsPage));
     }
 
     private void ApplyUiMode()
@@ -788,6 +856,8 @@ public partial class ControlCenterWindow : Window
 
     private void ApplyHighContrast(DependencyObject element)
     {
+        // ProductHomeView owns its dynamic high-contrast palette, including selected-button text.
+        if (element is ProductHomeView) return;
         switch (element)
         {
             case Window window:

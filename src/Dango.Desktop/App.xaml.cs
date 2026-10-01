@@ -17,16 +17,18 @@ public partial class App : System.Windows.Application
     {
         base.OnStartup(e);
 
-        if (e.Args.Contains("--home-ui-review", StringComparer.Ordinal))
+        var homeUiReview = e.Args.Contains("--home-ui-review", StringComparer.Ordinal);
+        var settingsUiReview = e.Args.Contains("--settings-ui-review", StringComparer.Ordinal);
+        if (homeUiReview || settingsUiReview)
         {
             // Exercise the same product control without native physics, tray, user settings or network activity.
             ShutdownMode = ShutdownMode.OnMainWindowClose;
             var home = new ProductHomeView();
-            home.SettingsButton.IsEnabled = false;
-            home.SettingsButton.ToolTip = "本次只验收首页与展开交互";
+            home.SettingsButton.ToolTip = "设置界面预览 · 未连接桌面";
+            if (settingsUiReview) home.ShowSettingsPage();
             MainWindow = new Window
             {
-                Title = "Dango · 首页交互验收",
+                Title = settingsUiReview ? "Dango · 设置页视觉预览" : "Dango · 首页交互验收",
                 Width = 1024,
                 Height = 640,
                 MinWidth = 336,
