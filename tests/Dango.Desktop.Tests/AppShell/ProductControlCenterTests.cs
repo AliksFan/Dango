@@ -96,12 +96,20 @@ public sealed class ProductControlCenterTests
             Assert.AreEqual(1, host.HatApplyCalls);
             Assert.AreEqual(1, writer.Calls);
             StringAssert.Contains(Element<TextBlock>(window, "SettingsSaveStatusText").Text, "未保存");
+            var home = Element<ProductHomeView>(window, "ProductHome");
+            var notice = (Button)home.FindName("NoticeButton");
+            Assert.AreEqual(Visibility.Visible, notice.Visibility, "A visible home must not conceal save failure.");
+            Assert.IsTrue(session.HasWarning);
+            Click(notice);
+            Assert.AreEqual(Visibility.Visible, Element<UIElement>(window, "DiagnosticsPage").Visibility);
 
             Click(Element<Button>(window, "RetrySaveButton"));
 
             Assert.AreEqual(1, host.HatApplyCalls, "Retry save must not replay the product command.");
             Assert.AreEqual(2, writer.Calls, "Retry save must retry the writer once.");
             Assert.AreEqual("top-hat", session.Current.HatPresetId);
+            Assert.IsFalse(session.HasWarning);
+            Assert.AreEqual(Visibility.Collapsed, notice.Visibility);
         }
         finally
         {

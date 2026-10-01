@@ -52,6 +52,12 @@ public partial class ControlCenterWindow : Window
         this.saveSettings = saveSettings;
         refreshingHostState = true;
         InitializeComponent();
+        ProductHome.SettingsRequested += () => OnDesktopNavigationClick(this, new RoutedEventArgs());
+        ProductHome.NoticeRequested += () =>
+        {
+            if (settingsSession?.HasWarning == true) ShowDiagnostics();
+            else OnDesktopNavigationClick(this, new RoutedEventArgs());
+        };
         if (commandController.UiMode == ApplicationUiMode.DeveloperReview) BuildPhysicsTuningPanel();
         ApplyUiMode();
         if (settingsSession is not null)
@@ -414,6 +420,8 @@ public partial class ControlCenterWindow : Window
             WindowHostRadioButton.IsEnabled = ready;
             RetryWallpaperButton.IsEnabled = ready;
             SettingsSaveStatusText.Text = settingsSession?.StatusMessage ?? "";
+            ProductHome.SetNotice(settingsSession?.HasWarning == true ? "设置未保存 · 查看" : !ready ? "团子未启动 · 查看" : null,
+                settingsSession?.HasWarning == true ? settingsSession.StatusMessage : snapshot.LastError);
             RetrySaveButton.IsEnabled = settingsSession is not null && !settingsSession.IsWriteProtected;
             RecoverSettingsButton.Visibility = settingsSession?.IsWriteProtected == true ? Visibility.Visible : Visibility.Collapsed;
             HatPresetComboBox.SelectedItem = HatPresetComboBox.Items.OfType<ComboBoxItem>()
@@ -729,6 +737,10 @@ public partial class ControlCenterWindow : Window
 
     private void ShowPage(UIElement page)
     {
+        var showHome = commandController.UiMode == ApplicationUiMode.Product && ReferenceEquals(page, OverviewPage);
+        ProductHome.Visibility = showHome ? Visibility.Visible : Visibility.Collapsed;
+        LegacyShell.Visibility = showHome ? Visibility.Collapsed : Visibility.Visible;
+        MinWidth = showHome ? ControlCenterWindowSettingsValidator.MinimumWidth : 820;
         OverviewPage.Visibility = Visibility.Collapsed;
         DesktopPage.Visibility = Visibility.Collapsed;
         VerificationPage.Visibility = Visibility.Collapsed;
@@ -748,6 +760,10 @@ public partial class ControlCenterWindow : Window
         OverviewIntro.Text = "轻点团子会眨眼；按住 Shift 和鼠标左键，在团子身上横向轻抚会眯眼。不操作时，团子偶尔眨眼、左右看看；单只团子也会偶尔走一小段。直接拖动团子后松手；在设置中开启键盘控制。关闭窗口只是隐藏，可从托盘找回；结束使用请选择退出 Dango。";
         LayeringTitle.Text = "图标层级";
         LayeringDescription.Text = "选择团子显示在桌面图标上方或下方。";
+        ((System.Windows.Controls.Panel)RecoveryActions.Parent).Children.Remove(RecoveryActions);
+        ProductRecoverySlot.Child = RecoveryActions;
+        ProductRecoverySlot.Visibility = Visibility.Visible;
+        ShowPage(OverviewPage);
     }
 
     public (double Width, double Height) CaptureSize()

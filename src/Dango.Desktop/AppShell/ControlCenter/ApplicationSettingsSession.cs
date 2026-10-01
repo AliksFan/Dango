@@ -20,6 +20,7 @@ public sealed class ApplicationSettingsSession
         var result = this.store.LoadOrDefault(path);
         Current = result.Settings;
         StartupWarning = result.Warning;
+        HasWarning = result.Warning is not null;
         IsWriteProtected = result.PreserveOriginal;
         migrationBackupRequired = result.WasMigrated;
         pending = result.WasMigrated || !File.Exists(path);
@@ -28,6 +29,7 @@ public sealed class ApplicationSettingsSession
 
     public ControlCenterWindowSettings Current { get; private set; }
     public string? StartupWarning { get; }
+    public bool HasWarning { get; private set; }
     public bool IsWriteProtected { get; private set; }
     public string StatusMessage { get; private set; }
 
@@ -46,6 +48,7 @@ public sealed class ApplicationSettingsSession
         }
         catch (InvalidDataException)
         {
+            HasWarning = true;
             StatusMessage = "本次设置未保存：窗口尺寸或偏好超出安全范围。原设置保持完整；可以不保存退出。";
             return false;
         }
@@ -56,6 +59,7 @@ public sealed class ApplicationSettingsSession
     {
         if (IsWriteProtected)
         {
+            HasWarning = true;
             StatusMessage = "本次设置未保存：原文件已保护。请先备份原文件并恢复保存，或不保存退出。";
             return false;
         }
@@ -69,11 +73,13 @@ public sealed class ApplicationSettingsSession
             }
             store.Save(path, Current);
             pending = false;
+            HasWarning = false;
             StatusMessage = "已保存到本机。";
             return true;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
         {
+            HasWarning = true;
             StatusMessage = $"本次已应用，但未保存，下次启动可能恢复旧设置（{exception.GetType().Name}）。可重试或不保存退出。";
             return false;
         }
@@ -88,6 +94,7 @@ public sealed class ApplicationSettingsSession
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
+            HasWarning = true;
             StatusMessage = $"备份失败，原文件仍受保护且未保存（{exception.GetType().Name}）；可以不保存退出。";
             return false;
         }

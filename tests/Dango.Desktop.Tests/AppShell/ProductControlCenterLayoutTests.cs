@@ -27,7 +27,7 @@ public sealed class ProductControlCenterLayoutTests
         {
             var content = Assert.IsInstanceOfType<FrameworkElement>(window.Content);
             window.ShowOverview();
-            RenderAndAssert(window, content, "OverviewPage", "product-overview", width, height);
+            RenderAndAssert(window, content, "ProductHome", "product-overview", width, height);
 
             Click(Element<Button>(window, "DesktopNavigation"));
             RenderAndAssert(window, content, "DesktopPage", "product-desktop-settings", width, height);
@@ -53,7 +53,12 @@ public sealed class ProductControlCenterLayoutTests
         var page = Element<FrameworkElement>(window, pageName);
         Assert.AreEqual(Visibility.Visible, page.Visibility, pageName);
         AssertInside(content, page, size, pageName);
-        AssertInside(content, FindButton(window, "退出 Dango"), size, "exit");
+        if (pageName == "ProductHome")
+        {
+            AssertInside(content, (FrameworkElement)page.FindName("TopNavigation"), size, "home-navigation");
+            AssertInside(content, (FrameworkElement)page.FindName("SettingsButton"), size, "settings-entry");
+        }
+        else AssertInside(content, FindButton(window, "退出 Dango"), size, "exit");
 
         var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
         var background = new DrawingVisual();

@@ -41,6 +41,14 @@ public sealed class ControlCenterWindowSettingsStoreTests
     }
 
     [TestMethod]
+    public void HomeWindowAcceptsNarrowSizeWithoutChangingTheSettingsSchema()
+    {
+        ControlCenterWindowSettingsValidator.Validate(new ControlCenterWindowSettings(336, 620));
+        Assert.ThrowsExactly<InvalidDataException>(
+            () => ControlCenterWindowSettingsValidator.Validate(new ControlCenterWindowSettings(335, 620)));
+    }
+
+    [TestMethod]
     public void LayeringExperimentRoundTripsWithWindowSettings()
     {
         var directory = CreateTemporaryDirectory();

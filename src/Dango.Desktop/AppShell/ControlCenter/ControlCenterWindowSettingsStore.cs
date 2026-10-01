@@ -61,7 +61,7 @@ public sealed record ControlCenterSettingsLoadResult(
 
 public static class ControlCenterWindowSettingsValidator
 {
-    public const double MinimumWidth = 820;
+    public const double MinimumWidth = 336;
     public const double MinimumHeight = 560;
     public const double MaximumWidth = 7680;
     public const double MaximumHeight = 4320;

@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Threading;
 using Dango.Desktop.AppShell;
+using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.Physics.Native;
 using Dango.Desktop.Rendering.Visuals;
 
@@ -15,6 +16,27 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        if (e.Args.Contains("--home-ui-review", StringComparer.Ordinal))
+        {
+            // Exercise the same product control without native physics, tray, user settings or network activity.
+            ShutdownMode = ShutdownMode.OnMainWindowClose;
+            var home = new ProductHomeView();
+            home.SettingsButton.IsEnabled = false;
+            home.SettingsButton.ToolTip = "本次只验收首页与展开交互";
+            MainWindow = new Window
+            {
+                Title = "Dango · 首页交互验收",
+                Width = 1024,
+                Height = 640,
+                MinWidth = 336,
+                MinHeight = 560,
+                Content = home,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            };
+            MainWindow.Show();
+            return;
+        }
 
         if (e.Args.Contains("--box2d-native-probe", StringComparer.Ordinal))
         {
