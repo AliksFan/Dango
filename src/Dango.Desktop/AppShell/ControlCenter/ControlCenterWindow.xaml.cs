@@ -393,17 +393,6 @@ public partial class ControlCenterWindow : Window
                 };
                 ApplyCommand(commandController.ApplyKeyboardControlSettings(updatedKeyboard));
                 break;
-            case ProductSettingsAction.SproutHat:
-            case ProductSettingsAction.TopHat:
-            case ProductSettingsAction.BowlerHat:
-                var hatId = action switch
-                {
-                    ProductSettingsAction.SproutHat => "sprout",
-                    ProductSettingsAction.TopHat => "top-hat",
-                    _ => "bowler",
-                };
-                ApplyCommand(commandController.ApplyHatPreset(hatId));
-                break;
             case ProductSettingsAction.RetryInitialization:
                 OnRetrySceneClick(this, new RoutedEventArgs());
                 break;
@@ -514,7 +503,7 @@ public partial class ControlCenterWindow : Window
                 $"{modeLabel} · {(snapshot.IsVisible ? "正在运行" : "已隐藏")} · {snapshot.LastError ?? snapshot.VerificationStatus}";
             ProductHome.UpdateSettings(new ProductSettingsState(
                 ready, snapshot.IsVisible, snapshot.IsInteractionEnabled, snapshot.Mode,
-                keyboard, layering.DangoLayer, commandController.HatPresetId,
+                keyboard, layering.DangoLayer,
                 snapshot.LastError, settingsSession?.HasWarning == true,
                 settingsSession?.IsWriteProtected == true, settingsSession?.StatusMessage ?? string.Empty));
         }

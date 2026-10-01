@@ -306,21 +306,6 @@
                         </StackPanel>
                     </Border>
 
-                    <TextBlock Text="外观" FontSize="15" Margin="0,26,0,4" />
-                    <Border Style="{StaticResource SettingsRow}">
-                        <StackPanel>
-                            <TextBlock Text="现有帽型" Margin="0,0,0,10" />
-                            <WrapPanel>
-                                <Button x:Name="SproutHatButton" Content="叶芽" IsEnabled="False" Margin="0,0,8,4"
-                                        Click="OnSproutHatClick" AutomationProperties.Name="使用叶芽帽型" />
-                                <Button x:Name="TopHatButton" Content="小礼帽" IsEnabled="False" Margin="0,0,8,4"
-                                        Click="OnTopHatClick" AutomationProperties.Name="使用小礼帽帽型" />
-                                <Button x:Name="BowlerHatButton" Content="圆顶帽" IsEnabled="False" Margin="0,0,0,4"
-                                        Click="OnBowlerHatClick" AutomationProperties.Name="使用圆顶帽型" />
-                            </WrapPanel>
-                        </StackPanel>
-                    </Border>
-
                     <TextBlock Text="帮助与诊断" FontSize="15" Margin="0,26,0,4" />
                     <Border Style="{StaticResource SettingsRow}">
                         <StackPanel>

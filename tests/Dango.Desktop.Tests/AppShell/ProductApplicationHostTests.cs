@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Threading;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
@@ -77,7 +78,7 @@ public sealed class ProductApplicationHostTests
     }
 
     [STATestMethod]
-    public void HatChangeDoesNotRetryAFailedSaveInsideTheSameSettingsAction()
+    public void LegacyHatCommandDoesNotRetryAFailedSaveDuringTheSameSelection()
     {
         var path = NewPath();
         var writer = new FailOnceWriter();
@@ -93,8 +94,9 @@ public sealed class ProductApplicationHostTests
         var home = (ProductHomeView)window.FindName("ProductHome");
         home.ShowSettingsPage();
 
-        typeof(ControlCenterWindow).GetMethod("OnProductSettingsAction", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(window, [ProductSettingsAction.TopHat]);
+        var hats = (ComboBox)window.FindName("HatPresetComboBox");
+        hats.SelectedItem = hats.Items.OfType<ComboBoxItem>()
+            .Single(item => (string)item.Tag == "top-hat");
 
         Assert.AreEqual("top-hat", Field<StackedDangoSceneRuntime>(host, "stackedRuntime").CurrentHatPresetId);
         Assert.AreEqual(1, writer.Calls, "One hat selection must make only one immediate write attempt.");

@@ -12,7 +12,7 @@ namespace Dango.Desktop.Tests.AppShell;
 public sealed class ProductControlCenterTests
 {
     [STATestMethod]
-    public void ProductModeHidesDeveloperControlsWhileKeepingHatAndDiagnosticsAvailable()
+    public void ProductModeHidesDeveloperControlsWhileKeepingDiagnosticsAvailable()
     {
         var product = CreateWindow(new ProductHost(), ApplicationUiMode.Product, () => { });
         var review = CreateWindow(new ProductHost(), ApplicationUiMode.DeveloperReview, () => { });
@@ -30,11 +30,11 @@ public sealed class ProductControlCenterTests
                 Assert.AreNotEqual(Visibility.Collapsed, Element<UIElement>(review, name).Visibility, name);
             }
 
-            Assert.AreEqual(Visibility.Visible, Element<UIElement>(product, "HatCard").Visibility);
             var home = Element<ProductHomeView>(product, "ProductHome");
             Click((Button)home.FindName("SettingsButton"));
             Assert.AreEqual(Visibility.Visible, ((UIElement)home.FindName("SettingsPage")).Visibility);
-            Assert.IsTrue(((Button)home.FindName("SproutHatButton")).IsEnabled);
+            Assert.IsNull(home.FindName("SproutHatButton"), "产品设置页不应显示帽型入口。");
+            Assert.AreEqual(Visibility.Collapsed, Element<UIElement>(product, "LegacyShell").Visibility);
         }
         finally
         {
@@ -98,7 +98,9 @@ public sealed class ProductControlCenterTests
             window.ShowOverview();
             var home = Element<ProductHomeView>(window, "ProductHome");
             Click((Button)home.FindName("SettingsButton"));
-            Click((Button)home.FindName("TopHatButton"));
+            var hats = Element<ComboBox>(window, "HatPresetComboBox");
+            hats.SelectedItem = hats.Items.OfType<ComboBoxItem>()
+                .Single(item => (string)item.Tag == "top-hat");
 
             Assert.AreEqual(1, host.HatApplyCalls);
             Assert.AreEqual(1, writer.Calls);
@@ -115,6 +117,7 @@ public sealed class ProductControlCenterTests
             Assert.AreEqual(1, host.HatApplyCalls, "Retry save must not replay the product command.");
             Assert.AreEqual(2, writer.Calls, "Retry save must retry the writer once.");
             Assert.AreEqual("top-hat", session.Current.HatPresetId);
+            Assert.AreEqual("top-hat", new ControlCenterWindowSettingsStore().Load(path).HatPresetId);
             Assert.IsFalse(session.HasWarning);
             Assert.AreEqual(Visibility.Collapsed, notice.Visibility);
         }
@@ -173,6 +176,7 @@ public sealed class ProductControlCenterTests
         {
             Calls++;
             if (Calls == 1) throw new IOException("fictional first write failure");
+            new AtomicTextFileWriter().Write(path, content);
         }
     }
 

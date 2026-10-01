@@ -19,14 +19,14 @@ public enum HomeEditor { Face, Wardrobe }
 public enum ProductSettingsAction
 {
     ToggleVisibility, ToggleInteraction, WallpaperMode, WindowMode, BelowIcons, AboveIcons,
-    ToggleKeyboard, ArrowKeys, Wasd, SproutHat, TopHat, BowlerHat,
+    ToggleKeyboard, ArrowKeys, Wasd,
     RetryInitialization, RestoreDango, RetryWallpaper, RetrySave, RecoverSettings,
     RefreshDiagnostics, Exit,
 }
 
 public sealed record ProductSettingsState(
     bool SceneReady, bool IsVisible, bool IsInteractionEnabled, string Mode,
-    KeyboardControlSettings Keyboard, DesktopObjectLayer DangoLayer, string HatPresetId,
+    KeyboardControlSettings Keyboard, DesktopObjectLayer DangoLayer,
     string? LastError, bool HasSaveWarning, bool IsWriteProtected, string SaveMessage);
 
 /// <summary>The product shell: home previews stay local; settings requests go through the host.</summary>
@@ -133,7 +133,7 @@ public partial class ProductHomeView : UserControl
         AutomationProperties.SetName(InteractionToggleButton, $"鼠标互动，{InteractionToggleButton.Content}，点击切换");
         AutomationProperties.SetName(KeyboardToggleButton, $"键盘控制，{KeyboardToggleButton.Content}，点击切换");
         foreach (var button in new[] { DisplayToggleButton, InteractionToggleButton, KeyboardToggleButton,
-                     WallpaperModeButton, WindowModeButton, SproutHatButton, TopHatButton, BowlerHatButton })
+                     WallpaperModeButton, WindowModeButton })
             button.IsEnabled = ready;
         ArrowsButton.IsEnabled = WasdButton.IsEnabled = ready && state.Keyboard.IsEnabled;
         var wallpaper = string.Equals(state.Mode, "Wallpaper", StringComparison.Ordinal);
@@ -154,9 +154,6 @@ public partial class ProductHomeView : UserControl
         Select(AboveIconsButton, state.DangoLayer == DesktopObjectLayer.AboveDesktopIcons);
         Select(ArrowsButton, state.Keyboard.Scheme == KeyboardControlScheme.ArrowKeys);
         Select(WasdButton, state.Keyboard.Scheme == KeyboardControlScheme.Wasd);
-        Select(SproutHatButton, state.HatPresetId == "sprout");
-        Select(TopHatButton, state.HatPresetId == "top-hat");
-        Select(BowlerHatButton, state.HatPresetId == "bowler");
         UpdateSettingsFeedback();
     }
 
@@ -214,9 +211,6 @@ public partial class ProductHomeView : UserControl
     private void OnKeyboardToggleClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.ToggleKeyboard);
     private void OnArrowsClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.ArrowKeys);
     private void OnWasdClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.Wasd);
-    private void OnSproutHatClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.SproutHat);
-    private void OnTopHatClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.TopHat);
-    private void OnBowlerHatClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.BowlerHat);
     private void OnRetryInitializationClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.RetryInitialization);
     private void OnRestoreDangoClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.RestoreDango);
     private void OnRetryWallpaperClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.RetryWallpaper);

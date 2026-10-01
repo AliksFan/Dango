@@ -55,6 +55,25 @@ public sealed class ProductSettingsPageTests
     }
 
     [STATestMethod]
+    public void SettingsHasNoAppearanceEntryWhileHomeKeepsWardrobe()
+    {
+        using var rig = new SettingsRig();
+        rig.OpenSettings();
+
+        foreach (var name in new[] { "SproutHatButton", "TopHatButton", "BowlerHatButton" })
+            Assert.IsNull(rig.Home.FindName(name), $"产品设置页不应再提供帽型入口：{name}");
+        var settingsPage = (DependencyObject)rig.Home.FindName("SettingsPage");
+        Assert.IsFalse(TextBlocks(settingsPage).Any(text => text.Text is "外观" or "现有帽型"),
+            "产品设置页不应保留外观或现有帽型分区。");
+
+        rig.Click("BackFromSettingsButton");
+        rig.Click("WardrobeButton");
+        Assert.IsTrue(rig.Home.IsEditing, "首页的换装入口仍需可用。");
+        Assert.AreEqual(HomeEditor.Wardrobe, rig.Home.SelectedEditor);
+        Assert.AreEqual(Visibility.Visible, ((UIElement)rig.Home.FindName("WardrobeOptions")).Visibility);
+    }
+
+    [STATestMethod]
     public void EscapeLeavesSettingsAndRestoresHomeFocus()
     {
         using var rig = new SettingsRig();
@@ -133,17 +152,13 @@ public sealed class ProductSettingsPageTests
         StringAssert.Contains(AutomationProperties.GetName(rig.Button("KeyboardToggleButton")), "已开启");
         Assert.AreEqual("已选", AutomationProperties.GetItemStatus(rig.Button("WasdButton")));
 
-        rig.Click("TopHatButton");
-        Assert.AreEqual("top-hat", rig.Host.HatPresetId);
-        Assert.AreEqual("已选", AutomationProperties.GetItemStatus(rig.Button("TopHatButton")));
-
         var restored = new ControlCenterWindowSettingsStore().Load(rig.Path);
         Assert.IsFalse(restored.InteractionEnabled);
         Assert.AreEqual(DesktopDisplayMode.Wallpaper, restored.DisplayMode);
         Assert.AreEqual(DesktopObjectLayer.AboveDesktopIcons, restored.DesktopLayeringExperiment.DangoLayer);
         Assert.AreEqual(new KeyboardControlSettings(true, KeyboardControlScheme.Wasd), restored.KeyboardControl);
-        Assert.AreEqual("top-hat", restored.HatPresetId);
-        Assert.AreEqual(8, rig.SaveCalls, "每个得到宿主确认的操作才触发保存。");
+        Assert.AreEqual("sprout", restored.HatPresetId, "设置页的其他操作不应意外改变既有帽型。");
+        Assert.AreEqual(7, rig.SaveCalls, "每个得到宿主确认的操作才触发保存。");
     }
 
     [STATestMethod]
@@ -156,7 +171,6 @@ public sealed class ProductSettingsPageTests
             IgnoreModeRequests = true,
             ThrowAfterNextLayeringChange = true,
             IgnoreKeyboardRequests = true,
-            RejectHatRequests = true,
         };
         using var rig = new SettingsRig(host);
         rig.OpenSettings();
@@ -183,10 +197,7 @@ public sealed class ProductSettingsPageTests
         Assert.AreEqual("已关闭", rig.Button("KeyboardToggleButton").Content);
         Assert.IsFalse(rig.Button("WasdButton").IsEnabled);
 
-        rig.Click("TopHatButton");
-        Assert.AreEqual("sprout", host.HatPresetId);
-        Assert.AreEqual("已选", AutomationProperties.GetItemStatus(rig.Button("SproutHatButton")));
-        StringAssert.Contains(((TextBlock)rig.Home.FindName("SettingsCommandStatus")).Text, "不受支持");
+        StringAssert.Contains(((TextBlock)rig.Home.FindName("SettingsCommandStatus")).Text, "未确认");
         Assert.AreEqual(0, rig.SaveCalls);
         Assert.IsFalse(File.Exists(rig.Path), "失败的宿主操作不得生成宣称已应用的设置文件。");
     }
@@ -279,6 +290,13 @@ public sealed class ProductSettingsPageTests
     }
 
     private static void Click(Button button) => button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+    private static IEnumerable<TextBlock> TextBlocks(DependencyObject root)
+    {
+        if (root is TextBlock currentText) yield return currentText;
+        foreach (var child in LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>())
+            foreach (var nestedText in TextBlocks(child)) yield return nestedText;
+    }
 
     private static void Pump(int milliseconds)
     {
@@ -382,7 +400,6 @@ public sealed class ProductSettingsPageTests
         public bool IgnoreModeRequests { get; init; }
         public bool ThrowAfterNextLayeringChange { get; set; }
         public bool IgnoreKeyboardRequests { get; init; }
-        public bool RejectHatRequests { get; init; }
         public int InteractionCalls { get; private set; }
         public SceneInitializationState InitializationState => SceneInitializationState.Ready;
         public string HatPresetId => hatPresetId;
@@ -424,7 +441,7 @@ public sealed class ProductSettingsPageTests
 
         public bool TryApplyHatPreset(string id)
         {
-            if (RejectHatRequests || id is not ("sprout" or "top-hat" or "bowler")) return false;
+            if (id is not ("sprout" or "top-hat" or "bowler")) return false;
             hatPresetId = id;
             return true;
         }

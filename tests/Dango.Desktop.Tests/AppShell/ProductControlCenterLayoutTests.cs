@@ -33,7 +33,7 @@ public sealed class ProductControlCenterLayoutTests
         var expected = Math.Min(610, viewport.ViewportWidth - (width <= 420 ? 24 : width <= 680 ? 32 : 76));
         Assert.AreEqual(expected, column.ActualWidth, 1,
             "Settings must use the available reading width instead of shrinking to its text content.");
-        foreach (var name in new[] { "DisplayToggleButton", "WindowModeButton", "AboveIconsButton", "WasdButton", "BowlerHatButton" })
+        foreach (var name in new[] { "DisplayToggleButton", "WindowModeButton", "AboveIconsButton", "WasdButton", "RetryWallpaperSettingsButton" })
         {
             var button = (FrameworkElement)home.FindName(name);
             var bounds = button.TransformToAncestor(home).TransformBounds(new Rect(button.RenderSize));
@@ -82,7 +82,7 @@ public sealed class ProductControlCenterLayoutTests
         var home = new ProductHomeView();
         home.UpdateSettings(new ProductSettingsState(
             true, true, true, "Wallpaper", KeyboardControlSettings.CreateDefault(),
-            DesktopObjectLayer.BelowDesktopIcons, "sprout", null, false, false, string.Empty));
+            DesktopObjectLayer.BelowDesktopIcons, null, false, false, string.Empty));
         home.ApplyTheme(contrast: true);
 
         var selected = (Button)home.FindName("WallpaperModeButton");
