@@ -11,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Dango.Core\Dango.Core.csproj" />
     <ProjectReference Include="..\Dango.Physics\Dango.Physics.csproj" />
+    <ProjectReference Include="..\Dango.Protocol\Dango.Protocol.csproj" />
   </ItemGroup>
 
   <ItemGroup>
