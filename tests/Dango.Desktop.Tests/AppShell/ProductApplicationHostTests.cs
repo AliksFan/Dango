@@ -1,8 +1,12 @@
 using System.Reflection;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Threading;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.DesktopHost;
 using Dango.Desktop.Rendering.Visuals;
+using Dango.Desktop.Verification;
 
 namespace Dango.Desktop.Tests.AppShell;
 
@@ -33,7 +37,7 @@ public sealed class ProductApplicationHostTests
             Assert.IsFalse(commands.IsDebugSkeletonVisible);
             Assert.AreEqual("Wallpaper", commands.GetSnapshot().Mode);
             Assert.IsFalse(commands.GetKeyboardControlSettings().IsEnabled);
-            Assert.AreEqual(KeyboardControlScheme.ArrowKeys, commands.GetKeyboardControlSettings().Scheme);
+            Assert.AreEqual(KeyboardControlScheme.Wasd, commands.GetKeyboardControlSettings().Scheme);
             Assert.AreEqual(CommandApplicationState.Applied, commands.ApplyHatPreset("bowler").State);
             Assert.AreEqual(CommandApplicationState.Applied, commands.SetInteractionEnabled(false).State);
             if (createControlCenter)
@@ -71,5 +75,70 @@ public sealed class ProductApplicationHostTests
             Assert.AreEqual(0, runtime.EntityIds.Count);
         }
         Assert.AreEqual(original, File.ReadAllText(path));
+    }
+
+    [STATestMethod]
+    public void LegacyHatCommandDoesNotRetryAFailedSaveDuringTheSameSelection()
+    {
+        var path = NewPath();
+        var writer = new FailOnceWriter();
+        using var host = new DangoApplicationHost(settingsFile: path, nativeLibraryPath: path + ".missing.dll",
+            settingsStore: new ControlCenterWindowSettingsStore(writer));
+        // Exercise the runtime event/save path without starting a tray or requiring the native module.
+        typeof(DangoApplicationHost).GetField("started", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(host, true);
+        var window = (ControlCenterWindow)typeof(DangoApplicationHost)
+            .GetMethod("GetOrCreateControlCenter", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(host, null)!;
+        window.ShowOverview();
+        var home = (ProductHomeView)window.FindName("ProductHome");
+        home.ShowSettingsPage();
+
+        var hats = (ComboBox)window.FindName("HatPresetComboBox");
+        hats.SelectedItem = hats.Items.OfType<ComboBoxItem>()
+            .Single(item => (string)item.Tag == "top-hat");
+
+        Assert.AreEqual("top-hat", Field<StackedDangoSceneRuntime>(host, "stackedRuntime").CurrentHatPresetId);
+        Assert.AreEqual(1, writer.Calls, "One hat selection must make only one immediate write attempt.");
+        Assert.IsTrue(Field<ApplicationSettingsSession>(host, "settings").HasWarning);
+        Assert.AreEqual(Visibility.Visible, ((FrameworkElement)home.FindName("SettingsFeedbackBar")).Visibility);
+        Assert.IsFalse(File.Exists(path));
+    }
+
+    [STATestMethod]
+    public void HatChangeOutsideControlCenterStillSavesAfterDebounce()
+    {
+        var path = NewPath();
+        using var host = new DangoApplicationHost(settingsFile: path, nativeLibraryPath: path + ".missing.dll");
+        typeof(DangoApplicationHost).GetField("started", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(host, true);
+        var commands = Field<ApplicationCommandController>(host, "commandController");
+
+        Assert.AreEqual(CommandApplicationState.Applied, commands.ApplyHatPreset("bowler").State);
+        Assert.IsFalse(File.Exists(path), "An external hat event should be debounced, not saved twice inline.");
+        Pump(450);
+
+        Assert.AreEqual("bowler", new ControlCenterWindowSettingsStore().Load(path).HatPresetId);
+    }
+
+    private static void Pump(int milliseconds)
+    {
+        var frame = new DispatcherFrame();
+        var timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(milliseconds) };
+        timer.Tick += (_, _) => { timer.Stop(); frame.Continue = false; };
+        timer.Start();
+        Dispatcher.PushFrame(frame);
+    }
+
+    private sealed class FailOnceWriter : IAtomicTextWriter
+    {
+        public int Calls { get; private set; }
+
+        public void Write(string path, string content)
+        {
+            Calls++;
+            if (Calls == 1) throw new IOException("fictional first write failure");
+            new AtomicTextFileWriter().Write(path, content);
+        }
     }
 }

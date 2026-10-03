@@ -1,0 +1,386 @@
+<UserControl x:Class="Dango.Desktop.AppShell.ControlCenter.ProductHomeView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:visuals="clr-namespace:Dango.Desktop.Rendering.Visuals"
+             xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+             Background="#FDFCF9" Foreground="#443D34" FontSize="14"
+             FontFamily="Segoe UI, Microsoft YaHei" UseLayoutRounding="True"
+             PreviewKeyDown="OnPreviewKeyDown" PreviewKeyUp="OnPreviewKeyUp" SizeChanged="OnHomeSizeChanged">
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="HomeInk" Color="#443D34" />
+        <SolidColorBrush x:Key="HomeMuted" Color="#807568" />
+        <SolidColorBrush x:Key="HomeLine" Color="#E9E4DA" />
+        <SolidColorBrush x:Key="HomeSoft" Color="#F3EFE8" />
+        <SolidColorBrush x:Key="HomeAccent" Color="#885E3E" />
+        <SolidColorBrush x:Key="HomeSelected" Color="#EFE3D4" />
+        <Style TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource HomeInk}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource HomeLine}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="14,8" />
+            <Setter Property="MinHeight" Value="40" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome" CornerRadius="7" Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HomeSoft}" />
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                    <Condition Property="Tag" Value="Selected" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HomeSelected}" />
+                            </MultiTrigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource HomeAccent}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="{DynamicResource HomeMuted}" />
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HomeSoft}" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="NavButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Padding" Value="4,8" />
+            <Setter Property="Margin" Value="10,0" />
+            <Setter Property="Foreground" Value="{DynamicResource HomeMuted}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0,0,0,2" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome" Padding="{TemplateBinding Padding}" Background="Transparent"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource HomeAccent}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HomeSelected}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="ToolButton" TargetType="Button" BasedOn="{StaticResource NavButton}">
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style x:Key="Launcher" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="MinWidth" Value="72" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome" CornerRadius="22" Padding="{TemplateBinding Padding}"
+                                BorderThickness="1" BorderBrush="{TemplateBinding BorderBrush}"
+                                Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HomeSoft}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource HomeAccent}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="ColorButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Width" Value="44" />
+            <Setter Property="Height" Value="44" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome" CornerRadius="22" BorderThickness="1"
+                                BorderBrush="{TemplateBinding BorderBrush}" Background="Transparent">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HomeSelected}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="SettingsRow" TargetType="Border">
+            <Setter Property="BorderBrush" Value="{DynamicResource HomeLine}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="Padding" Value="0,14" />
+        </Style>
+    </UserControl.Resources>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid x:Name="TopNavigation" Margin="22,8">
+            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <TextBlock x:Name="Brand" Text="Dango" FontSize="18" VerticalAlignment="Center" Margin="0,0,20,0" />
+            <StackPanel x:Name="MainNavigation" Grid.Column="1" Orientation="Horizontal">
+                <Button x:Name="HomeNavigation" Content="我的团子" Style="{StaticResource NavButton}"
+                        BorderBrush="{DynamicResource HomeAccent}" Foreground="{DynamicResource HomeInk}"
+                        AutomationProperties.Name="我的团子" Click="OnHomeClick" Visibility="Collapsed" IsTabStop="False" />
+            </StackPanel>
+            <StackPanel x:Name="ToolsNavigation" Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="好友" Style="{StaticResource ToolButton}" IsEnabled="False" ToolTip="好友 · 未开发" AutomationProperties.Name="好友，未开发"
+                        shell:WindowChrome.IsHitTestVisibleInChrome="True" />
+                <Button x:Name="SettingsButton" Content="设置" Style="{StaticResource ToolButton}" Click="OnSettingsClick" AutomationProperties.Name="设置"
+                        shell:WindowChrome.IsHitTestVisibleInChrome="True" />
+                <Button Content="登录" Style="{StaticResource ToolButton}" IsEnabled="False" ToolTip="登录 · 未开发" AutomationProperties.Name="登录，未开发"
+                        shell:WindowChrome.IsHitTestVisibleInChrome="True" />
+            </StackPanel>
+        </Grid>
+        <Border x:Name="SettingsFeedbackBar" Grid.Row="1" Visibility="Collapsed" Margin="38,0,38,0" Padding="12,8"
+                Background="{DynamicResource HomeSoft}" BorderBrush="{DynamicResource HomeLine}" BorderThickness="1" CornerRadius="7">
+            <TextBlock x:Name="SettingsFeedbackText" TextWrapping="Wrap" Foreground="{DynamicResource HomeInk}"
+                       AutomationProperties.LiveSetting="Polite" />
+        </Border>
+        <ScrollViewer x:Name="HomeContent" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False"
+                      SizeChanged="OnHomeContentSizeChanged"
+                      HorizontalContentAlignment="Stretch" VerticalContentAlignment="Top">
+            <Grid x:Name="Stage" Margin="24,10,24,10" MinHeight="330" SizeChanged="OnStageSizeChanged"
+                  ClipToBounds="False" Background="Transparent" Focusable="True" MouseDown="OnStageMouseDown">
+                <Grid.RowDefinitions>
+                    <RowDefinition x:Name="PresenceStageRow" Height="*" />
+                    <RowDefinition x:Name="DetailStageRow" Height="0" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition x:Name="LeftColumn" Width="57*" />
+                    <ColumnDefinition x:Name="GapColumn" Width="46" />
+                    <ColumnDefinition x:Name="RightColumn" Width="43*" />
+                </Grid.ColumnDefinitions>
+                <StackPanel x:Name="Presence" Grid.RowSpan="2" Grid.ColumnSpan="3" Width="270" Margin="0,100,0,0" HorizontalAlignment="Center" VerticalAlignment="Top">
+                    <StackPanel.RenderTransform><TranslateTransform x:Name="PresenceTranslation" /></StackPanel.RenderTransform>
+                    <Grid x:Name="PetVisualArea" Height="180">
+                    <Viewbox x:Name="PetPreview" Width="240" Height="180" HorizontalAlignment="Center" VerticalAlignment="Center" Stretch="Fill" RenderTransformOrigin="0.5,0.5"
+                             ToolTip="未绑定实时场景的界面预览" AutomationProperties.Name="团子实时预览">
+                        <Viewbox.RenderTransform><ScaleTransform x:Name="PetScale" ScaleX="1" ScaleY="1" /></Viewbox.RenderTransform>
+                        <Canvas x:Name="LiveSceneCanvas" Width="160" Height="120" ClipToBounds="False">
+                            <visuals:DeformableDangoVisual x:Name="LiveDangoVisual" ShowHat="False" IsHitTestVisible="False" />
+                            <visuals:DangoHatVisual x:Name="LiveDangoHat" IsHitTestVisible="False" />
+                        </Canvas>
+                    </Viewbox>
+                    <TextBlock x:Name="LiveSceneStatusText" Text="界面预览 · 无实时场景" FontSize="12" TextAlignment="Center"
+                               Foreground="{DynamicResource HomeMuted}" VerticalAlignment="Center" IsHitTestVisible="False" />
+                    </Grid>
+                    <StackPanel x:Name="Launchers" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,24,0,0">
+                        <Button x:Name="FaceButton" Content="捏脸" Style="{StaticResource Launcher}" Click="OnFaceClick" ToolTip="D · 捏脸" AutomationProperties.Name="捏脸" />
+                        <Button x:Name="WardrobeButton" Content="换装" Style="{StaticResource Launcher}" Margin="12,0,0,0" Click="OnWardrobeClick" ToolTip="A · 换装" AutomationProperties.Name="换装" />
+                    </StackPanel>
+                </StackPanel>
+                <Grid x:Name="EditorPanel" Grid.Column="2" Opacity="0" Visibility="Hidden" IsEnabled="False" IsHitTestVisible="False"
+                      Margin="4,10,4,10" MinHeight="310" VerticalAlignment="Top" KeyboardNavigation.TabNavigation="Continue" AutomationProperties.Name="外观预览选项">
+                    <Grid.RenderTransform><TranslateTransform x:Name="PanelTranslation" X="46" /></Grid.RenderTransform>
+                    <Grid.RowDefinitions><RowDefinition Height="36" /><RowDefinition Height="*" /><RowDefinition Height="40" /></Grid.RowDefinitions>
+                    <Grid>
+                        <TextBlock x:Name="EditorTitle" Text="捏脸" FontSize="15" VerticalAlignment="Center" />
+                        <Button x:Name="CloseEditorButton" Content="×" FontSize="20" Width="36" MinHeight="36" Height="36"
+                                HorizontalAlignment="Right" BorderBrush="Transparent" Padding="0" Click="OnCloseClick"
+                                ToolTip="收起" AutomationProperties.Name="收起选项" />
+                    </Grid>
+                    <ScrollViewer x:Name="OptionsBody" Grid.Row="1" Margin="0,26,0,20"
+                                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                  CanContentScroll="False" Focusable="False">
+                      <Grid>
+                        <StackPanel x:Name="FaceOptions">
+                            <TextBlock Text="颜色" Margin="0,0,0,12" />
+                            <WrapPanel x:Name="Colors" Margin="0,0,0,24">
+                                <Button x:Name="CreamButton" Style="{StaticResource ColorButton}" Tag="#F5D5A5" Click="OnColorClick" ToolTip="奶油" AutomationProperties.Name="奶油">
+                                    <Grid Width="30" Height="30"><Ellipse Fill="#F5D5A5" /><TextBlock x:Name="CreamCheck" Text="✓" Foreground="#44382B" HorizontalAlignment="Center" VerticalAlignment="Center" /></Grid>
+                                </Button>
+                                <Button x:Name="PeachButton" Style="{StaticResource ColorButton}" Tag="#F2B6A8" Click="OnColorClick" ToolTip="蜜桃" AutomationProperties.Name="蜜桃">
+                                    <Grid Width="30" Height="30"><Ellipse Fill="#F2B6A8" /><TextBlock x:Name="PeachCheck" Text="✓" Foreground="#44382B" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Hidden" /></Grid>
+                                </Button>
+                                <Button x:Name="GreenButton" Style="{StaticResource ColorButton}" Tag="#C8D6AF" Click="OnColorClick" ToolTip="抹茶" AutomationProperties.Name="抹茶">
+                                    <Grid Width="30" Height="30"><Ellipse Fill="#C8D6AF" /><TextBlock x:Name="GreenCheck" Text="✓" Foreground="#44382B" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Hidden" /></Grid>
+                                </Button>
+                            </WrapPanel>
+                            <TextBlock Text="眼型" Margin="0,0,0,12" />
+                            <Button x:Name="EyePresetButton" Content="默认" IsEnabled="False" HorizontalAlignment="Left" Margin="0,0,0,24" ToolTip="眼型选择 · 未开发" AutomationProperties.Name="默认眼型，未开发" />
+                            <Expander x:Name="MoreOptions" Header="更多" FontSize="12" Foreground="{DynamicResource HomeMuted}">
+                                <WrapPanel Margin="0,10,0,0"><TextBlock Text="体型 / 柔软度" Margin="0,0,8,0" /><TextBlock Text="未开发" /></WrapPanel>
+                            </Expander>
+                        </StackPanel>
+                        <StackPanel x:Name="WardrobeOptions" Visibility="Collapsed">
+                            <WrapPanel Margin="0,0,0,24">
+                                <Button Content="帽子" IsEnabled="False" Margin="0,0,8,4" ToolTip="帽子选择 · 未开发" />
+                                <Button Content="皮肤" IsEnabled="False" Margin="0,0,0,4" ToolTip="皮肤选择 · 未开发" />
+                            </WrapPanel>
+                            <Button x:Name="CreateButton" IsEnabled="False" HorizontalContentAlignment="Stretch"
+                                    ToolTip="绘制、导入图片与审核 · 未开发" AutomationProperties.Name="自己制作，未开发">
+                                <WrapPanel><TextBlock Text="自己制作" Margin="0,0,8,0" /><TextBlock Text="未开发" FontSize="12" VerticalAlignment="Center" /></WrapPanel>
+                            </Button>
+                        </StackPanel>
+                      </Grid>
+                    </ScrollViewer>
+                    <Button x:Name="ApplyButton" Grid.Row="2" Content="应用" IsEnabled="False" MinWidth="90"
+                            HorizontalAlignment="Right" ToolTip="应用与保存 · 未开发" AutomationProperties.Name="应用与保存，未开发" />
+                </Grid>
+                <Grid x:Name="PorchContent" Grid.Column="2" Margin="4,10,4,10" MinHeight="310"
+                      VerticalAlignment="Top" Visibility="Hidden" Opacity="0" IsHitTestVisible="False"
+                      AutomationProperties.Name="门廊，房间入口尚未接入">
+                    <Grid.RenderTransform><TranslateTransform x:Name="PorchTranslation" X="46" /></Grid.RenderTransform>
+                    <Grid.RowDefinitions><RowDefinition Height="36" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <Button x:Name="BackFromPorchButton" Content="返回" HorizontalAlignment="Left" BorderBrush="Transparent"
+                            Padding="0,8" Click="OnBackFromPorchClick" AutomationProperties.Name="返回我的团子" />
+                    <TextBlock Grid.Row="1" Text="房间入口尚未接入" Foreground="{DynamicResource HomeMuted}"
+                               VerticalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
+                </Grid>
+            </Grid>
+        </ScrollViewer>
+        <ScrollViewer x:Name="SettingsPage" Grid.Row="2" Visibility="Collapsed" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+            <Grid x:Name="SettingsInner" Margin="38,10,38,24">
+                <Grid MaxWidth="610" HorizontalAlignment="Stretch">
+                <StackPanel>
+                    <Button x:Name="BackFromSettingsButton" Content="返回" HorizontalAlignment="Left" BorderBrush="Transparent"
+                            Padding="0,8" Click="OnBackFromSettingsClick" AutomationProperties.Name="返回我的团子" />
+                    <TextBlock Text="设置" FontSize="20" Margin="0,12,0,16" />
+
+                    <TextBlock Text="桌面与显示" FontSize="15" Margin="0,0,0,4" />
+                    <Border Style="{StaticResource SettingsRow}">
+                        <StackPanel>
+                            <TextBlock Text="界面尺寸" Margin="0,0,0,10" />
+                            <WrapPanel>
+                                <Button x:Name="Landscape1080pSettingsButton" Content="960×540" Margin="0,0,8,4"
+                                        Click="OnLandscape1080pSettingsClick" ToolTip="1080p 屏幕的横向四分之一"
+                                        AutomationProperties.Name="界面尺寸：960 乘 540" />
+                                <Button x:Name="Landscape1440pSettingsButton" Content="1280×720" Margin="0,0,8,4"
+                                        Click="OnLandscape1440pSettingsClick" ToolTip="2K 屏幕的横向四分之一"
+                                        AutomationProperties.Name="界面尺寸：1280 乘 720" />
+                                <Button x:Name="PortraitSettingsButton" Content="纵向" Margin="0,0,0,4"
+                                        Click="OnPortraitSettingsClick" ToolTip="按内容适配 · 高度不超工作区 90%"
+                                        AutomationProperties.Name="界面尺寸：纵向，按内容适配" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource SettingsRow}">
+                        <Grid>
+                            <TextBlock Text="桌面团子" VerticalAlignment="Center" />
+                            <Button x:Name="DisplayToggleButton" Content="未连接" IsEnabled="False" HorizontalAlignment="Right"
+                                    Click="OnDisplayToggleClick" ToolTip="仅本次会话" AutomationProperties.Name="桌面团子，未连接" />
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource SettingsRow}">
+                        <StackPanel>
+                            <TextBlock Text="显示位置" Margin="0,0,0,10" />
+                            <WrapPanel>
+                                <Button x:Name="WallpaperModeButton" Content="壁纸层" IsEnabled="False" Margin="0,0,8,4"
+                                        Click="OnWallpaperModeClick" AutomationProperties.Name="显示位置：壁纸层" />
+                                <Button x:Name="WindowModeButton" Content="普通窗口" IsEnabled="False" Margin="0,0,0,4"
+                                        Click="OnWindowModeClick" AutomationProperties.Name="显示位置：普通窗口" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource SettingsRow}">
+                        <StackPanel>
+                            <TextBlock Text="团子与图标" Margin="0,0,0,10" />
+                            <WrapPanel>
+                                <Button x:Name="BelowIconsButton" Content="图标下" IsEnabled="False" Margin="0,0,8,4"
+                                        Click="OnBelowIconsClick" AutomationProperties.Name="团子位于图标下" />
+                                <Button x:Name="AboveIconsButton" Content="图标上" IsEnabled="False" Margin="0,0,0,4"
+                                        Click="OnAboveIconsClick" AutomationProperties.Name="团子位于图标上" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="交互" FontSize="15" Margin="0,26,0,4" />
+                    <Border Style="{StaticResource SettingsRow}">
+                        <Grid>
+                            <TextBlock Text="鼠标互动" VerticalAlignment="Center" />
+                            <Button x:Name="InteractionToggleButton" Content="未连接" IsEnabled="False" HorizontalAlignment="Right"
+                                    Click="OnInteractionToggleClick" AutomationProperties.Name="鼠标互动，未连接" />
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource SettingsRow}">
+                        <Grid>
+                            <TextBlock Text="键盘控制 · 仅房间内生效" VerticalAlignment="Center" />
+                            <Button x:Name="KeyboardToggleButton" Content="未连接" IsEnabled="False" HorizontalAlignment="Right"
+                                    Click="OnKeyboardToggleClick" AutomationProperties.Name="键盘控制，未连接" />
+                        </Grid>
+                    </Border>
+                    <Border Style="{StaticResource SettingsRow}">
+                        <TextBlock Text="A / D 移动 · S 轻压 · 空格跳跃 · W 互动" Foreground="{DynamicResource HomeMuted}" TextWrapping="Wrap" />
+                    </Border>
+
+                    <TextBlock Text="帮助与诊断" FontSize="15" Margin="0,26,0,4" />
+                    <Border Style="{StaticResource SettingsRow}">
+                        <StackPanel>
+                            <TextBlock x:Name="SettingRunState" Text="未连接" Foreground="{DynamicResource HomeMuted}" TextWrapping="Wrap" />
+                            <TextBlock x:Name="SettingsCommandStatus" Visibility="Collapsed" Margin="0,10,0,0"
+                                       Foreground="{DynamicResource HomeMuted}" TextWrapping="Wrap" />
+                            <WrapPanel Margin="0,12,0,0">
+                                <Button x:Name="RetryInitializationButton" Content="重试初始化" IsEnabled="False" Visibility="Collapsed"
+                                        Margin="0,0,8,4" Click="OnRetryInitializationClick" />
+                                <Button x:Name="RestoreDangoSettingsButton" Content="恢复团子" IsEnabled="False"
+                                        Margin="0,0,8,4" Click="OnRestoreDangoClick" />
+                                <Button x:Name="RetryWallpaperSettingsButton" Content="重试壁纸层" IsEnabled="False"
+                                        Margin="0,0,0,4" Click="OnRetryWallpaperClick" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                    <Border x:Name="SaveWarningRow" Style="{StaticResource SettingsRow}" Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock x:Name="SaveWarningText" TextWrapping="Wrap" Foreground="{DynamicResource HomeMuted}" />
+                            <WrapPanel Margin="0,12,0,0">
+                                <Button x:Name="RetrySaveSettingsButton" Content="重试保存" Click="OnRetrySaveClick" Margin="0,0,8,4" />
+                                <Button x:Name="RecoverSettingsButton" Content="备份并恢复保存" Click="OnRecoverSettingsClick" Visibility="Collapsed" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource SettingsRow}">
+                        <StackPanel>
+                            <Button x:Name="ShowDiagnosticsButton" Content="查看诊断" IsEnabled="False" HorizontalAlignment="Left"
+                                    Click="OnShowDiagnosticsClick" />
+                            <TextBox x:Name="SettingsDiagnosticsText" Visibility="Collapsed" IsReadOnly="True" TextWrapping="Wrap"
+                                     Margin="0,12,0,0" Padding="8" BorderBrush="{DynamicResource HomeLine}"
+                                     Background="Transparent" MinHeight="90" MaxHeight="240" VerticalScrollBarVisibility="Auto" />
+                        </StackPanel>
+                    </Border>
+                    <Button x:Name="SettingsExitButton" Content="退出 Dango" IsEnabled="False" HorizontalAlignment="Left"
+                            Margin="0,24,0,20" Click="OnExitSettingsClick" AutomationProperties.Name="退出 Dango" />
+                </StackPanel>
+                </Grid>
+            </Grid>
+        </ScrollViewer>
+        <StackPanel x:Name="HomeFooter" Grid.Row="3" Margin="22,4,22,9">
+            <Button x:Name="NoticeButton" Visibility="Collapsed" Style="{StaticResource ToolButton}" FontSize="12"
+                    Content="需要处理 · 查看" HorizontalAlignment="Left" Click="OnNoticeClick" />
+            <TextBlock x:Name="PreviewStatus" Text="A 换装 · D 捏脸 · W 进入 · S / 空格 动作" FontSize="12" Foreground="{DynamicResource HomeMuted}" />
+        </StackPanel>
+    </Grid>
+</UserControl>

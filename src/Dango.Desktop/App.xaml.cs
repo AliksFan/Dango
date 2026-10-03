@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Threading;
 using Dango.Desktop.AppShell;
+using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.Physics.Native;
 using Dango.Desktop.Rendering.Visuals;
 
@@ -15,6 +16,29 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        var homeUiReview = e.Args.Contains("--home-ui-review", StringComparer.Ordinal);
+        var settingsUiReview = e.Args.Contains("--settings-ui-review", StringComparer.Ordinal);
+        if (homeUiReview || settingsUiReview)
+        {
+            // Exercise the same product control without native physics, tray, user settings or network activity.
+            ShutdownMode = ShutdownMode.OnMainWindowClose;
+            var home = new ProductHomeView();
+            home.SettingsButton.ToolTip = "设置界面预览 · 未连接桌面";
+            if (settingsUiReview) home.ShowSettingsPage();
+            MainWindow = new Window
+            {
+                Title = settingsUiReview ? "Dango · 设置页视觉预览" : "Dango · 首页交互验收",
+                Width = 1024,
+                Height = 640,
+                MinWidth = 336,
+                MinHeight = 560,
+                Content = home,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            };
+            MainWindow.Show();
+            return;
+        }
 
         if (e.Args.Contains("--box2d-native-probe", StringComparer.Ordinal))
         {
@@ -47,8 +71,12 @@ public partial class App : System.Windows.Application
 
         var physicsReview = e.Args.Contains("--physics-host-review", StringComparer.Ordinal);
         var eyeHatReview = e.Args.Contains("--eye-hat-review", StringComparer.Ordinal);
-        if (physicsReview && eyeHatReview) throw new ArgumentException("Choose one isolated review mode.");
-        var instanceName = eyeHatReview ? SingleInstanceName + ".EyeHatReview" : physicsReview ? SingleInstanceName + ".PhysicsHostReview" : SingleInstanceName;
+        var unifiedHomeReview = e.Args.Contains("--unified-live-home-review", StringComparer.Ordinal);
+        if ((physicsReview ? 1 : 0) + (eyeHatReview ? 1 : 0) + (unifiedHomeReview ? 1 : 0) > 1)
+            throw new ArgumentException("Choose one isolated review mode.");
+        var instanceName = eyeHatReview ? SingleInstanceName + ".EyeHatReview"
+            : physicsReview ? SingleInstanceName + ".PhysicsHostReview"
+            : unifiedHomeReview ? SingleInstanceName + ".UnifiedHomeReview" : SingleInstanceName;
         singleInstanceCoordinator = SingleInstanceCoordinator.TryBecomePrimary(
             instanceName,
             () => Dispatcher.BeginInvoke(
@@ -62,7 +90,8 @@ public partial class App : System.Windows.Application
         }
 
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
-        applicationHost = new DangoApplicationHost(physicsReview, eyeHatReview);
+        applicationHost = new DangoApplicationHost(physicsReview, eyeHatReview,
+            isolatedUnifiedHomeReview: unifiedHomeReview);
         applicationHost.Start();
         if (physicsReview || eyeHatReview) applicationHost.ShowControlCenter();
     }

@@ -1,6 +1,8 @@
 <Window x:Class="Dango.Desktop.AppShell.ControlCenter.ControlCenterWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Dango.Desktop.AppShell.ControlCenter"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Dango 控制中心"
         Width="960"
         Height="640"
@@ -68,9 +70,42 @@
             <Setter Property="CornerRadius" Value="12" />
             <Setter Property="Padding" Value="20" />
         </Style>
+        <Style x:Key="ProductWindowButton" TargetType="Button">
+            <Setter Property="Width" Value="34" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="#655B52" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Surface" CornerRadius="11" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Surface" Property="Background" Value="#F1ECE5" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Surface" Property="Background" Value="#E8DED3" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Surface" Property="BorderBrush" Value="#885E3E" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Grid>
+    <Grid x:Name="LegacyShell">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="190" />
             <ColumnDefinition Width="*" />
@@ -183,7 +218,7 @@
                                         AutomationProperties.Name="继续人工验收"
                                         Click="OnVerificationNavigationClick"
                                         Content="继续验收" />
-                                <WrapPanel Margin="0,8,0,0">
+                                <WrapPanel x:Name="RecoveryActions" Margin="0,8,0,0">
                                     <Button x:Name="RetrySceneButton" Content="重试初始化" AutomationProperties.Name="重试初始化"
                                             Click="OnRetrySceneClick" Margin="0,0,8,0" />
                                     <Button x:Name="RestoreDangoButton" Content="恢复团子" AutomationProperties.Name="恢复团子"
@@ -213,6 +248,7 @@
                 </StackPanel>
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                     <StackPanel>
+                        <Border x:Name="ProductRecoverySlot" Visibility="Collapsed" Margin="0,0,0,16" />
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel>
                                 <CheckBox x:Name="VisibilityCheckBox"
@@ -325,21 +361,8 @@
                                           Unchecked="OnKeyboardControlChanged" />
                                 <TextBlock Margin="24,6,0,14"
                                            Foreground="{StaticResource MutedTextBrush}"
-                                           Text="默认关闭；壁纸层仅在桌面获得焦点时生效，普通窗口仅在自身获得焦点时生效。"
+                                           Text="仅进入房间且玩法输入已激活时生效。A 左、S 轻压、D 右、空格跳；W 交互。"
                                            TextWrapping="Wrap" />
-                                <StackPanel Margin="24,0,0,0" Orientation="Horizontal">
-                                    <RadioButton x:Name="ArrowKeysRadioButton"
-                                                 AutomationProperties.Name="使用方向键控制"
-                                                 Checked="OnKeyboardControlChanged"
-                                                 Content="方向键：↑ ↓ ← →"
-                                                 GroupName="KeyboardControlScheme" />
-                                    <RadioButton x:Name="WasdRadioButton"
-                                                 Margin="20,0,0,0"
-                                                 AutomationProperties.Name="使用 WASD 控制"
-                                                 Checked="OnKeyboardControlChanged"
-                                                 Content="WASD：W S A D"
-                                                 GroupName="KeyboardControlScheme" />
-                                </StackPanel>
                             </StackPanel>
                         </Border>
 
@@ -550,5 +573,39 @@
                 </Border>
             </Grid>
         </Grid>
+    </Grid>
+        <local:ProductHomeView x:Name="ProductHome" Visibility="Collapsed" />
+        <StackPanel x:Name="ProductWindowChrome" Orientation="Horizontal" HorizontalAlignment="Right"
+                    VerticalAlignment="Top" Margin="0,5,9,0" Panel.ZIndex="20" Visibility="Collapsed">
+            <Button x:Name="MinimizeWindowButton" Style="{StaticResource ProductWindowButton}"
+                    ToolTip="最小化" AutomationProperties.Name="最小化窗口" Click="OnMinimizeWindowClick"
+                    shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                <Path Data="M 5,10 L 17,10" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                      StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+            </Button>
+            <Button x:Name="WindowSizeButton" Style="{StaticResource ProductWindowButton}"
+                    Content="⇌" FontSize="20" FontFamily="Segoe UI Symbol" Padding="0,0,0,3"
+                    ToolTip="切换窗口尺寸" AutomationProperties.Name="切换窗口尺寸" Click="OnWindowSizeButtonClick"
+                    shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                <Button.ContextMenu>
+                    <ContextMenu x:Name="WindowSizeMenu" Closed="OnWindowSizeMenuClosed"
+                                 PreviewKeyDown="OnWindowSizeMenuPreviewKeyDown">
+                        <MenuItem x:Name="Landscape1080pMenuItem" Header="横向 · 1080p" IsCheckable="True"
+                                  Click="OnLandscape1080pMenuItemClick" />
+                        <MenuItem x:Name="Landscape1440pMenuItem" Header="横向 · 2K" IsCheckable="True"
+                                  Click="OnLandscape1440pMenuItemClick" />
+                        <MenuItem x:Name="PortraitMenuItem" Header="纵向" IsCheckable="True"
+                                  Click="OnPortraitMenuItemClick" />
+                    </ContextMenu>
+                </Button.ContextMenu>
+            </Button>
+            <Button x:Name="CloseWindowButton" Style="{StaticResource ProductWindowButton}"
+                    ToolTip="关闭窗口（保留托盘）" AutomationProperties.Name="关闭窗口并保留托盘" Click="OnCloseWindowClick"
+                    shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                <Path Data="M 6,5 L 16,15 M 16,5 L 6,15"
+                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                      StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+            </Button>
+        </StackPanel>
     </Grid>
 </Window>

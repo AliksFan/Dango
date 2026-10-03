@@ -67,6 +67,11 @@ internal sealed class DangoTrayIcon : IDisposable
     private void ToggleVisibility()
     {
         var snapshot = commandController.GetSnapshot();
+        if (!snapshot.IsVisible && !commandController.CanShowDesktop)
+        {
+            showControlCenter();
+            return;
+        }
         var result = commandController.SetVisibility(!snapshot.IsVisible);
         if (result.State == CommandApplicationState.Failed)
         {
@@ -83,6 +88,8 @@ internal sealed class DangoTrayIcon : IDisposable
     private void RefreshVisibilityText()
     {
         var isVisible = commandController.GetSnapshot().IsVisible;
-        visibilityItem.Text = isVisible ? "隐藏桌面团子" : "显示桌面团子";
+        visibilityItem.Text = !commandController.CanShowDesktop ? "进入房间后显示桌面团子"
+            : isVisible ? "隐藏桌面团子" : "显示桌面团子";
+        visibilityItem.Enabled = commandController.CanShowDesktop;
     }
 }

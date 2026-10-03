@@ -2,6 +2,8 @@
 
 `Dango` 是一个多人联机桌面宠物项目的开发代号。
 
+2026-10-01：首页 UI 按已认可的简约横向原型重新实施，本轮仅包含“我的团子”与捏脸、换装展开交互；用户已确认本批人工验收通过。范围和边界见[首页实施约定](docs/planning/2026-10-01-home-ui-fidelity.md)，自动检查及遗留限制见[验证记录](docs/verification/2026-10-01-home-ui-fidelity.md)。
+
 2026-09-22 规划：已确认[步态与外观分批路线](docs/planning/2026-09-22-gait-and-customization-roadmap.md)和[行走自然感设计](docs/planning/2026-09-22-gait-sample-design.md)的首轮取舍，现已制定[小样实施计划](docs/planning/2026-09-22-gait-sample-plan.md)并获用户授权实施。单团子自主/键盘轻微步态及隔离项目入口已完成，Desktop 373/373、Core 37/37 通过；用户已确认当前小样整体观感并保留此版。见[本批验证](docs/verification/2026-09-22-gait-sample.md)。
 
 2026-09-22：已验收性能改动已按授权经阶段分支合入本地 main，并更新日常安装；真实启动、Window/Wallpaper 切换、设置保留和正常退出检查通过，旧版本可回退。见[本地交付记录](docs/verification/2026-09-22-performance-local-delivery.md)。原自动失败和专项未验证项继续保留，未推送或部署。
@@ -63,6 +65,8 @@ Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](d
 - [产品企划概要 v0.1](docs/product-brief-v0.1.md)：定位、用户、价值、市场参照与长期方向。
 - [产品设计基线 v0.1](docs/product-design-v0.1.md)：对象规则、房间权限、体验流程与首版边界。
 - [服务端设计基线 v0.1](docs/server-design-v0.1.md)：200 人在线容量、实时同步、部署与扩容。
+- [设置页范围与验收设计](docs/planning/2026-10-01-settings-ui.md)及[专项验证记录](docs/verification/2026-10-01-settings-ui.md)：产品首页内设置页的范围、失败型验收与独立 Product 宿主人工确认；日常安装和完整自动门禁待补。
+- [统一实时首页与固定尺寸验证记录](docs/verification/2026-10-03-unified-live-home.md)：首页真实团子、门廊交互及三档物理目标尺寸的当前证据和未完成边界。
 - [开发工作流 v0.1](docs/development-workflow-v0.1.md)：任务、分支、Worktree、提交和验收流程。
 - [分阶段开发计划 v0.1](docs/development-plan-v0.1.md)：Phase 0–5 的范围、交付物与阶段门禁。
 - [本地桌面安装说明](docs/local-desktop-install.md)：固定目录安装、启动、更新、状态检查与回退的日常操作。

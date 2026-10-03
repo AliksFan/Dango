@@ -44,6 +44,7 @@ public sealed class ApplicationCommandController
     }
 
     public ApplicationUiMode UiMode { get; }
+    public bool CanShowDesktop => host is DesktopHostCoordinator coordinator ? coordinator.CanShowDesktop : true;
     public SceneInitializationState InitializationState =>
         host is IDangoSceneControl scene ? scene.InitializationState : SceneInitializationState.Ready;
     public string HatPresetId => host is IDangoSceneControl scene ? scene.HatPresetId : "sprout";

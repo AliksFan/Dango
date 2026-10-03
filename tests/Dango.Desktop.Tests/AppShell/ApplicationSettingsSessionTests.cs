@@ -26,8 +26,9 @@ public sealed class ApplicationSettingsSessionTests
         var original = $$$"""{"schemaVersion":{{{version}}},"width":1000,"height":700,"displayMode":"Window","showDebugSkeleton":true,"keyboardControl":{"isEnabled":true,"scheme":"Wasd"}}""";
         Write(path, original);
         var session = new ApplicationSettingsSession(path);
-        Assert.AreEqual(4, session.Current.SchemaVersion);
+        Assert.AreEqual(ControlCenterWindowSettings.CurrentSchemaVersion, session.Current.SchemaVersion);
         Assert.AreEqual(1000, session.Current.Width);
+        Assert.AreEqual(700, session.Current.Height);
         Assert.AreEqual(DesktopDisplayMode.Window, session.Current.DisplayMode);
         Assert.IsTrue(session.Current.ShowDebugSkeleton);
         Assert.IsTrue(session.Current.KeyboardControl.IsEnabled);
@@ -41,6 +42,28 @@ public sealed class ApplicationSettingsSessionTests
         Assert.AreEqual("bowler", restored.HatPresetId);
         Assert.IsTrue(restored.IntroSeen);
         Assert.IsTrue(restored.ShowDebugSkeleton);
+    }
+
+    [TestMethod]
+    public void ArrowKeyMigrationBacksUpOriginalWithoutDisablingKeyboardControl()
+    {
+        var path = NewPath();
+        const string original = """
+            {"schemaVersion":4,"width":1000,"height":700,"keyboardControl":{"isEnabled":true,"scheme":"ArrowKeys"},"hatPresetId":"bowler"}
+            """;
+        Write(path, original);
+
+        var session = new ApplicationSettingsSession(path);
+        Assert.IsTrue(session.Current.KeyboardControl.IsEnabled);
+        Assert.AreEqual(KeyboardControlScheme.Wasd, session.Current.KeyboardControl.Scheme);
+        Assert.AreEqual("bowler", session.Current.HatPresetId);
+        Assert.IsTrue(session.TrySave());
+
+        Assert.AreEqual(original, File.ReadAllText(Directory.GetFiles(Path.GetDirectoryName(path)!, "*.backup-*").Single()));
+        var restored = new ApplicationSettingsSession(path).Current;
+        Assert.IsTrue(restored.KeyboardControl.IsEnabled);
+        Assert.AreEqual(KeyboardControlScheme.Wasd, restored.KeyboardControl.Scheme);
+        Assert.AreEqual("bowler", restored.HatPresetId);
     }
 
     [TestMethod]

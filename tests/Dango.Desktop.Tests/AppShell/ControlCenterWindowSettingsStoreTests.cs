@@ -16,11 +16,11 @@ public sealed class ControlCenterWindowSettingsStoreTests
             var path = Path.Combine(directory, "settings.json");
             var store = new ControlCenterWindowSettingsStore();
 
-            store.Save(path, new ControlCenterWindowSettings(940, 620));
+            store.Save(path, new ControlCenterWindowSettings(960, 540));
             var restored = store.Load(path);
 
-            Assert.AreEqual(940, restored.Width);
-            Assert.AreEqual(620, restored.Height);
+            Assert.AreEqual(960, restored.Width);
+            Assert.AreEqual(540, restored.Height);
             var json = File.ReadAllText(path);
             Assert.IsFalse(json.Contains("left", StringComparison.OrdinalIgnoreCase));
             Assert.IsFalse(json.Contains("user", StringComparison.OrdinalIgnoreCase));
@@ -41,6 +41,13 @@ public sealed class ControlCenterWindowSettingsStoreTests
     }
 
     [TestMethod]
+    public void UnsafeNarrowWindowSizeIsRejected()
+    {
+        Assert.ThrowsExactly<InvalidDataException>(
+            () => ControlCenterWindowSettingsValidator.Validate(new ControlCenterWindowSettings(335, 620)));
+    }
+
+    [TestMethod]
     public void LayeringExperimentRoundTripsWithWindowSettings()
     {
         var directory = CreateTemporaryDirectory();
@@ -55,10 +62,10 @@ public sealed class ControlCenterWindowSettingsStoreTests
                     [DesktopLayeringSettings.PrototypeCushionId] = DesktopObjectLayer.AboveDesktopIcons,
                 });
 
-            store.Save(path, new ControlCenterWindowSettings(940, 620, ControlCenterWindowSettings.CurrentSchemaVersion, layering));
+            store.Save(path, new ControlCenterWindowSettings(960, 540, ControlCenterWindowSettings.CurrentSchemaVersion, layering));
             var restored = store.Load(path);
 
-            Assert.AreEqual(4, restored.SchemaVersion);
+            Assert.AreEqual(ControlCenterWindowSettings.CurrentSchemaVersion, restored.SchemaVersion);
             Assert.AreEqual(DesktopObjectLayer.AboveDesktopIcons, restored.DesktopLayeringExperiment.DangoLayer);
             Assert.AreEqual(
                 DesktopObjectLayer.AboveDesktopIcons,
@@ -86,12 +93,12 @@ public sealed class ControlCenterWindowSettingsStoreTests
 
             var restored = new ControlCenterWindowSettingsStore().Load(path);
 
-            Assert.AreEqual(4, restored.SchemaVersion);
+            Assert.AreEqual(ControlCenterWindowSettings.CurrentSchemaVersion, restored.SchemaVersion);
             Assert.AreEqual(
                 DesktopObjectLayer.BelowDesktopIcons,
                 restored.DesktopLayeringExperiment.DangoLayer);
             Assert.IsFalse(restored.KeyboardControl.IsEnabled);
-            Assert.AreEqual(KeyboardControlScheme.ArrowKeys, restored.KeyboardControl.Scheme);
+            Assert.AreEqual(KeyboardControlScheme.Wasd, restored.KeyboardControl.Scheme);
         }
         finally
         {
@@ -139,14 +146,14 @@ public sealed class ControlCenterWindowSettingsStoreTests
             var store = new ControlCenterWindowSettingsStore();
 
             store.Save(path, new ControlCenterWindowSettings(
-                940,
-                620,
+                960,
+                540,
                 displayMode: DesktopDisplayMode.Window,
                 sceneWindow: sceneWindow,
                 showDebugSkeleton: true));
             var restored = store.Load(path);
 
-            Assert.AreEqual(4, restored.SchemaVersion);
+            Assert.AreEqual(ControlCenterWindowSettings.CurrentSchemaVersion, restored.SchemaVersion);
             Assert.AreEqual(DesktopDisplayMode.Window, restored.DisplayMode);
             Assert.AreEqual(sceneWindow, restored.SceneWindow);
             Assert.IsTrue(restored.ShowDebugSkeleton);
@@ -190,6 +197,69 @@ public sealed class ControlCenterWindowSettingsStoreTests
     }
 
     [TestMethod]
+    public void UnknownCurrentPresetFallsBackWithoutDiscardingOtherPreferences()
+    {
+        var directory = CreateTemporaryDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "settings.json");
+            File.WriteAllText(path, """
+                {
+                  "schemaVersion": 5,
+                  "width": 1280,
+                  "height": 720,
+                  "selectedPreset": "UnexpectedFutureSize",
+                  "interactionEnabled": false,
+                  "hatPresetId": "bowler"
+                }
+                """);
+
+            var result = new ControlCenterWindowSettingsStore().LoadOrDefault(path);
+
+            Assert.AreEqual("Landscape1080p", result.Settings.GetType().GetProperty("SelectedPreset")?
+                .GetValue(result.Settings)?.ToString());
+            Assert.IsFalse(result.Settings.InteractionEnabled);
+            Assert.AreEqual("bowler", result.Settings.HatPresetId);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(result.Warning));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void NumericCurrentPresetFallsBackWithoutDiscardingOtherPreferences()
+    {
+        var directory = CreateTemporaryDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "settings.json");
+            File.WriteAllText(path, """
+                {
+                  "schemaVersion": 5,
+                  "width": 1280,
+                  "height": 720,
+                  "selectedPreset": 42,
+                  "interactionEnabled": false,
+                  "hatPresetId": "bowler"
+                }
+                """);
+
+            var result = new ControlCenterWindowSettingsStore().LoadOrDefault(path);
+
+            Assert.AreEqual(ControlCenterWindowPreset.Landscape1080p, result.Settings.SelectedPreset);
+            Assert.IsFalse(result.Settings.InteractionEnabled);
+            Assert.AreEqual("bowler", result.Settings.HatPresetId);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(result.Warning));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
     public void KeyboardControlRoundTripsWithoutInputHistory()
     {
         var directory = CreateTemporaryDirectory();
@@ -198,8 +268,8 @@ public sealed class ControlCenterWindowSettingsStoreTests
             var path = Path.Combine(directory, "settings.json");
             var store = new ControlCenterWindowSettingsStore();
             store.Save(path, new ControlCenterWindowSettings(
-                940,
-                620,
+                960,
+                540,
                 keyboardControl: new KeyboardControlSettings(true, KeyboardControlScheme.Wasd)));
 
             var restored = store.Load(path);
@@ -208,6 +278,43 @@ public sealed class ControlCenterWindowSettingsStoreTests
             var json = File.ReadAllText(path);
             Assert.IsFalse(json.Contains("lastKey", StringComparison.OrdinalIgnoreCase));
             Assert.IsFalse(json.Contains("history", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [TestMethod]
+    public void LegacyArrowPreferenceMigratesToApprovedKeysWithoutLosingOtherSettings()
+    {
+        var directory = CreateTemporaryDirectory();
+        try
+        {
+            var path = Path.Combine(directory, "settings.json");
+            File.WriteAllText(path, """
+                {
+                  "schemaVersion": 4,
+                  "width": 1010,
+                  "height": 690,
+                  "keyboardControl": { "isEnabled": true, "scheme": "ArrowKeys" },
+                  "interactionEnabled": false,
+                  "hatPresetId": "bowler"
+                }
+                """);
+
+            var result = new ControlCenterWindowSettingsStore().LoadOrDefault(path);
+
+            Assert.IsTrue(result.WasMigrated);
+            Assert.IsTrue(result.Settings.KeyboardControl.IsEnabled);
+            Assert.AreEqual(KeyboardControlScheme.Wasd, result.Settings.KeyboardControl.Scheme);
+            Assert.AreEqual(1010, result.Settings.Width);
+            Assert.AreEqual(690, result.Settings.Height);
+            Assert.AreEqual("Landscape1080p", result.Settings.GetType().GetProperty("SelectedPreset")?
+                .GetValue(result.Settings)?.ToString(), "Legacy dimensions must not invent a different user-selected preset.");
+            Assert.IsFalse(result.Settings.InteractionEnabled);
+            Assert.AreEqual("bowler", result.Settings.HatPresetId);
+            Assert.IsFalse(result.PreserveOriginal);
         }
         finally
         {

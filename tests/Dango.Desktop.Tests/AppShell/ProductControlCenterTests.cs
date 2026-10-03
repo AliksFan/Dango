@@ -12,7 +12,7 @@ namespace Dango.Desktop.Tests.AppShell;
 public sealed class ProductControlCenterTests
 {
     [STATestMethod]
-    public void ProductModeHidesDeveloperControlsWhileKeepingHatAndDiagnosticsAvailable()
+    public void ProductModeHidesDeveloperControlsWhileKeepingDiagnosticsAvailable()
     {
         var product = CreateWindow(new ProductHost(), ApplicationUiMode.Product, () => { });
         var review = CreateWindow(new ProductHost(), ApplicationUiMode.DeveloperReview, () => { });
@@ -30,8 +30,11 @@ public sealed class ProductControlCenterTests
                 Assert.AreNotEqual(Visibility.Collapsed, Element<UIElement>(review, name).Visibility, name);
             }
 
-            Assert.AreEqual(Visibility.Visible, Element<UIElement>(product, "HatCard").Visibility);
-            Assert.AreNotEqual(Visibility.Collapsed, Element<UIElement>(product, "DiagnosticsNavigation").Visibility);
+            var home = Element<ProductHomeView>(product, "ProductHome");
+            Click((Button)home.FindName("SettingsButton"));
+            Assert.AreEqual(Visibility.Visible, ((UIElement)home.FindName("SettingsPage")).Visibility);
+            Assert.IsNull(home.FindName("SproutHatButton"), "产品设置页不应显示帽型入口。");
+            Assert.AreEqual(Visibility.Collapsed, Element<UIElement>(product, "LegacyShell").Visibility);
         }
         finally
         {
@@ -50,16 +53,19 @@ public sealed class ProductControlCenterTests
         {
             window.ShowOverview();
             window.ShowDiagnostics();
+            var home = Element<ProductHomeView>(window, "ProductHome");
 
-            Assert.AreEqual(Visibility.Visible, Element<Button>(window, "RetrySceneButton").Visibility);
-            Assert.IsFalse(Element<Button>(window, "RestoreDangoButton").IsEnabled);
+            Assert.AreEqual(Visibility.Visible, ((UIElement)home.FindName("SettingsPage")).Visibility);
+            Assert.AreEqual(Visibility.Collapsed, Element<UIElement>(window, "LegacyShell").Visibility);
+            Assert.AreEqual(Visibility.Visible, ((Button)home.FindName("RetryInitializationButton")).Visibility);
+            Assert.IsFalse(((Button)home.FindName("RestoreDangoSettingsButton")).IsEnabled);
             Assert.AreEqual(0, host.WorldCreateCalls);
 
-            Click(Element<Button>(window, "RetrySceneButton"));
+            Click((Button)home.FindName("RetryInitializationButton"));
             Assert.AreEqual(1, host.RetryCalls);
             Assert.AreEqual(0, host.WorldCreateCalls);
 
-            Click(FindButton(window, "退出 Dango"));
+            Click((Button)home.FindName("SettingsExitButton"));
             Assert.AreEqual(1, exitCalls);
         }
         finally
@@ -90,18 +96,30 @@ public sealed class ProductControlCenterTests
         try
         {
             window.ShowOverview();
+            var home = Element<ProductHomeView>(window, "ProductHome");
+            Click((Button)home.FindName("SettingsButton"));
             var hats = Element<ComboBox>(window, "HatPresetComboBox");
-            hats.SelectedItem = hats.Items.OfType<ComboBoxItem>().Single(item => (string)item.Tag == "top-hat");
+            hats.SelectedItem = hats.Items.OfType<ComboBoxItem>()
+                .Single(item => (string)item.Tag == "top-hat");
 
             Assert.AreEqual(1, host.HatApplyCalls);
             Assert.AreEqual(1, writer.Calls);
             StringAssert.Contains(Element<TextBlock>(window, "SettingsSaveStatusText").Text, "未保存");
+            var notice = (Button)home.FindName("NoticeButton");
+            Assert.AreEqual(Visibility.Visible, notice.Visibility, "A visible home must not conceal save failure.");
+            Assert.AreEqual(Visibility.Visible, ((Border)home.FindName("SaveWarningRow")).Visibility);
+            Assert.IsTrue(session.HasWarning);
+            window.ShowDiagnostics();
+            Assert.AreEqual(Visibility.Visible, ((UIElement)home.FindName("SettingsDiagnosticsText")).Visibility);
 
-            Click(Element<Button>(window, "RetrySaveButton"));
+            Click((Button)home.FindName("RetrySaveSettingsButton"));
 
             Assert.AreEqual(1, host.HatApplyCalls, "Retry save must not replay the product command.");
             Assert.AreEqual(2, writer.Calls, "Retry save must retry the writer once.");
             Assert.AreEqual("top-hat", session.Current.HatPresetId);
+            Assert.AreEqual("top-hat", new ControlCenterWindowSettingsStore().Load(path).HatPresetId);
+            Assert.IsFalse(session.HasWarning);
+            Assert.AreEqual(Visibility.Collapsed, notice.Visibility);
         }
         finally
         {
@@ -158,6 +176,7 @@ public sealed class ProductControlCenterTests
         {
             Calls++;
             if (Calls == 1) throw new IOException("fictional first write failure");
+            new AtomicTextFileWriter().Write(path, content);
         }
     }
 
