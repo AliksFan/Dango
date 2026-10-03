@@ -459,10 +459,36 @@ Invoke-Case 'acceptance-directory-requires-marker-and-rejects-protected-roots' {
 Invoke-Case 'process-settings-scope-parses-windows-quoted-arguments' {
     $parsed = & $installModule { Get-DangoProcessSettingsScope '"C:\Fixture\Dango.Desktop.exe" --local-install-acceptance-settings "C:\Fixture\Settings with spaces"' }
     Assert-Equal 'C:\Fixture\Settings with spaces' $parsed 'Quoted scope path was parsed incorrectly.'
-    $normal = & $installModule { Get-DangoProcessSettingsScope '"C:\Fixture\Dango.Desktop.exe" "text --local-install-acceptance-settings C:\Fixture\fake"' }
-    Assert-True ($null -eq $normal) 'Text embedded in another argument was interpreted as settings scope.'
+    $normal = & $installModule { Get-DangoProcessSettingsScope '"C:\Fixture\Dango.Desktop.exe"' }
+    Assert-True ($null -eq $normal) 'Exe-alone command line was not treated as an ordinary settings scope.'
     Assert-Throws { & $installModule { Get-DangoProcessSettingsScope '"C:\Fixture\Dango.Desktop.exe" --local-install-acceptance-settings C:\Fixture\A --local-install-acceptance-settings C:\Fixture\B' } } 'Duplicate settings scopes were accepted.'
     Assert-Throws { & $installModule { Get-DangoProcessSettingsScope '"C:\Fixture\Dango.Desktop.exe" --local-install-acceptance-settings' } } 'Scope without a path was accepted.'
+}
+Invoke-Case 'process-settings-scope-rejects-unknown-and-mixed-review-arguments' {
+    foreach ($command in @(
+        '"C:\Fixture\Dango.Desktop.exe" --unknown',
+        '"C:\Fixture\Dango.Desktop.exe" --smoke-test',
+        '"C:\Fixture\Dango.Desktop.exe" --local-install-acceptance-settings C:\Fixture\A --unknown',
+        '"C:\Fixture\Dango.Desktop.exe" --physics-host-review --local-install-acceptance-settings C:\Fixture\A',
+        '"C:\Fixture\Dango.Desktop.exe" "text --local-install-acceptance-settings C:\Fixture\fake"'
+    )) {
+        Assert-Throws { & $installModule { param($value) Get-DangoProcessSettingsScope $value } $command } 'Unknown or mixed-review command line was treated as an ordinary settings scope.'
+    }
+}
+foreach ($settingsName in @('settings.json', 'settings.window-preset.json')) {
+    foreach ($dangling in @($false, $true)) {
+        Invoke-Case ('acceptance-refuses-settings-reparse-' + $settingsName + '-' + $dangling) {
+            $settings = New-AcceptanceSettingsFixture ('reparse-settings-' + $settingsName + '-' + $dangling)
+            $target = Join-Path $EvidenceRoot ('reparse-target-' + $settingsName + '-' + $dangling)
+            New-Item -ItemType Directory -Path $target | Out-Null
+            $link = Join-Path $settings $settingsName
+            $null = New-Item -ItemType Junction -Path $link -Target $target
+            if ($dangling) { [IO.Directory]::Move($target, ($target + '-retained')) }
+            $entry = @(Get-ChildItem -LiteralPath $settings -Force | Where-Object { $_.Name -ceq $settingsName })
+            Assert-True ($entry.Count -eq 1 -and ($entry[0].Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) 'Test did not create a real settings reparse entry.'
+            Assert-Throws { & $installModule { param($fixture, $package) Assert-DangoAcceptanceSettingsRoot $fixture $package } $settings $packageB } 'Acceptance root allowed a settings reparse point.'
+        }
+    }
 }
 Invoke-Case 'installed-start-requires-identical-existing-settings-scope' {
     $candidateContract = (Test-DangoPackage $packageB).Manifest.settingsContract
