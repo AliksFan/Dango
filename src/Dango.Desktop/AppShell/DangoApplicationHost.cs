@@ -34,7 +34,8 @@ internal sealed class DangoApplicationHost : IDisposable
     private bool disposed;
 
     public DangoApplicationHost(bool isolatedPhysicsReview = false, bool isolatedEyeHatReview = false,
-        string? settingsFile = null, string? nativeLibraryPath = null, ControlCenterWindowSettingsStore? settingsStore = null)
+        string? settingsFile = null, string? nativeLibraryPath = null, ControlCenterWindowSettingsStore? settingsStore = null,
+        bool isolatedUnifiedHomeReview = false)
     {
         eyeHatReview = isolatedEyeHatReview;
         uiMode = isolatedPhysicsReview || isolatedEyeHatReview ? ApplicationUiMode.DeveloperReview : ApplicationUiMode.Product;
@@ -44,9 +45,12 @@ internal sealed class DangoApplicationHost : IDisposable
         workerWWindow = new WorkerWWindow(sceneSession, stackedRuntime);
         sceneWindow = new DangoSceneWindow(sceneSession, stackedRuntime);
         desktopHost = new DesktopHostCoordinator(workerWWindow, sceneWindow, stackedRuntime);
+        if (uiMode == ApplicationUiMode.Product) desktopHost.SetRoomPresentationAllowed(false);
         commandController = new ApplicationCommandController(desktopHost, uiMode);
         verificationDefinition = isolatedEyeHatReview ? VerificationDefinition.CreateEyeHatHosts() : VerificationDefinition.CreatePhysicsModuleHosts();
-        settingsPath = settingsFile ?? (isolatedEyeHatReview
+        settingsPath = settingsFile ?? (isolatedUnifiedHomeReview
+            ? Path.Combine(AppContext.BaseDirectory, "unified-home-review-state", "settings.json")
+            : isolatedEyeHatReview
             ? Path.Combine(AppContext.BaseDirectory, "eye-hat-review-state", "settings.json")
             : isolatedPhysicsReview
                 ? Path.Combine(AppContext.BaseDirectory, "physics-review-state", "settings.json")
@@ -77,8 +81,13 @@ internal sealed class DangoApplicationHost : IDisposable
         // Establish recovery entry points before touching the native module.
         trayIcon = new DangoTrayIcon(commandController, ShowControlCenter, ShowDiagnostics, RequestExit);
         var initialized = stackedRuntime.TryInitialize();
+        if (uiMode == ApplicationUiMode.Product)
+        {
+            ShowControlCenter();
+            return;
+        }
         var shown = initialized && commandController.SetVisibility(true).State == CommandApplicationState.Applied;
-        if (!shown || (uiMode == ApplicationUiMode.Product && !settings.Current.IntroSeen)) ShowControlCenter();
+        if (!shown) ShowControlCenter();
     }
 
     public void ShowControlCenter()
@@ -131,6 +140,7 @@ internal sealed class DangoApplicationHost : IDisposable
         if (attachmentPanel is not null) { attachmentPanel.AllowClose = true; attachmentPanel.Close(); attachmentPanel = null; }
         if (controlCenterWindow is not null)
         {
+            controlCenterWindow.ProductHome.ReleaseLiveScene();
             controlCenterWindow.PrepareForExit();
             controlCenterWindow.Close();
             controlCenterWindow = null;
@@ -149,6 +159,8 @@ internal sealed class DangoApplicationHost : IDisposable
         controlCenterWindow = new ControlCenterWindow(commandController, verificationDefinition,
             new VerificationSessionStore(verificationDefinition), draftPath, RequestExit,
             settings, () => SaveSettings(), ScheduleSave);
+        if (uiMode == ApplicationUiMode.Product)
+            controlCenterWindow.ProductHome.BindLiveScene(sceneSession, stackedRuntime);
         controlCenterWindow.OverviewPresented += () =>
         {
             if (uiMode == ApplicationUiMode.Product && !settings.Current.IntroSeen)
@@ -165,7 +177,12 @@ internal sealed class DangoApplicationHost : IDisposable
         if (disposed) return true;
         geometrySaveTimer.Stop();
         var current = settings.Current;
-        var size = controlCenterWindow?.CaptureSize() ?? (current.Width, current.Height);
+        // Product geometry is a chosen preset, not the temporary on-screen size after a
+        // DPI/work-area fit. Developer review retains its resizable window preference.
+        var presetSize = ControlCenterWindowPresets.GetSize(current.SelectedPreset);
+        var size = uiMode == ApplicationUiMode.Product
+            ? (presetSize.Width, presetSize.Height)
+            : controlCenterWindow?.CaptureSize() ?? (current.Width, current.Height);
         var saved = settings.TrySave(current with
         {
             Width = size.Item1,

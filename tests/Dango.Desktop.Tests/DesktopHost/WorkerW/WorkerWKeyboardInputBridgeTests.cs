@@ -9,22 +9,32 @@ namespace Dango.Desktop.Tests.DesktopHost.WorkerW;
 public sealed class WorkerWKeyboardInputBridgeTests
 {
     [TestMethod]
-    public void SettingsDefaultToDisabledArrowKeys()
+    public void SettingsDefaultToDisabledApprovedControls()
     {
         var settings = KeyboardControlSettings.CreateDefault();
         Assert.IsFalse(settings.IsEnabled);
-        Assert.AreEqual(KeyboardControlScheme.ArrowKeys, settings.Scheme);
+        Assert.AreEqual(KeyboardControlScheme.Wasd, settings.Scheme);
+        Assert.ThrowsExactly<InvalidDataException>(() => KeyboardControlSettingsValidator.Validate(
+            new KeyboardControlSettings(true, KeyboardControlScheme.ArrowKeys)));
     }
 
     [TestMethod]
-    public void SelectedSchemeMapsOnlyItsFourKeys()
+    public void ApprovedMovementKeysReserveWForInteractionAndIgnoreArrows()
     {
-        Assert.IsTrue(KeyboardControlKeyPolicy.TryMap(0x25, KeyboardControlScheme.ArrowKeys, out var left));
+        Assert.IsTrue(KeyboardControlKeyPolicy.TryMap(0x41, KeyboardControlScheme.Wasd, out var left));
         Assert.AreEqual(DirectionalControlKey.Left, left);
-        Assert.IsFalse(KeyboardControlKeyPolicy.TryMap(0x41, KeyboardControlScheme.ArrowKeys, out _));
-        Assert.IsTrue(KeyboardControlKeyPolicy.TryMap(0x57, KeyboardControlScheme.Wasd, out var jump));
+        Assert.IsTrue(KeyboardControlKeyPolicy.TryMap(0x44, KeyboardControlScheme.Wasd, out var right));
+        Assert.AreEqual(DirectionalControlKey.Right, right);
+        Assert.IsTrue(KeyboardControlKeyPolicy.TryMap(0x53, KeyboardControlScheme.Wasd, out var squash));
+        Assert.AreEqual(DirectionalControlKey.Squash, squash);
+        Assert.IsTrue(KeyboardControlKeyPolicy.TryMap(0x20, KeyboardControlScheme.Wasd, out var jump));
         Assert.AreEqual(DirectionalControlKey.Jump, jump);
-        Assert.IsFalse(KeyboardControlKeyPolicy.TryMap(0x26, KeyboardControlScheme.Wasd, out _));
+        Assert.IsFalse(KeyboardControlKeyPolicy.TryMap(0x57, KeyboardControlScheme.Wasd, out _),
+            "W is an interaction request, never a jump.");
+        foreach (var arrow in new[] { 0x25, 0x26, 0x27, 0x28 })
+            Assert.IsFalse(KeyboardControlKeyPolicy.TryMap(arrow, KeyboardControlScheme.Wasd, out _));
+        Assert.IsFalse(KeyboardControlKeyPolicy.TryMap(0x25, KeyboardControlScheme.ArrowKeys, out _),
+            "A legacy preference must not reactivate arrow-key controls.");
     }
 
     [TestMethod]
@@ -36,6 +46,33 @@ public sealed class WorkerWKeyboardInputBridgeTests
         Assert.AreEqual(new DirectionalControlIntent(false, false, true, false), state.Snapshot);
         state.Clear();
         Assert.AreEqual(DirectionalControlIntent.None, state.Snapshot);
+    }
+
+    [TestMethod]
+    public void WallpaperNeverCapturesExplorerSpaceBeforeRoomGameplayIsActive()
+    {
+        Assert.IsFalse(WorkerWKeyboardCapturePolicy.ShouldActivate(
+            settingsEnabled: true, hostReady: true, interactionEnabled: true,
+            roomGameplayInputActive: false, explorerDesktopForeground: true));
+        Assert.IsFalse(WorkerWKeyboardCapturePolicy.ShouldActivate(
+            settingsEnabled: true, hostReady: true, interactionEnabled: true,
+            roomGameplayInputActive: true, explorerDesktopForeground: false));
+        Assert.IsTrue(WorkerWKeyboardCapturePolicy.ShouldActivate(
+            settingsEnabled: true, hostReady: true, interactionEnabled: true,
+            roomGameplayInputActive: true, explorerDesktopForeground: true));
+    }
+
+    [TestMethod]
+    public void EnabledPreferenceDoesNotInstallWallpaperHookWithoutRoomGameplay()
+    {
+        var target = new WorkerWDesktopTarget((nint)10, (nint)11, 0, 0, false);
+        using var bridge = new WorkerWKeyboardInputBridge(target);
+        bridge.ApplySettings(new KeyboardControlSettings(true, KeyboardControlScheme.Wasd));
+
+        bridge.Refresh(hostReady: true, interactionEnabled: true, roomGameplayInputActive: false);
+
+        Assert.AreEqual("Inactive", bridge.State);
+        Assert.AreEqual(DirectionalControlIntent.None, bridge.CurrentIntent);
     }
 
     [TestMethod]

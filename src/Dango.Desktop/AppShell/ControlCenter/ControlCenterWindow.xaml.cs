@@ -1,9 +1,14 @@
 using System.ComponentModel;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Shell;
 using System.Windows.Threading;
 using Dango.Desktop.DesktopHost;
 using Dango.Desktop.Physics.Tuning;
@@ -25,11 +30,23 @@ public partial class ControlCenterWindow : Window
     private readonly Action? saveSettings;
     private readonly List<ThemePropertyOverride> highContrastOverrides = [];
     private readonly DispatcherTimer hostStatusTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
+    private readonly DispatcherTimer sizeMenuFocusTimer = new(DispatcherPriority.Input)
+    {
+        Interval = TimeSpan.FromMilliseconds(75),
+    };
+    private DependencyPropertyDescriptor? sizeMenuOpenDescriptor;
+    private int sizeMenuFocusAttempts;
+    private bool sizeMenuFocusExplicitlyRequested;
     private VerificationSession? verificationSession;
     private IReadOnlyList<VerificationItemViewModel> verificationItems = [];
     private bool allowClose;
     private bool refreshingHostState;
     private bool refreshingPhysicsParameters;
+    private bool applyingWindowPreset;
+    private ControlCenterWindowPreset selectedWindowPreset = ControlCenterWindowPreset.Landscape1080p;
+    private string? currentMonitorName;
+    private const int DwmWindowCornerPreference = 33;
+    private const int DwmRoundCorners = 2;
     private readonly Dictionary<string, (Slider Slider, WpfTextBox TextBox)> physicsControls = [];
     public event Action? OverviewPresented;
 
@@ -52,6 +69,22 @@ public partial class ControlCenterWindow : Window
         this.saveSettings = saveSettings;
         refreshingHostState = true;
         InitializeComponent();
+        sizeMenuFocusTimer.Tick += (_, _) =>
+        {
+            sizeMenuFocusTimer.Stop();
+            var restoreRequested = sizeMenuFocusExplicitlyRequested || IsOwnProcessInForeground();
+            sizeMenuFocusExplicitlyRequested = false;
+            if (!IsVisible || !restoreRequested || ProductHome.IsKeyboardFocusWithin) return;
+            ProductHome.RestoreKeyboardFocus();
+            if (!ProductHome.IsKeyboardFocusWithin && ++sizeMenuFocusAttempts < 3)
+            {
+                sizeMenuFocusExplicitlyRequested = restoreRequested;
+                sizeMenuFocusTimer.Start();
+            }
+        };
+        sizeMenuOpenDescriptor = DependencyPropertyDescriptor.FromProperty(
+            System.Windows.Controls.ContextMenu.IsOpenProperty, typeof(System.Windows.Controls.ContextMenu));
+        sizeMenuOpenDescriptor?.AddValueChanged(WindowSizeMenu, OnWindowSizeMenuOpenStateChanged);
         ProductHome.SettingsRequested += () => OnDesktopNavigationClick(this, new RoutedEventArgs());
         ProductHome.HomeRequested += ShowOverview;
         ProductHome.NoticeRequested += () =>
@@ -60,16 +93,23 @@ public partial class ControlCenterWindow : Window
             else OnDesktopNavigationClick(this, new RoutedEventArgs());
         };
         ProductHome.SettingsActionRequested += OnProductSettingsAction;
+        ProductHome.WindowPresetRequested += SelectWindowPreset;
         if (commandController.UiMode == ApplicationUiMode.DeveloperReview) BuildPhysicsTuningPanel();
         ApplyUiMode();
-        if (settingsSession is not null)
+        var initialSettings = settingsSession?.Current ?? ControlCenterWindowSettings.CreateDefault();
+        Width = initialSettings.Width;
+        Height = initialSettings.Height;
+        if (commandController.UiMode == ApplicationUiMode.Product)
         {
-            Width = settingsSession.Current.Width;
-            Height = settingsSession.Current.Height;
+            selectedWindowPreset = initialSettings.SelectedPreset;
+            ProductHome.SetWindowPreset(selectedWindowPreset);
+            ApplyWindowPresetSize(fitWorkingArea: false);
+            UpdateWindowSizeMenu();
         }
         refreshingHostState = false;
         SizeChanged += (_, _) => { if (IsLoaded) scheduleSave?.Invoke(); };
         ContentRendered += (_, _) => { if (OverviewPage.Visibility == Visibility.Visible) OverviewPresented?.Invoke(); };
+        LocationChanged += (_, _) => OnProductWindowLocationChanged();
         SystemParameters.StaticPropertyChanged += OnSystemParametersChanged;
         Closed += OnClosed;
         hostStatusTimer.Tick += (_, _) => RefreshHostState();
@@ -100,8 +140,184 @@ public partial class ControlCenterWindow : Window
 
     public void PrepareForExit() => allowClose = true;
 
+    private void OnMinimizeWindowClick(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    public ControlCenterWindowPreset SelectedWindowPreset => selectedWindowPreset;
+
+    private void OnWindowSizeButtonClick(object sender, RoutedEventArgs e)
+    {
+        UpdateWindowSizeMenu();
+        WindowSizeMenu.PlacementTarget = WindowSizeButton;
+        WindowSizeMenu.Placement = PlacementMode.Bottom;
+        WindowSizeMenu.IsOpen = true;
+    }
+
+    private void OnLandscape1080pMenuItemClick(object sender, RoutedEventArgs e) =>
+        SelectWindowPreset(ControlCenterWindowPreset.Landscape1080p);
+
+    private void OnLandscape1440pMenuItemClick(object sender, RoutedEventArgs e) =>
+        SelectWindowPreset(ControlCenterWindowPreset.Landscape1440p);
+
+    private void OnPortraitMenuItemClick(object sender, RoutedEventArgs e) =>
+        SelectWindowPreset(ControlCenterWindowPreset.Portrait);
+
+    private void OnWindowSizeMenuClosed(object sender, RoutedEventArgs e) => ScheduleSizeMenuFocusRestore();
+
+    private void OnWindowSizeMenuPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Escape)
+            sizeMenuFocusExplicitlyRequested = true;
+    }
+
+    private void OnWindowSizeMenuOpenStateChanged(object? sender, EventArgs e)
+    {
+        if (!WindowSizeMenu.IsOpen) ScheduleSizeMenuFocusRestore();
+    }
+
+    private void ScheduleSizeMenuFocusRestore(bool explicitSelection = false)
+    {
+        sizeMenuFocusTimer.Stop();
+        sizeMenuFocusAttempts = 0;
+        sizeMenuFocusExplicitlyRequested |= explicitSelection;
+        sizeMenuFocusTimer.Start();
+    }
+
+    private static bool IsOwnProcessInForeground()
+    {
+        var foreground = GetForegroundWindow();
+        if (foreground == IntPtr.Zero) return false;
+        _ = GetWindowThreadProcessId(foreground, out var processId);
+        return processId == (uint)Environment.ProcessId;
+    }
+
+    [DllImport("user32.dll", ExactSpelling = true)]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", ExactSpelling = true)]
+    private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+
+    private void OnCloseWindowClick(object sender, RoutedEventArgs e) => Close();
+
+    private void UpdateWindowSizeMenu()
+    {
+        if (commandController.UiMode != ApplicationUiMode.Product) return;
+        Landscape1080pMenuItem.IsChecked = selectedWindowPreset == ControlCenterWindowPreset.Landscape1080p;
+        Landscape1440pMenuItem.IsChecked = selectedWindowPreset == ControlCenterWindowPreset.Landscape1440p;
+        PortraitMenuItem.IsChecked = selectedWindowPreset == ControlCenterWindowPreset.Portrait;
+    }
+
+    private void SelectWindowPreset(ControlCenterWindowPreset preset)
+    {
+        if (commandController.UiMode != ApplicationUiMode.Product || !Enum.IsDefined(preset)) return;
+        selectedWindowPreset = preset;
+        var referenceSize = ControlCenterWindowPresets.GetSize(preset);
+        settingsSession?.Stage(settingsSession.Current with
+        {
+            SelectedPreset = preset,
+            Width = referenceSize.Width,
+            Height = referenceSize.Height,
+        });
+        ProductHome.SetWindowPreset(preset);
+        UpdateWindowSizeMenu();
+        WindowSizeMenu.IsOpen = false;
+        ScheduleSizeMenuFocusRestore(explicitSelection: true);
+        ApplyWindowPresetSize(fitWorkingArea: new WindowInteropHelper(this).Handle != IntPtr.Zero);
+        saveSettings?.Invoke();
+    }
+
+    private void ApplyWindowPresetSize(bool fitWorkingArea)
+    {
+        if (commandController.UiMode != ApplicationUiMode.Product || applyingWindowPreset) return;
+        applyingWindowPreset = true;
+        try
+        {
+            var referenceSize = ControlCenterWindowPresets.GetSize(selectedWindowPreset);
+            var deviceToLogical = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformFromDevice
+                ?? Matrix.Identity;
+            var logicalTarget = deviceToLogical.Transform(
+                new Vector(referenceSize.Width, referenceSize.Height));
+            var width = logicalTarget.X;
+            var height = logicalTarget.Y;
+            if (selectedWindowPreset == ControlCenterWindowPreset.Portrait)
+            {
+                width = Math.Max(width, ControlCenterWindowPresets.PortraitMinimumLogicalWidth);
+                height = Math.Max(height, ControlCenterWindowPresets.PortraitMinimumLogicalHeight);
+            }
+            Rect? workArea = null;
+            if (fitWorkingArea)
+            {
+                var handle = new WindowInteropHelper(this).Handle;
+                if (handle != IntPtr.Zero)
+                {
+                    var screen = Forms.Screen.FromHandle(handle);
+                    currentMonitorName = screen.DeviceName;
+                    var area = screen.WorkingArea;
+                    workArea = new Rect(
+                        deviceToLogical.Transform(new System.Windows.Point(area.Left, area.Top)),
+                        deviceToLogical.Transform(new System.Windows.Point(area.Right, area.Bottom)));
+                    var logicalMargin = deviceToLogical.Transform(new Vector(12, 12));
+                    width = Math.Min(width, Math.Max(1, workArea.Value.Width - logicalMargin.X));
+                    height = Math.Min(height, Math.Max(1, workArea.Value.Height - logicalMargin.Y));
+                    if (selectedWindowPreset == ControlCenterWindowPreset.Portrait)
+                        height = Math.Min(height, Math.Max(1, workArea.Value.Height *
+                            ControlCenterWindowPresets.PortraitMaximumWorkAreaHeightFraction));
+                }
+            }
+
+            var previousWidth = ActualWidth > 0 ? ActualWidth : Width;
+            var previousHeight = ActualHeight > 0 ? ActualHeight : Height;
+            WindowState = WindowState.Normal;
+            MinWidth = Math.Min(ControlCenterWindowSettingsValidator.MinimumWidth, width);
+            MinHeight = Math.Min(ControlCenterWindowSettingsValidator.MinimumHeight, height);
+            Width = width;
+            Height = height;
+            if (workArea is { } bounds)
+            {
+                var centerX = double.IsFinite(Left) ? Left + previousWidth / 2 : bounds.Left + bounds.Width / 2;
+                var centerY = double.IsFinite(Top) ? Top + previousHeight / 2 : bounds.Top + bounds.Height / 2;
+                Left = Math.Clamp(centerX - width / 2, bounds.Left, bounds.Right - width);
+                Top = Math.Clamp(centerY - height / 2, bounds.Top, bounds.Bottom - height);
+            }
+        }
+        finally
+        {
+            applyingWindowPreset = false;
+        }
+    }
+
+    private void OnProductWindowLocationChanged()
+    {
+        if (commandController.UiMode != ApplicationUiMode.Product || applyingWindowPreset || !IsLoaded) return;
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero) return;
+        var monitorName = Forms.Screen.FromHandle(handle).DeviceName;
+        if (string.Equals(monitorName, currentMonitorName, StringComparison.Ordinal)) return;
+        Dispatcher.BeginInvoke(() => ApplyWindowPresetSize(fitWorkingArea: true), DispatcherPriority.Loaded);
+    }
+
+    private IntPtr OnProductWindowMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        const int WmDpiChanged = 0x02E0;
+        if (msg == WmDpiChanged)
+            Dispatcher.BeginInvoke(() => ApplyWindowPresetSize(fitWorkingArea: true), DispatcherPriority.Loaded);
+        return IntPtr.Zero;
+    }
+
+    private void RequestRoundedProductCorners()
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000)) return;
+        var handle = new WindowInteropHelper(this).Handle;
+        if (handle == IntPtr.Zero) return;
+        var preference = DwmRoundCorners;
+        _ = DwmSetWindowAttribute(handle, DwmWindowCornerPreference, ref preference, sizeof(int));
+    }
+
+    [DllImport("dwmapi.dll", ExactSpelling = true)]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        if (commandController.UiMode == ApplicationUiMode.Product) ApplyWindowPresetSize(fitWorkingArea: true);
         if (commandController.UiMode == ApplicationUiMode.DeveloperReview) LoadOrCreateVerificationSession();
         RefreshHostState();
         if (!string.IsNullOrWhiteSpace(settingsSession?.StartupWarning))
@@ -128,12 +344,17 @@ public partial class ControlCenterWindow : Window
     private void OnClosed(object? sender, EventArgs e)
     {
         hostStatusTimer.Stop();
+        sizeMenuFocusTimer.Stop();
+        sizeMenuOpenDescriptor?.RemoveValueChanged(WindowSizeMenu, OnWindowSizeMenuOpenStateChanged);
         SystemParameters.StaticPropertyChanged -= OnSystemParametersChanged;
         RestoreThemeOverrides();
     }
 
     private void OnSystemParametersChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (string.Equals(e.PropertyName, nameof(SystemParameters.WorkArea), StringComparison.Ordinal) &&
+            commandController.UiMode == ApplicationUiMode.Product)
+            Dispatcher.BeginInvoke(() => ApplyWindowPresetSize(fitWorkingArea: true), DispatcherPriority.Loaded);
         if (!string.Equals(e.PropertyName, nameof(SystemParameters.HighContrast), StringComparison.Ordinal))
         {
             return;
@@ -191,15 +412,14 @@ public partial class ControlCenterWindow : Window
 
     private void OnKeyboardControlChanged(object sender, RoutedEventArgs e)
     {
-        if (refreshingHostState || KeyboardControlCheckBox.IsChecked is null ||
-            ArrowKeysRadioButton.IsChecked is null || WasdRadioButton.IsChecked is null)
+        if (refreshingHostState || KeyboardControlCheckBox.IsChecked is null)
         {
             return;
         }
 
         var settings = new KeyboardControlSettings(
             KeyboardControlCheckBox.IsChecked.Value,
-            WasdRadioButton.IsChecked == true ? KeyboardControlScheme.Wasd : KeyboardControlScheme.ArrowKeys);
+            KeyboardControlScheme.Wasd);
         ApplyCommand(commandController.ApplyKeyboardControlSettings(settings));
     }
 
@@ -382,15 +602,8 @@ public partial class ControlCenterWindow : Window
                 }));
                 break;
             case ProductSettingsAction.ToggleKeyboard:
-            case ProductSettingsAction.ArrowKeys:
-            case ProductSettingsAction.Wasd:
                 var currentKeyboard = commandController.GetKeyboardControlSettings();
-                var updatedKeyboard = action switch
-                {
-                    ProductSettingsAction.ToggleKeyboard => currentKeyboard with { IsEnabled = !currentKeyboard.IsEnabled },
-                    ProductSettingsAction.ArrowKeys => currentKeyboard with { Scheme = KeyboardControlScheme.ArrowKeys },
-                    _ => currentKeyboard with { Scheme = KeyboardControlScheme.Wasd },
-                };
+                var updatedKeyboard = currentKeyboard with { IsEnabled = !currentKeyboard.IsEnabled };
                 ApplyCommand(commandController.ApplyKeyboardControlSettings(updatedKeyboard));
                 break;
             case ProductSettingsAction.RetryInitialization:
@@ -475,8 +688,6 @@ public partial class ControlCenterWindow : Window
             InteractionCheckBox.IsChecked = snapshot.IsInteractionEnabled;
             var keyboard = commandController.GetKeyboardControlSettings();
             KeyboardControlCheckBox.IsChecked = keyboard.IsEnabled;
-            ArrowKeysRadioButton.IsChecked = keyboard.Scheme == KeyboardControlScheme.ArrowKeys;
-            WasdRadioButton.IsChecked = keyboard.Scheme == KeyboardControlScheme.Wasd;
             DebugSkeletonCheckBox.IsChecked = commandController.IsDebugSkeletonVisible;
             var dangoCount = commandController.DangoCount;
             DangoCountText.Text = $"当前 {dangoCount} 只（最多 3 只）；拖动选择团子，移除作用于选中团子。";
@@ -505,7 +716,8 @@ public partial class ControlCenterWindow : Window
                 ready, snapshot.IsVisible, snapshot.IsInteractionEnabled, snapshot.Mode,
                 keyboard, layering.DangoLayer,
                 snapshot.LastError, settingsSession?.HasWarning == true,
-                settingsSession?.IsWriteProtected == true, settingsSession?.StatusMessage ?? string.Empty));
+                settingsSession?.IsWriteProtected == true, settingsSession?.StatusMessage ?? string.Empty,
+                commandController.CanShowDesktop));
         }
         finally
         {
@@ -794,7 +1006,7 @@ public partial class ControlCenterWindow : Window
         var product = commandController.UiMode == ApplicationUiMode.Product;
         ProductHome.Visibility = product ? Visibility.Visible : Visibility.Collapsed;
         LegacyShell.Visibility = product ? Visibility.Collapsed : Visibility.Visible;
-        MinWidth = product ? ControlCenterWindowSettingsValidator.MinimumWidth : 820;
+        MinWidth = product ? Math.Min(ControlCenterWindowSettingsValidator.MinimumWidth, Width) : 820;
         OverviewPage.Visibility = Visibility.Collapsed;
         DesktopPage.Visibility = Visibility.Collapsed;
         VerificationPage.Visibility = Visibility.Collapsed;
@@ -808,6 +1020,26 @@ public partial class ControlCenterWindow : Window
     private void ApplyUiMode()
     {
         if (commandController.UiMode != ApplicationUiMode.Product) return;
+        WindowStyle = WindowStyle.None;
+        ResizeMode = ResizeMode.NoResize;
+        AllowsTransparency = false;
+        Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(253, 252, 249));
+        WindowChrome.SetWindowChrome(this, new WindowChrome
+        {
+            CaptionHeight = 40,
+            CornerRadius = new CornerRadius(14),
+            GlassFrameThickness = new Thickness(0),
+            ResizeBorderThickness = new Thickness(0),
+            UseAeroCaptionButtons = false,
+        });
+        ProductWindowChrome.Visibility = Visibility.Visible;
+        SourceInitialized += (_, _) =>
+        {
+            RequestRoundedProductCorners();
+            (PresentationSource.FromVisual(this) as HwndSource)?.AddHook(OnProductWindowMessage);
+            ApplyWindowPresetSize(fitWorkingArea: true);
+        };
+        UpdateWindowSizeMenu();
         foreach (var element in new UIElement[] { VerificationNavigation, ContinueVerificationButton,
             PopulationCard, SkeletonCard, PhysicsCard, CushionTitle, CushionOptions, IslandTitle, IslandDescription })
             element.Visibility = Visibility.Collapsed;

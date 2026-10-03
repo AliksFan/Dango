@@ -300,21 +300,17 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
             return false;
         }
 
-        var left = keyboardSettings.Scheme == KeyboardControlScheme.ArrowKeys ? Key.Left : Key.A;
-        var right = keyboardSettings.Scheme == KeyboardControlScheme.ArrowKeys ? Key.Right : Key.D;
-        var jump = keyboardSettings.Scheme == KeyboardControlScheme.ArrowKeys ? Key.Up : Key.W;
-        var squash = keyboardSettings.Scheme == KeyboardControlScheme.ArrowKeys ? Key.Down : Key.S;
-        if (key != left && key != right && key != jump && key != squash)
+        if (!KeyboardControlKeyPolicy.TryMap(KeyInterop.VirtualKeyFromKey(key), keyboardSettings.Scheme, out var mapped))
         {
             return false;
         }
 
         currentIntent = currentIntent with
         {
-            Left = key == left ? isDown : currentIntent.Left,
-            Right = key == right ? isDown : currentIntent.Right,
-            Jump = key == jump ? isDown : currentIntent.Jump,
-            Squash = key == squash ? isDown : currentIntent.Squash,
+            Left = mapped == DirectionalControlKey.Left ? isDown : currentIntent.Left,
+            Right = mapped == DirectionalControlKey.Right ? isDown : currentIntent.Right,
+            Jump = mapped == DirectionalControlKey.Jump ? isDown : currentIntent.Jump,
+            Squash = mapped == DirectionalControlKey.Squash ? isDown : currentIntent.Squash,
         };
         return true;
     }
@@ -502,9 +498,9 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
 
     private void ApplyPresentationFrame(StackedPhysicsPresentationFrame frame)
     {
-        DangoHostFrameBinding.Apply(DangoVisual, DangoHat, frame, 0, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize);
-        DangoHostFrameBinding.Apply(MiddleDangoVisual, MiddleDangoHat, frame, 1, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize);
-        DangoHostFrameBinding.Apply(TopDangoVisual, TopDangoHat, frame, 2, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize);
+        DangoHostFrameBinding.Apply(DangoVisual, DangoHat, frame, 0, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize, bodyFillOverride: motionRuntime.BodyPreviewFill);
+        DangoHostFrameBinding.Apply(MiddleDangoVisual, MiddleDangoHat, frame, 1, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize, bodyFillOverride: motionRuntime.BodyPreviewFill);
+        DangoHostFrameBinding.Apply(TopDangoVisual, TopDangoHat, frame, 2, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize, bodyFillOverride: motionRuntime.BodyPreviewFill);
     }
 
 

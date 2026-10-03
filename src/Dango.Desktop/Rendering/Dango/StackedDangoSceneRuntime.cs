@@ -6,6 +6,9 @@ using Dango.Desktop.Physics.Presentation;
 using Dango.Desktop.Physics.Presentation.Attachments;
 using Dango.Desktop.Physics.Tuning;
 using Dango.Physics;
+using Brush = System.Windows.Media.Brush;
+using Color = System.Windows.Media.Color;
+using SolidColorBrush = System.Windows.Media.SolidColorBrush;
 
 namespace Dango.Desktop.Rendering.Visuals;
 
@@ -47,6 +50,14 @@ public sealed class StackedDangoSceneRuntime : IDisposable
     public HatAppearance CurrentHatAppearance => DangoHatPresets.GetAppearance(CurrentHatPresetId);
     public HatAppearance DisplayHatAppearance => CurrentHatAppearance;
     public double DisplayHatSize => AttachmentsEnabled ? 1.35 : 1;
+    public Brush? BodyPreviewFill { get; private set; }
+    public void SetBodyPreviewColor(Color color)
+    {
+        VerifyAccess();
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        BodyPreviewFill = brush;
+    }
     public string? AttachmentError => attachments?.LastError;
     public event Action? HatPresetChanged;
     internal QuietIdleSceneController QuietIdle { get; } = new();
@@ -63,11 +74,12 @@ public sealed class StackedDangoSceneRuntime : IDisposable
     internal bool GaitEnabled { get; set; } = true;
     public string? GaitError => Gait.Error;
     private double? wanderScreenWidth;
-    internal void UpdateWanderScreenWidth(object owner, double width)
+    internal void UpdateWanderScreenWidth(object owner, double? width)
     {
         VerifyAccess();
         if (!ReferenceEquals(quietIdleHost, owner)) return;
-        if (!double.IsFinite(width) || width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
+        if (width is { } value && (!double.IsFinite(value) || value <= 0))
+            throw new ArgumentOutOfRangeException(nameof(width));
         if (wanderScreenWidth == width) return;
         Gait.InvalidateSampling();
         CancelDoze();

@@ -2,8 +2,8 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Threading;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.DesktopHost;
@@ -38,13 +38,13 @@ public sealed class ProductSettingsPageTests
                 "Failure feedback should be announced without stealing keyboard focus.");
             Assert.AreEqual(Visibility.Visible, ((UIElement)window.FindName("DesktopPage")).Visibility,
                 "The host page state should follow the visible product settings page.");
-            Assert.AreEqual(0, ((Button)home.FindName("HomeNavigation")).BorderThickness.Bottom);
+            Assert.AreEqual(Visibility.Collapsed, ((UIElement)home.FindName("HomeNavigation")).Visibility);
             Assert.AreEqual(2, ((Button)home.FindName("SettingsButton")).BorderThickness.Bottom);
             Click((Button)home.FindName("BackFromSettingsButton"));
             Assert.AreEqual(Visibility.Visible, ((UIElement)home.FindName("HomeContent")).Visibility);
             Assert.AreEqual(Visibility.Collapsed, settings.Visibility);
             Assert.AreEqual(Visibility.Visible, ((UIElement)window.FindName("OverviewPage")).Visibility);
-            Assert.AreEqual(2, ((Button)home.FindName("HomeNavigation")).BorderThickness.Bottom);
+            Assert.AreEqual(Visibility.Collapsed, ((UIElement)home.FindName("HomeNavigation")).Visibility);
             Assert.AreEqual(0, ((Button)home.FindName("SettingsButton")).BorderThickness.Bottom);
         }
         finally
@@ -74,6 +74,24 @@ public sealed class ProductSettingsPageTests
     }
 
     [STATestMethod]
+    public void SettingsPresetChoiceAppliesToTheSameWindowAndSurvivesReload()
+    {
+        using var rig = new SettingsRig();
+        rig.OpenSettings();
+
+        foreach (var name in new[] { "Landscape1080pSettingsButton", "Landscape1440pSettingsButton", "PortraitSettingsButton" })
+            Assert.IsNotNull(rig.Home.FindName(name), $"Missing one of the three fixed size choices: {name}.");
+
+        rig.Click("PortraitSettingsButton");
+        Assert.AreEqual(480d, rig.Window.Width);
+        Assert.AreEqual(800d, rig.Window.Height);
+        var stored = new ControlCenterWindowSettingsStore().Load(rig.Path);
+        Assert.AreEqual("Portrait", stored.GetType().GetProperty("SelectedPreset")?.GetValue(stored)?.ToString(),
+            "The chosen preset must survive restarting the control center.");
+        Assert.AreEqual("已选", AutomationProperties.GetItemStatus(rig.Button("PortraitSettingsButton")));
+    }
+
+    [STATestMethod]
     public void EscapeLeavesSettingsAndRestoresHomeFocus()
     {
         using var rig = new SettingsRig();
@@ -90,7 +108,8 @@ public sealed class ProductSettingsPageTests
         Assert.IsTrue(key.Handled);
         Assert.IsFalse(rig.Home.IsSettingsOpen);
         Assert.AreEqual(Visibility.Visible, ((UIElement)rig.Window.FindName("OverviewPage")).Visibility);
-        Assert.IsTrue(rig.Button("HomeNavigation").IsKeyboardFocused);
+        Assert.IsTrue(((FrameworkElement)rig.Home.FindName("Stage")).IsKeyboardFocused,
+            "Returning from settings must focus the visible home stage, not a hidden navigation item.");
     }
 
     [STATestMethod]
@@ -146,11 +165,11 @@ public sealed class ProductSettingsPageTests
         Assert.AreEqual("已选", AutomationProperties.GetItemStatus(rig.Button("AboveIconsButton")));
 
         rig.Click("KeyboardToggleButton");
-        rig.Click("WasdButton");
         Assert.AreEqual(new KeyboardControlSettings(true, KeyboardControlScheme.Wasd),
             rig.Host.GetKeyboardControlSettings());
         StringAssert.Contains(AutomationProperties.GetName(rig.Button("KeyboardToggleButton")), "已开启");
-        Assert.AreEqual("已选", AutomationProperties.GetItemStatus(rig.Button("WasdButton")));
+        Assert.IsNull(rig.Home.FindName("ArrowsButton"), "不应再提供方向键方案。");
+        Assert.IsNull(rig.Home.FindName("WasdButton"), "只有一套键位时不应再提供方案切换。");
 
         var restored = new ControlCenterWindowSettingsStore().Load(rig.Path);
         Assert.IsFalse(restored.InteractionEnabled);
@@ -158,7 +177,7 @@ public sealed class ProductSettingsPageTests
         Assert.AreEqual(DesktopObjectLayer.AboveDesktopIcons, restored.DesktopLayeringExperiment.DangoLayer);
         Assert.AreEqual(new KeyboardControlSettings(true, KeyboardControlScheme.Wasd), restored.KeyboardControl);
         Assert.AreEqual("sprout", restored.HatPresetId, "设置页的其他操作不应意外改变既有帽型。");
-        Assert.AreEqual(7, rig.SaveCalls, "每个得到宿主确认的操作才触发保存。");
+        Assert.AreEqual(6, rig.SaveCalls, "每个得到宿主确认的操作才触发保存。");
     }
 
     [STATestMethod]
@@ -195,7 +214,8 @@ public sealed class ProductSettingsPageTests
         rig.Click("KeyboardToggleButton");
         Assert.AreEqual(KeyboardControlSettings.CreateDefault(), host.GetKeyboardControlSettings());
         Assert.AreEqual("已关闭", rig.Button("KeyboardToggleButton").Content);
-        Assert.IsFalse(rig.Button("WasdButton").IsEnabled);
+        Assert.IsNull(rig.Home.FindName("ArrowsButton"));
+        Assert.IsNull(rig.Home.FindName("WasdButton"));
 
         StringAssert.Contains(((TextBlock)rig.Home.FindName("SettingsCommandStatus")).Text, "未确认");
         Assert.AreEqual(0, rig.SaveCalls);

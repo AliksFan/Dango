@@ -4,46 +4,11 @@ using Dango.Desktop.DesktopHost.Win32;
 
 namespace Dango.Desktop.DesktopHost.WorkerW;
 
-public enum DirectionalControlKey
+public static class WorkerWKeyboardCapturePolicy
 {
-    Left,
-    Right,
-    Jump,
-    Squash,
-}
-
-public static class KeyboardControlKeyPolicy
-{
-    public static bool TryMap(int virtualKey, KeyboardControlScheme scheme, out DirectionalControlKey key)
-    {
-        key = default;
-        return scheme switch
-        {
-            KeyboardControlScheme.ArrowKeys => virtualKey switch
-            {
-                0x25 => Set(DirectionalControlKey.Left, out key),
-                0x27 => Set(DirectionalControlKey.Right, out key),
-                0x26 => Set(DirectionalControlKey.Jump, out key),
-                0x28 => Set(DirectionalControlKey.Squash, out key),
-                _ => false,
-            },
-            KeyboardControlScheme.Wasd => virtualKey switch
-            {
-                0x41 => Set(DirectionalControlKey.Left, out key),
-                0x44 => Set(DirectionalControlKey.Right, out key),
-                0x57 => Set(DirectionalControlKey.Jump, out key),
-                0x53 => Set(DirectionalControlKey.Squash, out key),
-                _ => false,
-            },
-            _ => false,
-        };
-    }
-
-    private static bool Set(DirectionalControlKey value, out DirectionalControlKey key)
-    {
-        key = value;
-        return true;
-    }
+    public static bool ShouldActivate(bool settingsEnabled, bool hostReady, bool interactionEnabled,
+        bool roomGameplayInputActive, bool explorerDesktopForeground) =>
+        settingsEnabled && hostReady && interactionEnabled && roomGameplayInputActive && explorerDesktopForeground;
 }
 
 public sealed class DirectionalControlHeldState
@@ -97,6 +62,7 @@ internal sealed class WorkerWKeyboardInputBridge : IDisposable
     private nint hook;
     private bool disposed;
     private bool installationFailed;
+    private bool roomGameplayInputActive;
 
     public WorkerWKeyboardInputBridge(WorkerWDesktopTarget target)
     {
@@ -118,11 +84,13 @@ internal sealed class WorkerWKeyboardInputBridge : IDisposable
         installationFailed = false;
     }
 
-    public void Refresh(bool hostReady, bool interactionEnabled)
+    public void Refresh(bool hostReady, bool interactionEnabled, bool roomGameplayInputActive)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
-        var shouldActivate = settings.IsEnabled && hostReady && interactionEnabled &&
-            NativeMethods.IsExplorerDesktopForeground(target);
+        this.roomGameplayInputActive = roomGameplayInputActive;
+        var shouldActivate = WorkerWKeyboardCapturePolicy.ShouldActivate(
+            settings.IsEnabled, hostReady, interactionEnabled, roomGameplayInputActive,
+            roomGameplayInputActive && NativeMethods.IsExplorerDesktopForeground(target));
         if (!shouldActivate)
         {
             Deactivate();
@@ -132,9 +100,7 @@ internal sealed class WorkerWKeyboardInputBridge : IDisposable
         if (hook == nint.Zero && !installationFailed)
         {
             // Do not import an already-held key from a different focused app.
-            var keys = settings.Scheme == KeyboardControlScheme.Wasd
-                ? new[] { 0x41, 0x44, 0x57, 0x53 }
-                : new[] { 0x25, 0x27, 0x26, 0x28 };
+            var keys = new[] { 0x41, 0x44, 0x53, 0x20 };
             foreach (var virtualKey in keys)
                 if (NativeMethods.IsInputKeyPressed(virtualKey) && KeyboardControlKeyPolicy.TryMap(virtualKey, settings.Scheme, out var key))
                     heldState.SuppressUntilRelease(key);
@@ -158,7 +124,8 @@ internal sealed class WorkerWKeyboardInputBridge : IDisposable
 
     private nint OnKeyboard(int code, nint wordParameter, nint longParameter)
     {
-        if (code < 0 || hook == nint.Zero || !NativeMethods.IsExplorerDesktopForeground(target))
+        if (code < 0 || hook == nint.Zero || !roomGameplayInputActive ||
+            !NativeMethods.IsExplorerDesktopForeground(target))
         {
             return NativeMethods.CallNextKeyboardHook(hook, code, wordParameter, longParameter);
         }

@@ -37,7 +37,7 @@ public sealed class ProductApplicationHostTests
             Assert.IsFalse(commands.IsDebugSkeletonVisible);
             Assert.AreEqual("Wallpaper", commands.GetSnapshot().Mode);
             Assert.IsFalse(commands.GetKeyboardControlSettings().IsEnabled);
-            Assert.AreEqual(KeyboardControlScheme.ArrowKeys, commands.GetKeyboardControlSettings().Scheme);
+            Assert.AreEqual(KeyboardControlScheme.Wasd, commands.GetKeyboardControlSettings().Scheme);
             Assert.AreEqual(CommandApplicationState.Applied, commands.ApplyHatPreset("bowler").State);
             Assert.AreEqual(CommandApplicationState.Applied, commands.SetInteractionEnabled(false).State);
             if (createControlCenter)

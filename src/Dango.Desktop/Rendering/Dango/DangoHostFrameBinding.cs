@@ -28,7 +28,7 @@ internal static class DangoHostFrameBinding
 
     public static void Apply(DeformableDangoVisual body, DangoHatVisual hat,
         StackedPhysicsPresentationFrame frame, int index, LogicalVector translation = default,
-        HatAppearance appearance = HatAppearance.Sprout, double hatSize = 1)
+        HatAppearance appearance = HatAppearance.Sprout, double hatSize = 1, System.Windows.Media.Brush? bodyFillOverride = null)
     {
         var active = index < frame.Bodies.Count;
         body.Visibility = hat.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
@@ -39,7 +39,8 @@ internal static class DangoHostFrameBinding
         var bounds = Bounds(frame, index).Translate(translation);
         Canvas.SetLeft(body, bounds.X); Canvas.SetTop(body, bounds.Y);
         Canvas.SetLeft(hat, bounds.X); Canvas.SetTop(hat, bounds.Y);
-        if (index < frame.ColorSlots.Count) body.BodyFill = Colors[frame.ColorSlots[index]];
+        if (bodyFillOverride is not null) body.BodyFill = bodyFillOverride;
+        else if (index < frame.ColorSlots.Count) body.BodyFill = Colors[frame.ColorSlots[index]];
         var gait = frame.Gait is { } candidate && index < frame.EntityIds.Count &&
             candidate.Matches(frame.Bodies[index], frame.EntityIds[index]) ? candidate : null;
         body.ApplyFrame(frame.Bodies[index], gait);

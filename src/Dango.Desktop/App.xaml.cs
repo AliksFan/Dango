@@ -71,8 +71,12 @@ public partial class App : System.Windows.Application
 
         var physicsReview = e.Args.Contains("--physics-host-review", StringComparer.Ordinal);
         var eyeHatReview = e.Args.Contains("--eye-hat-review", StringComparer.Ordinal);
-        if (physicsReview && eyeHatReview) throw new ArgumentException("Choose one isolated review mode.");
-        var instanceName = eyeHatReview ? SingleInstanceName + ".EyeHatReview" : physicsReview ? SingleInstanceName + ".PhysicsHostReview" : SingleInstanceName;
+        var unifiedHomeReview = e.Args.Contains("--unified-live-home-review", StringComparer.Ordinal);
+        if ((physicsReview ? 1 : 0) + (eyeHatReview ? 1 : 0) + (unifiedHomeReview ? 1 : 0) > 1)
+            throw new ArgumentException("Choose one isolated review mode.");
+        var instanceName = eyeHatReview ? SingleInstanceName + ".EyeHatReview"
+            : physicsReview ? SingleInstanceName + ".PhysicsHostReview"
+            : unifiedHomeReview ? SingleInstanceName + ".UnifiedHomeReview" : SingleInstanceName;
         singleInstanceCoordinator = SingleInstanceCoordinator.TryBecomePrimary(
             instanceName,
             () => Dispatcher.BeginInvoke(
@@ -86,7 +90,8 @@ public partial class App : System.Windows.Application
         }
 
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
-        applicationHost = new DangoApplicationHost(physicsReview, eyeHatReview);
+        applicationHost = new DangoApplicationHost(physicsReview, eyeHatReview,
+            isolatedUnifiedHomeReview: unifiedHomeReview);
         applicationHost.Start();
         if (physicsReview || eyeHatReview) applicationHost.ShowControlCenter();
     }

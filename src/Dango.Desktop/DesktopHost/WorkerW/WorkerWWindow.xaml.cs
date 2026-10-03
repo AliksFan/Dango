@@ -198,7 +198,8 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         motionRuntime.UpdateQuietIdleHost(this, isEnabled && isVisible);
         keyboardInputBridge?.Refresh(
             recoveryState.State == WorkerWRecoveryState.Attached && isVisible,
-            isEnabled);
+            isEnabled,
+            roomGameplayInputActive: false);
         DangoVisual.IsHitTestVisible = isEnabled;
         MiddleDangoVisual.IsHitTestVisible = isEnabled;
         TopDangoVisual.IsHitTestVisible = isEnabled;
@@ -710,7 +711,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         cushionAboveWindow.Hide();
         islandOverlayWindow.SetDesiredVisibility(false);
         foreach (var proxy in inputProxies.Values) proxy.SetEnabled(false);
-        keyboardInputBridge?.Refresh(hostReady: false, interactionEnabled: false);
+        keyboardInputBridge?.Refresh(hostReady: false, interactionEnabled: false, roomGameplayInputActive: false);
     }
 
     private static void SetWindowVisibility(Window window, bool isVisible)
@@ -778,7 +779,8 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         var now = NowMilliseconds();
         keyboardInputBridge?.Refresh(
             recoveryState.State == WorkerWRecoveryState.Attached && isVisible,
-            isInteractionEnabled);
+            isInteractionEnabled,
+            roomGameplayInputActive: false);
         var desktopForeground = currentTarget is not null && NativeMethods.IsExplorerDesktopForeground(currentTarget);
         ObserveQuietIdleForeground(desktopForeground);
         motionRuntime.UpdateQuietIdleHost(this, isInteractionEnabled);
@@ -855,9 +857,9 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
 
     private void ApplyPresentationFrame(StackedPhysicsPresentationFrame frame)
     {
-        DangoHostFrameBinding.Apply(DangoVisual, DangoHat, frame, 0, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize);
-        DangoHostFrameBinding.Apply(MiddleDangoVisual, MiddleDangoHat, frame, 1, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize);
-        DangoHostFrameBinding.Apply(TopDangoVisual, TopDangoHat, frame, 2, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize);
+        DangoHostFrameBinding.Apply(DangoVisual, DangoHat, frame, 0, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize, bodyFillOverride: motionRuntime.BodyPreviewFill);
+        DangoHostFrameBinding.Apply(MiddleDangoVisual, MiddleDangoHat, frame, 1, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize, bodyFillOverride: motionRuntime.BodyPreviewFill);
+        DangoHostFrameBinding.Apply(TopDangoVisual, TopDangoHat, frame, 2, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize, bodyFillOverride: motionRuntime.BodyPreviewFill);
         ApplyObjectLayerVisibility();
     }
 

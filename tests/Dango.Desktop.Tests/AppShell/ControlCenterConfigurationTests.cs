@@ -1,4 +1,8 @@
 using System.Xml.Linq;
+using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Controls;
+using System.Windows.Shell;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.Verification;
@@ -37,6 +41,9 @@ public sealed class ControlCenterConfigurationTests
         StringAssert.Contains(text, "普通窗口 · 可移动和调整大小");
         Assert.IsFalse(text.Contains("OverlayHostRadioButton", StringComparison.Ordinal));
         Assert.IsFalse(text.Contains("WorkerWHostRadioButton", StringComparison.Ordinal));
+        Assert.IsFalse(text.Contains("ArrowKeysRadioButton", StringComparison.Ordinal));
+        Assert.IsFalse(text.Contains("WasdRadioButton", StringComparison.Ordinal));
+        StringAssert.Contains(text, "空格跳；W 交互");
         StringAssert.Contains(text, "对象层级（实验）");
         StringAssert.Contains(text, "团子层级");
         StringAssert.Contains(text, "占位软垫");
@@ -87,6 +94,93 @@ public sealed class ControlCenterConfigurationTests
         }
         window.PrepareForExit();
         window.Close();
+    }
+
+    [STATestMethod]
+    public void ProductWindowHasRoundedBorderlessControlsWhileDeveloperReviewKeepsNativeChrome()
+    {
+        var definition = VerificationDefinition.CreateP1003WorkerW();
+        var product = new ControlCenterWindow(
+            new ApplicationCommandController(new FakeDesktopHost(), ApplicationUiMode.Product),
+            definition, new VerificationSessionStore(definition),
+            Path.Combine(Path.GetTempPath(), $"Dango.ProductChrome.{Guid.NewGuid():N}.json"), () => { });
+        var review = new ControlCenterWindow(
+            new ApplicationCommandController(new FakeDesktopHost(), ApplicationUiMode.DeveloperReview),
+            definition, new VerificationSessionStore(definition),
+            Path.Combine(Path.GetTempPath(), $"Dango.ReviewChrome.{Guid.NewGuid():N}.json"), () => { });
+        try
+        {
+            Assert.AreEqual(WindowStyle.None, product.WindowStyle);
+            Assert.AreEqual(ResizeMode.NoResize, product.ResizeMode,
+                "Product dimensions are selected from three presets, not freely resized.");
+            Assert.IsFalse(product.AllowsTransparency, "Layered transparency would harm live WPF rendering.");
+            var chrome = WindowChrome.GetWindowChrome(product);
+            Assert.IsNotNull(chrome);
+            Assert.IsTrue(chrome.CornerRadius.TopLeft >= 8);
+            Assert.IsTrue(chrome.CaptionHeight <= 40, "The approved title area is deliberately thin.");
+            Assert.AreEqual(Visibility.Visible, ((UIElement)product.FindName("ProductWindowChrome")).Visibility);
+            foreach (var name in new[] { "MinimizeWindowButton", "WindowSizeButton", "CloseWindowButton" })
+            {
+                var button = product.FindName(name) as Button;
+                Assert.IsNotNull(button, $"Missing custom title control {name}.");
+                Assert.IsFalse(string.IsNullOrWhiteSpace(AutomationProperties.GetName(button)));
+                Assert.IsTrue(WindowChrome.GetIsHitTestVisibleInChrome(button));
+            }
+            Assert.IsTrue(WindowChrome.GetIsHitTestVisibleInChrome(
+                (Button)((ProductHomeView)product.FindName("ProductHome")).FindName("SettingsButton")),
+                "Settings must remain clickable inside the draggable caption region.");
+            Assert.AreNotEqual(WindowStyle.None, review.WindowStyle);
+            Assert.AreEqual(Visibility.Collapsed, ((UIElement)review.FindName("ProductWindowChrome")).Visibility);
+
+            ((Button)product.FindName("MinimizeWindowButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.AreEqual(WindowState.Minimized, product.WindowState);
+            product.WindowState = WindowState.Normal;
+            ((Button)product.FindName("WindowSizeButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.AreEqual(WindowState.Normal, product.WindowState);
+
+            product.Left = product.Top = -10000;
+            product.ShowInTaskbar = false;
+            product.Show();
+            ((Button)product.FindName("CloseWindowButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.IsFalse(product.IsVisible, "The custom close control must retain close-to-tray semantics.");
+        }
+        finally
+        {
+            product.PrepareForExit();
+            product.Close();
+            review.PrepareForExit();
+            review.Close();
+        }
+    }
+
+    [STATestMethod]
+    public void FreshDeveloperReviewKeepsItsHistoricalSizeWhileProductUsesDefaultPreset()
+    {
+        var definition = VerificationDefinition.CreateP1003WorkerW();
+        var product = new ControlCenterWindow(
+            new ApplicationCommandController(new FakeDesktopHost(), ApplicationUiMode.Product),
+            definition, new VerificationSessionStore(definition),
+            Path.Combine(Path.GetTempPath(), $"Dango.ProductSize.{Guid.NewGuid():N}.json"), () => { });
+        var review = new ControlCenterWindow(
+            new ApplicationCommandController(new FakeDesktopHost(), ApplicationUiMode.DeveloperReview),
+            definition, new VerificationSessionStore(definition),
+            Path.Combine(Path.GetTempPath(), $"Dango.ReviewSize.{Guid.NewGuid():N}.json"), () => { });
+        try
+        {
+            Assert.AreEqual(960d, product.Width);
+            Assert.AreEqual(540d, product.Height);
+            Assert.AreEqual(540d, product.MinHeight);
+            Assert.AreEqual(940d, review.Width, "The preset rollout must not resize fresh developer-review windows.");
+            Assert.AreEqual(620d, review.Height);
+            Assert.AreEqual(560d, review.MinHeight);
+        }
+        finally
+        {
+            product.PrepareForExit();
+            product.Close();
+            review.PrepareForExit();
+            review.Close();
+        }
     }
 
     private static string? Attribute(XElement element, string name) =>

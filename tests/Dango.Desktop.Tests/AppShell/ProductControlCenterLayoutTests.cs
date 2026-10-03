@@ -30,10 +30,10 @@ public sealed class ProductControlCenterLayoutTests
         var inner = (Grid)home.FindName("SettingsInner");
         var column = Assert.IsInstanceOfType<FrameworkElement>(inner.Children[0]);
         var viewport = (ScrollViewer)home.FindName("SettingsPage");
-        var expected = Math.Min(610, viewport.ViewportWidth - (width <= 420 ? 24 : width <= 680 ? 32 : 76));
+        var expected = Math.Min(610, viewport.ViewportWidth - (width <= 680 ? 32 : 76));
         Assert.AreEqual(expected, column.ActualWidth, 1,
             "Settings must use the available reading width instead of shrinking to its text content.");
-        foreach (var name in new[] { "DisplayToggleButton", "WindowModeButton", "AboveIconsButton", "WasdButton", "RetryWallpaperSettingsButton" })
+        foreach (var name in new[] { "DisplayToggleButton", "WindowModeButton", "AboveIconsButton", "KeyboardToggleButton", "RetryWallpaperSettingsButton" })
         {
             var button = (FrameworkElement)home.FindName(name);
             var bounds = button.TransformToAncestor(home).TransformBounds(new Rect(button.RenderSize));
@@ -58,8 +58,13 @@ public sealed class ProductControlCenterLayoutTests
         home.SetDiagnosticsText("fictional safe diagnostic details");
         var window = new Window
         {
-            Content = home, Width = width, Height = 620, WindowStyle = WindowStyle.None,
-            Left = -10000, Top = -10000, ShowInTaskbar = false,
+            Content = home,
+            Width = width,
+            Height = 620,
+            WindowStyle = WindowStyle.None,
+            Left = -10000,
+            Top = -10000,
+            ShowInTaskbar = false,
         };
         try
         {
@@ -92,8 +97,9 @@ public sealed class ProductControlCenterLayoutTests
     }
 
     [STATestMethod]
-    [DataRow(940, 620)]
-    [DataRow(820, 560)]
+    [DataRow(960, 540)]
+    [DataRow(1280, 720)]
+    [DataRow(480, 800)]
     public void ProductPagesRenderWithinTheSupportedControlCenterSizes(int width, int height)
     {
         var window = new ControlCenterWindow(
@@ -124,6 +130,125 @@ public sealed class ProductControlCenterLayoutTests
         }
     }
 
+    [STATestMethod]
+    [DataRow(640, 360)]
+    [DataRow(853, 480)]
+    [DataRow(360, 640)]
+    public void CompactDisplayKeepsHomeEditorsAndSettingsReachable(int width, int height)
+    {
+        var home = new ProductHomeView { ReduceMotion = true };
+        var size = new Size(width, height);
+        home.Measure(size);
+        home.Arrange(new Rect(size));
+        home.UpdateLayout();
+        AssertInside(home, (FrameworkElement)home.FindName("Launchers"), size, "home actions");
+
+        foreach (var editor in new[] { HomeEditor.Face, HomeEditor.Wardrobe })
+        {
+            home.ShowEditor(editor);
+            home.Measure(size);
+            home.Arrange(new Rect(size));
+            home.UpdateLayout();
+            var stage = Bounds(home, (FrameworkElement)home.FindName("Stage"));
+            var panel = Bounds(home, (FrameworkElement)home.FindName("EditorPanel"));
+            Assert.IsTrue(panel.Left >= stage.Left - 1 && panel.Right <= stage.Right + 1 &&
+                          panel.Top >= stage.Top - 1 && panel.Bottom <= stage.Bottom + 1,
+                $"{editor} panel must stay inside the scrollable stage at {width}×{height}; panel {panel}, stage {stage}.");
+            var options = Assert.IsInstanceOfType<ScrollViewer>(home.FindName("OptionsBody"),
+                "Editor options need their own scroll viewport when the display is short.");
+            var apply = Bounds(home, (FrameworkElement)home.FindName("ApplyButton"));
+            Assert.IsTrue(apply.Top >= panel.Top && apply.Bottom <= panel.Bottom + 1,
+                "The fixed editor action must remain in its panel while options scroll.");
+            if (editor == HomeEditor.Face)
+            {
+                var faceOptions = (StackPanel)home.FindName("FaceOptions");
+                var overflowProbe = new Border { Height = 400, IsHitTestVisible = false };
+                faceOptions.Children.Add(overflowProbe);
+                home.UpdateLayout();
+                Assert.IsTrue(options.ScrollableHeight > 0,
+                    $"Oversized face options must scroll at {width}×{height} DIP.");
+                options.ScrollToBottom();
+                home.UpdateLayout();
+                Assert.IsTrue(options.VerticalOffset > 0, "The editor must actually scroll to its lower controls.");
+                Assert.IsTrue(Bounds(home, (FrameworkElement)home.FindName("ApplyButton")).Bottom <= panel.Bottom + 1,
+                    "Scrolling options must not displace the fixed action row.");
+                faceOptions.Children.Remove(overflowProbe);
+            }
+        }
+
+        home.ShowSettingsPage();
+        home.Measure(size);
+        home.Arrange(new Rect(size));
+        home.UpdateLayout();
+        foreach (var name in new[] { "Landscape1080pSettingsButton", "Landscape1440pSettingsButton", "PortraitSettingsButton" })
+        {
+            var bounds = Bounds(home, (FrameworkElement)home.FindName(name));
+            Assert.IsTrue(bounds.Left >= 0 && bounds.Right <= width,
+                $"{name} must not overflow horizontally at {width} DIP; actual {bounds}.");
+        }
+    }
+
+    [STATestMethod]
+    public void TwoHundredPercentLandscapeKeepsHorizontalEditorsReachableByScrolling()
+    {
+        var home = new ProductHomeView { ReduceMotion = true };
+        var size = new Size(480, 270); // 960×540 physical pixels at 200% system DPI.
+        home.Measure(size);
+        home.Arrange(new Rect(size));
+        home.UpdateLayout();
+        var content = (ScrollViewer)home.FindName("HomeContent");
+        Assert.IsTrue(content.ScrollableHeight > 0, "A 270-DIP-tall window needs vertical scrolling.");
+        content.ScrollToBottom();
+        home.UpdateLayout();
+        Assert.IsTrue(Bounds(home, (FrameworkElement)home.FindName("Launchers")).Bottom <=
+                      Bounds(home, content).Bottom + 1, "Both home actions must remain reachable by scrolling.");
+
+        foreach (var (editor, column) in new[] { (HomeEditor.Face, 0), (HomeEditor.Wardrobe, 2) })
+        {
+            home.ShowEditor(editor);
+            home.UpdateLayout();
+            var panel = (FrameworkElement)home.FindName("EditorPanel");
+            Assert.AreEqual(1, Grid.GetColumnSpan(panel),
+                "The landscape preset must not turn into the portrait editor solely because DIP width is small.");
+            Assert.AreEqual(column, Grid.GetColumn(panel));
+            content.ScrollToBottom();
+            home.UpdateLayout();
+            Assert.IsTrue(Bounds(home, (FrameworkElement)home.FindName("ApplyButton")).Bottom <=
+                          Bounds(home, content).Bottom + 1, "The editor action must remain reachable by scrolling.");
+        }
+    }
+
+    [STATestMethod]
+    public void CollapsedCompactPortraitFitsWithoutPermanentHomeScrollbar()
+    {
+        var home = new ProductHomeView { ReduceMotion = true };
+        home.SetWindowPreset(ControlCenterWindowPreset.Portrait);
+        var size = new Size(360, 640); // Current-screen 150% portrait content floor.
+        home.Measure(size);
+        home.Arrange(new Rect(size));
+        home.UpdateLayout();
+        var content = (ScrollViewer)home.FindName("HomeContent");
+        var stage = (FrameworkElement)home.FindName("Stage");
+        Assert.AreEqual(0, content.ScrollableHeight, 1,
+            $"Collapsed portrait should not keep a scrollbar; viewport {content.ViewportHeight:F1}, " +
+            $"stage {stage.ActualHeight:F1}, minimum {stage.MinHeight:F1}.");
+
+        foreach (var editor in new[] { HomeEditor.Face, HomeEditor.Wardrobe })
+        {
+            home.ShowEditor(editor);
+            home.UpdateLayout();
+            var pet = Bounds(home, (FrameworkElement)home.FindName("PetPreview"));
+            var panel = Bounds(home, (FrameworkElement)home.FindName("EditorPanel"));
+            Assert.IsTrue(panel.Top >= pet.Bottom + 8,
+                $"{editor} must still dock below the raised pet; pet {pet}, panel {panel}.");
+            Assert.IsTrue(panel.Bottom <= Bounds(home, stage).Bottom + 1,
+                $"{editor} must remain inside the scrollable stage; panel {panel}.");
+        }
+    }
+
+    private static Rect Bounds(FrameworkElement root, FrameworkElement child) =>
+        child.TransformToAncestor(root).TransformBounds(new Rect(child.RenderSize));
+
     private static void RenderAndAssert(ControlCenterWindow window, FrameworkElement content, string pageName,
         string evidenceName, int width, int height)
     {
@@ -139,7 +264,15 @@ public sealed class ProductControlCenterLayoutTests
         if (pageName == "ProductHome")
         {
             AssertInside(content, (FrameworkElement)page.FindName("TopNavigation"), size, "home-navigation");
-            AssertInside(content, (FrameworkElement)page.FindName("SettingsButton"), size, "settings-entry");
+            var settingsButton = (FrameworkElement)page.FindName("SettingsButton");
+            AssertInside(content, settingsButton, size, "settings-entry");
+            foreach (var name in new[] { "MinimizeWindowButton", "WindowSizeButton", "CloseWindowButton" })
+                AssertInside(content, Element<FrameworkElement>(window, name), size, name);
+            var settingsBounds = settingsButton.TransformToAncestor(content).TransformBounds(new Rect(settingsButton.RenderSize));
+            var minimize = Element<FrameworkElement>(window, "MinimizeWindowButton");
+            var minimizeBounds = minimize.TransformToAncestor(content).TransformBounds(new Rect(minimize.RenderSize));
+            Assert.IsTrue(Rect.Intersect(settingsBounds, minimizeBounds).IsEmpty,
+                $"The product navigation must not collide with custom controls; settings {settingsBounds}, minimize {minimizeBounds}.");
         }
         else AssertInside(content, FindButton(window, "退出 Dango"), size, "exit");
 

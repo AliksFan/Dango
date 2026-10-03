@@ -7,9 +7,35 @@ using Dango.Desktop.Verification;
 
 namespace Dango.Desktop.AppShell.ControlCenter;
 
+public enum ControlCenterWindowPreset
+{
+    Landscape1080p,
+    Landscape1440p,
+    Portrait,
+}
+
+public readonly record struct ControlCenterWindowPresetSize(double Width, double Height);
+
+public static class ControlCenterWindowPresets
+{
+    // Landscape dimensions are physical-pixel targets. The portrait target is allowed
+    // to grow to its content minimum and is capped by the current work area at runtime.
+    public const double PortraitMinimumLogicalWidth = 360;
+    public const double PortraitMinimumLogicalHeight = 640;
+    public const double PortraitMaximumWorkAreaHeightFraction = 0.9;
+
+    public static ControlCenterWindowPresetSize GetSize(ControlCenterWindowPreset preset) => preset switch
+    {
+        ControlCenterWindowPreset.Landscape1080p => new(960, 540),
+        ControlCenterWindowPreset.Landscape1440p => new(1280, 720),
+        ControlCenterWindowPreset.Portrait => new(480, 800),
+        _ => throw new ArgumentOutOfRangeException(nameof(preset)),
+    };
+}
+
 public sealed record ControlCenterWindowSettings
 {
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 5;
 
     [JsonConstructor]
     public ControlCenterWindowSettings(
@@ -23,7 +49,8 @@ public sealed record ControlCenterWindowSettings
         bool showDebugSkeleton = false,
         bool interactionEnabled = true,
         string hatPresetId = "sprout",
-        bool introSeen = false)
+        bool introSeen = false,
+        ControlCenterWindowPreset selectedPreset = ControlCenterWindowPreset.Landscape1080p)
     {
         Width = width;
         Height = height;
@@ -36,6 +63,7 @@ public sealed record ControlCenterWindowSettings
         InteractionEnabled = interactionEnabled;
         HatPresetId = hatPresetId;
         IntroSeen = introSeen;
+        SelectedPreset = selectedPreset;
     }
 
     public double Width { get; init; }
@@ -49,7 +77,10 @@ public sealed record ControlCenterWindowSettings
     public bool InteractionEnabled { get; init; }
     public string HatPresetId { get; init; }
     public bool IntroSeen { get; init; }
+    public ControlCenterWindowPreset SelectedPreset { get; init; }
 
+    // Legacy review windows still use their original starting geometry; Product applies
+    // SelectedPreset when its window is created.
     public static ControlCenterWindowSettings CreateDefault() => new(940, 620);
 }
 
@@ -62,7 +93,7 @@ public sealed record ControlCenterSettingsLoadResult(
 public static class ControlCenterWindowSettingsValidator
 {
     public const double MinimumWidth = 336;
-    public const double MinimumHeight = 560;
+    public const double MinimumHeight = 540;
     public const double MaximumWidth = 7680;
     public const double MaximumHeight = 4320;
     public const double MinimumSceneWidth = 480;
@@ -76,6 +107,9 @@ public static class ControlCenterWindowSettingsValidator
         {
             throw new InvalidDataException("控制中心设置版本不受支持。");
         }
+
+        if (!Enum.IsDefined(settings.SelectedPreset))
+            throw new InvalidDataException("控制中心窗口预设不受支持。");
 
         if (!Enum.IsDefined(settings.DisplayMode))
         {
@@ -144,29 +178,42 @@ public sealed class ControlCenterWindowSettingsStore
             var persisted = JsonSerializer.Deserialize<PersistedSettings>(File.ReadAllText(path), SerializerOptions)
                 ?? throw new InvalidDataException("控制中心设置为空。");
             var sourceSchema = persisted.SchemaVersion ?? 1;
-            if (sourceSchema is not (1 or 2 or 3 or ControlCenterWindowSettings.CurrentSchemaVersion))
+            if (sourceSchema is not (1 or 2 or 3 or 4 or ControlCenterWindowSettings.CurrentSchemaVersion))
             {
                 return SafeDefault("设置版本无法识别，已使用安全默认值。");
             }
 
             var (displayMode, modeWarning) = ParseDisplayMode(persisted.DisplayMode);
+            var (selectedPreset, presetWarning) = ParsePreset(persisted.SelectedPreset);
             var defaults = ControlCenterWindowSettings.CreateDefault();
             var validHat = persisted.HatPresetId is null || DangoHatPresets.IsKnown(persisted.HatPresetId);
+            var legacyArrowKeyboard = persisted.KeyboardControl?.Scheme == KeyboardControlScheme.ArrowKeys;
+            var keyboardControl = legacyArrowKeyboard
+                ? persisted.KeyboardControl! with { Scheme = KeyboardControlScheme.Wasd }
+                : persisted.KeyboardControl;
             var settings = new ControlCenterWindowSettings(
                 persisted.Width ?? defaults.Width,
                 persisted.Height ?? defaults.Height,
                 ControlCenterWindowSettings.CurrentSchemaVersion,
                 persisted.DesktopLayeringExperiment,
-                persisted.KeyboardControl,
+                keyboardControl,
                 displayMode,
                 persisted.SceneWindow,
                 persisted.ShowDebugSkeleton ?? false,
                 persisted.InteractionEnabled ?? true,
                 validHat ? persisted.HatPresetId ?? "sprout" : "sprout",
-                persisted.IntroSeen ?? false);
+                persisted.IntroSeen ?? false,
+                selectedPreset);
             ControlCenterWindowSettingsValidator.Validate(settings);
-            return new(settings, sourceSchema != ControlCenterWindowSettings.CurrentSchemaVersion || !validHat || modeWarning is not null,
-                validHat ? modeWarning : "帽型无法识别，已使用叶芽；其余有效设置已保留。");
+            var warnings = new[]
+            {
+                validHat ? null : "帽型无法识别，已使用叶芽；其余有效设置已保留。",
+                modeWarning,
+                presetWarning,
+            }.Where(message => message is not null);
+            return new(settings, sourceSchema != ControlCenterWindowSettings.CurrentSchemaVersion || !validHat ||
+                modeWarning is not null || presetWarning is not null || legacyArrowKeyboard,
+                string.Join(" ", warnings) is { Length: > 0 } warning ? warning : null);
         }
         catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
         {
@@ -196,6 +243,18 @@ public sealed class ControlCenterWindowSettingsStore
         return (DesktopDisplayMode.Wallpaper, "显示模式无法识别，已切换到壁纸层安全默认值。");
     }
 
+    private static (ControlCenterWindowPreset Preset, string? Warning) ParsePreset(JsonElement? value)
+    {
+        if (value is null || value.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return (ControlCenterWindowPreset.Landscape1080p, null);
+        if (value.Value.ValueKind == JsonValueKind.String &&
+            Enum.TryParse<ControlCenterWindowPreset>(value.Value.GetString(), ignoreCase: true, out var preset) &&
+            Enum.IsDefined(preset))
+            return (preset, null);
+        return (ControlCenterWindowPreset.Landscape1080p,
+            "窗口尺寸档位无法识别，已使用 1080p 横向档；其余有效设置已保留。");
+    }
+
     private static ControlCenterSettingsLoadResult SafeDefault(string warning) =>
         new(ControlCenterWindowSettings.CreateDefault(), false, warning, PreserveOriginal: true);
 
@@ -212,5 +271,6 @@ public sealed class ControlCenterWindowSettingsStore
         public bool? InteractionEnabled { get; init; }
         public string? HatPresetId { get; init; }
         public bool? IntroSeen { get; init; }
+        public JsonElement? SelectedPreset { get; init; }
     }
 }

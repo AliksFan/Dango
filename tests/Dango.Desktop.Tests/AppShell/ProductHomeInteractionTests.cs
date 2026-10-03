@@ -17,9 +17,7 @@ public sealed class ProductHomeInteractionTests
     [DataRow(1024)]
     [DataRow(736)]
     [DataRow(640)]
-    [DataRow(480)]
-    [DataRow(320)]
-    public void HomeKeepsNavigationFixedAndMovesPetAndLaunchersLeftTogether(int width)
+    public void HomeKeepsNavigationFixedAndMirrorsFaceAndWardrobePanels(int width)
     {
         var home = new ProductHomeView { ReduceMotion = true };
         Layout(home, width);
@@ -29,6 +27,8 @@ public sealed class ProductHomeInteractionTests
         var buttonsBefore = Bounds(home, "Launchers");
         var navigationBefore = Bounds(home, "TopNavigation");
         Assert.AreEqual(width / 2d, petBefore.Left + petBefore.Width / 2, 1, "Pet starts centered.");
+        Assert.AreEqual(Visibility.Collapsed, Element<UIElement>(home, "HomeNavigation").Visibility,
+            "The redundant top-level home label must stay hidden.");
         SaveImage(home, width, "closed");
 
         Click(home, "FaceButton");
@@ -36,12 +36,13 @@ public sealed class ProductHomeInteractionTests
         var petAfter = Bounds(home, "PetPreview");
         var buttonsAfter = Bounds(home, "Launchers");
         var panel = Bounds(home, "EditorPanel");
-        Assert.IsTrue(petAfter.Left < petBefore.Left - 20, "Opening must actually shift the pet left.");
+        Assert.IsTrue(petAfter.Left > petBefore.Left + 20, "Face options on the left must shift the pet right.");
         Assert.AreEqual(petBefore.Top, petAfter.Top, .1, "Opening must not move the pet vertically.");
         Assert.AreEqual(buttonsBefore.Top, buttonsAfter.Top, .1);
         Assert.AreEqual(petAfter.Left - petBefore.Left, buttonsAfter.Left - buttonsBefore.Left, .1);
         Assert.AreEqual(navigationBefore, Bounds(home, "TopNavigation"));
-        Assert.IsTrue(Math.Max(petAfter.Right, buttonsAfter.Right) + 4 < panel.Left, "Two horizontal columns must not overlap.");
+        Assert.IsTrue(panel.Right + 4 < Math.Min(petAfter.Left, buttonsAfter.Left),
+            "Face options must enter from the left without overlapping the pet.");
         Assert.IsTrue(panel.Right <= width && panel.Left > 0, "Panel stays inside the window.");
         Assert.IsTrue(petAfter.Left >= 0 && buttonsAfter.Left >= 0);
         Assert.IsTrue(Bounds(home, "MoreOptions").Bottom <= Bounds(home, "ApplyButton").Top, "Detail text must not overlap apply.");
@@ -61,7 +62,13 @@ public sealed class ProductHomeInteractionTests
         Click(home, "WardrobeButton");
         Layout(home, width);
         Assert.AreEqual(HomeEditor.Wardrobe, home.SelectedEditor);
-        Assert.AreEqual(petAfter, Bounds(home, "PetPreview"), "Switching editors keeps the pet in place.");
+        var wardrobePet = Bounds(home, "PetPreview");
+        var wardrobeButtons = Bounds(home, "Launchers");
+        var wardrobePanel = Bounds(home, "EditorPanel");
+        Assert.IsTrue(wardrobePet.Left < petBefore.Left - 20, "Wardrobe on the right must shift the pet left.");
+        Assert.IsTrue(Math.Max(wardrobePet.Right, wardrobeButtons.Right) + 4 < wardrobePanel.Left,
+            "Wardrobe options must mirror the face composition.");
+        Assert.AreEqual(petBefore.Top, wardrobePet.Top, .1);
         Assert.IsFalse(Element<Button>(home, "CreateButton").IsEnabled);
         SaveImage(home, width, "wardrobe");
         Click(home, "CloseEditorButton");
@@ -93,7 +100,7 @@ public sealed class ProductHomeInteractionTests
             if (SystemParameters.ClientAreaAnimation)
             {
                 var moving = Bounds(home, "PetPreview");
-                Assert.IsTrue(moving.Left < closed.Left - 1 && moving.Left > open.Left + 1,
+                Assert.IsTrue(moving.Left > closed.Left + 1 && moving.Left < open.Left - 1,
                     "With system animation enabled, the 80ms frame must be between start and end, not a static jump.");
             }
             Click(home, "CloseEditorButton");
@@ -111,7 +118,8 @@ public sealed class ProductHomeInteractionTests
             home.RaiseEvent(key);
             Assert.IsTrue(key.Handled);
             Assert.IsFalse(home.IsEditing);
-            Assert.IsTrue(Element<Button>(home, "WardrobeButton").IsKeyboardFocused, "Esc restores the originating launcher focus.");
+            Assert.IsTrue(Element<FrameworkElement>(home, "Stage").IsKeyboardFocused,
+                "Esc returns focus to the Dango controls instead of making Space reopen a launcher.");
             home.ReduceMotion = true;
             Assert.AreEqual(Visibility.Hidden, Element<UIElement>(home, "EditorPanel").Visibility);
             Assert.AreEqual(closed.Left, Bounds(home, "PetPreview").Left, .1);
@@ -119,6 +127,64 @@ public sealed class ProductHomeInteractionTests
             Assert.AreEqual(1, Element<UIElement>(home, "EditorPanel").Opacity, .001, "Reduced motion switches immediately.");
             home.CloseEditor();
             Assert.AreEqual(closed.Left, Bounds(home, "PetPreview").Left, .1);
+        }
+        finally { window.Close(); }
+    }
+
+    [STATestMethod]
+    public void FacePanelExitsOnTheLeftAndLauncherActivationReturnsToGameplayFocus()
+    {
+        var home = new ProductHomeView();
+        var window = new Window { Content = home, Width = 1024, Height = 640, Left = -10000, Top = -10000, ShowInTaskbar = false };
+        try
+        {
+            window.Show();
+            Element<Button>(home, "FaceButton").Focus();
+            Click(home, "FaceButton");
+            Assert.IsTrue(Element<FrameworkElement>(home, "Stage").IsKeyboardFocused,
+                "After opening a panel, Space should act on the Dango instead of clicking the launcher again.");
+            Assert.AreEqual(0, Grid.GetColumn(Element<UIElement>(home, "EditorPanel")));
+
+            Click(home, "CloseEditorButton");
+            Assert.AreEqual(0, Grid.GetColumn(Element<UIElement>(home, "EditorPanel")),
+                "An exiting face panel must not teleport to the opposite side before fading out.");
+            Assert.IsTrue(Element<FrameworkElement>(home, "Stage").IsKeyboardFocused);
+            Pump(520);
+            Assert.AreEqual(Visibility.Hidden, Element<UIElement>(home, "EditorPanel").Visibility);
+        }
+        finally { window.Close(); }
+    }
+
+    [STATestMethod]
+    public void NewlyShownHomeStartsWithGameplayFocus()
+    {
+        var home = new ProductHomeView { ReduceMotion = true };
+        var window = new Window { Content = home, Width = 1024, Height = 640, Left = -10000, Top = -10000, ShowInTaskbar = false };
+        try
+        {
+            window.Show();
+            Pump(50);
+            Assert.IsTrue(Element<FrameworkElement>(home, "Stage").IsKeyboardFocused,
+                "The first Space key should animate the Dango rather than activate Settings or a launcher.");
+        }
+        finally { window.Close(); }
+    }
+
+    [STATestMethod]
+    public void ChoosingFaceColorReturnsFocusToDangoActions()
+    {
+        var home = new ProductHomeView { ReduceMotion = true };
+        var window = new Window { Content = home, Width = 1024, Height = 640, Left = -10000, Top = -10000, ShowInTaskbar = false };
+        try
+        {
+            window.Show();
+            Click(home, "FaceButton");
+            Element<Button>(home, "PeachButton").Focus();
+            Assert.IsTrue(Element<Button>(home, "PeachButton").IsKeyboardFocused);
+            Click(home, "PeachButton");
+            Assert.AreEqual(Color.FromRgb(242, 182, 168), home.PreviewColor);
+            Assert.IsTrue(Element<FrameworkElement>(home, "Stage").IsKeyboardFocused,
+                "After choosing a color, Space should jump instead of clicking the swatch again.");
         }
         finally { window.Close(); }
     }

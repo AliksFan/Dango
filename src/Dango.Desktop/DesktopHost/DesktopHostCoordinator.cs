@@ -60,6 +60,7 @@ public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopDispla
     private IDesktopHostControl active;
     private DesktopDisplayMode activeMode = DesktopDisplayMode.Wallpaper;
     private bool switchInProgress;
+    private bool roomPresentationAllowed = true;
     private readonly StackedDangoSceneRuntime? runtime;
 
     public DesktopHostCoordinator(IDesktopHostControl wallpaper, IDesktopHostControl window,
@@ -88,6 +89,8 @@ public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopDispla
 
     public void SetVisibility(bool isVisible)
     {
+        if (isVisible && !roomPresentationAllowed)
+            throw new InvalidOperationException("进入房间后才能在桌面显示团子。");
         if (isVisible && runtime is { RequiresInitialization: true } &&
             runtime.InitializationState != SceneInitializationState.Ready)
             throw new InvalidOperationException(runtime.LastError ?? "场景尚未初始化，请重试。");
@@ -96,12 +99,18 @@ public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopDispla
 
     public SceneInitializationState InitializationState =>
         runtime?.InitializationState ?? SceneInitializationState.Ready;
+    public bool CanShowDesktop => roomPresentationAllowed;
+    public void SetRoomPresentationAllowed(bool allowed)
+    {
+        if (!allowed) active.SetVisibility(false);
+        roomPresentationAllowed = allowed;
+    }
     public string HatPresetId => runtime?.CurrentHatPresetId ?? "sprout";
     public bool TryApplyHatPreset(string id) => runtime?.TryApplyHatPreset(id) == true;
     public bool RetryInitialization()
     {
         if (runtime is null || !runtime.TryInitialize()) return false;
-        SetVisibility(true);
+        if (roomPresentationAllowed) SetVisibility(true);
         return true;
     }
 
