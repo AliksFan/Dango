@@ -18,7 +18,7 @@ $script:SettingsContracts['dango-desktop-settings-v4-preset-sidecar-v1'] = @{
     'AppShell/ControlCenter/ControlCenterWindowSettingsStore.cs' = '48FF4A9AB801FFF52228E6DB760F9248E047111DDBF0DA5AD22E78B32DE97329'
     'AppShell/ControlCenter/ApplicationSettingsSession.cs' = 'E68D1E6997AF8E73305C1D374978B60B18FF107A4C07825B4A2C86212F96FB6E'
     'AppShell/DangoApplicationHost.cs' = 'C60F9DECA4766F3EA547B8C1D5F555A7542B1449AF8C848962204019F3491D5A'
-    'App.xaml.cs' = '7E112AFB285DD17A27285FBE35F72B9B178A99133E0D4FC6CA5FA0113463D19B'
+    'App.xaml.cs' = '26054FB5051849AD2467C43FAD1FAEC3F4351609DDB1E02DF10329539953637E'
     'Verification/VerificationSessionStore.cs' = '925A313A44DBE72C35FBA230010A521E384C529D0EA705788E1D8AE4D7B2ACBD'
 }
 $script:LegacyToolHashes = @{
@@ -492,6 +492,13 @@ function Assert-DangoAcceptanceSettingsRoot([string]$Path, [string]$PackageRoot)
         $marker.acceptanceFormat -ne 1 -or $marker.fictional -isnot [bool] -or -not $marker.fictional) {
         throw 'Acceptance settings directory does not have the expected fictional-fixture owner marker.'
     }
+    # Enumerate directory entries rather than Test-Path, which can miss a dangling link's target.
+    foreach ($entry in Get-ChildItem -LiteralPath $root -Force) {
+        if ($entry.Name -iin @('settings.json', 'settings.window-preset.json') -and
+            (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or $entry.PSIsContainer)) {
+            throw 'Acceptance settings files must be ordinary files; reparse points and directories are refused.'
+        }
+    }
     return $root
 }
 
@@ -522,16 +529,12 @@ namespace Dango.LocalInstall {
 '@
     }
     $commandArgs = [Dango.LocalInstall.CommandLine]::Parse($CommandLine)
-    $scope = $null
-    for ($index = 1; $index -lt $commandArgs.Length; $index++) {
-        if ($commandArgs[$index] -ceq '--local-install-acceptance-settings') {
-            if ($null -ne $scope -or $index + 1 -ge $commandArgs.Length) { throw 'Dango process acceptance settings scope is ambiguous.' }
-            $index++
-            if ($commandArgs[$index] -notmatch '^[A-Za-z]:[\\/].+') { throw 'Dango process acceptance settings scope is not an absolute local path.' }
-            $scope = Get-DangoFullPath $commandArgs[$index]
-        }
+    if ($commandArgs.Length -eq 1) { return $null }
+    if ($commandArgs.Length -ne 3 -or $commandArgs[1] -cne '--local-install-acceptance-settings') {
+        throw 'Dango process arguments are not an ordinary or isolated local-install launch.'
     }
-    return $scope
+    if ($commandArgs[2] -notmatch '^[A-Za-z]:[\\/].+') { throw 'Dango process acceptance settings scope is not an absolute local path.' }
+    return (Get-DangoFullPath $commandArgs[2])
 }
 
 function Assert-DangoToolDirectory([string]$Path, $Hashes) {
