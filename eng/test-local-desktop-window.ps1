@@ -22,6 +22,8 @@ public static class DangoWindowProbe {
     [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr hwnd);
     [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
     [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+    [DllImport("user32.dll")] static extern IntPtr GetDlgItem(IntPtr dialog, int id);
+    [DllImport("user32.dll", SetLastError=true)] static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
     [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)] struct MonitorInfo { public int Size; public Rect Monitor, Work; public uint Flags; }
     public static IntPtr[] Visible(int pid) {
@@ -45,6 +47,14 @@ public static class DangoWindowProbe {
             if (!GetMonitorInfo(MonitorFromWindow(hwnd, 2), ref info)) throw new InvalidOperationException("Cannot read candidate monitor work area.");
             return info.Work;
         } finally { if (previous != IntPtr.Zero) SetThreadDpiAwarenessContext(previous); }
+    }
+    public static void ConfirmOwnedExit(IntPtr dialog, int pid) {
+        uint owner; GetWindowThreadProcessId(dialog, out owner);
+        var yes = GetDlgItem(dialog, 6);
+        uint childOwner; GetWindowThreadProcessId(yes, out childOwner);
+        if (owner != pid || childOwner != pid || yes == IntPtr.Zero ||
+            !PostMessage(yes, 0xF5, IntPtr.Zero, IntPtr.Zero))
+            throw new InvalidOperationException("Cannot click the owned exit dialog YES button.");
     }
 }
 '@
@@ -202,10 +212,12 @@ try {
         $exitTitle = (-join [char[]]@(0x9000,0x51FA)) + ' Dango'
         if ($candidate.Current.ClassName -cne '#32770' -or $candidate.Current.Name -cne $exitTitle) { continue }
         $yes = $candidate.FindFirst([Windows.Automation.TreeScope]::Descendants, $condition)
-        if ($null -ne $yes) { $dialog = $yes; break }
+        if ($null -ne $yes) { $dialog = $yes; $confirmationHandle = $dialogHandle; break }
     }
     Require ($null -ne $dialog) 'Graceful exit confirmation did not appear.'
-    ([Windows.Automation.InvokePattern]$dialog.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern)).Invoke()
+    # Some Win32 MessageBox providers expose only LegacyIAccessible rather than
+    # InvokePattern. Target its native IDYES child after PID/title/class checks.
+    [DangoWindowProbe]::ConfirmOwnedExit($confirmationHandle, $ownedPid)
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
     while ((Get-Process -Id $ownedPid -ErrorAction SilentlyContinue) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 100 }
     Require ($null -eq (Get-Process -Id $ownedPid -ErrorAction SilentlyContinue)) 'Graceful exit left the owned product process running.'
