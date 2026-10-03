@@ -2,6 +2,8 @@
 
 `Dango` 是一个多人联机桌面宠物项目的开发代号。
 
+2026-10-03：按用户单独授权，已将团队整合与 Windows 本地收口成果经 `codex/team-integration` 快进合入本地 `main`；见[本地整合记录](docs/verification/2026-10-03-windows-local-main-integration.md)。日常安装沿用已验收新版，不重新发布或迁移；未推送远端。已知自动差异、专项未验证项及 Phase 2A/M7 未验收边界保留，本次不是完整阶段验收或正式发布。
+
 2026-10-01：首页 UI 按已认可的简约横向原型重新实施，本轮仅包含“我的团子”与捏脸、换装展开交互；用户已确认本批人工验收通过。范围和边界见[首页实施约定](docs/planning/2026-10-01-home-ui-fidelity.md)，自动检查及遗留限制见[验证记录](docs/verification/2026-10-01-home-ui-fidelity.md)。
 
 2026-09-22 规划：已确认[步态与外观分批路线](docs/planning/2026-09-22-gait-and-customization-roadmap.md)和[行走自然感设计](docs/planning/2026-09-22-gait-sample-design.md)的首轮取舍，现已制定[小样实施计划](docs/planning/2026-09-22-gait-sample-plan.md)并获用户授权实施。单团子自主/键盘轻微步态及隔离项目入口已完成，Desktop 373/373、Core 37/37 通过；用户已确认当前小样整体观感并保留此版。见[本批验证](docs/verification/2026-09-22-gait-sample.md)。
@@ -69,10 +71,11 @@ Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](d
 - [统一实时首页与固定尺寸验证记录](docs/verification/2026-10-03-unified-live-home.md)：首页真实团子、门廊交互及三档物理目标尺寸的当前证据和未完成边界。
 - [Phase 2A 最小多人同步详细设计](docs/planning/2026-09-24-minimal-multiplayer-sync-design.md)、[实施计划](docs/planning/2026-09-30-minimal-multiplayer-sync-plan.md)、[实施验证记录](docs/verification/2026-09-30-minimal-multiplayer-sync.md)及[UI 前置排期记录](docs/planning/2026-09-30-ui-before-dual-machine-note.md)：真实 SignalR 与内存权威临时房间的同机 M0–M6 小样已获人工确认；双 Windows M7、Phase 2A 整体及正式房间均未验收，日常入口未接入多人。
 - [团队整合候选验证记录](docs/verification/2026-10-03-team-integration.md)：首页、Phase 2A 与已批准房间规则的合并来源、自动/同机证据及未完成门禁。
+- [Windows 收口与团队基线本地整合记录](docs/verification/2026-10-03-windows-local-main-integration.md)：共享分支到 main 的快进、已验收源码一致性、交接边界和仍待授权的推送。
 - [开发工作流 v0.1](docs/development-workflow-v0.1.md)：任务、分支、Worktree、提交和验收流程。
 - [分阶段开发计划 v0.1](docs/development-plan-v0.1.md)：Phase 0–5 的范围、交付物与阶段门禁。
 - [本地桌面安装说明](docs/local-desktop-install.md)：固定目录安装、启动、更新、状态检查与回退的日常操作。
-- [Windows 本地收口设计与实施计划](docs/planning/2026-10-03-windows-local-closeout.md)及[验证记录](docs/verification/2026-10-03-windows-local-closeout.md)：当前屏幕单机候选已获人工确认，自动差异与未验证项保留；日常更新、合并和推送另行批准。
+- [Windows 本地收口设计与实施计划](docs/planning/2026-10-03-windows-local-closeout.md)及[验证记录](docs/verification/2026-10-03-windows-local-closeout.md)：同屏两缩放单机候选已获人工确认，后续分别授权的日常更新和本地整合已完成；自动差异与未验证项保留，推送另行批准。
 - [帽子轨道分配优化](docs/phase-1-hat-track-allocation-design.md)及[实施计划](docs/phase-1-hat-track-allocation-plan.md)：已批准的局部优化与等价、分配、真实宿主性能验收顺序。
 - [可复用团子物理模块](docs/phase-1-physics-module.md)：项目内 native/.NET 模块、固定配置、API、构建、显示适配与当前验收边界。
 - [Phase 1 桌面生命感原型详细设计](docs/phase-1-desktop-life-prototype-design.md)：已批准的桌面宿主对比、场景与资产边界、性能门槛和分层验收。

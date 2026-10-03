@@ -1,5 +1,7 @@
 # Dango 分阶段开发计划 v0.1
 
+> 2026-10-03 本地团队基线整合：用户单独批准先本地整合并合入 `main`、暂不推送。团队候选和 Windows 本地收口成果已按 `codex/windows-local-closeout` → `codex/team-integration` → `main` 顺序快进，详见[本地整合记录](verification/2026-10-03-windows-local-main-integration.md)。日常安装沿用已验收新版；本次只统一 Git 基线，不宣称完整 Phase 1、Phase 2A 或 M7 验收，不授权正式房间编码或推送。下列带日期的未合并记录保留为各自交付时的历史快照。
+
 > 2026-09-30 UI 与双机验收顺序调整：用户要求在正式 M7 双机人工验收前，先完成完整可用的 Windows UI（创作编辑器后置），并将在另一对话继续 UI 设计。此项是排期确认，不是账号、好友、房间、编辑器等详细设计或编码授权；涉及原 Phase 3/4 的功能须另行设计、审批并安排独立任务/Worktree，不得用后续功能掩盖 Phase 2A 未完成的双机门禁。M0–M6 同机小样人工验收已通过，M7 技术条件和 Phase 2A 整体未验收状态不变。范围与待确认事项见[排期记录](planning/2026-09-30-ui-before-dual-machine-note.md)。
 
 > 2026-09-30 Phase 2A 最小多人同步：按用户授权在独立任务分支实现内存权威房间、真实 SignalR、客户端恢复和两份隔离 WPF 窗口；同机 Server+A+B 的 native/native 与 native/fallback 路径、移动/招呼/重连已完成自动验证，用户确认同机小样人工验收通过。旧 `dango_box2d.dll` 缺 `dango_box2d_self_bodies_create` 的完整 Desktop 回归失败仍在，历史 Physics 比较 DLL 缺失项未验证。第二台 Windows、不同 DPI/真实断网及 M7 双机人工确认仍待安排；Phase 2A 整体未验收，未合并 main、未推送/部署或更新日常安装。见[实施记录](verification/2026-09-30-minimal-multiplayer-sync.md)。

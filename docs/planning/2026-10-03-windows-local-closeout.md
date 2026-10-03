@@ -1,7 +1,7 @@
 # Windows 本地体验收口设计与实施计划
 
 > 2026-10-03 用户确认本对话设计与实施顺序；实施基线 `codex/team-integration@0bdf5c1`。
-> 状态：实施、隔离包检查、同屏 150%/100% 自动与候选整体人工验收，以及后续单独授权的[日常安装交付](../verification/2026-10-03-windows-local-delivery.md)已完成；Windows 恢复 150%，日常最终为新版 B、previous 保留 A，测试进程正常退出。自动差异等未验证项见[本轮验证记录](../verification/2026-10-03-windows-local-closeout.md)，不标记完整收口门禁完成。合并 main 和推送仍分别另行确认。
+> 状态：实施、隔离包检查、同屏 150%/100% 自动与候选整体人工验收，以及后续单独授权的[日常安装交付](../verification/2026-10-03-windows-local-delivery.md)已完成；Windows 恢复 150%，日常最终为新版 B、previous 保留 A，测试进程正常退出。自动差异等未验证项见[本轮验证记录](../verification/2026-10-03-windows-local-closeout.md)，不标记完整收口门禁完成。后续另获授权的共享分支与 main [本地整合](../verification/2026-10-03-windows-local-main-integration.md)已完成，推送仍须另行确认。
 
 ## 目标和边界
 
