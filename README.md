@@ -68,6 +68,7 @@ Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](d
 - [设置页范围与验收设计](docs/planning/2026-10-01-settings-ui.md)及[专项验证记录](docs/verification/2026-10-01-settings-ui.md)：产品首页内设置页的范围、失败型验收与独立 Product 宿主人工确认；日常安装和完整自动门禁待补。
 - [统一实时首页与固定尺寸验证记录](docs/verification/2026-10-03-unified-live-home.md)：首页真实团子、门廊交互及三档物理目标尺寸的当前证据和未完成边界。
 - [Phase 2A 最小多人同步详细设计](docs/planning/2026-09-24-minimal-multiplayer-sync-design.md)、[实施计划](docs/planning/2026-09-30-minimal-multiplayer-sync-plan.md)、[实施验证记录](docs/verification/2026-09-30-minimal-multiplayer-sync.md)及[UI 前置排期记录](docs/planning/2026-09-30-ui-before-dual-machine-note.md)：真实 SignalR 与内存权威临时房间的同机 M0–M6 小样已获人工确认；双 Windows M7、Phase 2A 整体及正式房间均未验收，日常入口未接入多人。
+- [团队整合候选验证记录](docs/verification/2026-10-03-team-integration.md)：首页、Phase 2A 与已批准房间规则的合并来源、自动/同机证据及未完成门禁。
 - [开发工作流 v0.1](docs/development-workflow-v0.1.md)：任务、分支、Worktree、提交和验收流程。
 - [分阶段开发计划 v0.1](docs/development-plan-v0.1.md)：Phase 0–5 的范围、交付物与阶段门禁。
 - [本地桌面安装说明](docs/local-desktop-install.md)：固定目录安装、启动、更新、状态检查与回退的日常操作。
