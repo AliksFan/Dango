@@ -217,7 +217,11 @@
                                   CanContentScroll="False" Focusable="False">
                       <Grid>
                         <StackPanel x:Name="FaceOptions">
-                            <TextBlock Text="颜色" Margin="0,0,0,12" />
+                            <WrapPanel Margin="0,0,0,12">
+                                <TextBlock Text="颜色" Margin="0,0,12,0" />
+                                <TextBlock x:Name="AppearancePreviewNotice" Text="仅预览 · 不保存" FontSize="11"
+                                           Foreground="{DynamicResource HomeMuted}" VerticalAlignment="Center" />
+                            </WrapPanel>
                             <WrapPanel x:Name="Colors" Margin="0,0,0,24">
                                 <Button x:Name="CreamButton" Style="{StaticResource ColorButton}" Tag="#F5D5A5" Click="OnColorClick" ToolTip="奶油" AutomationProperties.Name="奶油">
                                     <Grid Width="30" Height="30"><Ellipse Fill="#F5D5A5" /><TextBlock x:Name="CreamCheck" Text="✓" Foreground="#44382B" HorizontalAlignment="Center" VerticalAlignment="Center" /></Grid>

@@ -5,11 +5,14 @@ param(
     [string]$PhysicsModulePath,
 
     [string]$EvidenceRoot,
-    [string]$SettingsRepositoryRoot = (Split-Path -Parent $PSScriptRoot),
+    [string]$SettingsRepositoryRoot,
     [string]$LegacyToolsPath
 )
 
 $ErrorActionPreference = 'Stop'
+if ([string]::IsNullOrWhiteSpace($SettingsRepositoryRoot)) {
+    $SettingsRepositoryRoot = Split-Path -Parent $PSScriptRoot
+}
 
 if (-not $EvidenceRoot) {
     $EvidenceRoot = Join-Path $PSScriptRoot ('..\\artifacts\\local-install-tests\\' + [DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfff') + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))

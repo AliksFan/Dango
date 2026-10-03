@@ -45,9 +45,10 @@ public sealed class FixedWindowPresetTests
                 store.Save(path, settings);
                 var reloaded = store.Load(path);
                 Assert.AreEqual(name, property.GetValue(reloaded)?.ToString());
-                Assert.AreEqual(width, reloaded.Width);
-                Assert.AreEqual(height, reloaded.Height);
-                StringAssert.Contains(File.ReadAllText(path), "\"selectedPreset\"");
+                Assert.AreEqual(Math.Max(820, width), reloaded.Width);
+                Assert.AreEqual(Math.Max(560, height), reloaded.Height);
+                Assert.IsFalse(File.ReadAllText(path).Contains("\"selectedPreset\""));
+                StringAssert.Contains(File.ReadAllText(ControlCenterWindowSettingsStore.GetPresetPath(path)), "\"selectedPreset\"");
             }
         }
         finally
@@ -355,8 +356,8 @@ public sealed class FixedWindowPresetTests
             var restored = new ControlCenterWindowSettingsStore().Load(path);
             Assert.AreEqual(ControlCenterWindowPreset.Landscape1440p, restored.SelectedPreset,
                 "DPI/work-area fit must not replace the user's selected preset with a measured window size.");
-            Assert.AreEqual(1280d, restored.Width);
-            Assert.AreEqual(720d, restored.Height);
+            Assert.AreEqual(940d, restored.Width, "Product preset selection keeps the previous app's main geometry.");
+            Assert.AreEqual(620d, restored.Height);
         }
         finally
         {

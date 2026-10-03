@@ -2,6 +2,7 @@
   <Folder Name="/eng/">
     <Project Path="eng/tools/Dango.MultiplayerSample/Dango.MultiplayerSample.csproj" />
     <Project Path="eng/tools/Dango.GaitSample/Dango.GaitSample.csproj" />
+    <Project Path="eng/tools/Dango.SettingsRollbackProbe/Dango.SettingsRollbackProbe.csproj" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Dango.Server/Dango.Server.csproj" />

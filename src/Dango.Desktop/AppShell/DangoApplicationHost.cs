@@ -177,11 +177,10 @@ internal sealed class DangoApplicationHost : IDisposable
         if (disposed) return true;
         geometrySaveTimer.Stop();
         var current = settings.Current;
-        // Product geometry is a chosen preset, not the temporary on-screen size after a
-        // DPI/work-area fit. Developer review retains its resizable window preference.
-        var presetSize = ControlCenterWindowPresets.GetSize(current.SelectedPreset);
+        // Product geometry is stored in the preset sidecar. Keep the main file's legacy
+        // geometry readable by the previous app; never persist a DPI/work-area fit here.
         var size = uiMode == ApplicationUiMode.Product
-            ? (presetSize.Width, presetSize.Height)
+            ? (current.Width, current.Height)
             : controlCenterWindow?.CaptureSize() ?? (current.Width, current.Height);
         var saved = settings.TrySave(current with
         {

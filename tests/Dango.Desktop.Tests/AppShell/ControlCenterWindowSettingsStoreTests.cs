@@ -20,7 +20,7 @@ public sealed class ControlCenterWindowSettingsStoreTests
             var restored = store.Load(path);
 
             Assert.AreEqual(960, restored.Width);
-            Assert.AreEqual(540, restored.Height);
+            Assert.AreEqual(560, restored.Height, "The legacy main geometry must remain readable by the previous app.");
             var json = File.ReadAllText(path);
             Assert.IsFalse(json.Contains("left", StringComparison.OrdinalIgnoreCase));
             Assert.IsFalse(json.Contains("user", StringComparison.OrdinalIgnoreCase));

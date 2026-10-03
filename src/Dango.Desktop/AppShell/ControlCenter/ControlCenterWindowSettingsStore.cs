@@ -35,7 +35,7 @@ public static class ControlCenterWindowPresets
 
 public sealed record ControlCenterWindowSettings
 {
-    public const int CurrentSchemaVersion = 5;
+    public const int CurrentSchemaVersion = 4;
 
     [JsonConstructor]
     public ControlCenterWindowSettings(
@@ -77,6 +77,8 @@ public sealed record ControlCenterWindowSettings
     public bool InteractionEnabled { get; init; }
     public string HatPresetId { get; init; }
     public bool IntroSeen { get; init; }
+    // Old readers reject unmapped fields. This preference lives in a separate file.
+    [JsonIgnore]
     public ControlCenterWindowPreset SelectedPreset { get; init; }
 
     // Legacy review windows still use their original starting geometry; Product applies
@@ -88,7 +90,8 @@ public sealed record ControlCenterSettingsLoadResult(
     ControlCenterWindowSettings Settings,
     bool WasMigrated,
     string? Warning,
-    bool PreserveOriginal = false);
+    bool PreserveOriginal = false,
+    bool PreservePresetOriginal = false);
 
 public static class ControlCenterWindowSettingsValidator
 {
@@ -161,11 +164,29 @@ public sealed class ControlCenterWindowSettingsStore
     public ControlCenterWindowSettingsStore(IAtomicTextWriter? writer = null) =>
         this.writer = writer ?? new AtomicTextFileWriter();
 
-    public void Save(string path, ControlCenterWindowSettings settings)
+    public static string GetPresetPath(string path) => Path.ChangeExtension(path, ".window-preset.json");
+
+    public void Save(string path, ControlCenterWindowSettings settings, bool preservePresetOriginal = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ControlCenterWindowSettingsValidator.Validate(settings);
-        writer.Write(path, JsonSerializer.Serialize(settings, SerializerOptions));
+        // Write the independent preset first: failure cannot replace the old-readable main file.
+        // Each write is atomic. If the second fails, the session retains its unsaved warning.
+        if (!preservePresetOriginal)
+            WriteIfChanged(GetPresetPath(path), JsonSerializer.Serialize(
+                new PersistedWindowPreset { SchemaVersion = 1,
+                    SelectedPreset = JsonSerializer.SerializeToElement(settings.SelectedPreset, SerializerOptions) }, SerializerOptions));
+        var legacySettings = settings with
+        {
+            Width = Math.Max(820, settings.Width),
+            Height = Math.Max(560, settings.Height),
+        };
+        WriteIfChanged(path, JsonSerializer.Serialize(legacySettings, SerializerOptions));
+    }
+
+    private void WriteIfChanged(string path, string content)
+    {
+        if (!File.Exists(path) || File.ReadAllText(path) != content) writer.Write(path, content);
     }
 
     public ControlCenterWindowSettings Load(string path) => LoadOrDefault(path).Settings;
@@ -178,13 +199,18 @@ public sealed class ControlCenterWindowSettingsStore
             var persisted = JsonSerializer.Deserialize<PersistedSettings>(File.ReadAllText(path), SerializerOptions)
                 ?? throw new InvalidDataException("控制中心设置为空。");
             var sourceSchema = persisted.SchemaVersion ?? 1;
-            if (sourceSchema is not (1 or 2 or 3 or 4 or ControlCenterWindowSettings.CurrentSchemaVersion))
+            if (sourceSchema is not (1 or 2 or 3 or 4 or 5))
             {
                 return SafeDefault("设置版本无法识别，已使用安全默认值。");
             }
+            if (sourceSchema != 5 && persisted.SelectedPreset is not null)
+                throw new InvalidDataException("旧版设置中存在不兼容的新字段。");
 
             var (displayMode, modeWarning) = ParseDisplayMode(persisted.DisplayMode);
-            var (selectedPreset, presetWarning) = ParsePreset(persisted.SelectedPreset);
+            var (experimentalPreset, experimentalWarning) = sourceSchema == 5
+                ? ParsePreset(persisted.SelectedPreset)
+                : (ControlCenterWindowPreset.Landscape1080p, (string?)null);
+            var (selectedPreset, presetWarning, preservePreset) = LoadPreset(path, experimentalPreset);
             var defaults = ControlCenterWindowSettings.CreateDefault();
             var validHat = persisted.HatPresetId is null || DangoHatPresets.IsKnown(persisted.HatPresetId);
             var legacyArrowKeyboard = persisted.KeyboardControl?.Scheme == KeyboardControlScheme.ArrowKeys;
@@ -205,23 +231,53 @@ public sealed class ControlCenterWindowSettingsStore
                 persisted.IntroSeen ?? false,
                 selectedPreset);
             ControlCenterWindowSettingsValidator.Validate(settings);
+            if (sourceSchema != 5 && (settings.Width < 820 || settings.Height < 560))
+                throw new InvalidDataException("旧版控制中心尺寸超出安全范围。");
             var warnings = new[]
             {
                 validHat ? null : "帽型无法识别，已使用叶芽；其余有效设置已保留。",
                 modeWarning,
                 presetWarning,
+                experimentalWarning,
             }.Where(message => message is not null);
             return new(settings, sourceSchema != ControlCenterWindowSettings.CurrentSchemaVersion || !validHat ||
-                modeWarning is not null || presetWarning is not null || legacyArrowKeyboard,
-                string.Join(" ", warnings) is { Length: > 0 } warning ? warning : null);
+                modeWarning is not null || legacyArrowKeyboard,
+                string.Join(" ", warnings) is { Length: > 0 } warning ? warning : null,
+                PreservePresetOriginal: preservePreset);
         }
         catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
         {
-            return new(ControlCenterWindowSettings.CreateDefault(), false, null);
+            var (preset, warning, preserve) = LoadPreset(path, ControlCenterWindowPreset.Landscape1080p);
+            return new(ControlCenterWindowSettings.CreateDefault() with { SelectedPreset = preset }, false, warning,
+                PreservePresetOriginal: preserve);
         }
         catch (Exception exception) when (exception is JsonException or InvalidDataException or IOException or UnauthorizedAccessException)
         {
             return SafeDefault($"设置无法读取，已使用安全默认值（{exception.GetType().Name}）。");
+        }
+    }
+
+    private static (ControlCenterWindowPreset Preset, string? Warning, bool PreserveOriginal) LoadPreset(
+        string path, ControlCenterWindowPreset fallback)
+    {
+        try
+        {
+            var persisted = JsonSerializer.Deserialize<PersistedWindowPreset>(File.ReadAllText(GetPresetPath(path)), SerializerOptions)
+                ?? throw new InvalidDataException("窗口预设为空。");
+            if (persisted.SchemaVersion != 1) throw new InvalidDataException("窗口预设版本无法识别。");
+            var (preset, warning) = ParsePreset(persisted.SelectedPreset);
+            if (persisted.SelectedPreset is null || warning is not null)
+                throw new InvalidDataException("窗口预设无法识别。");
+            return (preset, null, false);
+        }
+        catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return (fallback, null, false);
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            return (ControlCenterWindowPreset.Landscape1080p,
+                $"窗口预设无法读取，已使用 1080p 横向档；其余设置保留，原预设文件已保护（{exception.GetType().Name}）。", true);
         }
     }
 
@@ -271,6 +327,12 @@ public sealed class ControlCenterWindowSettingsStore
         public bool? InteractionEnabled { get; init; }
         public string? HatPresetId { get; init; }
         public bool? IntroSeen { get; init; }
+        public JsonElement? SelectedPreset { get; init; }
+    }
+
+    private sealed class PersistedWindowPreset
+    {
+        public int? SchemaVersion { get; init; }
         public JsonElement? SelectedPreset { get; init; }
     }
 }

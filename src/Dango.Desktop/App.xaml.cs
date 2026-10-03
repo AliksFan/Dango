@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Threading;
+using System.IO;
+using System.Text.Json;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.Physics.Native;
@@ -16,6 +18,7 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        var acceptanceSettingsFile = ResolveLocalInstallAcceptanceSettingsFile(e.Args);
 
         var homeUiReview = e.Args.Contains("--home-ui-review", StringComparer.Ordinal);
         var settingsUiReview = e.Args.Contains("--settings-ui-review", StringComparer.Ordinal);
@@ -91,9 +94,49 @@ public partial class App : System.Windows.Application
 
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         applicationHost = new DangoApplicationHost(physicsReview, eyeHatReview,
+            settingsFile: acceptanceSettingsFile,
             isolatedUnifiedHomeReview: unifiedHomeReview);
         applicationHost.Start();
         if (physicsReview || eyeHatReview) applicationHost.ShowControlCenter();
+    }
+
+    internal static string? ResolveLocalInstallAcceptanceSettingsFile(string[] args)
+    {
+        const string flag = "--local-install-acceptance-settings";
+        if (!args.Contains(flag, StringComparer.Ordinal)) return null;
+        if (args.Length != 2 || args[0] != flag || string.IsNullOrWhiteSpace(args[1]))
+            throw new ArgumentException("Local install acceptance requires only its explicit settings directory.");
+        var root = Path.GetFullPath(args[1]).TrimEnd(Path.DirectorySeparatorChar);
+        var dailyRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Dango");
+        static bool IsWithin(string candidate, string parent) => candidate.Equals(parent.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)
+            || candidate.StartsWith(parent.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        if (!Path.IsPathFullyQualified(args[1]) || root.Length < 3 || root[1] != ':' ||
+            Path.GetPathRoot(root)?.TrimEnd(Path.DirectorySeparatorChar) == root ||
+            IsWithin(root, dailyRoot) || IsWithin(dailyRoot, root) ||
+            IsWithin(root, AppContext.BaseDirectory) || IsWithin(AppContext.BaseDirectory, root))
+            throw new InvalidDataException("Acceptance settings must be outside the daily settings and package directories.");
+        for (var cursor = root; cursor is not null; cursor = Path.GetDirectoryName(cursor))
+            if (Directory.Exists(cursor) && (File.GetAttributes(cursor) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("Acceptance settings cannot use reparse points.");
+        var ownerPath = Path.Combine(root, ".dango-local-install-acceptance.json");
+        if ((File.GetAttributes(ownerPath) & FileAttributes.ReparsePoint) != 0)
+            throw new InvalidDataException("Acceptance owner cannot be a reparse point.");
+        using var owner = JsonDocument.Parse(File.ReadAllText(ownerPath));
+        if (owner.RootElement.EnumerateObject().Count() != 3 ||
+            owner.RootElement.GetProperty("application").GetString() != "Dango" ||
+            owner.RootElement.GetProperty("acceptanceFormat").GetInt32() != 1 ||
+            !owner.RootElement.GetProperty("fictional").GetBoolean())
+            throw new InvalidDataException("The directory is not owned by a Dango local acceptance session.");
+        var settingsPath = Path.Combine(root, "settings.json");
+        var presetPath = ControlCenterWindowSettingsStore.GetPresetPath(settingsPath);
+        // Enumerate entries rather than testing File.Exists: dangling links and
+        // directory links at either filename must also fail before settings load.
+        foreach (var entry in Directory.EnumerateFileSystemEntries(root))
+            if (entry.Equals(settingsPath, StringComparison.OrdinalIgnoreCase) ||
+                entry.Equals(presetPath, StringComparison.OrdinalIgnoreCase))
+                if ((File.GetAttributes(entry) & (FileAttributes.ReparsePoint | FileAttributes.Directory)) != 0)
+                    throw new InvalidDataException("Acceptance settings files cannot be directories or reparse points.");
+        return settingsPath;
     }
 
     protected override void OnExit(ExitEventArgs e)

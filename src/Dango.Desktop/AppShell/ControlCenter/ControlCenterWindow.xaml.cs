@@ -210,12 +210,9 @@ public partial class ControlCenterWindow : Window
     {
         if (commandController.UiMode != ApplicationUiMode.Product || !Enum.IsDefined(preset)) return;
         selectedWindowPreset = preset;
-        var referenceSize = ControlCenterWindowPresets.GetSize(preset);
         settingsSession?.Stage(settingsSession.Current with
         {
             SelectedPreset = preset,
-            Width = referenceSize.Width,
-            Height = referenceSize.Height,
         });
         ProductHome.SetWindowPreset(preset);
         UpdateWindowSizeMenu();
@@ -681,7 +678,8 @@ public partial class ControlCenterWindow : Window
             ProductHome.SetNotice(settingsSession?.HasWarning == true ? "设置未保存 · 查看" : !ready ? "团子未启动 · 查看" : null,
                 settingsSession?.HasWarning == true ? settingsSession.StatusMessage : snapshot.LastError);
             RetrySaveButton.IsEnabled = settingsSession is not null && !settingsSession.IsWriteProtected;
-            RecoverSettingsButton.Visibility = settingsSession?.IsWriteProtected == true ? Visibility.Visible : Visibility.Collapsed;
+            RecoverSettingsButton.Visibility = settingsSession is { IsWriteProtected: true } or { IsPresetWriteProtected: true }
+                ? Visibility.Visible : Visibility.Collapsed;
             HatPresetComboBox.SelectedItem = HatPresetComboBox.Items.OfType<ComboBoxItem>()
                 .Single(item => (string)item.Tag == commandController.HatPresetId);
             VisibilityCheckBox.IsChecked = snapshot.IsVisible;
@@ -716,7 +714,8 @@ public partial class ControlCenterWindow : Window
                 ready, snapshot.IsVisible, snapshot.IsInteractionEnabled, snapshot.Mode,
                 keyboard, layering.DangoLayer,
                 snapshot.LastError, settingsSession?.HasWarning == true,
-                settingsSession?.IsWriteProtected == true, settingsSession?.StatusMessage ?? string.Empty,
+                settingsSession is { IsWriteProtected: true } or { IsPresetWriteProtected: true },
+                settingsSession?.StatusMessage ?? string.Empty,
                 commandController.CanShowDesktop));
         }
         finally

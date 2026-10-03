@@ -22,8 +22,10 @@ public sealed class ApplicationSettingsSession
         StartupWarning = result.Warning;
         HasWarning = result.Warning is not null;
         IsWriteProtected = result.PreserveOriginal;
+        IsPresetWriteProtected = result.PreservePresetOriginal;
         migrationBackupRequired = result.WasMigrated;
-        pending = result.WasMigrated || !File.Exists(path);
+        pending = result.WasMigrated || IsPresetWriteProtected || !File.Exists(path) ||
+            !File.Exists(ControlCenterWindowSettingsStore.GetPresetPath(path));
         StatusMessage = result.Warning ?? "设置已读取。";
     }
 
@@ -31,6 +33,7 @@ public sealed class ApplicationSettingsSession
     public string? StartupWarning { get; }
     public bool HasWarning { get; private set; }
     public bool IsWriteProtected { get; private set; }
+    public bool IsPresetWriteProtected { get; private set; }
     public string StatusMessage { get; private set; }
 
     public void Stage(ControlCenterWindowSettings settings)
@@ -71,7 +74,13 @@ public sealed class ApplicationSettingsSession
                 BackupOriginal();
                 migrationBackupRequired = false;
             }
-            store.Save(path, Current);
+            store.Save(path, Current, preservePresetOriginal: IsPresetWriteProtected);
+            if (IsPresetWriteProtected)
+            {
+                HasWarning = true;
+                StatusMessage = "其他偏好已保存；窗口预设未保存，原预设文件已保护。可备份后恢复保存，或不保存退出。";
+                return false;
+            }
             pending = false;
             HasWarning = false;
             StatusMessage = "已保存到本机。";
@@ -87,10 +96,15 @@ public sealed class ApplicationSettingsSession
 
     public bool TryRecoverAndSave()
     {
-        if (!IsWriteProtected) return TrySave();
+        if (!IsWriteProtected && !IsPresetWriteProtected) return TrySave();
         try
         {
-            BackupOriginal();
+            if (IsWriteProtected) BackupOriginal();
+            if (IsPresetWriteProtected)
+            {
+                var presetPath = ControlCenterWindowSettingsStore.GetPresetPath(path);
+                backup(presetPath, presetPath + ".backup-" + Guid.NewGuid().ToString("N"));
+            }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -99,6 +113,7 @@ public sealed class ApplicationSettingsSession
             return false;
         }
         IsWriteProtected = false;
+        IsPresetWriteProtected = false;
         pending = true;
         return TrySave();
     }

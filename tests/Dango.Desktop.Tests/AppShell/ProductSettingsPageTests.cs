@@ -243,7 +243,7 @@ public sealed class ProductSettingsPageTests
         rig.Click("RetrySaveSettingsButton");
         Assert.AreEqual(1, rig.Host.InteractionCalls, "重试保存不能重放已经应用的宿主命令。");
         Assert.AreEqual(1, rig.SaveCalls, "保存重试应直接交给待写入的设置会话。");
-        Assert.AreEqual(2, writer.Calls);
+        Assert.AreEqual(3, writer.Calls, "The explicit retry writes the independent preset and legacy main file once each.");
         Assert.IsFalse(rig.Session.HasWarning);
         Assert.AreEqual(Visibility.Collapsed, ((Border)rig.Home.FindName("SaveWarningRow")).Visibility);
         Assert.IsFalse(new ControlCenterWindowSettingsStore().Load(rig.Path).InteractionEnabled);

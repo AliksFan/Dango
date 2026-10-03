@@ -43,14 +43,16 @@ function Get-PackageFileRecord([string]$Root, [string]$Path) {
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$nativeInputs = & (Join-Path $PSScriptRoot 'test-desktop-publish-inputs.ps1') -PhysicsModulePath $PhysicsModulePath -RepositoryRoot $repoRoot
 Import-Module (Join-Path $PSScriptRoot 'local-install\Dango.LocalInstall.psm1') -Force
-$settingsSourceHashes = Get-DangoSettingsSourceContract -RepositoryRoot $repoRoot
+$settingsContract = 'dango-desktop-settings-v4-preset-sidecar-v1'
+$settingsSourceHashes = Get-DangoSettingsSourceContract -RepositoryRoot $repoRoot -SettingsContract $settingsContract
 $projectPath = Join-Path $repoRoot 'src\Dango.Desktop\Dango.Desktop.csproj'
 $oldLibraryPath = Join-Path $repoRoot 'src\Dango.Desktop\runtimes\win-x64\native\dango_box2d.dll'
 $licensePath = Join-Path $repoRoot 'eng\native\box2d\LICENSE.box2d.txt'
 $dependencyManifestPath = Join-Path $repoRoot 'eng\native\box2d\dependency.json'
 
-$moduleFullPath = [IO.Path]::GetFullPath($PhysicsModulePath)
+$moduleFullPath = $nativeInputs.PhysicsModulePath
 Assert-Sha256 $moduleFullPath $acceptedModuleHash 'Accepted physics module input'
 Assert-Sha256 $oldLibraryPath $acceptedBox2DHash 'Protected Box2D source library'
 if (-not (Test-Path -LiteralPath $licensePath -PathType Leaf)) { throw "Required license is missing: $licensePath" }
@@ -94,7 +96,7 @@ try {
     Assert-Sha256 $packageDependencyManifestPath $dependencyManifestHash 'Packaged Box2D dependency manifest'
     Assert-Sha256 $oldLibraryPath $acceptedBox2DHash 'Protected Box2D source library after publish'
     Assert-Sha256 $moduleFullPath $acceptedModuleHash 'Accepted physics module input after publish'
-    $null = Get-DangoSettingsSourceContract -RepositoryRoot $repoRoot
+    $null = Get-DangoSettingsSourceContract -RepositoryRoot $repoRoot -SettingsContract $settingsContract
 
     $manifestPath = Join-Path $packageRoot 'package-manifest.json'
     $records = @(Get-ChildItem -LiteralPath $packageRoot -File -Recurse |
@@ -108,7 +110,7 @@ try {
         sourceDirty = $sourceDirty
         runtime = 'win-x64'
         selfContained = $true
-        settingsContract = 'dango-desktop-settings-v4'
+        settingsContract = $settingsContract
         settingsSourceHashes = $settingsSourceHashes
         files = $records
     }

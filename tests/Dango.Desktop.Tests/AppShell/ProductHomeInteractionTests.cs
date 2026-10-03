@@ -47,6 +47,8 @@ public sealed class ProductHomeInteractionTests
         Assert.IsTrue(petAfter.Left >= 0 && buttonsAfter.Left >= 0);
         Assert.IsTrue(Bounds(home, "MoreOptions").Bottom <= Bounds(home, "ApplyButton").Top, "Detail text must not overlap apply.");
         Assert.IsFalse(Element<Button>(home, "ApplyButton").IsEnabled, "No fake save.");
+        Assert.AreEqual("仅预览 · 不保存", Element<TextBlock>(home, "AppearancePreviewNotice").Text);
+        Assert.AreEqual(Visibility.Visible, Element<TextBlock>(home, "AppearancePreviewNotice").Visibility);
         SaveImage(home, width, "face");
 
         Element<Expander>(home, "MoreOptions").IsExpanded = true;

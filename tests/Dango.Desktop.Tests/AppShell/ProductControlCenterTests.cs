@@ -115,7 +115,9 @@ public sealed class ProductControlCenterTests
             Click((Button)home.FindName("RetrySaveSettingsButton"));
 
             Assert.AreEqual(1, host.HatApplyCalls, "Retry save must not replay the product command.");
-            Assert.AreEqual(2, writer.Calls, "Retry save must retry the writer once.");
+            Assert.AreEqual(3, writer.Calls, "One retry writes the failed preset sidecar, then the main settings.");
+            CollectionAssert.AreEqual(new[] { ControlCenterWindowSettingsStore.GetPresetPath(path),
+                ControlCenterWindowSettingsStore.GetPresetPath(path), path }, writer.Paths.ToArray());
             Assert.AreEqual("top-hat", session.Current.HatPresetId);
             Assert.AreEqual("top-hat", new ControlCenterWindowSettingsStore().Load(path).HatPresetId);
             Assert.IsFalse(session.HasWarning);
@@ -171,9 +173,11 @@ public sealed class ProductControlCenterTests
     private sealed class FailOnceWriter : IAtomicTextWriter
     {
         public int Calls { get; private set; }
+        public List<string> Paths { get; } = [];
 
         public void Write(string path, string content)
         {
+            Paths.Add(path);
             Calls++;
             if (Calls == 1) throw new IOException("fictional first write failure");
             new AtomicTextFileWriter().Write(path, content);
