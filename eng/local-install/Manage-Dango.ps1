@@ -3,6 +3,7 @@ param(
     [ValidateSet('Status', 'Start', 'Activate', 'Rollback')][string]$Action = 'Status',
     [string]$InstallRoot,
     [string]$VersionId,
+    [string]$AcceptanceSettingsRoot,
     [switch]$ShowErrors
 )
 $ErrorActionPreference = 'Stop'
@@ -12,7 +13,11 @@ try {
     Import-Module (Join-Path $PSScriptRoot 'Dango.LocalInstall.psm1') -Force
     switch ($Action) {
         'Status' { Get-DangoInstallState -InstallRoot $InstallRoot | ConvertTo-Json }
-        'Start' { Start-DangoInstalled -InstallRoot $InstallRoot | ConvertTo-Json }
+        'Start' {
+            $startParameters = @{ InstallRoot = $InstallRoot }
+            if ($PSBoundParameters.ContainsKey('AcceptanceSettingsRoot')) { $startParameters.AcceptanceSettingsRoot = $AcceptanceSettingsRoot }
+            Start-DangoInstalled @startParameters | ConvertTo-Json
+        }
         'Activate' { Set-DangoActiveVersion -InstallRoot $InstallRoot -VersionId $VersionId | ConvertTo-Json }
         'Rollback' {
             $state = Undo-DangoUpdate -InstallRoot $InstallRoot

@@ -13,6 +13,18 @@ $script:SettingsSourceHashes = @{
     'App.xaml.cs' = '0314E2E847EEC15BAB7E69A191FAB1B260C199714022127C7B930D4C32E17822'
     'Verification/VerificationSessionStore.cs' = '925A313A44DBE72C35FBA230010A521E384C529D0EA705788E1D8AE4D7B2ACBD'
 }
+$script:SettingsContracts = @{ 'dango-desktop-settings-v4' = $script:SettingsSourceHashes }
+$script:SettingsContracts['dango-desktop-settings-v4-preset-sidecar-v1'] = @{
+    'AppShell/ControlCenter/ControlCenterWindowSettingsStore.cs' = '48FF4A9AB801FFF52228E6DB760F9248E047111DDBF0DA5AD22E78B32DE97329'
+    'AppShell/ControlCenter/ApplicationSettingsSession.cs' = 'E68D1E6997AF8E73305C1D374978B60B18FF107A4C07825B4A2C86212F96FB6E'
+    'AppShell/DangoApplicationHost.cs' = 'C60F9DECA4766F3EA547B8C1D5F555A7542B1449AF8C848962204019F3491D5A'
+    'App.xaml.cs' = '7E112AFB285DD17A27285FBE35F72B9B178A99133E0D4FC6CA5FA0113463D19B'
+    'Verification/VerificationSessionStore.cs' = '925A313A44DBE72C35FBA230010A521E384C529D0EA705788E1D8AE4D7B2ACBD'
+}
+$script:LegacyToolHashes = @{
+    'Dango.LocalInstall.psm1' = '5500CB19FFE0486C82DE9C42EC0C41DA27E65606618A2360DDA97AC6F9CCA77B'
+    'Manage-Dango.ps1' = '58668DDD3C117BF8F82E0F83F6C32D847CDDB6AB3B44564D11ED8EC946C11738'
+}
 $script:RequiredHashes = @{
     'dango_physics_module.dll' = '00FF064A9A1A4DB67712403A8D01F19845A9EDF6B582D5FCA7CB9D0B567EF69C'
     'dango_box2d.dll' = '6712D66ECEF9588123CAFCD868455080598B5B58711A698FB8AF022A0CDA191A'
@@ -43,9 +55,25 @@ function Get-DangoHash([string]$Path) {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToUpperInvariant()
 }
 
+function Get-DangoSettingsCompatibilityContract {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$SettingsContract)
+    if (@($script:SettingsContracts.Keys) -cnotcontains $SettingsContract) { throw 'Unsupported settings compatibility contract.' }
+    $result = [ordered]@{}
+    foreach ($relative in @($script:SettingsContracts[$SettingsContract].Keys | Sort-Object)) {
+        $result[$relative] = $script:SettingsContracts[$SettingsContract][$relative]
+    }
+    return $result
+}
+
 function Get-DangoSettingsSourceContract {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$RepositoryRoot)
+    param([Parameter(Mandatory)][string]$RepositoryRoot, [string]$SettingsContract)
+    $contracts = @($script:SettingsContracts.Keys)
+    if ($SettingsContract) {
+        $null = Get-DangoSettingsCompatibilityContract $SettingsContract
+        $contracts = @($SettingsContract)
+    }
     $result = [ordered]@{}
     foreach ($relative in @($script:SettingsSourceHashes.Keys | Sort-Object)) {
         $source = [IO.File]::ReadAllText((Join-Path $RepositoryRoot ('src/Dango.Desktop/' + $relative)))
@@ -53,12 +81,15 @@ function Get-DangoSettingsSourceContract {
         $sha = [Security.Cryptography.SHA256]::Create()
         try { $hash = [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($source))).Replace('-', '') }
         finally { $sha.Dispose() }
-        if ($hash -cne $script:SettingsSourceHashes[$relative]) {
-            throw "Settings source contract changed: $relative. Review migration and rollback compatibility before publishing."
-        }
         $result[$relative] = $hash
     }
-    return $result
+    foreach ($contract in $contracts) {
+        $expected = $script:SettingsContracts[$contract]
+        $matched = $true
+        foreach ($relative in $expected.Keys) { if ($result[$relative] -cne $expected[$relative]) { $matched = $false; break } }
+        if ($matched) { return $result }
+    }
+    throw 'Settings source contract changed. Review migration and rollback compatibility before publishing.'
 }
 
 function Get-DangoPackageFiles([string]$Root) {
@@ -80,12 +111,13 @@ function Test-DangoPackage {
     if ($manifest.packageFormat -ne 2 -or $manifest.packageType -cne 'internal-candidate' -or
         $manifest.runtime -cne 'win-x64' -or $manifest.selfContained -isnot [bool] -or -not $manifest.selfContained -or
         $manifest.sourceCommit -cnotmatch '^[0-9a-f]{40}$' -or $manifest.sourceDirty -isnot [bool] -or
-        $manifest.settingsContract -cne $script:SettingsContract) {
+        @($script:SettingsContracts.Keys) -cnotcontains $manifest.settingsContract) {
         throw 'Unsupported package metadata or settings compatibility contract.'
     }
-    if (@($manifest.settingsSourceHashes.PSObject.Properties).Count -ne $script:SettingsSourceHashes.Count) { throw 'Missing settings source contract evidence.' }
-    foreach ($relative in $script:SettingsSourceHashes.Keys) {
-        if ($manifest.settingsSourceHashes.$relative -cne $script:SettingsSourceHashes[$relative]) { throw 'The settings source contract is incompatible.' }
+    $sourceHashes = Get-DangoSettingsCompatibilityContract $manifest.settingsContract
+    if (@($manifest.settingsSourceHashes.PSObject.Properties).Count -ne $sourceHashes.Count) { throw 'Missing settings source contract evidence.' }
+    foreach ($relative in $sourceHashes.Keys) {
+        if ($manifest.settingsSourceHashes.$relative -cne $sourceHashes[$relative]) { throw 'The settings source contract is incompatible.' }
     }
     $paths = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     $records = @($manifest.files)
@@ -150,9 +182,35 @@ function Write-DangoAtomicJson([string]$Path, $Value) {
     $stream = [IO.FileStream]::new($temporary, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
     try { $stream.Write($bytes, 0, $bytes.Length); $stream.Flush($true) }
     finally { $stream.Dispose() }
-    # Failed replacement preserves the old state and the pending file for diagnosis.
-    if ([IO.File]::Exists($Path)) { [IO.File]::Replace($temporary, $Path, [NullString]::Value) }
-    else { [IO.File]::Move($temporary, $Path) }
+    $targetExisted = [IO.File]::Exists($Path)
+    $originalHash = $null
+    if ($targetExisted) { $originalHash = Get-DangoHash $Path }
+    $pendingHash = Get-DangoHash $temporary
+    # Windows scanners can briefly prevent an atomic replacement. Never fall back to deleting the destination.
+    # A persistent or unrelated failure still preserves the old state and pending file for diagnosis.
+    for ($attempt = 0; $attempt -lt 10; $attempt++) {
+        if ($attempt -gt 0) {
+            Assert-DangoNoReparse $Path
+            Assert-DangoNoReparse $temporary
+            if ([IO.File]::Exists($Path) -ne $targetExisted -or
+                ($targetExisted -and (Get-DangoHash $Path) -cne $originalHash) -or
+                -not [IO.File]::Exists($temporary) -or (Get-DangoHash $temporary) -cne $pendingHash) {
+                throw 'Atomic replacement inputs changed during retry. Original files and pending evidence were preserved.'
+            }
+        }
+        try { Move-DangoAtomicJsonFile $temporary $Path; return }
+        catch {
+            $cause = $_.Exception
+            while ($null -ne $cause.InnerException) { $cause = $cause.InnerException }
+            if ($cause -isnot [IO.IOException] -or ($cause.HResult -band 65535) -notin @(32, 33, 1175) -or $attempt -eq 9) { throw }
+            Start-Sleep -Milliseconds 50
+        }
+    }
+}
+
+function Move-DangoAtomicJsonFile([string]$Temporary, [string]$Path) {
+    if ([IO.File]::Exists($Path)) { [IO.File]::Replace($Temporary, $Path, [NullString]::Value) }
+    else { [IO.File]::Move($Temporary, $Path) }
 }
 
 function Assert-DangoOwnedRoot([string]$Root) {
@@ -181,6 +239,7 @@ function Get-DangoInstallState {
 
 function Initialize-DangoRoot([string]$Root) {
     Assert-DangoNoReparse $Root
+    Assert-DangoNoPendingToolsMigration $Root
     if (Test-Path -LiteralPath $Root) {
         Assert-DangoOwnedRoot $Root
         $null = Get-DangoInstallState $Root
@@ -221,7 +280,7 @@ function Get-DangoOrdinaryProcesses {
     foreach ($process in Get-CimInstance Win32_Process -Filter "Name = 'Dango.Desktop.exe'") {
         if ($process.SessionId -eq $session -and $process.CommandLine -and
             $process.CommandLine -notmatch '--(physics-host-review|eye-hat-review|soft-body-preview|paired-contact-preview|smoke-test|box2d-native-probe)') {
-            [pscustomobject]@{ Id = $process.ProcessId; Path = $process.ExecutablePath }
+            [pscustomobject]@{ Id = $process.ProcessId; Path = $process.ExecutablePath; CommandLine = $process.CommandLine }
         }
     }
 }
@@ -234,6 +293,7 @@ function Get-DangoInstalledPackage([string]$Root, [string]$VersionId) {
 }
 
 function Set-DangoActiveVersionCore([string]$Root, [string]$VersionId) {
+    Assert-DangoNoPendingToolsMigration $Root
     $state = Get-DangoInstallState $Root
     $null = Get-DangoInstalledPackage $Root $VersionId
     if ($state.current -ceq $VersionId) { return $state }
@@ -361,23 +421,36 @@ function New-DangoShortcut {
 
 function Start-DangoInstalled {
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$InstallRoot)
+    param([Parameter(Mandatory)][string]$InstallRoot, [string]$AcceptanceSettingsRoot)
     $root = Get-DangoFullPath $InstallRoot
     $lock = Enter-DangoInstallLock $root
     try {
+        Assert-DangoNoPendingToolsMigration $root
         $state = Get-DangoInstallState $root
         if ($null -eq $state.current) { throw 'No version is active. Activate the staged package after exiting the old Dango instance.' }
         $package = Get-DangoInstalledPackage $root $state.current
         $executable = Join-Path $package.Root 'Dango.Desktop.exe'
+        $settingsScope = $null
+        if ($PSBoundParameters.ContainsKey('AcceptanceSettingsRoot')) {
+            if ($package.Manifest.settingsContract -cne 'dango-desktop-settings-v4-preset-sidecar-v1') {
+                throw 'This package does not support isolated local-install acceptance settings.'
+            }
+            $settingsScope = Assert-DangoAcceptanceSettingsRoot $AcceptanceSettingsRoot $package.Root
+        }
         if (Test-DangoProductRunning) {
             $same = @(Get-DangoOrdinaryProcesses | Where-Object { $_.Path -ieq $executable })
             if ($same.Count -ne 1) { throw 'Another Dango version is running. Exit it normally before using this version.' }
+            if ((Get-DangoProcessSettingsScope $same[0].CommandLine) -ine $settingsScope) {
+                throw 'Dango is running with a different settings scope. Exit it normally before this launch.'
+            }
             $activation = [Threading.EventWaitHandle]::OpenExisting('Local\Dango.Phase1.App.Activate')
             try { $null = $activation.Set() }
             finally { $activation.Dispose() }
             return [pscustomobject]@{ VersionId = $state.current; ProcessId = $same[0].Id; ActivatedExisting = $true }
         }
-        $process = Start-Process -FilePath $executable -WorkingDirectory $package.Root -WindowStyle Normal -PassThru
+        $launchParameters = @{ FilePath = $executable; WorkingDirectory = $package.Root; WindowStyle = 'Normal'; PassThru = $true }
+        if ($null -ne $settingsScope) { $launchParameters.ArgumentList = '--local-install-acceptance-settings "' + $settingsScope + '"' }
+        $process = Start-Process @launchParameters
         $deadline = [DateTime]::UtcNow.AddSeconds(15)
         do {
             $process.Refresh()
@@ -385,6 +458,9 @@ function Start-DangoInstalled {
             if (Test-DangoProductRunning) {
                 $same = @(Get-DangoOrdinaryProcesses | Where-Object { $_.Path -ieq $executable })
                 if ($same.Count -eq 1 -and $same[0].Id -eq $process.Id) {
+                    if ((Get-DangoProcessSettingsScope $same[0].CommandLine) -ine $settingsScope) {
+                        throw 'The Dango instance did not confirm the requested settings scope.'
+                    }
                     return [pscustomobject]@{ VersionId = $state.current; ProcessId = $process.Id; ActivatedExisting = $false }
                 }
                 throw 'The ordinary Dango instance belongs to another process. Exit it normally before retrying.'
@@ -396,4 +472,232 @@ function Start-DangoInstalled {
     finally { Exit-DangoInstallLock $lock }
 }
 
-Export-ModuleMember -Function Test-DangoPackage, Get-DangoSettingsSourceContract, Install-DangoPackage, Set-DangoActiveVersion, Undo-DangoUpdate, Get-DangoInstallState, New-DangoShortcut, Start-DangoInstalled
+function Assert-DangoAcceptanceSettingsRoot([string]$Path, [string]$PackageRoot) {
+    if ($Path -notmatch '^[A-Za-z]:[\\/].+') { throw 'An absolute local acceptance settings directory is required.' }
+    $root = Get-DangoFullPath $Path
+    Assert-DangoNoReparse $root
+    if (-not (Test-Path -LiteralPath $root -PathType Container)) { throw 'Acceptance settings directory must already exist.' }
+    $dailyRoot = Get-DangoFullPath (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Dango')
+    foreach ($protected in @($dailyRoot, $PackageRoot)) {
+        if ($root -ieq $protected -or $root.StartsWith($protected + '\', [StringComparison]::OrdinalIgnoreCase) -or
+            $protected.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Acceptance settings directory must be separate from daily settings and the application package.'
+        }
+    }
+    $markerPath = Join-Path $root '.dango-local-install-acceptance.json'
+    Assert-DangoNoReparse $markerPath
+    $marker = [IO.File]::ReadAllText($markerPath) | ConvertFrom-Json
+    if (@($marker.PSObject.Properties).Count -ne 3 -or $marker.application -cne 'Dango' -or
+        ($marker.acceptanceFormat -isnot [int] -and $marker.acceptanceFormat -isnot [long]) -or
+        $marker.acceptanceFormat -ne 1 -or $marker.fictional -isnot [bool] -or -not $marker.fictional) {
+        throw 'Acceptance settings directory does not have the expected fictional-fixture owner marker.'
+    }
+    return $root
+}
+
+function Get-DangoProcessSettingsScope([string]$CommandLine) {
+    if ([string]::IsNullOrWhiteSpace($CommandLine)) { throw 'Dango process command line is unavailable; its settings scope cannot be confirmed.' }
+    if (-not ('Dango.LocalInstall.CommandLine' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace Dango.LocalInstall {
+    public static class CommandLine {
+        [DllImport("shell32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern IntPtr CommandLineToArgvW(string commandLine, out int count);
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr LocalFree(IntPtr handle);
+        public static string[] Parse(string commandLine) {
+            int count;
+            IntPtr pointer = CommandLineToArgvW(commandLine, out count);
+            if (pointer == IntPtr.Zero) throw new InvalidOperationException("Cannot parse Dango process arguments.");
+            try {
+                string[] result = new string[count];
+                for (int index = 0; index < count; index++) result[index] = Marshal.PtrToStringUni(Marshal.ReadIntPtr(pointer, index * IntPtr.Size));
+                return result;
+            } finally { LocalFree(pointer); }
+        }
+    }
+}
+'@
+    }
+    $commandArgs = [Dango.LocalInstall.CommandLine]::Parse($CommandLine)
+    $scope = $null
+    for ($index = 1; $index -lt $commandArgs.Length; $index++) {
+        if ($commandArgs[$index] -ceq '--local-install-acceptance-settings') {
+            if ($null -ne $scope -or $index + 1 -ge $commandArgs.Length) { throw 'Dango process acceptance settings scope is ambiguous.' }
+            $index++
+            if ($commandArgs[$index] -notmatch '^[A-Za-z]:[\\/].+') { throw 'Dango process acceptance settings scope is not an absolute local path.' }
+            $scope = Get-DangoFullPath $commandArgs[$index]
+        }
+    }
+    return $scope
+}
+
+function Assert-DangoToolDirectory([string]$Path, $Hashes) {
+    Assert-DangoNoReparse $Path
+    $items = @(Get-ChildItem -LiteralPath $Path -Force)
+    if ($items.Count -ne 2) { throw 'Management tools directory contains missing or unknown entries.' }
+    foreach ($name in $script:LegacyToolHashes.Keys) {
+        $file = Join-Path $Path $name
+        Assert-DangoNoReparse $file
+        if (-not (Test-Path -LiteralPath $file -PathType Leaf) -or (Get-DangoHash $file) -cne $Hashes[$name]) {
+            throw "Unrecognized management tool fingerprint: $name"
+        }
+    }
+}
+
+function Get-DangoCurrentToolHashes {
+    $hashes = [ordered]@{}
+    foreach ($name in $script:LegacyToolHashes.Keys) { $hashes[$name] = Get-DangoHash (Join-Path $PSScriptRoot $name) }
+    return $hashes
+}
+
+function Assert-DangoNoPendingToolsMigration([string]$Root) {
+    $path = Join-Path $Root 'tools-migration.json'
+    if (Test-Path -LiteralPath $path) {
+        Assert-DangoNoReparse $path
+        $journal = [IO.File]::ReadAllText($path) | ConvertFrom-Json
+        if ($journal.migrationFormat -ne 1 -or $journal.migrationId -cnotmatch '^[0-9a-f]{32}$' -or
+            $journal.phase -cnotin @('completed', 'restored')) {
+            throw 'A management tools migration is incomplete. Run the explicit migration Recover action before starting or updating Dango.'
+        }
+    }
+}
+
+function Assert-DangoMigrationSnapshot([string]$Root, $Journal) {
+    Assert-DangoOwnedRoot $Root
+    $null = Get-DangoInstallState $Root
+    if ($Journal.migrationFormat -ne 1 -or $Journal.migrationId -cnotmatch '^[0-9a-f]{32}$' -or
+        $Journal.phase -cnotin @('prepared', 'completed', 'restored') -or
+        $Journal.stateSha256 -cne (Get-DangoHash (Join-Path $Root 'install-state.json')) -or
+        $Journal.ownerSha256 -cne (Get-DangoHash (Join-Path $Root 'install-owner.json'))) {
+        throw 'Management tools migration journal or installation snapshot differs; automatic recovery is refused.'
+    }
+    $sourceHashes = Get-DangoCurrentToolHashes
+    if (@($Journal.newToolHashes.PSObject.Properties).Count -ne 2) { throw 'Invalid management tools migration fingerprints.' }
+    foreach ($name in $sourceHashes.Keys) {
+        if ($Journal.newToolHashes.$name -cne $sourceHashes[$name]) { throw 'Migration recovery must use the same reviewed new management tools.' }
+    }
+}
+
+function Assert-DangoInstalledVersions([string]$Root) {
+    $versions = Join-Path $Root 'versions'
+    Assert-DangoNoReparse $versions
+    foreach ($item in Get-ChildItem -LiteralPath $versions -Force) {
+        if (-not $item.PSIsContainer -or $item.Name -cnotmatch '^[0-9a-f]{12}-[0-9a-f]{12}$') { throw 'Unknown installed version entry.' }
+        $null = Get-DangoInstalledPackage $Root $item.Name
+    }
+    $state = Get-DangoInstallState $Root
+    foreach ($id in @($state.current, $state.previous)) { if ($null -ne $id) { $null = Get-DangoInstalledPackage $Root $id } }
+    $rollback = Join-Path $Root 'Rollback.lnk'
+    if (Test-Path -LiteralPath $rollback) { Assert-DangoNoReparse $rollback; Assert-DangoShortcutAvailable $Root $rollback 'Rollback' }
+}
+
+function Restore-DangoManagementToolsMigrationCore([string]$Root) {
+    $journalPath = Join-Path $Root 'tools-migration.json'
+    Assert-DangoNoReparse $journalPath
+    $journal = [IO.File]::ReadAllText($journalPath) | ConvertFrom-Json
+    Assert-DangoMigrationSnapshot $Root $journal
+    if ($journal.phase -cne 'prepared') { throw 'Only an interrupted migration can be recovered; completed migrations keep the compatible new manager.' }
+    Assert-DangoProductStopped
+    Assert-DangoInstalledVersions $Root
+    $tools = Join-Path $Root 'tools'
+    $backup = Join-Path $Root ('.tools-backup-' + $journal.migrationId)
+    $staging = Join-Path $Root ('.tools-staging-' + $journal.migrationId)
+    Assert-DangoNoReparse $tools
+    Assert-DangoNoReparse $backup
+    Assert-DangoNoReparse $staging
+    if (Test-Path -LiteralPath $staging) { Assert-DangoToolDirectory $staging (Get-DangoCurrentToolHashes) }
+    if (Test-Path -LiteralPath $backup) {
+        Assert-DangoToolDirectory $backup $script:LegacyToolHashes
+        if (Test-Path -LiteralPath $tools) {
+            Assert-DangoToolDirectory $tools (Get-DangoCurrentToolHashes)
+            $rejected = Join-Path $Root ('.tools-rejected-' + $journal.migrationId)
+            Assert-DangoNoReparse $rejected
+            if (Test-Path -LiteralPath $rejected) { throw 'Recovery target already exists; no files were overwritten.' }
+            [IO.Directory]::Move($tools, $rejected)
+        }
+        [IO.Directory]::Move($backup, $tools)
+    }
+    else { Assert-DangoToolDirectory $tools $script:LegacyToolHashes }
+    Assert-DangoToolDirectory $tools $script:LegacyToolHashes
+    $journal.phase = 'restored'
+    Write-DangoAtomicJson $journalPath $journal
+    return [pscustomobject]@{ InstallRoot = $Root; MigrationId = $journal.migrationId; Phase = 'restored' }
+}
+
+function Restore-DangoManagementToolsMigration {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$InstallRoot)
+    $root = Get-DangoFullPath $InstallRoot
+    $lock = Enter-DangoInstallLock $root
+    try { Restore-DangoManagementToolsMigrationCore $root }
+    finally { Exit-DangoInstallLock $lock }
+}
+
+function Update-DangoManagementTools {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$InstallRoot)
+    $root = Get-DangoFullPath $InstallRoot
+    $lock = Enter-DangoInstallLock $root
+    try {
+        Assert-DangoOwnedRoot $root
+        $null = Get-DangoInstallState $root
+        Assert-DangoNoPendingToolsMigration $root
+        $journalPath = Join-Path $root 'tools-migration.json'
+        if (Test-Path -LiteralPath $journalPath) {
+            $previousJournal = [IO.File]::ReadAllText($journalPath) | ConvertFrom-Json
+            if ($previousJournal.phase -ceq 'completed') { throw 'This installation has already completed its one-time management tools migration.' }
+        }
+        Assert-DangoProductStopped
+        Assert-DangoInstalledVersions $root
+        $tools = Join-Path $root 'tools'
+        Assert-DangoToolDirectory $tools $script:LegacyToolHashes
+        $sourceHashes = Get-DangoCurrentToolHashes
+        Assert-DangoToolDirectory $PSScriptRoot $sourceHashes
+        $id = [Guid]::NewGuid().ToString('N')
+        $staging = Join-Path $root ('.tools-staging-' + $id)
+        $backup = Join-Path $root ('.tools-backup-' + $id)
+        Assert-DangoNoReparse $staging
+        Assert-DangoNoReparse $backup
+        $null = New-Item -ItemType Directory -Path $staging
+        foreach ($name in $sourceHashes.Keys) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $staging $name) }
+        Assert-DangoToolDirectory $staging $sourceHashes
+        foreach ($name in $sourceHashes.Keys) {
+            $tokens = $null; $errors = $null
+            $null = [Management.Automation.Language.Parser]::ParseFile((Join-Path $staging $name), [ref]$tokens, [ref]$errors)
+            if (@($errors).Count -ne 0) { throw "Staged management tool syntax is invalid: $name" }
+        }
+        $hostPath = Join-Path $PSHOME $(if ($PSVersionTable.PSEdition -eq 'Core') { 'pwsh.exe' } else { 'powershell.exe' })
+        $probe = & $hostPath -NoProfile -NonInteractive -File (Join-Path $staging 'Manage-Dango.ps1') -Action Status -InstallRoot $root
+        if ($LASTEXITCODE -ne 0) { throw 'Staged management tools could not read the existing installation state.' }
+        $null = ($probe | Out-String | ConvertFrom-Json)
+        $journal = [ordered]@{
+            migrationFormat = 1; migrationId = $id; phase = 'prepared'
+            stateSha256 = Get-DangoHash (Join-Path $root 'install-state.json')
+            ownerSha256 = Get-DangoHash (Join-Path $root 'install-owner.json')
+            newToolHashes = $sourceHashes
+        }
+        Write-DangoAtomicJson $journalPath $journal
+        try {
+            Assert-DangoProductStopped
+            Assert-DangoToolDirectory $tools $script:LegacyToolHashes
+            [IO.Directory]::Move($tools, $backup)
+            [IO.Directory]::Move($staging, $tools)
+            Assert-DangoToolDirectory $tools $sourceHashes
+            $journal.phase = 'completed'
+            Write-DangoAtomicJson $journalPath $journal
+        }
+        catch {
+            $failure = $_
+            try { $null = Restore-DangoManagementToolsMigrationCore $root }
+            catch { throw ('Management tools migration failed. Explicit Recover is required; no files were discarded. ' + $_.Exception.Message) }
+            throw $failure
+        }
+        return [pscustomobject]@{ InstallRoot = $root; MigrationId = $id; Phase = 'completed'; BackupPath = $backup }
+    }
+    finally { Exit-DangoInstallLock $lock }
+}
+
+Export-ModuleMember -Function Test-DangoPackage, Get-DangoSettingsCompatibilityContract, Get-DangoSettingsSourceContract, Install-DangoPackage, Set-DangoActiveVersion, Undo-DangoUpdate, Get-DangoInstallState, New-DangoShortcut, Start-DangoInstalled, Update-DangoManagementTools, Restore-DangoManagementToolsMigration
