@@ -58,6 +58,52 @@ public sealed class DesktopPhysicsScene : IDisposable
     public int LastErrorCode => world.LastErrorCode;
     public DesktopPhysicsSceneFrame? LastFrame { get; private set; }
     public IReadOnlyList<DangoEntityId> EntityIds => Array.AsReadOnly(presenters.Keys.ToArray());
+    public double GroundY => ToHost(new(0, DangoPhysicsDefaults.Current.GroundHeight)).Y;
+
+    public void SetHorizontalBounds(double hostLeft, double hostRight)
+    {
+        VerifyAccess();
+        EnsureHealthy();
+        world.SetHorizontalBounds(ToWorld(new(hostLeft, origin.Y)).X, ToWorld(new(hostRight, origin.Y)).X);
+    }
+
+    public void ClearHorizontalBounds()
+    {
+        VerifyAccess();
+        EnsureHealthy();
+        world.ClearHorizontalBounds();
+    }
+
+    /// <summary>
+    /// Local scene handoff, not a network teleport. The caller configures the new
+    /// stage bounds (or clears them for home) before any next physics step.
+    /// </summary>
+    public bool RehostSelectedEntityAt(LogicalPoint actualCenter)
+    {
+        VerifyAccess();
+        EnsureHealthy();
+        ValidatePoint(actualCenter);
+        if (LastFrame is not { Physics.Succeeded: true } frame) return false;
+        var selected = frame.Physics.Bodies.Single(body => body.EntityId == SelectedEntity);
+        var selectedBounds = frame.Bodies.Single(body => body.EntityId == SelectedEntity).Bounds;
+        ClearInput();
+        // No Step may occur between restoring geometry, recentering and the
+        // caller configuring the new floor. Optional-export failures propagate.
+        world.ClearHorizontalBounds();
+        var horizontal = -(double)selected.CoreX;
+        world.TranslateHorizontal(horizontal);
+        origin = new(actualCenter.X, actualCenter.Y + selected.CoreY * height / 2);
+        var translation = new LogicalVector(actualCenter.X - selectedBounds.Center.X, actualCenter.Y - selectedBounds.Center.Y);
+        LastFrame = frame with
+        {
+            Physics = frame.Physics with
+            {
+                Bodies = frame.Physics.Bodies.Select(body => body with { CoreX = (float)(body.CoreX + horizontal) }).ToArray(),
+            },
+            Bodies = frame.Bodies.Select(body => body with { Bounds = body.Bounds.Translate(translation) }).ToArray(),
+        };
+        return true;
+    }
 
     public DangoEntityId Add(double x, double y)
     {

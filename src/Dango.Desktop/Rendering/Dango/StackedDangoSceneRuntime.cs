@@ -26,6 +26,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
     private DesktopPhysicsScene? scene;
     private LogicalPoint? hostOrigin;
     private LogicalRect? viewport;
+    private (double Left, double Right)? localHorizontalBounds;
     private bool layoutPending;
     private DirectionalControlIntent directionalIntent;
     private bool running;
@@ -396,6 +397,40 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         layoutPending = true;
     }
 
+    internal double? LocalGroundY => scene?.GroundY;
+    internal LogicalPoint? CurrentSelectedCenter => scene?.LastFrame?.Bodies
+        .FirstOrDefault(body => body.EntityId == scene.SelectedEntity)?.Bounds.Center;
+
+    internal void SetHorizontalBounds(double left, double right)
+    {
+        VerifyAccess();
+        EnsureHealthy();
+        (scene ?? throw new InvalidOperationException("请等待本地场景首帧后设置边界。")).SetHorizontalBounds(left, right);
+        localHorizontalBounds = (left, right);
+    }
+
+    internal void ClearHorizontalBounds()
+    {
+        VerifyAccess();
+        EnsureHealthy();
+        (scene ?? throw new InvalidOperationException("本地物理场景尚未创建。")).ClearHorizontalBounds();
+        localHorizontalBounds = null;
+    }
+
+    internal bool RehostSelectedEntityAt(LogicalPoint actualCenter)
+    {
+        VerifyAccess();
+        EnsureHealthy();
+        if (scene?.LastFrame is null) return false;
+        ClearPhysicalInput();
+        if (!scene.RehostSelectedEntityAt(actualCenter)) return false;
+        localHorizontalBounds = null;
+        hostOrigin = actualCenter;
+        layoutPending = true;
+        Gait.ClearMotion();
+        return true;
+    }
+
     public bool AddDangoInViewport(LogicalRect bounds)
     {
         VerifyAccess();
@@ -532,6 +567,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
             {
                 ClearPhysicalInput();
                 scene!.Rehost(center);
+                if (localHorizontalBounds is { } limits) scene.SetHorizontalBounds(limits.Left, limits.Right);
                 hostOrigin = center;
                 layoutPending = true;
             }
@@ -546,7 +582,11 @@ public sealed class StackedDangoSceneRuntime : IDisposable
                 LayoutWarning = bounds.Length > 0 && (bounds.Max(b => b.Right) - bounds.Min(b => b.X) > view.Width ||
                     bounds.Max(b => b.Bottom) - bounds.Min(b => b.Y) > view.Height)
                     ? "当前窗口放不下整个场景；请放大窗口或重置。不会缩放或传送物理身体。" : null;
-                var translation = DangoHostLayout.FitTranslation(view, frame.Bodies.Select(body => body.Bounds).ToArray());
+                // A bounded local world is viewed through a camera. Fitting it
+                // into the current screen would move the floor and side walls.
+                // Keep the accepted automatic fitting path for unbounded hosts.
+                var translation = localHorizontalBounds is null
+                    ? DangoHostLayout.FitTranslation(view, frame.Bodies.Select(body => body.Bounds).ToArray()) : default;
                 if (translation != default)
                 {
                     ClearPhysicalInput();
