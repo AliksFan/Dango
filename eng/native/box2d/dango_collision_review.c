@@ -15,6 +15,9 @@ typedef struct collision_review
     int active[DANGO_PHYSICS_MAX_BODIES], entity_ids[DANGO_PHYSICS_MAX_BODIES], next_entity_id;
     float anchors[DANGO_PHYSICS_MAX_BODIES*2];
     float snapshot[DANGO_PHYSICS_MAX_BODIES*42];
+    b2ShapeId horizontal_walls[2];
+    bool horizontal_bounds_enabled;
+    float horizontal_left, horizontal_right;
 } collision_review;
 
 DANGO_API void dango_collision_test_interaction_flags(void* handle,int flags)
@@ -266,6 +269,34 @@ static bool collision_solve_pairs(collision_review* p,const bool* static_x,int* 
     return false;
 }
 
+static int collision_local_floor_contacts(collision_review* p,dango_self_soft_body* body,int* grounded)
+{
+    int count=0;
+    bool near_floor=false;
+    for (int n=0;n<body->node_count;++n)
+    {
+        b2Vec2 position=b2Body_GetPosition(body->node_body_ids[n]);
+        if (position.x>=p->horizontal_left && position.x<=p->horizontal_right &&
+            position.y-p->config.node_radius<=p->config.ground_height+.035f) near_floor=true;
+        b2ContactData contacts[4];
+        int capacity=b2Body_GetContactCapacity(body->node_body_ids[n]);
+        if (capacity<=0) continue;
+        int touching=b2Body_GetContactData(body->node_body_ids[n],contacts,capacity<4 ? capacity : 4);
+        for (int c=0;c<touching;++c)
+        {
+            b2ContactData* contact=&contacts[c];
+            // The normal is A->B. Only the configured floor supporting a node
+            // from below counts; walls and lateral floor edges cannot grant jumps.
+            float upward=B2_ID_EQUALS(contact->shapeIdA,body->ground_shape_id) ? contact->manifold.normal.y :
+                B2_ID_EQUALS(contact->shapeIdB,body->ground_shape_id) ? -contact->manifold.normal.y : 0;
+            if (contact->manifold.pointCount>0 && upward>=.7f) ++count;
+        }
+    }
+    body->grounded=count>0 || near_floor;
+    *grounded=body->grounded ? 1 : 0;
+    return count;
+}
+
 static int collision_read(collision_review* p, float* output)
 {
     for (int r=0;r<p->capacity;++r)
@@ -275,6 +306,7 @@ static int collision_read(collision_review* p, float* output)
         int error=dango_self_read_frame(p->bodies[r],&p->config,row,&points,&contacts,
             row+34,row+35,row+36,row+32,row+33,row+37,&grounded,&selected);
         if (error) return error;
+        if (p->horizontal_bounds_enabled) contacts=collision_local_floor_contacts(p,p->bodies[r],&grounded);
         row[38]=(float)contacts; row[39]=(float)grounded; row[40]=(float)selected; row[41]=(float)points;
     }
     return 0;
@@ -522,6 +554,115 @@ DANGO_API int dango_physics_world_reset(void* handle)
         dango_self_initialize_at(p->bodies[slot],&p->config,p->anchors[2*slot],p->anchors[2*slot+1]);
     }
     p->error=0; p->contact_steps=0; memset(p->snapshot,0,sizeof p->snapshot);
+    return collision_read(p,p->snapshot);
+}
+
+// Opt-in local scene geometry. Existing worlds retain their original floor and
+// exact stepping path unless these additive ABI-1 exports are explicitly used.
+DANGO_API int dango_physics_world_set_horizontal_bounds(void* handle,float left,float right)
+{
+    collision_review* p=handle;
+    if (!p || p->error || !isfinite(left) || !isfinite(right) ||
+        fabsf(left)>1024 || fabsf(right)>1024 ||
+        !isfinite(right-left) || right-left<2*(p->config.radial_rest_length+p->config.node_radius)) return -410;
+    if (p->horizontal_bounds_enabled && left==p->horizontal_left && right==p->horizontal_right) return 0;
+    // Reject a shrinking floor that would strand an existing rig; no teleport or
+    // partial geometry mutation is used to make invalid bounds appear successful.
+    for (int r=0;r<p->capacity;++r) if (p->active[r])
+        for (int n=0;n<16;++n)
+        {
+            float x=b2Body_GetPosition(p->bodies[r]->node_body_ids[n]).x;
+            if (x-p->config.node_radius<left-.001f || x+p->config.node_radius>right+.001f) return -410;
+        }
+    dango_self_soft_body* first=p->bodies[0];
+    b2ShapeDef wall_def=b2DefaultShapeDef();
+    wall_def.material.friction=p->config.friction;
+    wall_def.material.restitution=p->config.restitution;
+    wall_def.filter.categoryBits=0x00000001;
+    wall_def.filter.maskBits=0x00000002;
+    b2Polygon walls[2]={
+        b2MakeOffsetBox(.08f,32.0f,(b2Vec2){left-.08f,32.08f},b2Rot_identity),
+        b2MakeOffsetBox(.08f,32.0f,(b2Vec2){right+.08f,32.08f},b2Rot_identity)};
+    bool created[2]={false,false};
+    for (int i=0;i<2;++i)
+    {
+        if (b2Shape_IsValid(p->horizontal_walls[i])) b2Shape_SetPolygon(p->horizontal_walls[i],&walls[i]);
+        else
+        {
+            p->horizontal_walls[i]=b2CreatePolygonShape(first->ground_body_id,&wall_def,&walls[i]);
+            created[i]=b2Shape_IsValid(p->horizontal_walls[i]);
+        }
+        if (!b2Shape_IsValid(p->horizontal_walls[i]))
+        {
+            for (int j=0;j<2;++j) if (created[j])
+            {
+                b2DestroyShape(p->horizontal_walls[j],false);
+                p->horizontal_walls[j]=b2_nullShapeId;
+            }
+            // A partial allocation is not usable geometry. Preserve the last
+            // safe snapshot and require explicit recovery rather than stepping.
+            p->error=-401;
+            return p->error;
+        }
+    }
+    b2Body_SetTransform(first->ground_body_id,(b2Vec2){0,p->config.ground_height-.08f},b2Rot_identity);
+    b2Polygon floor=b2MakeOffsetBox((right-left)/2,.08f,(b2Vec2){left+(right-left)/2,0},b2Rot_identity);
+    b2Shape_SetPolygon(first->ground_shape_id,&floor);
+    p->horizontal_left=left; p->horizontal_right=right; p->horizontal_bounds_enabled=true;
+    return 0;
+}
+
+DANGO_API int dango_physics_world_clear_horizontal_bounds(void* handle)
+{
+    collision_review* p=handle;
+    if (!p || p->error) return -410;
+    dango_self_soft_body* first=p->bodies[0];
+    if (!p->horizontal_bounds_enabled && b2Body_GetPosition(first->ground_body_id).x==0 &&
+        !b2Shape_IsValid(p->horizontal_walls[0]) && !b2Shape_IsValid(p->horizontal_walls[1])) return 0;
+    for (int i=0;i<2;++i)
+        if (b2Shape_IsValid(p->horizontal_walls[i]))
+        {
+            b2DestroyShape(p->horizontal_walls[i],false);
+            p->horizontal_walls[i]=b2_nullShapeId;
+        }
+    b2Body_SetTransform(first->ground_body_id,(b2Vec2){0,p->config.ground_height-.08f},b2Rot_identity);
+    b2Polygon floor=b2MakeBox(8.0f,.08f);
+    b2Shape_SetPolygon(first->ground_shape_id,&floor);
+    p->horizontal_bounds_enabled=false;
+    return 0;
+}
+
+DANGO_API int dango_physics_world_translate_horizontal(void* handle,float translation)
+{
+    collision_review* p=handle;
+    if (!p || p->error || !isfinite(translation) || fabsf(translation)>1024) return -410;
+    if (translation==0) return 0;
+    if (fabsf(b2Body_GetPosition(p->bodies[0]->ground_body_id).x+translation)>1024 ||
+        (p->horizontal_bounds_enabled && (fabsf(p->horizontal_left+translation)>1024 ||
+            fabsf(p->horizontal_right+translation)>1024))) return -410;
+    for (int r=0;r<p->capacity;++r) if (p->active[r])
+        for (int n=0;n<17;++n)
+        {
+            b2Vec2 position=b2Body_GetPosition(display_id(p->bodies[r],n));
+            if (!isfinite(position.x+translation) || fabsf(position.x+translation)>1024) return -410;
+        }
+    // All nodes, the core and floor move together. Velocities, entity IDs,
+    // relative shape, joints, cooldowns and the reset anchors are not recreated.
+    for (int r=0;r<p->capacity;++r) if (p->active[r])
+        for (int n=0;n<17;++n)
+        {
+            b2BodyId id=display_id(p->bodies[r],n);
+            b2Vec2 position=b2Body_GetPosition(id); position.x+=translation;
+            b2Body_SetTransform(id,position,b2Body_GetRotation(id));
+        }
+    b2BodyId ground=p->bodies[0]->ground_body_id;
+    b2Vec2 position=b2Body_GetPosition(ground); position.x+=translation;
+    b2Body_SetTransform(ground,position,b2Body_GetRotation(ground));
+    if (p->horizontal_bounds_enabled)
+    {
+        p->horizontal_left+=translation;
+        p->horizontal_right+=translation;
+    }
     return collision_read(p,p->snapshot);
 }
 

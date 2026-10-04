@@ -185,6 +185,40 @@ public sealed class DangoPhysicsWorld : IDisposable
         LastErrorCode = 0;
     }
 
+    /// <summary>Opt-in local stage geometry; absent in older ABI-1 modules.</summary>
+    public void SetHorizontalBounds(double left, double right)
+    {
+        VerifyAccess();
+        if (!IsFiniteFloat(left) || !IsFiniteFloat(right) || left >= right)
+            throw new ArgumentOutOfRangeException(nameof(left));
+        var call = api.SetHorizontalBounds ?? throw MissingLocalExport("dango_physics_world_set_horizontal_bounds");
+        var error = call(world, (float)left, (float)right);
+        if (error != 0) throw Map(error, "设置本地物理场景左右边界失败。");
+    }
+
+    public void ClearHorizontalBounds()
+    {
+        VerifyAccess();
+        var call = api.ClearHorizontalBounds ?? throw MissingLocalExport("dango_physics_world_clear_horizontal_bounds");
+        var error = call(world);
+        if (error != 0) throw Map(error, "恢复本地物理场景地板失败。");
+    }
+
+    /// <summary>Translate the existing rigs without resetting shape, velocity or identity.</summary>
+    public void TranslateHorizontal(double translation)
+    {
+        VerifyAccess();
+        if (!IsFiniteFloat(translation)) throw new ArgumentOutOfRangeException(nameof(translation));
+        var call = api.TranslateHorizontal ?? throw MissingLocalExport("dango_physics_world_translate_horizontal");
+        var error = call(world, (float)translation);
+        if (error != 0) throw Map(error, "本地物理场景水平坐标交接失败。");
+    }
+
+    private static bool IsFiniteFloat(double value) => double.IsFinite(value) && Math.Abs(value) <= float.MaxValue;
+
+    private static DangoPhysicsException MissingLocalExport(string name) => new(DangoPhysicsFailureKind.MissingExport,
+        $"物理模块缺少本地场景导出：{name}；请使用支持此能力的隔离候选。");
+
     public void Dispose()
     {
         if (disposed) return;
@@ -229,11 +263,18 @@ public sealed class DangoPhysicsWorld : IDisposable
         internal readonly StepDelegate Step;
         internal readonly ResetDelegate Reset;
         internal readonly DestroyDelegate Destroy;
+        internal readonly HorizontalBoundsDelegate? SetHorizontalBounds;
+        internal readonly ResetDelegate? ClearHorizontalBounds;
+        internal readonly TranslateHorizontalDelegate? TranslateHorizontal;
 
         private NativeApi(nint library, CreateDelegate create, AddDelegate add, RemoveDelegate remove,
-            StepDelegate step, ResetDelegate reset, DestroyDelegate destroy)
+            StepDelegate step, ResetDelegate reset, DestroyDelegate destroy,
+            HorizontalBoundsDelegate? setHorizontalBounds, ResetDelegate? clearHorizontalBounds,
+            TranslateHorizontalDelegate? translateHorizontal)
         {
             this.library = library; Create = create; Add = add; Remove = remove; Step = step; Reset = reset; Destroy = destroy;
+            SetHorizontalBounds = setHorizontalBounds; ClearHorizontalBounds = clearHorizontalBounds;
+            TranslateHorizontal = translateHorizontal;
         }
 
         internal static NativeApi Load(string path)
@@ -250,7 +291,10 @@ public sealed class DangoPhysicsWorld : IDisposable
                 return new(library,
                     Get<CreateDelegate>(library, "dango_physics_world_create"), Get<AddDelegate>(library, "dango_physics_world_add"),
                     Get<RemoveDelegate>(library, "dango_physics_world_remove"), Get<StepDelegate>(library, "dango_physics_world_step"),
-                    Get<ResetDelegate>(library, "dango_physics_world_reset"), Get<DestroyDelegate>(library, "dango_physics_world_destroy"));
+                    Get<ResetDelegate>(library, "dango_physics_world_reset"), Get<DestroyDelegate>(library, "dango_physics_world_destroy"),
+                    GetOptional<HorizontalBoundsDelegate>(library, "dango_physics_world_set_horizontal_bounds"),
+                    GetOptional<ResetDelegate>(library, "dango_physics_world_clear_horizontal_bounds"),
+                    GetOptional<TranslateHorizontalDelegate>(library, "dango_physics_world_translate_horizontal"));
             }
             catch
             {
@@ -265,6 +309,9 @@ public sealed class DangoPhysicsWorld : IDisposable
                 throw new DangoPhysicsException(DangoPhysicsFailureKind.MissingExport, $"物理模块缺少导出：{name}");
             return Marshal.GetDelegateForFunctionPointer<T>(address);
         }
+
+        private static T? GetOptional<T>(nint library, string name) where T : Delegate =>
+            NativeLibrary.TryGetExport(library, name, out var address) ? Marshal.GetDelegateForFunctionPointer<T>(address) : null;
 
         public void Dispose()
         {
@@ -282,6 +329,8 @@ public sealed class DangoPhysicsWorld : IDisposable
             out int stateCount, out int contactSteps, out int latchedError);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int ResetDelegate(nint handle);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int DestroyDelegate(nint handle);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int HorizontalBoundsDelegate(nint handle, float left, float right);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int TranslateHorizontalDelegate(nint handle, float translation);
     }
 
     [StructLayout(LayoutKind.Sequential)]
