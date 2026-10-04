@@ -24,8 +24,10 @@ public sealed class PorchPhysicsSceneContractTests
     {
         using var scene = new DesktopPhysicsScene(Module, Bounds);
         Assert.IsFalse(scene.RehostSelectedEntityAt(new(400, 280)));
+        Assert.IsFalse(scene.TryGetHorizontalPlacement(new(400, 280), 24, 2136, out _));
         using var runtime = new StackedDangoSceneRuntime(Module);
         Assert.IsFalse(runtime.RehostSelectedEntityAt(new(400, 280)));
+        Assert.IsFalse(runtime.TryGetHorizontalPlacement(new(400, 280), 24, 2136, out _));
         Assert.IsNull(runtime.LocalGroundY);
         Assert.ThrowsExactly<InvalidOperationException>(() => runtime.SetHorizontalBounds(0, 2160));
     }
@@ -185,6 +187,126 @@ public sealed class PorchPhysicsSceneContractTests
         scene.RehostSelectedEntityAt(left);
         scene.SetHorizontalBounds(24, 2136);
         Assert.IsTrue(scene.Step(Step).Physics.Succeeded);
+    }
+
+    [TestMethod]
+    public void ContactingWallPoseCanRestoreAfterNinetyHomeFramesUsingMinimalPhysicalPlacement()
+    {
+        using var scene = new DesktopPhysicsScene(Module, new(80, 240, 160, 120));
+        for (var i = 0; i < 90; i++) scene.Step(Step);
+        scene.RehostSelectedEntityAt(new(560, 300));
+        scene.SetHorizontalBounds(24, 2136);
+        for (var i = 0; i < 60; i++) scene.Step(Step);
+        scene.SetInput(new(false, true, false, false));
+        for (var i = 0; i < 1600; i++) scene.Step(Step);
+        scene.CancelInput();
+        for (var i = 0; i < 90; i++) scene.Step(Step);
+        var id = scene.SelectedEntity;
+        RestoreAfterHome(true);
+        scene.SetInput(new(true, false, false, false));
+        for (var i = 0; i < 2300; i++) Assert.IsTrue(scene.Step(Step).Physics.Succeeded);
+        scene.CancelInput();
+        for (var i = 0; i < 90; i++) scene.Step(Step);
+        RestoreAfterHome(false);
+
+        void RestoreAfterHome(bool right)
+        {
+            for (var roundTrip = 0; roundTrip < 3; roundTrip++)
+            {
+                var original = scene.LastFrame!.Bodies.Single().Bounds.Center;
+                Assert.IsTrue(right ? original.X > 2000 && original.X < 2136 : original.X > 24 && original.X < 230);
+                scene.RehostSelectedEntityAt(new(160, 300));
+                scene.ClearHorizontalBounds();
+                for (var i = 0; i < 90; i++) Assert.IsTrue(scene.Step(Step).Physics.Succeeded);
+                var homeFrame = scene.LastFrame!;
+                var shape = homeFrame.Physics.Bodies.Single();
+                var requested = new LogicalPoint(original.X, 300);
+                Assert.IsTrue(scene.TryGetHorizontalPlacement(requested, 24, 2136, out var safe));
+                Assert.AreSame(homeFrame, scene.LastFrame, "Query must not publish or advance a frame.");
+                Assert.IsTrue(Math.Abs(safe.X - requested.X) < 12, "Keep the original UI return-position gate.");
+                if (roundTrip == 0)
+                {
+                    Assert.IsTrue(right ? safe.X < requested.X : safe.X > requested.X,
+                        "An expanded shape must move inward once; returning the stored core unchanged reproduces native -410.");
+                    var extents = NodeHorizontalExtent(shape);
+                    var expected = right ? 2136 - extents.Right * 80 : 24 - extents.Left * 80;
+                    Assert.AreEqual(expected, safe.X, 1e-8, "Placement must be the minimal physical correction.");
+                }
+                Assert.IsTrue(scene.RehostSelectedEntityAt(safe));
+                scene.SetHorizontalBounds(24, 2136);
+                var restored = scene.LastFrame!.Physics.Bodies.Single();
+                Assert.AreEqual(id, restored.EntityId);
+                CollectionAssert.AreEqual(shape.Contour.ToArray(), restored.Contour.ToArray());
+                Assert.AreEqual(shape.MaximumSpeed, restored.MaximumSpeed);
+                Assert.AreEqual(shape.CoreY, restored.CoreY);
+                Assert.AreEqual(safe, scene.LastFrame.Bodies.Single().Bounds.Center);
+                for (var i = 0; i < 90; i++) Assert.IsTrue(scene.Step(Step).Physics.Succeeded);
+                Assert.AreEqual(original.X, scene.LastFrame.Bodies.Single().Bounds.Center.X, 12);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void HorizontalPlacementQueryIsPureIncludesAllEntitiesAndRejectsImpossibleSpans()
+    {
+        using var scene = new DesktopPhysicsScene(Module, Bounds);
+        using var reference = new DesktopPhysicsScene(Module, Bounds);
+        scene.Add(4, 0);
+        reference.Add(4, 0);
+        for (var i = 0; i < 300; i++)
+        {
+            scene.Step(Step);
+            reference.Step(Step);
+        }
+        var original = scene.LastFrame!;
+        var serialized = JsonSerializer.Serialize(original);
+        var requested = new LogicalPoint(2050, 300);
+        Assert.IsTrue(scene.TryGetHorizontalPlacement(requested, 24, 2136, out var safe));
+        Assert.IsTrue(safe.X < 1800, "The second physical entity, not just the selected body, must fit.");
+        Assert.AreEqual(requested.Y, safe.Y);
+        var inside = new LogicalPoint(560, 300);
+        Assert.IsTrue(scene.TryGetHorizontalPlacement(inside, 24, 2136, out safe));
+        Assert.AreEqual(inside, safe, "An already-contained placement must stay exact.");
+        Assert.IsFalse(scene.TryGetHorizontalPlacement(inside, 0, 100, out _));
+        Assert.IsFalse(scene.TryGetHorizontalPlacement(inside, 0, 300, out _),
+            "Each body fits individually, but the complete relative arrangement does not.");
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => scene.TryGetHorizontalPlacement(inside, 100, 0, out _));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => scene.TryGetHorizontalPlacement(inside, double.NaN, 2136, out _));
+        Assert.AreSame(original, scene.LastFrame);
+        Assert.AreEqual(serialized, JsonSerializer.Serialize(scene.LastFrame), "No ID, shape, velocity proxy or frame may change.");
+        Assert.AreEqual(JsonSerializer.Serialize(reference.Step(Step)), JsonSerializer.Serialize(scene.Step(Step)),
+            "The next native frame must remain byte-identical, catching hidden steps or velocity mutation.");
+    }
+
+    [TestMethod]
+    public void RuntimeHorizontalPlacementQueryPreservesPhysicalAndPresentationSnapshots()
+    {
+        using var runtime = StackedDangoSceneRuntime.CreateProduct(Module);
+        Assert.IsTrue(runtime.TryInitialize());
+        runtime.Start();
+        runtime.SetViewport(new(0, 0, 480, 360));
+        var primary = Primary(new(80, 240, 160, 120));
+        for (var i = 0; i < 90; i++) runtime.Tick(primary, Step);
+        var physical = runtime.LastPhysicsFrame;
+        var presentation = runtime.LastFrame;
+        var center = runtime.CurrentSelectedCenter;
+        Assert.IsTrue(runtime.TryGetHorizontalPlacement(new(560, 300), 24, 2136, out var safe));
+        Assert.AreEqual(new LogicalPoint(560, 300), safe);
+        Assert.AreSame(physical, runtime.LastPhysicsFrame);
+        Assert.AreSame(presentation, runtime.LastFrame);
+        Assert.AreEqual(center, runtime.CurrentSelectedCenter);
+    }
+
+    private static (double Left, double Right) NodeHorizontalExtent(DangoBodyState state)
+    {
+        var radius = DangoPhysicsDefaults.Current.NodeRadius;
+        var xCoordinates = Enumerable.Range(0, state.PointCount).Select(n =>
+        {
+            var x = (double)state.Contour[2 * n];
+            var y = (double)state.Contour[2 * n + 1];
+            return x * (1 - radius / Math.Sqrt(x * x + y * y));
+        }).ToArray();
+        return (xCoordinates.Min() - radius, xCoordinates.Max() + radius);
     }
 
     private static PhysicsPresentationInput Primary(LogicalRect bounds) => new("fictional-porch", bounds,

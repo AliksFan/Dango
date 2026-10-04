@@ -75,6 +75,53 @@ public sealed class DesktopPhysicsScene : IDisposable
     }
 
     /// <summary>
+    /// Queries a local handoff placement from the last published physical node
+    /// circles, including every entity's offset from the selected core. This
+    /// neither advances nor moves the world; callers use it only before rehost,
+    /// never to clamp continuous movement or to relax native wall containment.
+    /// </summary>
+    public bool TryGetHorizontalPlacement(LogicalPoint requestedCenter, double hostLeft, double hostRight,
+        out LogicalPoint safeCenter)
+    {
+        VerifyAccess();
+        EnsureHealthy();
+        ValidatePoint(requestedCenter);
+        if (!double.IsFinite(hostLeft) || !double.IsFinite(hostRight) || hostLeft >= hostRight)
+            throw new ArgumentOutOfRangeException(nameof(hostRight));
+        safeCenter = default;
+        if (LastFrame is not { Physics.Succeeded: true } frame) return false;
+        var defaults = DangoPhysicsDefaults.Current;
+        var scale = width / 2;
+        if (hostRight - hostLeft < 2 * (defaults.RadialRestLength + defaults.NodeRadius) * scale) return false;
+        var selected = frame.Physics.Bodies.Single(body => body.EntityId == SelectedEntity);
+        var minimum = double.PositiveInfinity;
+        var maximum = double.NegativeInfinity;
+        foreach (var body in frame.Physics.Bodies)
+        {
+            var relativeCoreX = (double)body.CoreX - selected.CoreX;
+            for (var n = 0; n < body.PointCount; n++)
+            {
+                var x = (double)body.Contour[2 * n];
+                var y = (double)body.Contour[2 * n + 1];
+                var length = Math.Sqrt(x * x + y * y);
+                // dango_self_read_frame radially expands node-center vectors
+                // by node_radius when their native length exceeds .0001.
+                // Invert that expansion, then use circle X extents instead of
+                // treating the rendered radial contour as collision geometry.
+                var nodeX = length > defaults.NodeRadius
+                    ? x * (1 - defaults.NodeRadius / length) : x;
+                minimum = Math.Min(minimum, relativeCoreX + nodeX - defaults.NodeRadius);
+                maximum = Math.Max(maximum, relativeCoreX + nodeX + defaults.NodeRadius);
+            }
+        }
+        var minimumCenter = hostLeft - minimum * scale;
+        var maximumCenter = hostRight - maximum * scale;
+        if (minimumCenter > maximumCenter) return false;
+        safeCenter = new(Math.Clamp(requestedCenter.X, minimumCenter, maximumCenter), requestedCenter.Y);
+        return true;
+    }
+
+    /// <summary>
     /// Local scene handoff, not a network teleport. The caller configures the new
     /// stage bounds (or clears them for home) before any next physics step.
     /// </summary>
