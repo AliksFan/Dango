@@ -1,6 +1,6 @@
 # E1 二维门廊候选验证
 
-状态：E1 初版已获用户整体认可；2026-10-05 门距修订候选待复验，未将整个阶段标为已验收。受影响自动门禁与隔离 Windows 启动完成；全量历史／夹具差异与未验证项保留。设计与范围见[实施计划](../planning/2026-10-04-room-entry-implementation-plan.md)。
+状态：E1 初版与 2026-10-05 门距修订已获用户人工确认，并按后续授权完成[本地源码整合](2026-10-05-porch-local-main-integration.md)。受影响自动门禁与隔离 Windows 启动完成；全量历史／夹具差异与未验证项保留，不将整个阶段或完整发布标为已验收。设计与范围见[实施计划](../planning/2026-10-04-room-entry-implementation-plan.md)。以下构建／启动／未合并描述保留为各轮交付时快照，当前 Git 状态以整合记录为准。
 
 ## 范围与边界
 
@@ -62,6 +62,6 @@
 - 门距收紧后相邻交互范围会重叠，W 提示与实际 W 目标共用唯一最近门判断；交互距离仍为 `132 DIP`，等距时沿用前门优先。产品默认目录仍为空，不接业务准入、不修改房间归属。
 - 必败验证：`artifacts/room-porch-e1/door-spacing-red/results/door-spacing-red.trx` 新增 6 项中 **4 失败、2 通过**，捕获旧门距及中点右侧提示与实际最近门不一致。
 - 修订回归：`artifacts/room-porch-e1/door-spacing/results/door-spacing.trx` 共 134 项，**132 通过、0 失败、2 跳过／未验证**；新增三档几何／落地及最近门用例均通过。长走至世界远端的 `>1750` 门禁保留，没有因末门提前而放宽物理边界测试。上述两项前台鼠标用例仍未验证。本轮没有重新运行全量 Desktop、Core 或 Physics 专项，不将历史结果算作新全量通过。
-- 三档实际 WPF native 渲染截图已检查，门距更紧且标签未重叠：`artifacts/room-porch-e1/door-spacing/evidence/porch-scene-e1/review-960.png`、`review-1280.png`、`review-portrait.png`。这些是自动渲染证据；新门距版的用户观感与操作复验待确认。
+- 三档实际 WPF native 渲染截图已检查，门距更紧且标签未重叠：`artifacts/room-porch-e1/door-spacing/evidence/porch-scene-e1/review-960.png`、`review-1280.png`、`review-portrait.png`。这些是自动渲染证据；用户随后明确回复“通过”，确认新门距版的整体观感，专项未验证项不因此关闭。
 - 精确核对后停止旧评审进程 PID `31792`，未删除产物；从 `artifacts/room-porch-e1/door-spacing/build/bin/Dango.Desktop/release/` 启动新隔离预览 PID `35736`，已核对标题 `Dango · 门廊 E1 场景预览`、非零窗口句柄及响应状态。窗口保持供复验，首页按 W 进入门廊。日常已安装进程 PID `29268` 保留且响应，未更新安装。候选 native SHA256 仍为 `BFDD6CD68835540569A7D96EFCDE9B4580846983BDD717111D6BC68811150507`；本轮未修改或构建 native。
 - 仅门廊视图、对应集成测试与本记录进入本地修订提交；未合并 main、未推送、未安装或部署。无新增服务／数据库写入，E2／E3 与正式房间业务未推进。
