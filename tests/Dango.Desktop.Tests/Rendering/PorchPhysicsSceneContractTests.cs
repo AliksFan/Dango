@@ -146,6 +146,47 @@ public sealed class PorchPhysicsSceneContractTests
         Assert.IsNull(runtime.LastError);
     }
 
+    [TestMethod]
+    public void ContactingWallPoseCanRecenterAndRestoreTheSameHostBoundsWithoutTeleport()
+    {
+        using var scene = new DesktopPhysicsScene(Module, Bounds);
+        for (var i = 0; i < 300; i++) scene.Step(Step);
+        scene.RehostSelectedEntityAt(new(560, 300));
+        scene.SetHorizontalBounds(24, 2136);
+        scene.SetInput(new(false, true, false, false));
+        for (var i = 0; i < 2000; i++) Assert.IsTrue(scene.Step(Step).Physics.Succeeded);
+        var original = scene.LastFrame!.Bodies.Single().Bounds.Center;
+        Assert.IsTrue(original.X > 2000 && original.X < 2136);
+        var state = scene.LastFrame.Physics.Bodies.Single();
+        var radius = DangoPhysicsDefaults.Current.NodeRadius;
+        var maximumX = Enumerable.Range(0, 16).Max(n =>
+        {
+            var x = state.Contour[2 * n];
+            var y = state.Contour[2 * n + 1];
+            return original.X + (x * (1 - radius / Math.Sqrt(x * x + y * y)) + radius) * 80;
+        });
+        for (var i = 0; i < 3; i++)
+        {
+            scene.RehostSelectedEntityAt(original);
+            try { scene.SetHorizontalBounds(24, 2136); }
+            catch (DangoPhysicsException error)
+            {
+                Assert.Fail($"An already-contacting legal pose must restore unchanged walls; right penetration={(maximumX - 2136) / 80:R} world, center={original}, error={error.Message}");
+            }
+            Assert.AreEqual(original.X, scene.LastFrame!.Bodies.Single().Bounds.Center.X, 1e-8);
+            scene.Step(Step);
+        }
+        Assert.ThrowsExactly<DangoPhysicsException>(() => scene.SetHorizontalBounds(24, 2134),
+            "Shrinking the wall by 2 logical pixels is beyond Box2D contact slop and must still fail without teleport.");
+        scene.SetInput(new(true, false, false, false));
+        for (var i = 0; i < 2600; i++) Assert.IsTrue(scene.Step(Step).Physics.Succeeded);
+        var left = scene.LastFrame!.Bodies.Single().Bounds.Center;
+        Assert.IsTrue(left.X > 24 && left.X < 230);
+        scene.RehostSelectedEntityAt(left);
+        scene.SetHorizontalBounds(24, 2136);
+        Assert.IsTrue(scene.Step(Step).Physics.Succeeded);
+    }
+
     private static PhysicsPresentationInput Primary(LogicalRect bounds) => new("fictional-porch", bounds,
         DangoActionState.Idle, 1000, 17, "fictional-ground", new(0, -1), 0, 1, false, true, []);
 }
