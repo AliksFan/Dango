@@ -568,11 +568,15 @@ DANGO_API int dango_physics_world_set_horizontal_bounds(void* handle,float left,
     if (p->horizontal_bounds_enabled && left==p->horizontal_left && right==p->horizontal_right) return 0;
     // Reject a shrinking floor that would strand an existing rig; no teleport or
     // partial geometry mutation is used to make invalid bounds appear successful.
+    // Pinned Box2D 3.1.1 constants.h defines LINEAR_SLOP as .005 meters. A legal
+    // resting contact may overlap by this solver tolerance; .001 incorrectly
+    // rejected the unchanged wall after recentering a real contact pose.
+    float containment_slop=.005f*b2GetLengthUnitsPerMeter();
     for (int r=0;r<p->capacity;++r) if (p->active[r])
         for (int n=0;n<16;++n)
         {
             float x=b2Body_GetPosition(p->bodies[r]->node_body_ids[n]).x;
-            if (x-p->config.node_radius<left-.001f || x+p->config.node_radius>right+.001f) return -410;
+            if (x-p->config.node_radius<left-containment_slop || x+p->config.node_radius>right+containment_slop) return -410;
         }
     dango_self_soft_body* first=p->bodies[0];
     b2ShapeDef wall_def=b2DefaultShapeDef();
