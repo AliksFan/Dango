@@ -2,6 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:visuals="clr-namespace:Dango.Desktop.Rendering.Visuals"
+             xmlns:rooms="clr-namespace:Dango.Desktop.AppShell.Rooms"
              xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
              Background="#FDFCF9" Foreground="#443D34" FontSize="14"
              FontFamily="Segoe UI, Microsoft YaHei" UseLayoutRounding="True"
@@ -164,6 +165,8 @@
                         shell:WindowChrome.IsHitTestVisibleInChrome="True" />
             </StackPanel>
         </Grid>
+        <TextBlock x:Name="PorchBrand" Text="Dango" FontSize="18" Margin="22,8"
+                   VerticalAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False" />
         <Border x:Name="SettingsFeedbackBar" Grid.Row="1" Visibility="Collapsed" Margin="38,0,38,0" Padding="12,8"
                 Background="{DynamicResource HomeSoft}" BorderBrush="{DynamicResource HomeLine}" BorderThickness="1" CornerRadius="7">
             <TextBlock x:Name="SettingsFeedbackText" TextWrapping="Wrap" Foreground="{DynamicResource HomeInk}"
@@ -254,15 +257,18 @@
                     <Button x:Name="ApplyButton" Grid.Row="2" Content="应用" IsEnabled="False" MinWidth="90"
                             HorizontalAlignment="Right" ToolTip="应用与保存 · 未开发" AutomationProperties.Name="应用与保存，未开发" />
                 </Grid>
-                <Grid x:Name="PorchContent" Grid.Column="2" Margin="4,10,4,10" MinHeight="310"
-                      VerticalAlignment="Top" Visibility="Hidden" Opacity="0" IsHitTestVisible="False"
+                <Grid x:Name="PorchContent" Grid.Column="0" Grid.ColumnSpan="3" Grid.RowSpan="2"
+                      VerticalAlignment="Stretch" Visibility="Hidden" Opacity="0" IsHitTestVisible="False"
                       AutomationProperties.Name="门廊，房间入口尚未接入">
                     <Grid.RenderTransform><TranslateTransform x:Name="PorchTranslation" X="46" /></Grid.RenderTransform>
-                    <Grid.RowDefinitions><RowDefinition Height="36" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                    <Button x:Name="BackFromPorchButton" Content="返回" HorizontalAlignment="Left" BorderBrush="Transparent"
-                            Padding="0,8" Click="OnBackFromPorchClick" AutomationProperties.Name="返回我的团子" />
-                    <TextBlock Grid.Row="1" Text="房间入口尚未接入" Foreground="{DynamicResource HomeMuted}"
-                               VerticalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
+                    <rooms:PorchSceneView x:Name="PorchScene" />
+                    <StackPanel HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12,4">
+                        <TextBlock Text="门廊" FontSize="16" />
+                        <TextBlock x:Name="PorchReviewNotice" Text="场景预览 · 未接房间业务" FontSize="10"
+                                   Foreground="{DynamicResource HomeMuted}" Visibility="Collapsed" Margin="0,4,0,0" />
+                    </StackPanel>
+                    <Button x:Name="BackFromPorchButton" Content="首页 ↗" HorizontalAlignment="Right" VerticalAlignment="Top" BorderBrush="Transparent"
+                            Padding="8,4" MinHeight="30" Click="OnBackFromPorchClick" AutomationProperties.Name="返回我的团子" ToolTip="Esc · 返回首页" />
                 </Grid>
             </Grid>
         </ScrollViewer>

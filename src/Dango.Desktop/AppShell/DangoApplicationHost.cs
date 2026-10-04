@@ -23,6 +23,7 @@ internal sealed class DangoApplicationHost : IDisposable
     private readonly ApplicationSettingsSession settings;
     private readonly string settingsPath;
     private readonly bool eyeHatReview;
+    private readonly bool porchReview;
     private readonly ApplicationUiMode uiMode;
     private readonly DispatcherTimer geometrySaveTimer = new() { Interval = TimeSpan.FromMilliseconds(300) };
     private ControlCenterWindow? controlCenterWindow;
@@ -35,8 +36,12 @@ internal sealed class DangoApplicationHost : IDisposable
 
     public DangoApplicationHost(bool isolatedPhysicsReview = false, bool isolatedEyeHatReview = false,
         string? settingsFile = null, string? nativeLibraryPath = null, ControlCenterWindowSettingsStore? settingsStore = null,
-        bool isolatedUnifiedHomeReview = false)
+        bool isolatedUnifiedHomeReview = false, bool isolatedPorchReview = false)
     {
+        if ((isolatedPhysicsReview ? 1 : 0) + (isolatedEyeHatReview ? 1 : 0) +
+            (isolatedUnifiedHomeReview ? 1 : 0) + (isolatedPorchReview ? 1 : 0) > 1)
+            throw new ArgumentException("Choose one isolated review mode.");
+        porchReview = isolatedPorchReview;
         eyeHatReview = isolatedEyeHatReview;
         uiMode = isolatedPhysicsReview || isolatedEyeHatReview ? ApplicationUiMode.DeveloperReview : ApplicationUiMode.Product;
         sceneSession = new DesktopSceneSession();
@@ -48,7 +53,9 @@ internal sealed class DangoApplicationHost : IDisposable
         if (uiMode == ApplicationUiMode.Product) desktopHost.SetRoomPresentationAllowed(false);
         commandController = new ApplicationCommandController(desktopHost, uiMode);
         verificationDefinition = isolatedEyeHatReview ? VerificationDefinition.CreateEyeHatHosts() : VerificationDefinition.CreatePhysicsModuleHosts();
-        settingsPath = settingsFile ?? (isolatedUnifiedHomeReview
+        settingsPath = settingsFile ?? (isolatedPorchReview
+            ? Path.Combine(AppContext.BaseDirectory, "porch-scene-review-state", "settings.json")
+            : isolatedUnifiedHomeReview
             ? Path.Combine(AppContext.BaseDirectory, "unified-home-review-state", "settings.json")
             : isolatedEyeHatReview
             ? Path.Combine(AppContext.BaseDirectory, "eye-hat-review-state", "settings.json")
@@ -160,7 +167,11 @@ internal sealed class DangoApplicationHost : IDisposable
             new VerificationSessionStore(verificationDefinition), draftPath, RequestExit,
             settings, () => SaveSettings(), ScheduleSave);
         if (uiMode == ApplicationUiMode.Product)
+        {
             controlCenterWindow.ProductHome.BindLiveScene(sceneSession, stackedRuntime);
+            controlCenterWindow.ProductHome.SetPorchReviewMode(porchReview);
+            if (porchReview) controlCenterWindow.Title = "Dango · 门廊 E1 场景预览";
+        }
         controlCenterWindow.OverviewPresented += () =>
         {
             if (uiMode == ApplicationUiMode.Product && !settings.Current.IntroSeen)

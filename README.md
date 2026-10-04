@@ -2,6 +2,8 @@
 
 `Dango` 是一个多人联机桌面宠物项目的开发代号。
 
+2026-10-04：在独立任务分支实施 E1 二维跟随门廊与本地导航，见[专项验证](docs/verification/2026-10-04-room-porch-e1.md)和[实施计划](docs/planning/2026-10-04-room-entry-implementation-plan.md)。虚构门只在隔离场景预览中展示；正式房间业务、服务器、数据库、合并、推送和日常安装更新不在本轮范围，候选待人工验收。
+
 2026-10-03：按用户单独授权，已将团队整合与 Windows 本地收口成果经 `codex/team-integration` 快进合入本地 `main`；见[本地整合记录](docs/verification/2026-10-03-windows-local-main-integration.md)。日常安装沿用已验收新版，不重新发布或迁移；未推送远端。已知自动差异、专项未验证项及 Phase 2A/M7 未验收边界保留，本次不是完整阶段验收或正式发布。
 
 2026-10-01：首页 UI 按已认可的简约横向原型重新实施，本轮仅包含“我的团子”与捏脸、换装展开交互；用户已确认本批人工验收通过。范围和边界见[首页实施约定](docs/planning/2026-10-01-home-ui-fidelity.md)，自动检查及遗留限制见[验证记录](docs/verification/2026-10-01-home-ui-fidelity.md)。

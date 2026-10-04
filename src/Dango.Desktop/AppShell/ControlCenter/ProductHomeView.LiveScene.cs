@@ -62,6 +62,7 @@ public partial class ProductHomeView
         }
         if (BoundRuntime.RequiresInitialization && BoundRuntime.InitializationState != SceneInitializationState.Ready)
         {
+            PorchScene.ShowUnavailable();
             LiveSceneStatusText.Text = "团子暂不可用 · 请在设置中重试";
             LiveSceneStatusText.Visibility = Visibility.Visible;
             return;
@@ -69,16 +70,18 @@ public partial class ProductHomeView
         if (liveScheduler?.IsRunning == true) return;
         if (BoundRuntime.FrameDriver is not null && !ReferenceEquals(BoundRuntime.FrameDriver, liveScheduler))
         {
+            PorchScene.ShowUnavailable("场景正在其他窗口显示");
             LiveSceneStatusText.Text = "场景正在其他窗口显示";
             LiveSceneStatusText.Visibility = Visibility.Visible;
             return;
         }
 
-        BoundSceneSession!.AttachSurface(HomeSurface, Environment.TickCount64);
-        BoundRuntime.SetViewport(HomeSurface);
+        var surface = IsInPorch ? PorchSurface : HomeSurface;
+        BoundSceneSession!.AttachSurface(surface, Environment.TickCount64);
+        BoundRuntime.SetViewport(surface);
         BoundRuntime.Start();
         BoundRuntime.AttachQuietIdleHost(this, true);
-        BoundRuntime.UpdateWanderScreenWidth(this, IsInPorch ? HomeSurface.Width : null);
+        BoundRuntime.UpdateWanderScreenWidth(this, IsInPorch ? PorchScene.ViewportWorldWidth : null);
         visualAnchor = null;
         liveScheduler!.Start();
     }
@@ -97,7 +100,9 @@ public partial class ProductHomeView
         var runtime = BoundRuntime;
         if (!IsVisible || IsSettingsOpen || !OwnsLiveFrameDriver || !runtime!.IsRunning || BoundSceneSession?.Controller is null)
             return false;
-        runtime.SetDirectionalControl(liveIntent);
+        PrepareRequestedLiveSurface();
+        if (!TryAlignLiveSurface()) return false;
+        runtime.SetDirectionalControl(liveSurfaceNeedsAlignment ? DirectionalControlIntent.None : liveIntent);
         runtime.UpdateQuietIdleHost(this, true);
         return true;
     }
@@ -116,13 +121,27 @@ public partial class ProductHomeView
             frame.Bodies[0].FallbackReason != PhysicsPresentationFallbackReason.None)
         {
             LiveDangoVisual.Visibility = LiveDangoHat.Visibility = Visibility.Collapsed;
+            PorchScene.ShowUnavailable();
             LiveSceneStatusText.Text = "团子暂不可用 · 请在设置中重试";
             LiveSceneStatusText.Visibility = Visibility.Visible;
             return;
         }
+        if (IsInPorch)
+        {
+            if (liveSurfaceNeedsAlignment || liveSurfaceFailure is not null)
+            {
+                PorchScene.ShowUnavailable(liveSurfaceFailure ?? "场景准备中");
+                return;
+            }
+            var now = Environment.TickCount64;
+            PorchScene.ApplyFrame(frame, BoundRuntime, now - lastPorchFrame, ReduceMotion || !SystemParameters.ClientAreaAnimation);
+            lastPorchFrame = now;
+            LiveSceneStatusText.Visibility = Visibility.Collapsed;
+            return;
+        }
         var bounds = DangoHostFrameBinding.Bounds(frame, 0);
         visualAnchor ??= bounds.Center;
-        var dx = IsInPorch ? Math.Clamp((bounds.Center.X - visualAnchor.Value.X) * .4, -56, 56) : 0;
+        const double dx = 0;
         var dy = Math.Clamp((bounds.Center.Y - visualAnchor.Value.Y) * .4, -42, 42);
         DangoHostFrameBinding.Apply(LiveDangoVisual, LiveDangoHat, frame, 0,
             new LogicalVector(-bounds.X + dx, -bounds.Y + dy),
@@ -144,7 +163,9 @@ public partial class ProductHomeView
     {
         if (liveScheduler?.OwnsRuntime != true) return false;
         if (!IsInPorch && key is (Key.A or Key.D)) return false;
-        if (key == Key.Space && Keyboard.FocusedElement is System.Windows.Controls.Button) return false;
+        // A new Space belongs to the button, but release of our already-held
+        // jump must still clear intent after focus moves within this view.
+        if (key == Key.Space && Keyboard.FocusedElement is System.Windows.Controls.Button && (down || !liveIntent.Jump)) return false;
         if (repeat && down) return key is Key.A or Key.D or Key.S or Key.Space;
         liveIntent = key switch
         {
@@ -166,12 +187,12 @@ public partial class ProductHomeView
     private void UpdateLiveMovementMode()
     {
         if (!OwnsLiveFrameDriver) return;
-        BoundRuntime!.UpdateWanderScreenWidth(this, IsInPorch ? HomeSurface.Width : null);
+        BoundRuntime!.UpdateWanderScreenWidth(this, IsInPorch ? PorchScene.ViewportWorldWidth : null);
         visualAnchor = null;
     }
 
     private void OnStageMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (ReferenceEquals(e.OriginalSource, Stage) && !IsEditing && !IsSettingsOpen) Stage.Focus();
+        if ((ReferenceEquals(e.OriginalSource, Stage) || IsInPorch) && !IsEditing && !IsSettingsOpen) Stage.Focus();
     }
 }

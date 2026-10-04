@@ -58,6 +58,7 @@ public partial class ProductHomeView : UserControl
     public ProductHomeView()
     {
         InitializeComponent();
+        InitializePorchNavigation();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         IsVisibleChanged += (_, _) => RefreshLiveSceneOwnership();
@@ -312,8 +313,12 @@ public partial class ProductHomeView : UserControl
     }
     private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        if (!IsKeyboardFocusWithin || Keyboard.Modifiers != ModifierKeys.None ||
+            Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.ComboBox or PasswordBox)
+            return;
         if (e.Key == Key.Escape)
         {
+            if (e.IsRepeat) { e.Handled = IsSettingsOpen || IsInPorch || IsEditing; return; }
             if (IsSettingsOpen)
             {
                 HomeRequested?.Invoke();
@@ -325,7 +330,7 @@ public partial class ProductHomeView : UserControl
             e.Handled = true;
             return;
         }
-        if (IsSettingsOpen || !IsKeyboardFocusWithin || Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.ComboBox or PasswordBox)
+        if (IsSettingsOpen)
             return;
         if (!IsInPorch && e.Key is (Key.A or Key.D))
         {
@@ -334,9 +339,13 @@ public partial class ProductHomeView : UserControl
             return;
         }
         if (IsEditing && e.Key is not (Key.S or Key.Space)) return;
-        if (e.Key == Key.W && !IsInPorch)
+        if (e.Key == Key.W)
         {
-            EnterPorch();
+            if (!e.IsRepeat)
+            {
+                if (IsInPorch) PorchScene.InteractNearestDoor();
+                else EnterPorch();
+            }
             e.Handled = true;
             return;
         }
@@ -354,8 +363,11 @@ public partial class ProductHomeView : UserControl
 
     private void EnterPorch()
     {
+        if (IsInPorch) return;
         ClearLiveDirectionalInput();
         IsInPorch = true;
+        roomNavigation.ShowPorch();
+        ChangeLiveSurface();
         UpdateLiveMovementMode();
         UpdateTransition(true);
         Stage.Focus();
@@ -364,8 +376,11 @@ public partial class ProductHomeView : UserControl
     private void LeavePorch()
     {
         if (!IsInPorch) return;
+        porchResumeX = PorchScene.PetWorldX;
         IsInPorch = false;
+        roomNavigation.ShowHome();
         ClearLiveDirectionalInput();
+        ChangeLiveSurface();
         UpdateLiveMovementMode();
         UpdateTransition(true);
         Stage.Focus();
@@ -418,6 +433,7 @@ public partial class ProductHomeView : UserControl
         Resources["HomeSoft"] = contrast ? Background : Brush("#F3EFE8");
         Resources["HomeAccent"] = contrast ? System.Windows.SystemColors.HighlightBrush : Brush("#885E3E");
         Resources["HomeSelected"] = contrast ? System.Windows.SystemColors.HighlightBrush : Brush("#EFE3D4");
+        PorchScene.InvalidateVisual();
         UpdateLauncherSelection();
         UpdateColorSelection();
         UpdatePresetSelection();
@@ -494,6 +510,7 @@ public partial class ProductHomeView : UserControl
         var compactLandscape = !portrait && ActualWidth < 800;
         var shortLandscape = !portrait && ActualHeight <= 400;
         TopNavigation.Margin = new Thickness(portrait ? 14 : 22, portrait ? 6 : 8, portrait ? 14 : 22, portrait ? 6 : 8);
+        PorchBrand.Margin = TopNavigation.Margin;
         Brand.Margin = new Thickness(0, 0, portrait ? 10 : 20, 0);
         Grid.SetRow(ToolsNavigation, veryNarrow ? 1 : 0);
         Grid.SetColumn(ToolsNavigation, veryNarrow ? 0 : 2);
@@ -523,11 +540,13 @@ public partial class ProductHomeView : UserControl
         Colors.Margin = new Thickness(0, 0, 0, portrait ? 16 : 24);
         EyePresetButton.Margin = new Thickness(0, 0, 0, portrait ? 16 : 24);
         ApplyButton.MinWidth = portrait ? 76 : 90;
-        EditorPanel.MinHeight = PorchContent.MinHeight = portrait ? 290 : shortLandscape ? 245 : compactLandscape ? 300 : 340;
-        EditorPanel.Margin = PorchContent.Margin = portrait ? new Thickness(12, 4, 12, 8)
+        EditorPanel.MinHeight = portrait ? 290 : shortLandscape ? 245 : compactLandscape ? 300 : 340;
+        EditorPanel.Margin = portrait ? new Thickness(12, 4, 12, 8)
             : shortLandscape ? new Thickness(4) : new Thickness(4, 8, 4, 8);
-        EditorPanel.VerticalAlignment = PorchContent.VerticalAlignment = portrait
+        EditorPanel.VerticalAlignment = portrait
             || shortLandscape ? System.Windows.VerticalAlignment.Stretch : System.Windows.VerticalAlignment.Center;
+        PorchContent.Margin = new Thickness(0);
+        PorchContent.VerticalAlignment = System.Windows.VerticalAlignment.Stretch;
         OptionsBody.Margin = shortLandscape ? new Thickness(0, 8, 0, 8) : portrait
             ? new Thickness(0, 14, 0, 12) : new Thickness(0, 26, 0, 20);
         HomeFooter.Margin = new Thickness(portrait ? 16 : 22, 2, portrait ? 16 : 22, 7);
@@ -575,9 +594,9 @@ public partial class ProductHomeView : UserControl
         Grid.SetRow(EditorPanel, portrait ? 1 : 0);
         Grid.SetColumn(EditorPanel, portrait ? 0 : faceOnLeft ? 0 : 2);
         Grid.SetColumnSpan(EditorPanel, portrait ? 3 : 1);
-        Grid.SetRow(PorchContent, portrait ? 1 : 0);
-        Grid.SetColumn(PorchContent, portrait ? 0 : 2);
-        Grid.SetColumnSpan(PorchContent, portrait ? 3 : 1);
+        Grid.SetRow(PorchContent, 0);
+        Grid.SetColumn(PorchContent, 0);
+        Grid.SetColumnSpan(PorchContent, 3);
         var gap = GapColumn.Width.Value;
         var available = Math.Max(0, width - gap);
         var left = available * LeftColumn.Width.Value / (LeftColumn.Width.Value + RightColumn.Width.Value);
@@ -588,15 +607,17 @@ public partial class ProductHomeView : UserControl
         var restingTop = Math.Max(0, (height - presenceHeight) / 2);
         Presence.Margin = new Thickness(0, restingTop, 0, 0);
         var offsetX = portrait ? 0 : IsEditing ? faceOnLeft ? (width - right) / 2 : -(width - left) / 2
-            : IsInPorch ? -(width - left) / 2 : 0;
-        var offsetY = portrait && (IsEditing || IsInPorch) ? 36 - restingTop : 0;
+            : IsInPorch ? -48 : 0;
+        var offsetY = portrait && IsEditing ? 36 - restingTop : 0;
         animate &= IsLoaded && !ReduceMotion && SystemParameters.ClientAreaAnimation;
         UpdateLauncherSelection();
         var horizontalPanelHeight = Math.Max(EditorPanel.MinHeight,
             Math.Min(420, height - EditorPanel.Margin.Top - EditorPanel.Margin.Bottom));
         EditorPanel.Height = portrait ? double.NaN : horizontalPanelHeight;
-        PorchContent.Height = portrait ? double.NaN : horizontalPanelHeight;
+        PorchContent.Height = double.NaN;
+        Presence.IsHitTestVisible = Presence.IsEnabled = !IsInPorch;
         Launchers.IsHitTestVisible = !IsInPorch;
+        PorchBrand.Visibility = IsInPorch ? Visibility.Visible : Visibility.Collapsed;
         TopNavigation.IsHitTestVisible = !IsInPorch;
         HomeFooter.IsHitTestVisible = !IsInPorch;
         Launchers.IsEnabled = TopNavigation.IsEnabled = HomeFooter.IsEnabled = !IsInPorch;
@@ -607,6 +628,7 @@ public partial class ProductHomeView : UserControl
         if (IsInPorch) PorchContent.Visibility = Visibility.Visible;
         Animate(PresenceTranslation, TranslateTransform.XProperty, offsetX, animate);
         Animate(PresenceTranslation, TranslateTransform.YProperty, offsetY, animate);
+        Animate(Presence, OpacityProperty, IsInPorch ? 0 : 1, animate);
         Animate(PanelTranslation, TranslateTransform.XProperty, IsEditing ? 0 : EditorRestingOffset(SelectedEditor), animate);
         Animate(PorchTranslation, TranslateTransform.XProperty, IsInPorch ? 0 : portrait ? 120 : 46, animate);
         Animate(Launchers, OpacityProperty, IsInPorch ? 0 : 1, animate);

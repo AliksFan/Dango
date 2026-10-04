@@ -18,6 +18,7 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        ValidateIsolatedReviewSelection(e.Args);
         var acceptanceSettingsFile = ResolveLocalInstallAcceptanceSettingsFile(e.Args);
 
         var homeUiReview = e.Args.Contains("--home-ui-review", StringComparer.Ordinal);
@@ -75,10 +76,12 @@ public partial class App : System.Windows.Application
         var physicsReview = e.Args.Contains("--physics-host-review", StringComparer.Ordinal);
         var eyeHatReview = e.Args.Contains("--eye-hat-review", StringComparer.Ordinal);
         var unifiedHomeReview = e.Args.Contains("--unified-live-home-review", StringComparer.Ordinal);
-        if ((physicsReview ? 1 : 0) + (eyeHatReview ? 1 : 0) + (unifiedHomeReview ? 1 : 0) > 1)
+        var porchReview = e.Args.Contains("--porch-scene-review", StringComparer.Ordinal);
+        if ((physicsReview ? 1 : 0) + (eyeHatReview ? 1 : 0) + (unifiedHomeReview ? 1 : 0) + (porchReview ? 1 : 0) > 1)
             throw new ArgumentException("Choose one isolated review mode.");
         var instanceName = eyeHatReview ? SingleInstanceName + ".EyeHatReview"
             : physicsReview ? SingleInstanceName + ".PhysicsHostReview"
+            : porchReview ? SingleInstanceName + ".PorchSceneReview"
             : unifiedHomeReview ? SingleInstanceName + ".UnifiedHomeReview" : SingleInstanceName;
         singleInstanceCoordinator = SingleInstanceCoordinator.TryBecomePrimary(
             instanceName,
@@ -95,7 +98,8 @@ public partial class App : System.Windows.Application
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         applicationHost = new DangoApplicationHost(physicsReview, eyeHatReview,
             settingsFile: acceptanceSettingsFile,
-            isolatedUnifiedHomeReview: unifiedHomeReview);
+            isolatedUnifiedHomeReview: unifiedHomeReview,
+            isolatedPorchReview: porchReview);
         applicationHost.Start();
         if (physicsReview || eyeHatReview) applicationHost.ShowControlCenter();
     }
@@ -137,6 +141,14 @@ public partial class App : System.Windows.Application
                 if ((File.GetAttributes(entry) & (FileAttributes.ReparsePoint | FileAttributes.Directory)) != 0)
                     throw new InvalidDataException("Acceptance settings files cannot be directories or reparse points.");
         return settingsPath;
+    }
+
+    internal static void ValidateIsolatedReviewSelection(string[] args)
+    {
+        string[] flags = ["--home-ui-review", "--settings-ui-review", "--physics-host-review",
+            "--eye-hat-review", "--unified-live-home-review", "--porch-scene-review"];
+        if (flags.Count(flag => args.Contains(flag, StringComparer.Ordinal)) > 1)
+            throw new ArgumentException("Choose one isolated review mode.");
     }
 
     protected override void OnExit(ExitEventArgs e)

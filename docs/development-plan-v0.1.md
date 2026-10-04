@@ -1,5 +1,7 @@
 # Dango 分阶段开发计划 v0.1
 
+> 2026-10-04 E1 开工：用户确认在独立 `codex/room-porch-e1` 实施二维门廊和本地导航增量，范围见[实施计划](planning/2026-10-04-room-entry-implementation-plan.md)。候选待人工验收；正式目录／准入、房间显示、D0–D2／E2–E4、数据库、M7、合并、推送与日常安装不在本轮授权内。以下文档轮次状态保留为历史快照。
+
 > 2026-10-04 房间入口设计验收：二维跟随门廊、桌宠壁纸层／共同房独立场景、回门廊入口和无房间规则已获用户确认，见[设计修订](planning/2026-10-04-room-entry-and-no-room-design.md)。本轮授权同步基线和制定[实施计划](planning/2026-10-04-room-entry-implementation-plan.md)，计划待确认，正式编码、数据库操作、M7、合并及推送均未由本次授权。
 
 > 2026-10-03 本地团队基线整合：用户单独批准先本地整合并合入 `main`、暂不推送。团队候选和 Windows 本地收口成果已按 `codex/windows-local-closeout` → `codex/team-integration` → `main` 顺序快进，详见[本地整合记录](verification/2026-10-03-windows-local-main-integration.md)。日常安装沿用已验收新版；本次只统一 Git 基线，不宣称完整 Phase 1、Phase 2A 或 M7 验收，不授权正式房间编码或推送。下列带日期的未合并记录保留为各自交付时的历史快照。
