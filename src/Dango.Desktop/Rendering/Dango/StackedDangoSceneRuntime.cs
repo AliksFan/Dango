@@ -401,6 +401,15 @@ public sealed class StackedDangoSceneRuntime : IDisposable
     internal LogicalPoint? CurrentSelectedCenter => scene?.LastFrame?.Bodies
         .FirstOrDefault(body => body.EntityId == scene.SelectedEntity)?.Bounds.Center;
 
+    internal bool TryGetHorizontalPlacement(LogicalPoint requestedCenter, double left, double right,
+        out LogicalPoint safeCenter)
+    {
+        VerifyAccess();
+        EnsureHealthy();
+        safeCenter = default;
+        return scene?.TryGetHorizontalPlacement(requestedCenter, left, right, out safeCenter) == true;
+    }
+
     internal void SetHorizontalBounds(double left, double right)
     {
         VerifyAccess();
