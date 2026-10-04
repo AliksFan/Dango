@@ -68,6 +68,63 @@ public sealed class PorchSceneIntegrationTests
     }
 
     [STATestMethod]
+    [DataRow(960d, 540d)]
+    [DataRow(1280d, 720d)]
+    [DataRow(520d, 820d)]
+    public void ReviewDoorsHaveCompactGapsWithoutChangingDoorSizeOrGround(double width, double height)
+    {
+        var home = new ProductHomeView { ReduceMotion = true };
+        var window = WindowFor(home);
+        window.Width = width; window.Height = height;
+        try
+        {
+            window.Show(); home.SetPorchReviewMode(true); Enter(home, window);
+            var scene = (PorchSceneView)home.FindName("PorchScene");
+            var doors = scene.DoorBounds;
+            Assert.AreEqual(4, doors.Count);
+            for (var i = 0; i < doors.Count; i++)
+            {
+                Assert.AreEqual(124 * scene.SceneScale, doors[i].Width, .001);
+                Assert.AreEqual(194 * scene.SceneScale, doors[i].Height, .001);
+                Assert.AreEqual(scene.BackWallGroundY, doors[i].Bottom, .001);
+                if (i > 0)
+                    Assert.AreEqual(96 * scene.SceneScale, doors[i].Left - doors[i - 1].Right, .001,
+                        "Compact gaps must come from closer actual door geometry, not smaller doors or a camera trick.");
+            }
+            Assert.AreEqual(560, (doors[0].Left + doors[0].Width / 2) / scene.SceneScale + scene.CameraX, .001,
+                "Keep the initial door and the pet's entry position aligned.");
+            Assert.IsFalse(scene.CanEnterRoom);
+        }
+        finally { window.Close(); }
+    }
+
+    [STATestMethod]
+    [DataRow(669d, "preview-own")]
+    [DataRow(670d, "preview-own")]
+    [DataRow(671d, "preview-visit")]
+    public void CloselySpacedDoorHintMatchesTheSingleNearestWTarget(double petX, string expectedId)
+    {
+        var home = new ProductHomeView { ReduceMotion = true };
+        var window = WindowFor(home);
+        try
+        {
+            window.Show(); home.SetPorchReviewMode(true); Enter(home, window);
+            var scene = (PorchSceneView)home.FindName("PorchScene");
+            scene.ResetProjection(petX);
+            Assert.AreEqual(expectedId, scene.NearbyDoorId);
+            Assert.IsTrue(scene.InteractNearestDoor());
+            Assert.AreEqual(expectedId, scene.SelectedDoorId);
+            Assert.AreEqual(expectedId, home.RoomNavigation.SelectedDoorId);
+            Assert.IsNull(home.RoomNavigation.Authority.RoomId);
+            Assert.IsFalse(home.RoomNavigation.CanSendRoomInput);
+            home.SetPorchReviewMode(false);
+            Assert.AreEqual(0, scene.DoorBounds.Count);
+            Assert.IsNull(scene.NearbyDoorId);
+        }
+        finally { window.Close(); }
+    }
+
+    [STATestMethod]
     public void InputControlsOwnEscapeAndWAndDoorClickRestoresGameplayFocus()
     {
         var home = new ProductHomeView { ReduceMotion = true };
@@ -237,7 +294,7 @@ public sealed class PorchSceneIntegrationTests
         fixture.Advance(1600);
         Release(fixture.Home, fixture.Window, Key.D);
         fixture.Advance(90);
-        Assert.IsTrue(scene.PetWorldX > 1750, "The last door must be physically reachable.");
+        Assert.IsTrue(scene.PetWorldX > 1750, "The far end of the physical world must remain reachable.");
         Assert.IsTrue(scene.PetWorldX < 2100, "A real boundary must stop long-held movement.");
         Assert.IsNull(fixture.Runtime.LastError);
         for (var i = 0; i < 3; i++)

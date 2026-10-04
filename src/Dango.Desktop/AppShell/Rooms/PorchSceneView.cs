@@ -26,9 +26,9 @@ public sealed class PorchSceneView : Grid
     private static readonly PreviewDoor[] ReviewDoors =
     [
         new("preview-own", "我的桌宠房", "桌宠房", 560),
-        new("preview-visit", "阿圆的桌宠房", "桌宠房", 940),
-        new("preview-private", "小茶室", "私密共同房", 1320),
-        new("preview-public", "云间", "公共共同房", 1700),
+        new("preview-visit", "阿圆的桌宠房", "桌宠房", 780),
+        new("preview-private", "小茶室", "私密共同房", 1000),
+        new("preview-public", "云间", "公共共同房", 1220),
     ];
     private readonly PorchCameraController camera = new();
     private readonly Canvas liveLayer = new() { IsHitTestVisible = false };
@@ -64,6 +64,9 @@ public sealed class PorchSceneView : Grid
     internal double DoorBottomY => BackWallGroundY;
     internal double FrontGroundY => ActualHeight - 48 * SceneScale;
     internal string? SelectedDoorId => selectedDoor;
+    private PreviewDoor? NearestDoor => IsReviewMode ? ReviewDoors.MinBy(door => Math.Abs(door.X - PetWorldX)) : null;
+    internal string? NearbyDoorId => NearestDoor is { } door && Math.Abs(door.X - PetWorldX) <= InteractionDistance ? door.Id : null;
+    internal IReadOnlyList<Rect> DoorBounds => IsReviewMode ? Array.AsReadOnly(ReviewDoors.Select(DoorRect).ToArray()) : Array.Empty<Rect>();
     internal DeformableDangoVisual LiveBody => body;
 
     internal void SetReviewMode(bool enabled)
@@ -109,8 +112,7 @@ public sealed class PorchSceneView : Grid
 
     internal bool InteractNearestDoor()
     {
-        if (!IsReviewMode) { status = "房间目录尚未接入"; InvalidateVisual(); return false; }
-        var nearest = ReviewDoors.MinBy(door => Math.Abs(door.X - PetWorldX))!;
+        if (NearestDoor is not { } nearest) { status = "房间目录尚未接入"; InvalidateVisual(); return false; }
         return SelectPreviewDoor(nearest);
     }
 
@@ -153,6 +155,7 @@ public sealed class PorchSceneView : Grid
         dc.DrawLine(new Pen(line, 1), new Point(0, BackWallGroundY), new Point(ActualWidth, BackWallGroundY));
         if (IsReviewMode)
         {
+            var nearbyDoorId = NearbyDoorId;
             foreach (var door in ReviewDoors)
             {
                 var rect = DoorRect(door);
@@ -165,7 +168,7 @@ public sealed class PorchSceneView : Grid
                     g.ArcTo(new Point(rect.Right, rect.Top + rect.Width / 2), new Size(rect.Width / 2, rect.Width / 2), 0, false, SweepDirection.Clockwise, true, false);
                     g.LineTo(new Point(rect.Right, rect.Bottom), true, false);
                 }
-                var near = Math.Abs(door.X - PetWorldX) <= InteractionDistance;
+                var near = door.Id == nearbyDoorId;
                 var fill = near || selectedDoor == door.Id ? ResourceBrush("HomeSelected", soft) : Brushes.Transparent;
                 var frameBrush = SystemParameters.HighContrast ? ink : new SolidColorBrush(Color.FromRgb(219, 198, 170));
                 if (near || selectedDoor == door.Id) frameBrush = SystemParameters.HighContrast ? accent : new SolidColorBrush(Color.FromRgb(180, 144, 102));
