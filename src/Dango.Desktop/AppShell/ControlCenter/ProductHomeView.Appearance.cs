@@ -76,6 +76,7 @@ public partial class ProductHomeView
             EyeHeightValue.Text = height == 0 ? "高度 · 默认" : $"高度 · {(height < 0 ? "上移" : "下移")} {Math.Abs(height):0.#}";
             var spacing = draft.EyeLayout.SpacingControlPercent - 24.5;
             EyeSpacingValue.Text = spacing == 0 ? "眼距 · 默认" : $"眼距 · {(spacing < 0 ? "靠近" : "分开")} {Math.Abs(spacing):0.#}";
+            DefaultAppearanceButton.IsEnabled = IsEditing && SelectedEditor == HomeEditor.Face;
             ApplyButton.IsEnabled = IsEditing && SelectedEditor == HomeEditor.Face && appearanceSession?.HasPendingSave == true && !appearanceSession.IsWriteProtected;
             AppearanceStatus.Text = appearanceSession?.StatusMessage ?? "应用后保存到本机。";
             RecoverAppearanceButton.Visibility = appearanceSession?.IsWriteProtected == true ? Visibility.Visible : Visibility.Collapsed;

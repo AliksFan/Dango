@@ -157,8 +157,12 @@ public sealed class ProductControlCenterLayoutTests
             var options = Assert.IsInstanceOfType<ScrollViewer>(home.FindName("OptionsBody"),
                 "Editor options need their own scroll viewport when the display is short.");
             var apply = Bounds(home, (FrameworkElement)home.FindName("ApplyButton"));
-            Assert.IsTrue(apply.Top >= panel.Top && apply.Bottom <= panel.Bottom + 1,
-                "The fixed editor action must remain in its panel while options scroll.");
+            foreach (var actionName in new[] { "DefaultAppearanceButton", "CancelAppearanceButton", "ApplyButton" })
+            {
+                var action = Bounds(home, (FrameworkElement)home.FindName(actionName));
+                Assert.IsTrue(action.Top >= panel.Top && action.Bottom <= panel.Bottom + 1 && action.Left >= panel.Left - 1 && action.Right <= panel.Right + 1,
+                    $"The fixed {actionName} must remain inside its panel while options scroll.");
+            }
             if (editor == HomeEditor.Face)
             {
                 var faceOptions = (StackPanel)home.FindName("FaceOptions");
