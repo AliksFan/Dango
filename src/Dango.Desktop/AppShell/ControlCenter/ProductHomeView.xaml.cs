@@ -294,6 +294,10 @@ public partial class ProductHomeView : UserControl
 
     private void OnFaceClick(object sender, RoutedEventArgs e) => ShowEditor(HomeEditor.Face);
     private void OnWardrobeClick(object sender, RoutedEventArgs e) => ShowEditor(HomeEditor.Wardrobe);
+    private void OnEnterRoomClick(object sender, RoutedEventArgs e)
+    {
+        if (!IsEditing && !IsSettingsOpen) EnterPorch();
+    }
     private void OnCloseClick(object sender, RoutedEventArgs e) => CloseEditor();
     private void OnHomeClick(object sender, RoutedEventArgs e)
     {
@@ -531,14 +535,16 @@ public partial class ProductHomeView : UserControl
         var previewWidth = BasePreviewWidth;
         var previewHeight = previewWidth * .75;
         PetPreview.Width = previewWidth;
-        PetPreview.Height = PetVisualArea.Height = previewHeight;
+        PetPreview.Height = previewHeight;
+        PetVisualArea.Height = previewHeight + ShadowHeight;
         PetScale.ScaleX = PetScale.ScaleY = 1;
-        Launchers.Margin = new Thickness(0, portrait ? 18 : compactLandscape ? 18 : 26, 0, 0);
+        Launchers.Margin = new Thickness(0, 4, 0, 0);
         WardrobeButton.Margin = new Thickness(portrait ? 12 : 14, 0, 0, 0);
-        foreach (var button in new[] { FaceButton, WardrobeButton })
+        foreach (var button in new[] { FaceButton, WardrobeButton, EnterRoomButton })
         {
             button.MinWidth = compactLandscape ? 66 : 76;
-            button.Padding = new Thickness(14, 8, 14, 8);
+            button.MinHeight = 28;
+            button.Padding = new Thickness(10, 3, 10, 3);
         }
         foreach (var button in new[] { CreamButton, PeachButton, GreenButton })
             button.Margin = new Thickness(0, 0, portrait ? 10 : 8, 0);
@@ -552,9 +558,7 @@ public partial class ProductHomeView : UserControl
         PorchContent.VerticalAlignment = System.Windows.VerticalAlignment.Stretch;
         OptionsBody.Margin = shortLandscape ? new Thickness(0, 8, 0, 8) : portrait
             ? new Thickness(0, 14, 0, 12) : new Thickness(0, 26, 0, 20);
-        HomeFooter.Margin = new Thickness(portrait ? 16 : 22, 2, portrait ? 16 : 22, 7);
-        PreviewStatus.Text = portrait || compactLandscape ? "A 换装 · D 捏脸 · W 进入"
-            : "A 换装 · D 捏脸 · W 进入 · S 轻压 · 空格跳跃";
+        HomeFooter.Margin = new Thickness(portrait ? 16 : 22, 0, portrait ? 16 : 22, 0);
         SettingsInner.Margin = portrait ? new Thickness(16, 8, 16, 20)
             : compactLandscape ? new Thickness(18, 8, 18, 20) : new Thickness(38, 10, 38, 24);
         SettingsFeedbackBar.Margin = portrait ? new Thickness(16, 0, 16, 0)
@@ -566,10 +570,11 @@ public partial class ProductHomeView : UserControl
     private void UpdateStageSizing()
     {
         if (Stage is null || HomeContent is null) return;
-        Stage.MinHeight = IsEditing && SelectedEditor == HomeEditor.Face && !IsPortraitLayout
-            ? Math.Max(minimumStageHeight, FaceEditorHeader.DesiredSize.Height + BasePreviewWidth * .75 +
-                FaceEditorSaveActions.DesiredSize.Height + 28)
-            : minimumStageHeight;
+        var commonHeight = CommonPreviewTop + BasePreviewWidth * .75 + HomeLauncherSpace;
+        Stage.MinHeight = Math.Max(minimumStageHeight, IsPortraitLayout && IsEditing ? commonHeight + 300 : commonHeight);
+        if (IsEditing && SelectedEditor == HomeEditor.Face && !IsPortraitLayout)
+            Stage.MinHeight = Math.Max(Stage.MinHeight, CommonPreviewTop + BasePreviewWidth * .75 + ShadowHeight +
+                FaceEditorSaveActions.DesiredSize.Height + 16);
         var available = HomeContent.ActualHeight - Stage.Margin.Top - Stage.Margin.Bottom;
         var height = Math.Max(Stage.MinHeight, available);
         if (double.IsNaN(Stage.Height) || Math.Abs(Stage.Height - height) > .5) Stage.Height = height;
@@ -588,6 +593,25 @@ public partial class ProductHomeView : UserControl
         ? Math.Min(Math.Clamp(260 + (ActualHeight - 600) * .2, 250, 300), Math.Max(210, ActualWidth * .625))
         : ActualWidth < 800 ? 180 : ActualWidth >= 1150 ? 420 : 320;
 
+    private double ShadowHeight => BasePreviewWidth * .045;
+    private double HomeLauncherSpace => ShadowHeight + 4 + 60;
+    // Use the visible home area, not the editor's variable content height. The
+    // projected native jump can rise 42 canvas units. Keep a further 20 DIP
+    // above that arc; the native jump gate also measures the rendered hats.
+    private double CommonPreviewTop
+    {
+        get
+        {
+            var safeTop = 20 + BasePreviewWidth / 160 * 42;
+            var available = HomeContent.ActualHeight - Stage.Margin.Top - Stage.Margin.Bottom;
+            // Lower the resting Dango a little further wherever the actual
+            // viewport still fits both entry rows; short views keep headroom.
+            var lowerBy = Math.Clamp(available - safeTop - BasePreviewWidth * .75 - HomeLauncherSpace, 0, 8);
+            return Math.Max(safeTop + lowerBy, IsPortraitLayout ? 0 :
+                (Math.Max(minimumStageHeight, available) - BasePreviewWidth * .75 - HomeLauncherSpace) / 2);
+        }
+    }
+
     private double EditorRestingOffset(HomeEditor editor) =>
         (editor == HomeEditor.Face ? -1 : 1) * (IsPortraitLayout ? 120 : 46);
 
@@ -601,7 +625,6 @@ public partial class ProductHomeView : UserControl
         var width = Math.Max(0, Stage.ActualWidth);
         var height = Math.Max(0, Stage.ActualHeight);
         var portrait = IsPortraitLayout;
-        var compactPortrait = portrait && ActualWidth <= 420;
         var compactLandscape = !portrait && ActualWidth < 800;
         var shortLandscape = !portrait && ActualHeight <= 400;
         var faceEditing = IsEditing && SelectedEditor == HomeEditor.Face;
@@ -612,7 +635,7 @@ public partial class ProductHomeView : UserControl
         LeftColumn.Width = new GridLength(portrait ? 1 : faceOnLeft ? panelShare : petShare, GridUnitType.Star);
         RightColumn.Width = new GridLength(portrait ? 0 : faceOnLeft ? petShare : panelShare, GridUnitType.Star);
         PresenceStageRow.Height = portrait
-            ? new GridLength(Math.Clamp(height * .40, compactPortrait ? 222 : 248, 292)) : new GridLength(1, GridUnitType.Star);
+            ? new GridLength(CommonPreviewTop + BasePreviewWidth * .75 + HomeLauncherSpace) : new GridLength(1, GridUnitType.Star);
         DetailStageRow.Height = portrait ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
         Grid.SetRow(EditorPanel, portrait ? 1 : 0);
         Grid.SetColumn(EditorPanel, portrait ? 0 : faceOnLeft ? 0 : 2);
@@ -643,18 +666,19 @@ public partial class ProductHomeView : UserControl
         var right = available - left;
         var previewWidth = BasePreviewWidth;
         PetPreview.Width = previewWidth;
-        PetPreview.Height = PetVisualArea.Height = previewWidth * .75;
+        PetPreview.Height = previewWidth * .75;
+        // The shadow needs an actual layout slot. Drawing below a fixed-height
+        // grid is clipped by WPF even when its ActualSize remains nonzero.
+        PetVisualArea.Height = PetPreview.Height + ShadowHeight;
+        PetShadow.Width = previewWidth * .62;
+        PetShadow.Height = ShadowHeight;
+        PetShadow.Margin = new Thickness(0, PetPreview.Height, 0, 0);
         Presence.Width = portrait ? Math.Min(width, Math.Max(250, PetPreview.Width + 16))
             : Math.Min(Math.Max(210, PetPreview.Width + 18), faceOnLeft ? right : left);
-        var presenceHeight = PetVisualArea.Height + Launchers.Margin.Top + 40;
-        var restingTop = Math.Max(0, (height - presenceHeight) / 2);
-        var previewTop = faceEditing && FacePreviewSlot.ActualHeight > 0
-            ? FacePreviewSlot.TranslatePoint(new System.Windows.Point(), Stage).Y + Math.Max(0, (FacePreviewSlot.ActualHeight - PetVisualArea.Height) / 2)
-            : restingTop;
-        Presence.Margin = new Thickness(0, previewTop, 0, 0);
+        Presence.Margin = new Thickness(0, CommonPreviewTop, 0, 0);
         var offsetX = portrait ? 0 : IsEditing ? faceOnLeft ? (width - right) / 2 : -(width - left) / 2
             : IsInPorch ? -48 : 0;
-        var offsetY = portrait && IsEditing && !faceEditing ? 36 - restingTop : 0;
+        const double offsetY = 0;
         animate &= IsLoaded && !ReduceMotion && SystemParameters.ClientAreaAnimation;
         UpdateLauncherSelection();
         var horizontalPanelHeight = Math.Max(EditorPanel.MinHeight,
@@ -666,6 +690,11 @@ public partial class ProductHomeView : UserControl
         Presence.IsHitTestVisible = Presence.IsEnabled = !IsInPorch;
         Launchers.IsHitTestVisible = !IsInPorch;
         Launchers.Visibility = faceEditing ? Visibility.Collapsed : Visibility.Visible;
+        EnterRoomButton.Visibility = IsEditing ? Visibility.Collapsed : Visibility.Visible;
+        EnterRoomButton.IsEnabled = !IsEditing && !IsInPorch;
+        Brand.Visibility = faceEditing ? Visibility.Collapsed : Visibility.Visible;
+        FaceBrandIcon.Visibility = faceEditing ? Visibility.Visible : Visibility.Collapsed;
+        if (BoundRuntime is null) PetShadow.Visibility = IsInPorch ? Visibility.Collapsed : Visibility.Visible;
         PorchBrand.Visibility = IsInPorch ? Visibility.Visible : Visibility.Collapsed;
         TopNavigation.IsHitTestVisible = !IsInPorch;
         HomeFooter.IsHitTestVisible = !IsInPorch;

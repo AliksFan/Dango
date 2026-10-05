@@ -16,6 +16,7 @@ public partial class ProductHomeView
     private HostFrameScheduler? liveScheduler;
     private DirectionalControlIntent liveIntent;
     private LogicalPoint? visualAnchor;
+    private double? shadowGroundCenterY;
     private Window? ownerWindow;
     private bool liveSceneSuspended;
     private long porchReturnGeneration;
@@ -65,6 +66,7 @@ public partial class ProductHomeView
         if (BoundRuntime is not null) throw new InvalidOperationException("主页已绑定实时场景。");
         BoundSceneSession = session;
         BoundRuntime = runtime;
+        PetShadow.Visibility = Visibility.Collapsed;
         liveScheduler = new HostFrameScheduler(runtime, PrepareLiveFrame, CreateLiveInput, ApplyLiveFrame);
         if (appearanceSession is not null) runtime.SetAppearance(appearanceSession.DraftAppearance);
         else { standaloneDraft = runtime.EffectiveAppearance; runtime.SetAppearance(standaloneDraft); }
@@ -120,6 +122,7 @@ public partial class ProductHomeView
         BoundRuntime.AttachQuietIdleHost(this, true);
         BoundRuntime.UpdateWanderScreenWidth(this, IsInPorch ? PorchScene.ViewportWorldWidth : null);
         visualAnchor = null;
+        shadowGroundCenterY = null;
         liveScheduler!.Start();
     }
 
@@ -132,6 +135,8 @@ public partial class ProductHomeView
         porchConfirmation = null;
         liveIntent = DirectionalControlIntent.None;
         visualAnchor = null;
+        shadowGroundCenterY = null;
+        PetShadow.Visibility = Visibility.Collapsed;
         if (mayStopRuntime && BoundRuntime?.IsRunning == true) BoundRuntime.Stop();
     }
 
@@ -162,6 +167,7 @@ public partial class ProductHomeView
             frame.Bodies[0].FallbackReason != PhysicsPresentationFallbackReason.None)
         {
             LiveDangoVisual.Visibility = LiveDangoHat.Visibility = Visibility.Collapsed;
+            PetShadow.Visibility = Visibility.Collapsed;
             PorchScene.ShowUnavailable();
             LiveSceneStatusText.Text = "团子暂不可用 · 请在设置中重试";
             LiveSceneStatusText.Visibility = Visibility.Visible;
@@ -169,6 +175,7 @@ public partial class ProductHomeView
         }
         if (IsInPorch)
         {
+            PetShadow.Visibility = Visibility.Collapsed;
             if (liveSurfaceNeedsAlignment || liveSurfaceFailure is not null)
             {
                 PorchScene.ShowUnavailable(liveSurfaceFailure ?? "场景准备中");
@@ -184,6 +191,16 @@ public partial class ProductHomeView
         }
         var bounds = DangoHostFrameBinding.Bounds(frame, 0);
         visualAnchor ??= bounds.Center;
+        var grounded = BoundRuntime.LastPhysicsFrame is { Succeeded: true } physics &&
+            physics.Bodies.Any(body => body.EntityId == BoundRuntime.EntityIds[0] && body.IsGrounded);
+        if (grounded)
+        {
+            // Startup and porch return can attach while still falling. Use the
+            // real grounded frame for both anchors, including settling, so
+            // that home has one floor after either surface attaches.
+            visualAnchor = bounds.Center;
+            shadowGroundCenterY = bounds.Center.Y;
+        }
         const double dx = 0;
         var dy = Math.Clamp((bounds.Center.Y - visualAnchor.Value.Y) * .4, -42, 42);
         DangoHostFrameBinding.Apply(LiveDangoVisual, LiveDangoHat, frame, 0,
@@ -191,6 +208,13 @@ public partial class ProductHomeView
             appearance: BoundRuntime.DisplayHatAppearance,
             hatSize: BoundRuntime.DisplayHatSize,
             bodyFillOverride: BoundRuntime.BodyPreviewFill, eyeFillOverride: BoundRuntime.EyePreviewFill, appearanceEntity: BoundRuntime.AppearanceEntity);
+        var lift = shadowGroundCenterY is { } floor
+            ? Math.Clamp((floor - bounds.Center.Y) * .4 / 42, 0, 1) : 0;
+        PetShadowScale.ScaleX = 1 - .32 * lift;
+        PetShadowScale.ScaleY = 1 - .15 * lift;
+        PetShadow.Opacity = .17 - .09 * lift;
+        PetShadow.Visibility = shadowGroundCenterY.HasValue && LiveDangoVisual.LastContourFailure == DangoContourFailure.None
+            ? Visibility.Visible : Visibility.Collapsed;
         LiveSceneStatusText.Visibility = Visibility.Collapsed;
     }
 
@@ -253,6 +277,8 @@ public partial class ProductHomeView
         if (!OwnsLiveFrameDriver) return;
         BoundRuntime!.UpdateWanderScreenWidth(this, IsInPorch ? PorchScene.ViewportWorldWidth : null);
         visualAnchor = null;
+        shadowGroundCenterY = null;
+        PetShadow.Visibility = Visibility.Collapsed;
     }
 
     private void OnStageMouseDown(object sender, MouseButtonEventArgs e)
