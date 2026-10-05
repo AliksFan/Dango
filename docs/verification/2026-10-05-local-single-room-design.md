@@ -2,6 +2,8 @@
 
 日期：2026-10-05。状态：**设计待评审，实施未开始**。
 
+本记录保留首轮带窗景／植物／日光版本的检查证据。原型现已按用户的两层初始环境方向修订；下文56项与hash只属于旧版本，当前检查见[两层修订记录](2026-10-05-room-two-layer-design.md)。
+
 ## 范围与基线
 
 只完成[设计提案](../planning/2026-10-05-local-single-room-design.md)、[分批实施／验收计划](../planning/2026-10-05-local-single-room-plan.md)和[交互示意源](../prototypes/dango-local-room.html)。从干净本地 `main@e2f4037ea2e56a222d41a5cd3085b21cee220565` 创建独立工作树／分支 `codex/local-room-design`，没有改生产源码或更新产品／服务端已批准基线。

@@ -8,7 +8,7 @@
     <section class="dr-window" aria-label="普通房窗口">
       <header class="dr-chrome">
         <button class="dr-return cursor-interaction" type="button" data-action="back" aria-label="房门：返回门廊"><i data-lucide="door-open" aria-hidden="true"></i><span>房门</span></button>
-        <span class="dr-title">小晴间</span>
+        <span class="dr-title">初始房间</span>
         <span class="dr-local">本地 · 单人</span>
         <button class="dr-close cursor-interaction" type="button" data-action="hide" aria-label="隐藏画面"><i data-lucide="x" aria-hidden="true"></i></button>
       </header>
@@ -23,19 +23,13 @@
           <div class="dr-porch-wall"></div>
           <div class="dr-porch-ground"></div>
           <div class="dr-porch-world">
-            <div class="dr-door-label">小晴间 <small>本地单人</small></div>
-            <button type="button" class="dr-porch-door cursor-interaction" data-action="enter" aria-label="进入小晴间，本地单人"><span class="dr-door-knob"></span><span class="dr-door-w">W 进入</span></button>
+            <div class="dr-door-label">初始房间 <small>本地单人</small></div>
+            <button type="button" class="dr-porch-door cursor-interaction" data-action="enter" aria-label="进入初始房间，本地单人"><span class="dr-door-knob"></span><span class="dr-door-w">W 进入</span></button>
           </div>
         </div>
         <div class="dr-room">
           <div class="dr-wall"></div>
-          <div class="dr-sunwash"></div>
-          <button class="dr-scene-door cursor-interaction" type="button" data-action="back" aria-label="场景房门，返回门廊"><span class="dr-door-knob"></span></button>
-          <div class="dr-windowview" aria-hidden="true"><span class="dr-cloud dr-cloud-a"></span><span class="dr-cloud dr-cloud-b"></span><span class="dr-hill dr-hill-a"></span><span class="dr-hill dr-hill-b"></span><span class="dr-window-cross"></span></div>
           <div class="dr-floor"></div>
-          <div class="dr-plant" aria-hidden="true"><span class="dr-stem"></span><span class="dr-leaf dr-leaf-a"></span><span class="dr-leaf dr-leaf-b"></span><span class="dr-leaf dr-leaf-c"></span><span class="dr-pot"></span></div>
-          <div class="dr-daypatch" aria-hidden="true"></div>
-          <div class="dr-frontedge" aria-hidden="true"></div>
         </div>
         <div class="dr-shadow" aria-hidden="true"></div>
         <div class="dr-pet" role="img" aria-label="团子，外形和动作均为示意"><span class="dr-eye dr-eye-left"></span><span class="dr-eye dr-eye-right"></span><span class="dr-cheek dr-cheek-left"></span><span class="dr-cheek dr-cheek-right"></span><span class="dr-mouth"></span></div>
@@ -52,7 +46,7 @@
     <div class="dr-traymenu" hidden aria-label="托盘示意菜单"><button type="button" class="cursor-interaction" data-action="restore">恢复房间</button><button type="button" class="cursor-interaction" data-action="trayporch">房门</button></div>
     <button type="button" class="dr-tray cursor-interaction" data-action="tray" aria-label="打开托盘示意菜单"><i data-lucide="circle-dot" aria-hidden="true"></i><span>托盘</span></button>
   </div>
-  <div class="dr-caption text-small text-muted" aria-live="polite">小晴间 · 平坦地面，固定镜头</div>
+  <div class="dr-caption text-small text-muted" aria-live="polite">初始房间 · 连续地面与纯色墙面</div>
 </div>
 <style>
 #dango-local-room { --dr-paper:light-dark(#fdfcf9,#282723); --dr-wall:light-dark(#f5f0e8,#38342e); --dr-floor:light-dark(#e7d5bd,#594b3d); --dr-line:light-dark(#e9e4da,#50483e); --dr-ink:light-dark(#443d34,#f1e9db); --dr-muted:light-dark(#807568,#c7bbaa); --dr-accent:light-dark(#885e3e,#d4ae84); --dr-door:light-dark(#e4cdb0,#76614b); --dr-doorline:light-dark(#b7926b,#b29878); --dr-sky:light-dark(#d7e6e4,#3d5358); --dr-cloud:light-dark(#f5f7f0,#829190); --dr-leaf:light-dark(#799180,#728775); --dr-pet:light-dark(#f2cba5,#d7b494); --dr-eye:#594336; --dr-shadow:light-dark(#73553d23,#00000028); --dr-sun:light-dark(#fff6dc,#887249); width:100%; }
@@ -69,30 +63,9 @@
 #dango-local-room .dr-stage { position:relative; height:clamp(300px,48vw,490px); overflow:hidden; background:var(--dr-paper); }
 #dango-local-room .dr-home,#dango-local-room .dr-porch,#dango-local-room .dr-room { position:absolute; inset:0; }
 #dango-local-room [hidden] { display:none !important; }
-#dango-local-room .dr-wall { position:absolute; inset:0 0 23%; background:var(--dr-wall); }
-#dango-local-room .dr-floor { position:absolute; inset:77% 0 0; background:var(--dr-floor); border-top:1px solid var(--dr-doorline); }
-#dango-local-room .dr-sunwash { position:absolute; top:8%; left:31%; width:66%; height:58%; border-radius:50%; background:radial-gradient(ellipse,var(--dr-sun),transparent 70%); opacity:.48; }
-#dango-local-room .dr-scene-door { position:absolute; left:9%; bottom:23%; width:12.9%; height:46%; border:3px solid var(--dr-doorline); border-radius:50% 50% 1px 1px / 29% 29% 1px 1px; background:var(--dr-door); z-index:1; padding:0; }
+#dango-local-room .dr-wall { position:absolute; inset:0 0 10%; background:var(--dr-wall); }
+#dango-local-room .dr-floor { position:absolute; inset:90% 0 0; background:var(--dr-floor); border-top:1px solid var(--dr-doorline); }
 #dango-local-room .dr-door-knob { position:absolute; right:15%; top:65%; width:6px; height:6px; border-radius:50%; background:var(--dr-accent); }
-#dango-local-room .dr-windowview { position:absolute; left:51%; top:17%; width:24%; height:30%; border:7px solid var(--dr-door); border-radius:42% 42% 4px 4px / 38% 38% 4px 4px; background:var(--dr-sky); overflow:hidden; }
-#dango-local-room .dr-windowview:after { content:""; position:absolute; bottom:0; left:0; right:0; height:6px; background:var(--dr-door); }
-#dango-local-room .dr-window-cross { position:absolute; width:5px; height:100%; left:49%; background:var(--dr-door); }
-#dango-local-room .dr-window-cross:after { content:""; position:absolute; top:53%; left:-100px; width:220px; height:5px; background:var(--dr-door); }
-#dango-local-room .dr-cloud { position:absolute; width:35%; height:12%; border-radius:50%; background:var(--dr-cloud); }
-#dango-local-room .dr-cloud-a { left:15%; top:20%; }
-#dango-local-room .dr-cloud-b { right:4%; top:38%; width:22%; }
-#dango-local-room .dr-hill { position:absolute; width:88%; height:45%; border-radius:50% 50% 0 0; background:var(--dr-leaf); opacity:.45; bottom:-11%; }
-#dango-local-room .dr-hill-a { left:-30%; }
-#dango-local-room .dr-hill-b { left:40%; bottom:-19%; opacity:.65; }
-#dango-local-room .dr-plant { position:absolute; left:81%; bottom:22.5%; width:7%; height:25%; }
-#dango-local-room .dr-stem { position:absolute; left:50%; bottom:25%; height:65%; width:3px; background:var(--dr-leaf); transform:rotate(-6deg); }
-#dango-local-room .dr-leaf { position:absolute; background:var(--dr-leaf); width:51%; height:27%; border-radius:80% 4% 80% 4%; }
-#dango-local-room .dr-leaf-a { left:3%; top:17%; transform:rotate(58deg); }
-#dango-local-room .dr-leaf-b { left:46%; top:0; transform:rotate(9deg); }
-#dango-local-room .dr-leaf-c { left:44%; top:35%; transform:rotate(-17deg); }
-#dango-local-room .dr-pot { position:absolute; left:17%; bottom:0; width:66%; height:31%; background:var(--dr-accent); border-radius:3px 3px 28% 28%; opacity:.7; }
-#dango-local-room .dr-daypatch { position:absolute; left:44%; top:78%; width:34%; height:10%; transform:skewX(-32deg); background:var(--dr-sun); opacity:.35; }
-#dango-local-room .dr-frontedge { position:absolute; left:3%; right:3%; bottom:10%; height:1px; background:var(--dr-doorline); opacity:.18; }
 #dango-local-room .dr-pet { position:absolute; width:var(--dr-pet-width,16.5%); height:auto; aspect-ratio:1.55; left:var(--dr-pet-x,42%); bottom:var(--dr-pet-bottom,10%); transform:translateX(-50%) translateY(var(--dr-hop,0px)) scaleX(var(--dr-sx,1)) scaleY(var(--dr-sy,1)); transform-origin:center bottom; border-radius:46% 46% 34% 34% / 65% 65% 22% 22%; background:var(--dr-pet); box-shadow:inset 0 -5px 0 #a6784320; z-index:2; transition:transform 100ms ease; }
 #dango-local-room .dr-shadow { position:absolute; width:10%; height:1.5%; left:var(--dr-pet-x,42%); bottom:calc(var(--dr-pet-bottom,10%) - .5%); transform:translateX(-50%); background:var(--dr-shadow); border-radius:50%; z-index:1; }
 #dango-local-room .dr-eye { position:absolute; top:43%; width:5.5%; height:12%; border-radius:50%; background:var(--dr-eye); }
@@ -136,7 +109,7 @@
 #dango-local-room .dr-traymenu button { border:0; padding:10px 14px; border-radius:6px; font:inherit; text-align:left; color:var(--dr-ink); background:transparent; }
 #dango-local-room .dr-traymenu button:hover { background:var(--dr-wall); }
 #dango-local-room .dr-caption { padding-top:6px; }
-@media(max-width:480px) { #dango-local-room .dr-chrome { gap:6px; padding-left:6px; } #dango-local-room .dr-title { font-size:11px; } #dango-local-room .dr-stage { height:330px; } #dango-local-room .dr-pet { min-width:54px; } #dango-local-room .dr-shadow { min-width:48px; } #dango-local-room .dr-inputs { gap:0; } #dango-local-room .dr-inputs button { padding:8px 7px; } #dango-local-room .dr-scene-door { left:7%; width:18%; height:41%; } #dango-local-room .dr-windowview { left:50%; width:29%; height:24%; top:22%; } #dango-local-room .dr-plant { left:83%; width:11%; height:20%; } #dango-local-room .dr-panel { padding:8px; width:36%; } }
+@media(max-width:480px) { #dango-local-room .dr-chrome { gap:6px; padding-left:6px; } #dango-local-room .dr-title { font-size:11px; } #dango-local-room .dr-stage { height:330px; } #dango-local-room .dr-pet { min-width:54px; } #dango-local-room .dr-shadow { min-width:48px; } #dango-local-room .dr-inputs { gap:0; } #dango-local-room .dr-inputs button { padding:8px 7px; } #dango-local-room .dr-panel { padding:8px; width:36%; } }
 @media(pointer:coarse) { #dango-local-room .dr-chrome { height:48px; } #dango-local-room .dr-chrome button,#dango-local-room .dr-inputs button,#dango-local-room .dr-tray { min-height:44px; } #dango-local-room .dr-close { min-width:44px; } }
 @media(prefers-reduced-motion:reduce) { #dango-local-room .dr-pet { transition:none; } }
 </style>
@@ -152,13 +125,13 @@
   const state = { view:'room', hidden:false, failed:false, failNext:false, panel:null, x:42, porchX:56, generation:0 };
   let keys = new Set(), last = 0, frame = 0, hop = null, squash = null, pendingTimer = null;
   function save() {
-    if (window.openai?.setWidgetState) window.openai.setWidgetState({ modelContent:{ design:'小晴间', view:state.view, hidden:state.hidden }, privateContent:{ view:state.view, hidden:state.hidden } }).catch(() => {});
+    if (window.openai?.setWidgetState) window.openai.setWidgetState({ modelContent:{ design:'初始房间', view:state.view, hidden:state.hidden }, privateContent:{ view:state.view, hidden:state.hidden } }).catch(() => {});
   }
   function render() {
     win.hidden = state.hidden; get('.dr-hidden').hidden = !state.hidden;
     home.hidden = state.view !== 'home'; porch.hidden = state.view !== 'porch' && state.view !== 'entering'; room.hidden = state.view !== 'room';
     entry.hidden = state.view !== 'entering'; panel.hidden = !state.panel || state.view !== 'home';
-    title.textContent = state.view === 'home' ? '团子' : state.view === 'room' ? '小晴间' : '房门';
+    title.textContent = state.view === 'home' ? '团子' : state.view === 'room' ? '初始房间' : '房门';
     back.querySelector('span').textContent = state.view === 'home' ? '房门' : state.view === 'porch' || state.view === 'entering' ? '首页' : '房门';
     get('.dr-panel-title').textContent = state.panel === 'outfit' ? '换装' : '捏脸';
     get('.dr-entry-message').textContent = state.failed ? '房间暂时打不开' : '正在开门…';
@@ -174,7 +147,7 @@
     stage.style.setProperty('--dr-pet-width',state.view === 'home' ? '20%' : '16.5%');
     stage.style.setProperty('--dr-pet-height',state.view === 'home' ? '28%' : '22%');
     stage.style.setProperty('--dr-pet-bottom',state.view === 'home' ? '44%' : '10%');
-    caption.textContent = state.hidden ? '× 仅隐藏 · 托盘可恢复画面或回门廊' : state.view === 'home' ? '首页示意 · W 房门 · D 捏脸 · A 换装' : state.view === 'porch' ? '门廊示意 · A / D 移动 · W 进入本地房间 · Esc 首页' : state.view === 'entering' ? state.failed ? '失败示意 · 门廊保持可操作，重试或返回' : '转场示意 · 目标画面就绪后才收起主界面' : '小晴间 · 平坦地面，固定镜头 · Esc 回门廊';
+    caption.textContent = state.hidden ? '× 仅隐藏 · 托盘可恢复画面或回门廊' : state.view === 'home' ? '首页示意 · W 房门 · D 捏脸 · A 换装' : state.view === 'porch' ? '门廊示意 · A / D 移动 · W 进入本地房间 · Esc 首页' : state.view === 'entering' ? state.failed ? '失败示意 · 门廊保持可操作，重试或返回' : '转场示意 · 目标画面就绪后才收起主界面' : '初始房间 · 连续地面与纯色墙面 · Esc 回门廊';
   }
   function clear() {
     keys.clear(); cancelAnimationFrame(frame); frame = 0; last = 0;
@@ -190,7 +163,7 @@
   }
   function enter() {
     if(state.view !== 'porch') return;
-    if(Math.abs(state.porchX - 56) > 20) { caption.textContent = '靠近小晴间的门再进入'; return; }
+    if(Math.abs(state.porchX - 56) > 20) { caption.textContent = '靠近初始房间的门再进入'; return; }
     clear(); state.view = 'entering'; state.failed = false; const generation = ++state.generation;
     const fail = state.failNext; state.failNext = false; render(); save();
     pendingTimer = setTimeout(() => {

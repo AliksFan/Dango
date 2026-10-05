@@ -1,22 +1,19 @@
 <div id="dango-room-view" aria-label="普通房视距与呈现方式示意">
   <div class="viz-controls rv-preview">
     <label class="form-label">呈现 <select class="form-select" data-host><option value="window">普通房窗口</option><option value="wallpaper">普通房壁纸层</option></select></label>
+    <label class="form-label">层示意 <select class="form-select" data-layer><option value="both">两层一起</option><option value="wall">墙面层</option><option value="ground">地面层</option></select></label>
     <span class="text-small text-muted">交互示意 · 未接 WPF / 物理</span>
   </div>
   <section class="rv-surface" aria-label="普通房视角示意">
     <header class="rv-titlebar">
       <span class="rv-roomdoor"><i data-lucide="door-open" aria-hidden="true"></i> 房门</span>
-      <span class="rv-name">小晴间</span>
+      <span class="rv-name">初始房间</span>
       <button type="button" class="rv-view-trigger cursor-interaction" data-view-menu aria-label="选择房间视距" aria-expanded="false"><i data-lucide="scan-eye" aria-hidden="true"></i><span>视角 · 标准</span></button>
       <span class="rv-local">本地 · 单人</span>
     </header>
     <div class="rv-viewport" role="group" aria-label="同一普通房，视距仅改变画面投影">
       <div class="rv-world">
         <div class="rv-wall"></div><div class="rv-floor"></div>
-        <div class="rv-door" aria-hidden="true"><span></span></div>
-        <div class="rv-window" aria-hidden="true"><span class="rv-cloud"></span><span class="rv-hill"></span><span class="rv-window-frame"></span></div>
-        <div class="rv-plant" aria-hidden="true"><span class="rv-stem"></span><span class="rv-leaf rv-leaf-a"></span><span class="rv-leaf rv-leaf-b"></span><span class="rv-pot"></span></div>
-        <div class="rv-bound rv-bound-left" aria-hidden="true"></div><div class="rv-bound rv-bound-right" aria-hidden="true"></div>
         <div class="rv-shadow" aria-hidden="true"></div>
         <div class="rv-pet" aria-hidden="true"><span class="rv-eye rv-eye-left"></span><span class="rv-eye rv-eye-right"></span><span class="rv-mouth"></span></div>
       </div>
@@ -48,23 +45,8 @@
 #dango-room-view .rv-view-trigger:hover { background:var(--rv-wall); }
 #dango-room-view .rv-viewport { position:relative; height:clamp(270px,51vw,510px); overflow:hidden; background:var(--rv-wall); }
 #dango-room-view .rv-world { position:absolute; width:720px; height:360px; transform-origin:0 0; }
-#dango-room-view .rv-wall { position:absolute; left:0; top:0; width:720px; height:300px; background:var(--rv-wall); }
-#dango-room-view .rv-floor { position:absolute; left:0; top:300px; width:720px; height:112px; background:var(--rv-floor); border-top:1px solid var(--rv-edge); }
-#dango-room-view .rv-door { position:absolute; left:58px; top:106px; width:90px; height:194px; background:var(--rv-door); border:3px solid var(--rv-edge); border-radius:45px 45px 0 0; }
-#dango-room-view .rv-door span { position:absolute; right:14px; top:122px; width:5px; height:5px; border-radius:50%; background:var(--rv-accent); }
-#dango-room-view .rv-window { position:absolute; left:378px; top:66px; width:174px; height:108px; background:var(--rv-sky); border:5px solid var(--rv-door); border-radius:72px 72px 3px 3px / 42px 42px 3px 3px; overflow:hidden; }
-#dango-room-view .rv-window-frame { position:absolute; left:49%; top:0; width:4px; height:100%; background:var(--rv-door); }
-#dango-room-view .rv-window-frame:after { content:""; position:absolute; left:-100px; top:55%; width:200px; height:4px; background:var(--rv-door); }
-#dango-room-view .rv-cloud { position:absolute; left:18px; top:23px; width:58px; height:12px; border-radius:50%; background:var(--rv-cloud); }
-#dango-room-view .rv-hill { position:absolute; left:-20px; bottom:-22px; width:160px; height:48px; border-radius:50%; background:var(--rv-leaf); opacity:.6; }
-#dango-room-view .rv-plant { position:absolute; left:610px; top:204px; width:50px; height:96px; }
-#dango-room-view .rv-stem { position:absolute; left:24px; top:8px; width:3px; height:65px; background:var(--rv-leaf); transform:rotate(-8deg); }
-#dango-room-view .rv-leaf { position:absolute; width:25px; height:30px; background:var(--rv-leaf); border-radius:90% 0 90% 0; }
-#dango-room-view .rv-leaf-a { left:2px; top:16px; transform:rotate(66deg); }
-#dango-room-view .rv-leaf-b { left:25px; top:0; }
-#dango-room-view .rv-pot { position:absolute; left:10px; bottom:0; width:34px; height:27px; background:var(--rv-accent); border-radius:2px 2px 10px 10px; opacity:.7; }
-#dango-room-view .rv-bound { position:absolute; top:0; bottom:-52px; width:2px; background:var(--rv-edge); opacity:.6; }
-#dango-room-view .rv-bound-left { left:0; } #dango-room-view .rv-bound-right { right:0; }
+#dango-room-view .rv-wall { position:absolute; left:0; top:0; width:720px; height:360px; background:var(--rv-wall); }
+#dango-room-view .rv-floor { position:absolute; left:0; top:360px; width:720px; height:40px; background:var(--rv-floor); border-top:1px solid var(--rv-edge); }
 #dango-room-view .rv-pet { position:absolute; left:var(--rv-pet-x,220px); bottom:0; width:110px; height:71px; transform:translateX(-50%); background:var(--rv-pet); border-radius:46% 46% 34% 34% / 65% 65% 22% 22%; box-shadow:inset 0 -4px 0 var(--rv-shadow); }
 #dango-room-view .rv-eye { position:absolute; top:30px; width:5px; height:8px; background:var(--rv-eye); border-radius:50%; }
 #dango-room-view .rv-eye-left { left:34px; } #dango-room-view .rv-eye-right { right:34px; }
@@ -88,11 +70,16 @@
   const host = root.querySelector('[data-host]'), viewport = root.querySelector('.rv-viewport'), world = root.querySelector('.rv-world');
   const menu = root.querySelector('.rv-distance-menu'), trigger = root.querySelector('[data-view-menu]'), tray = root.querySelector('[data-tray-view]');
   const labels = {standard:'标准',near:'近景',whole:'全景'};
-  const state = {host:'window',views:{window:'standard',wallpaper:'standard'},x:220};
+  const state = {host:'window',views:{window:'standard',wallpaper:'standard'},x:220,layer:'both'};
   let camera = 0, previousHost = state.host;
   function render() {
     const wallpaper = state.host === 'wallpaper', mode = state.views[state.host];
     host.value = state.host; root.querySelector('.rv-titlebar').hidden = wallpaper; root.querySelector('.rv-taskbar').hidden = !wallpaper;
+    root.querySelector('[data-layer]').value=state.layer;
+    root.querySelector('.rv-wall').hidden=state.layer==='ground';
+    root.querySelector('.rv-floor').hidden=state.layer==='wall';
+    viewport.style.background=state.layer==='ground'?'var(--rv-paper)':'var(--rv-wall)';
+    for(const element of root.querySelectorAll('.rv-pet,.rv-shadow'))element.hidden=state.layer!=='both';
     const vw = wallpaper ? 1920 : 960, vh = wallpaper ? 1040 : 560;
     const pw = viewport.clientWidth, ph = viewport.clientHeight;
     // Preview downscales a fictional reference viewport; no OS or physical state.
@@ -110,18 +97,26 @@
       camera = Math.max(0,Math.min(720-visibleWidth,camera));
     }
     world.style.setProperty('--rv-pet-x',`${state.x}px`);
-    world.style.transform = `translate(${outerX+(offsetX-camera*scale)*presentationScale}px,${outerY+(ground-360*scale)*presentationScale}px) scale(${scale*presentationScale})`;
+    const projectedX = outerX+(offsetX-camera*scale)*presentationScale;
+    const screenScale = scale*presentationScale;
+    world.style.transform = `translate(${projectedX}px,${outerY+(ground-360*scale)*presentationScale}px) scale(${screenScale})`;
+    // Extend the flat visual fill; the contact line and logical safety bounds stay fixed.
+    const floor = root.querySelector('.rv-floor');
+    floor.style.left = `${-projectedX/screenScale}px`;
+    floor.style.width = `${pw/screenScale}px`;
+    floor.style.height = `${Math.max(0,ph-outerY-ground*presentationScale)/screenScale}px`;
     world.dataset.scale = scale; world.dataset.camera = camera; world.dataset.worldX = state.x;
     root.querySelector('[data-model-size]').textContent = wallpaper ? '壁纸层 1920 × 1080 DIP 示意' : '窗口 960 × 600 DIP 示意';
     trigger.querySelector('span').textContent = `视角 · ${labels[mode]}`;
     for(const button of root.querySelectorAll('[data-distance]')) button.setAttribute('aria-pressed',String(button.dataset.distance===mode));
-    root.querySelector('[data-view-detail]').textContent = `${labels[mode]} · ${mode==='whole'?'整间房完整可见':visibleWidth>=720?'尺寸保持，房间居中':'尺寸保持，横向跟随'} · 示意身体宽 ${Math.round(110*scale)} DIP`;
+    root.querySelector('[data-view-detail]').textContent = state.layer==='both'?`${labels[mode]} · ${mode==='whole'?'整间房完整可见':visibleWidth>=720?'尺寸保持，房间居中':'尺寸保持，横向跟随'} · 示意身体宽 ${Math.round(110*scale)} DIP`:state.layer==='wall'?'墙面层 · 纯色后景，无碰撞':'地面层 · 连续平面，上沿为落地面';
   }
   function save() {
-    if(window.openai?.setWidgetState) window.openai.setWidgetState({modelContent:{viewHost:state.host,windowView:state.views.window,wallpaperView:state.views.wallpaper},privateContent:{host:state.host,views:{...state.views},x:state.x}}).catch(()=>{});
+    if(window.openai?.setWidgetState) window.openai.setWidgetState({modelContent:{viewHost:state.host,windowView:state.views.window,wallpaperView:state.views.wallpaper,environmentLayers:'ground-and-wall'},privateContent:{host:state.host,views:{...state.views},x:state.x,layer:state.layer}}).catch(()=>{});
   }
   function toggle() { menu.hidden=!menu.hidden; trigger.setAttribute('aria-expanded',String(!menu.hidden)); tray.setAttribute('aria-expanded',String(!menu.hidden)); }
   host.addEventListener('change',()=>{state.host=host.value; if(previousHost!==state.host) camera=0; previousHost=state.host; menu.hidden=true;trigger.setAttribute('aria-expanded','false');tray.setAttribute('aria-expanded','false');render();save();});
+  root.querySelector('[data-layer]').addEventListener('change',event=>{state.layer=event.target.value;render();save();});
   root.addEventListener('click',event=>{
     const button=event.target.closest('button'); if(!button)return;
     if(button.hasAttribute('data-view-menu')||button.hasAttribute('data-tray-view')) toggle();
@@ -133,6 +128,7 @@
     const value=saved?.privateContent;if(!value)return;
     if(['window','wallpaper'].includes(value.host))state.host=value.host;
     for(const kind of ['window','wallpaper'])if(labels[value.views?.[kind]])state.views[kind]=value.views[kind];
+    if(['both','wall','ground'].includes(value.layer))state.layer=value.layer;
     if(Number.isFinite(value.x))state.x=Math.max(55,Math.min(665,value.x));camera=0;render();
   }
   restore(window.openai?.widgetState);render();
