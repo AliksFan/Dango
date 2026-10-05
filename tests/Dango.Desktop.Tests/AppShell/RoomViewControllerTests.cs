@@ -138,6 +138,36 @@ public sealed class RoomViewControllerTests
     }
 
     [TestMethod]
+    public void UnchangedResizePreservesTheDeadZoneAcrossFrames()
+    {
+        var view = Create(640);
+        var initialCamera = view.CameraX;
+        var pet = initialCamera + 640 / view.Scale * .55;
+        view.Update(pet, 16);
+        for (var frame = 0; frame < 10; frame++)
+        {
+            view.Resize(640, 600, 360, 200);
+            view.Update(pet, 16);
+        }
+        Assert.AreEqual(initialCamera, view.CameraX, 1e-10);
+    }
+
+    [TestMethod]
+    public void UnchangedResizePreservesElapsedTimeBasedFollow()
+    {
+        var resizedEachFrame = Create(320);
+        var stableViewport = Create(320);
+        for (var frame = 0; frame < 10; frame++)
+        {
+            resizedEachFrame.Resize(320, 600, 360, 200);
+            resizedEachFrame.Update(1400, 10);
+            stableViewport.Update(1400, 10);
+            Assert.AreEqual(stableViewport.CameraX, resizedEachFrame.CameraX, 1e-10);
+            Assert.AreEqual(stableViewport.Projection, resizedEachFrame.Projection);
+        }
+    }
+
+    [TestMethod]
     public void FirstRealPetPositionIsVisibleImmediately()
     {
         var view = new RoomViewController();

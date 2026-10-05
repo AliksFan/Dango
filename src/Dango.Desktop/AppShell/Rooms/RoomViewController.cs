@@ -72,6 +72,8 @@ internal sealed class RoomViewController
         if (height <= GroundInset + TopInset) throw new ArgumentOutOfRangeException(nameof(height));
         RequireFinite(groundWorldY, nameof(groundWorldY));
         RequirePositive(safeWorldHeight, nameof(safeWorldHeight));
+        if (hasViewport && this.width == width && this.height == height &&
+            this.groundWorldY == groundWorldY && this.safeWorldHeight == safeWorldHeight) return;
         this.width = width;
         this.height = height;
         this.groundWorldY = groundWorldY;
