@@ -30,7 +30,7 @@ public static class AttachmentGeometryFactory
     {
         ArgumentNullException.ThrowIfNull(eye);
         if (!double.IsFinite(eye.Center.X) || !double.IsFinite(eye.Center.Y) || Math.Abs(eye.Center.X) > 1 || Math.Abs(eye.Center.Y) > 1 ||
-            !double.IsFinite(eye.Width) || eye.Width is <= 0 or > 0.075 || !double.IsFinite(eye.Height) || eye.Height is <= 0 or > 0.075 ||
+            !double.IsFinite(eye.Width) || eye.Width is <= 0 or > 0.105 || !double.IsFinite(eye.Height) || eye.Height is <= 0 or > 0.105 ||
             !double.IsFinite(eye.Angle) || Math.Abs(eye.Angle) > Math.PI / 18 + 1e-10 || !double.IsFinite(eye.Openness) || eye.Openness is < 0 or > 1 ||
             !double.IsFinite(eye.Strength) || eye.Strength is < 0 or > 1 || !Enum.IsDefined(eye.Shape))
             throw new ArgumentException("Eye frame is invalid.", nameof(eye));
