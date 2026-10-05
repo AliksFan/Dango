@@ -1,0 +1,33 @@
+using System.Windows;
+
+namespace Dango.Desktop.AppShell.ControlCenter;
+
+public partial class ProductHomeView
+{
+    internal bool IsDangoAway { get; private set; }
+
+    internal void SetDangoAway(bool away)
+    {
+        if (away)
+        {
+            SuspendForRoom();
+            CloseEditor(focusStage: false);
+        }
+        IsDangoAway = away;
+        UpdateTransition(false);
+    }
+
+    private void UpdateRoomAwayPresentation()
+    {
+        RoomAwayNotice.Visibility = IsDangoAway ? Visibility.Visible : Visibility.Collapsed;
+        Presence.Visibility = IsDangoAway ? Visibility.Collapsed : Visibility.Visible;
+        Launchers.Visibility = IsDangoAway ? Visibility.Collapsed : Visibility.Visible;
+        if (IsDangoAway)
+        {
+            EditorPanel.Visibility = PorchContent.Visibility = Visibility.Collapsed;
+            LiveDangoVisual.Visibility = LiveDangoHat.Visibility = Visibility.Collapsed;
+            HomeFooter.Visibility = Visibility.Collapsed;
+        }
+        else if (!IsSettingsOpen) HomeFooter.Visibility = Visibility.Visible;
+    }
+}

@@ -5,12 +5,40 @@ using Dango.Desktop.DesktopHost.WorkerW;
 
 namespace Dango.Desktop.DesktopHost.Win32;
 
+internal enum RoomInputInspectionPhase
+{
+    Context, ShellTarget, Foreground, BlockingWindows, Cursor, Pointer, Icon,
+    CurrentPointer, CurrentIcon, RefreshBlockingWindows, RefreshPointer, RefreshForeground, Completed,
+}
+
+internal readonly record struct RoomInputInspectionTrace(RoomInputInspectionPhase Phase, bool BudgetExpired,
+    bool Exception, double ElapsedMilliseconds, RoomPointerInspectionTrace Pointer = default);
+
+internal enum RoomPointerRole { Unknown, DesktopShell, OwnWallpaperChild, TaskbarOrMenu, OtherApplication, OtherShell }
+internal readonly record struct RoomPointerInspectionTrace(RoomPointerRole Role, bool ShellDesktopClass,
+    bool SameShellProcess, bool OwnProcessChild, bool TargetRootRelation);
+
 internal static partial class NativeMethods
 {
     internal delegate nint LowLevelMouseProcedure(int code, nint wordParameter, nint longParameter);
 
     private static readonly object RoomMouseHooksLock = new();
     private static readonly Dictionary<nint, LowLevelMouseProcedure> RoomMouseHooks = [];
+    private static readonly object RoomKeyboardHooksLock = new();
+    private static readonly Dictionary<nint, LowLevelKeyboardProcedure> RoomKeyboardHooks = [];
+
+    internal static nint InstallRoomKeyboardHook(LowLevelKeyboardProcedure procedure)
+    {
+        var installed = InstallLowLevelKeyboardHook(procedure);
+        if (installed != 0) lock (RoomKeyboardHooksLock) RoomKeyboardHooks[installed] = procedure;
+        return installed;
+    }
+    internal static bool UninstallRoomKeyboardHook(nint hook)
+    {
+        if (!UninstallKeyboardHook(hook)) return false;
+        lock (RoomKeyboardHooksLock) RoomKeyboardHooks.Remove(hook);
+        return true;
+    }
 
     internal static nint InstallRoomMouseHook(LowLevelMouseProcedure procedure)
     {
@@ -33,73 +61,125 @@ internal static partial class NativeMethods
             data.Flags, HasRoomMouseModifier());
     }
 
+    internal static WallpaperGameplayMouseData ReadRoomGameplayMouseInput(nint longParameter)
+    {
+        var data = Marshal.PtrToStructure<LowLevelMouseInput>(longParameter);
+        return new(new(data.Point.X, data.Point.Y), data.Flags, IsKeyDown(0x10), HasSystemKeyboardModifier());
+    }
+
+    internal static WallpaperWheelInputEnvironment InspectRoomGameplayInput(WallpaperWheelInputContext context,
+        WallpaperWheelPoint? point, bool atEvent, bool allowShift)
+    {
+        long? deadline = atEvent ? Stopwatch.GetTimestamp() + Stopwatch.Frequency * 20 / 1000 : null;
+        return InspectRoomWheelInputCore(context, point, deadline, out _, allowShift);
+    }
+
     internal static WallpaperWheelInputEnvironment InspectRoomWheelInput(
-        WallpaperWheelInputContext context, WallpaperWheelPoint point) => InspectRoomWheelInputCore(context, point, null);
+        WallpaperWheelInputContext context, WallpaperWheelPoint point) => InspectRoomWheelInputCore(context, point, null, out _);
 
     internal static WallpaperWheelInputEnvironment InspectRoomWheelInputAtEvent(
         WallpaperWheelInputContext context, WallpaperWheelPoint point) => InspectRoomWheelInputCore(context, point,
-            Stopwatch.GetTimestamp() + Stopwatch.Frequency * 20 / 1000);
+            Stopwatch.GetTimestamp() + Stopwatch.Frequency * 20 / 1000, out _);
+
+    internal static WallpaperWheelInputEnvironment InspectRoomWheelInputDiagnostic(
+        WallpaperWheelInputContext context, WallpaperWheelPoint point, bool atEvent, out RoomInputInspectionTrace trace) =>
+        InspectRoomWheelInputCore(context, point, atEvent ? Stopwatch.GetTimestamp() + Stopwatch.Frequency * 20 / 1000 : null, out trace);
 
     private static WallpaperWheelInputEnvironment InspectRoomWheelInputCore(
-        WallpaperWheelInputContext context, WallpaperWheelPoint point, long? deadlineTimestamp)
+        WallpaperWheelInputContext context, WallpaperWheelPoint? inputPoint, long? deadlineTimestamp,
+        out RoomInputInspectionTrace trace, bool allowShift = false)
     {
         // Only transient handles, classes, rectangles and hit booleans are queried. No titles or contents are read.
+        var started = Stopwatch.GetTimestamp();
+        var phase = RoomInputInspectionPhase.Context;
+        var exception = false;
+        var pointerTrace = default(RoomPointerInspectionTrace);
         try
         {
             if (!HasRoomInspectionTime(deadlineTimestamp)) return default;
-            if (HasRoomMouseModifier()) return new(true, false, false, false, false, true);
+            if (HasSystemKeyboardModifier() || (!allowShift && IsKeyDown(0x10))) return new(true, false, false, false, false, true);
+            phase = RoomInputInspectionPhase.ShellTarget;
             if (!WallpaperWheelInputPolicy.IsContextEligible(context) || !IsValidDesktopTarget(context.Target) ||
                 !TryGetRoomWindowIdentity(context.Target.ShellViewHandle, out var shellClass, out var shellProcess) ||
                 shellClass != "SHELLDLL_DefView" || !HasRoomInspectionTime(deadlineTimestamp)) return default;
 
             var shellRoot = GetRoomWindowAncestor(context.Target.ShellViewHandle, 2);
+            phase = RoomInputInspectionPhase.Foreground;
             if (!IsValidWindow(shellRoot) ||
                 !TryIsRoomDesktopForeground(context.Target, shellRoot, shellProcess, out var desktopForeground) ||
                 !HasRoomInspectionTime(deadlineTimestamp)) return default;
             if (!desktopForeground) return new(true, false, false, false, false);
 
+            phase = RoomInputInspectionPhase.BlockingWindows;
             if (!TryHasRoomFullscreenApplicationWithinBudget(shellProcess, out var fullscreen, deadlineTimestamp)) return default;
             if (fullscreen) return new(true, true, true, false, false);
 
+            // Gameplay keys depend on Shell/global eligibility, regardless of pointer position or target display.
+            if (inputPoint is null)
+            {
+                phase = RoomInputInspectionPhase.RefreshForeground;
+                if (!TryIsRoomDesktopForeground(context.Target, shellRoot, shellProcess, out desktopForeground) ||
+                    !HasRoomInspectionTime(deadlineTimestamp)) return default;
+                phase = RoomInputInspectionPhase.Completed;
+                return new(true, desktopForeground, false, true, false,
+                    HasSystemKeyboardModifier() || (!allowShift && IsKeyDown(0x10)));
+            }
+            var point = inputPoint.Value;
+
+            phase = RoomInputInspectionPhase.Cursor;
             if (!HasRoomInspectionTime(deadlineTimestamp) || !GetCursorPos(out var cursor)) return default;
             var currentPoint = new WallpaperWheelPoint(cursor.X, cursor.Y);
             if (!WallpaperWheelInputPolicy.ContainsDevicePoint(context.ScreenBounds, point) ||
                 !WallpaperWheelInputPolicy.ContainsDevicePoint(context.ScreenBounds, currentPoint))
                 return new(true, true, false, false, false);
 
+            phase = RoomInputInspectionPhase.Pointer;
             if (!HasRoomInspectionTime(deadlineTimestamp) ||
-                !TryIsRoomDesktopPoint(context.Target, shellRoot, shellProcess, point, out var pointerAllowed) ||
-                !TryIsDesktopIconAtPoint(context.Target, point.X, point.Y, out var iconHit,
+                !TryIsRoomDesktopPoint(context.Target, shellRoot, shellProcess, point, out var pointerAllowed, out pointerTrace)) return default;
+            phase = RoomInputInspectionPhase.Icon;
+            if (!TryIsDesktopIconAtPoint(context.Target, point.X, point.Y, out var iconHit,
                     deadlineTimestamp: deadlineTimestamp)) return default;
             if (currentPoint != point)
             {
+                phase = RoomInputInspectionPhase.CurrentPointer;
                 if (!HasRoomInspectionTime(deadlineTimestamp) ||
-                    !TryIsRoomDesktopPoint(context.Target, shellRoot, shellProcess, currentPoint, out var currentAllowed) ||
-                    !TryIsDesktopIconAtPoint(context.Target, currentPoint.X, currentPoint.Y, out var currentIconHit,
+                    !TryIsRoomDesktopPoint(context.Target, shellRoot, shellProcess, currentPoint, out var currentAllowed, out pointerTrace)) return default;
+                phase = RoomInputInspectionPhase.CurrentIcon;
+                if (!TryIsDesktopIconAtPoint(context.Target, currentPoint.X, currentPoint.Y, out var currentIconHit,
                         deadlineTimestamp: deadlineTimestamp)) return default;
                 pointerAllowed &= currentAllowed;
                 iconHit |= currentIconHit;
             }
 
             // Shell hit tests can pump messages or wait. Refresh every eligibility fact they may have outlived.
+            phase = RoomInputInspectionPhase.RefreshBlockingWindows;
             if (!TryHasRoomFullscreenApplicationWithinBudget(shellProcess, out fullscreen, deadlineTimestamp) ||
                 !GetCursorPos(out cursor)) return default;
             if (fullscreen) return new(true, true, true, false, false);
             if (new WallpaperWheelPoint(cursor.X, cursor.Y) != currentPoint)
                 return new(true, true, false, false, false);
+            phase = RoomInputInspectionPhase.RefreshPointer;
             if (!HasRoomInspectionTime(deadlineTimestamp) ||
-                !TryIsRoomDesktopPoint(context.Target, shellRoot, shellProcess, currentPoint, out var finalAllowed))
+                !TryIsRoomDesktopPoint(context.Target, shellRoot, shellProcess, currentPoint, out var finalAllowed, out pointerTrace))
                 return default;
             pointerAllowed &= finalAllowed;
+            phase = RoomInputInspectionPhase.RefreshForeground;
             if (!HasRoomInspectionTime(deadlineTimestamp) ||
                 !TryIsRoomDesktopForeground(context.Target, shellRoot, shellProcess, out desktopForeground)) return default;
-            var modified = HasRoomMouseModifier();
+            var modified = HasSystemKeyboardModifier() || (!allowShift && IsKeyDown(0x10));
+            phase = RoomInputInspectionPhase.Completed;
             return HasRoomInspectionTime(deadlineTimestamp)
                 ? new(true, desktopForeground, false, pointerAllowed, iconHit, modified) : default;
         }
         catch
         {
+            exception = true;
             return default;
+        }
+        finally
+        {
+            trace = new(phase, !HasRoomInspectionTime(deadlineTimestamp), exception,
+                (Stopwatch.GetTimestamp() - started) * 1000d / Stopwatch.Frequency, pointerTrace);
         }
     }
 
@@ -112,24 +192,44 @@ internal static partial class NativeMethods
         var root = GetRoomWindowAncestor(foreground, 2);
         if (!IsValidWindow(root)) return false;
         allowed = WallpaperWheelInputPolicy.IsDesktopForeground(target, shellRoot, foreground, root,
-            className, process == shellProcess);
+            className, process == shellProcess, ProvenRoomSystemShellWindow(shellProcess));
         return true;
     }
 
     private static bool TryIsRoomDesktopPoint(WorkerWDesktopTarget target, nint shellRoot, uint shellProcess,
         WallpaperWheelPoint point, out bool allowed)
+        => TryIsRoomDesktopPoint(target, shellRoot, shellProcess, point, out allowed, out _);
+
+    private static bool TryIsRoomDesktopPoint(WorkerWDesktopTarget target, nint shellRoot, uint shellProcess,
+        WallpaperWheelPoint point, out bool allowed, out RoomPointerInspectionTrace trace)
     {
         allowed = false;
+        trace = default;
         var window = RoomWindowFromPoint(new NativePoint { X = point.X, Y = point.Y });
         if (!TryGetRoomWindowIdentity(window, out var className, out var process)) return false;
         var root = GetRoomWindowAncestor(window, 2);
         if (!IsValidWindow(root)) return false;
-        if (className is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd" or "#32768") return true;
-        allowed = WallpaperWheelInputPolicy.IsDesktopForeground(target, shellRoot, window, root,
-            className, process == shellProcess) ||
-            (process == Environment.ProcessId &&
-             (IsChild(target.ParentHandle, window) || IsChild(target.WallpaperLayerHandle, window)));
+        var shellClass = WallpaperWheelInputPolicy.IsDesktopShellClass(className);
+        var shellProcessMatches = process == shellProcess;
+        var ownChild = process == Environment.ProcessId &&
+            (IsChild(target.ParentHandle, window) || IsChild(target.WallpaperLayerHandle, window));
+        var rootMatches = root == shellRoot || root == target.ParentHandle || root == target.WallpaperLayerHandle;
+        if (className is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd" or "#32768")
+        { trace = new(RoomPointerRole.TaskbarOrMenu, shellClass, shellProcessMatches, ownChild, rootMatches); return true; }
+        var desktop = WallpaperWheelInputPolicy.IsDesktopForeground(target, shellRoot, window, root, className,
+            shellProcessMatches, ProvenRoomSystemShellWindow(shellProcess));
+        allowed = desktop || ownChild;
+        trace = new(desktop ? RoomPointerRole.DesktopShell : ownChild ? RoomPointerRole.OwnWallpaperChild :
+            shellProcessMatches ? RoomPointerRole.OtherShell : RoomPointerRole.OtherApplication,
+            shellClass, shellProcessMatches, ownChild, rootMatches);
         return true;
+    }
+
+    private static nint ProvenRoomSystemShellWindow(uint shellProcess)
+    {
+        var shell = GetRoomShellWindow();
+        return TryGetRoomWindowIdentity(shell, out var className, out var process) &&
+            className == "Progman" && process == shellProcess ? shell : nint.Zero;
     }
 
     private static bool TryGetRoomWindowIdentity(nint window, out string className, out uint process)
@@ -206,7 +306,7 @@ internal static partial class NativeMethods
                 { known = false; return false; }
                 if (bounds.Right == bounds.Left || bounds.Bottom == bounds.Top) return true;
             }
-            var state = new WallpaperWheelWindowState(true, false, false, false, ToRoomPixelRect(bounds));
+            var state = new WallpaperWheelWindowState(true, false, false, false, ToRoomPixelRect(bounds), IsRoomWindowMaximized(window));
             if (monitors.Any(monitor => WallpaperWheelInputPolicy.IsBlockingFullscreen(state, monitor)))
             {
                 foundFullscreen = true;
@@ -260,6 +360,13 @@ internal static partial class NativeMethods
     [DllImport("user32.dll", EntryPoint = "IsIconic")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsRoomWindowMinimized(nint window);
+
+    [DllImport("user32.dll", EntryPoint = "IsZoomed")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsRoomWindowMaximized(nint window);
+
+    [DllImport("user32.dll", EntryPoint = "GetShellWindow")]
+    private static extern nint GetRoomShellWindow();
 
     [DllImport("user32.dll", EntryPoint = "WindowFromPoint")]
     private static extern nint RoomWindowFromPoint(NativePoint point);

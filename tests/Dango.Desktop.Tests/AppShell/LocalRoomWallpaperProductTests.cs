@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -24,6 +25,143 @@ public sealed class LocalRoomWallpaperProductTests
     public TestContext TestContext { get; set; } = null!;
     private uint diagnosticShellProcess;
     private string? diagnosticFailure;
+
+    [STATestMethod]
+    [TestCategory("NativeIntegration")]
+    public void ActualShellForegroundWheelEligibilitySucceedsWithinEventBudget()
+    {
+        var previousForeground = TestGetForegroundWindow();
+        Assert.IsTrue(NativeMethods.GetCursorPos(out var previousCursor));
+        var output = Path.Combine(TestRepository.Root, "artifacts", "local-room", "wallpaper-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(output);
+        var module = Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName);
+        using var host = new DangoApplicationHost(settingsFile: Path.Combine(output, "settings.json"),
+            nativeLibraryPath: module, isolatedLocalRoomReview: true);
+        try
+        {
+            var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
+            Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
+            host.ShowControlCenter(); Pump(350);
+            host.EnterLocalRoom(); WaitForHandoff(host, "diagnostic room window");
+            host.SwitchLocalRoomPresentation(LocalRoomPresentation.Wallpaper);
+            WaitForHandoff(host, "diagnostic wallpaper");
+            var wallpaper = Field<LocalRoomWallpaperHost>(host, "localRoomWallpaper");
+            var target = Field<WorkerWDesktopTarget>(wallpaper, "target");
+            var bounds = Field<LogicalRect>(wallpaper, "screenBounds");
+            var context = new WallpaperWheelInputContext(target, bounds, Field<long>(wallpaper, "generation"),
+                Field<bool>(wallpaper, "ready") && wallpaper.Scene.HasHealthyFrame, false);
+            var shellRoot = (nint)typeof(NativeMethods).GetMethod("GetRoomWindowAncestor", BindingFlags.Static | BindingFlags.NonPublic)!
+                .Invoke(null, [target.ShellViewHandle, (uint)2])!;
+            var systemShell = TestGetShellWindow();
+            Assert.IsTrue(NativeMethods.IsValidWindow(systemShell));
+            _ = TestSetForegroundWindow(systemShell);
+            Pump(75);
+            // Activation API return values are not final foreground evidence. Inspect the actual state below.
+            TestContext.WriteLine($"SystemShellIsForeground={TestGetForegroundWindow() == systemShell}, ShellRootMatchesSystemShell={shellRoot == systemShell}.");
+            var accepted = 0;
+            // Probe only transient background qualifications. No window identity, coordinates or input history is logged.
+            foreach (var fraction in new[] { (0.08, 0.15), (0.92, 0.15), (0.08, 0.8), (0.92, 0.8), (0.5, 0.5) })
+            {
+                var point = new WallpaperWheelPoint((int)(bounds.X + bounds.Width * fraction.Item1), (int)(bounds.Y + bounds.Height * fraction.Item2));
+                Assert.IsTrue(TestSetCursorPos(point.X, point.Y));
+                Pump(30);
+                var command = NativeMethods.InspectRoomWheelInputDiagnostic(context, point, false, out var commandTrace);
+                TestContext.WriteLine($"Command qualification: known={command.IsKnown}, foreground={command.IsDesktopForeground}, blocking={command.HasFullscreenApplication}, background={command.IsPointerOnDesktop}, icon={command.IsDesktopIcon}, modifier={command.HasModifier}, phase={commandTrace.Phase}, expired={commandTrace.BudgetExpired}, exception={commandTrace.Exception}, pointerRole={commandTrace.Pointer.Role}, pointerShellClass={commandTrace.Pointer.ShellDesktopClass}, sameShellPID={commandTrace.Pointer.SameShellProcess}, ownProcessChild={commandTrace.Pointer.OwnProcessChild}, targetRootRelation={commandTrace.Pointer.TargetRootRelation}, elapsedMs={commandTrace.ElapsedMilliseconds:F2}.");
+                for (var sample = 0; sample < 3; sample++)
+                {
+                    var current = NativeMethods.InspectRoomWheelInputDiagnostic(context, point, true, out var trace);
+                    var applies = WallpaperWheelInputPolicy.ShouldApply(context, context, point, current);
+                    if (applies) accepted++;
+                    TestContext.WriteLine($"Event qualification: accepted={applies}, known={current.IsKnown}, foreground={current.IsDesktopForeground}, blocking={current.HasFullscreenApplication}, background={current.IsPointerOnDesktop}, icon={current.IsDesktopIcon}, modifier={current.HasModifier}, phase={trace.Phase}, expired={trace.BudgetExpired}, exception={trace.Exception}, pointerRole={trace.Pointer.Role}, pointerShellClass={trace.Pointer.ShellDesktopClass}, sameShellPID={trace.Pointer.SameShellProcess}, ownProcessChild={trace.Pointer.OwnProcessChild}, targetRootRelation={trace.Pointer.TargetRootRelation}, elapsedMs={trace.ElapsedMilliseconds:F2}.");
+                    Pump(30);
+                }
+            }
+            Assert.IsTrue(accepted > 0, "Actual Shell foreground background must pass the event path. Qualification stages above explain any rejection; external blocking applications are not hidden by this test.");
+        }
+        finally
+        {
+            host.Dispose();
+            Assert.IsTrue(TestSetCursorPos(previousCursor.X, previousCursor.Y), "Restore the cursor used by the diagnostic.");
+            if (NativeMethods.IsValidWindow(previousForeground))
+                Assert.IsTrue(TestSetForegroundWindow(previousForeground), "Restore the exact foreground captured before this diagnostic.");
+        }
+    }
+
+    [DllImport("user32.dll", EntryPoint = "GetForegroundWindow")]
+    private static extern nint TestGetForegroundWindow();
+    [DllImport("user32.dll", EntryPoint = "GetShellWindow")]
+    private static extern nint TestGetShellWindow();
+    [DllImport("user32.dll", EntryPoint = "SetForegroundWindow")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool TestSetForegroundWindow(nint window);
+    [DllImport("user32.dll", EntryPoint = "SetCursorPos")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool TestSetCursorPos(int x, int y);
+
+    [STATestMethod]
+    [TestCategory("NativeIntegration")]
+    public void ActualNativeScanRecognizesMaximizedWorkingAreaApplication()
+    {
+        var previousForeground = TestGetForegroundWindow();
+        var screen = System.Windows.Forms.Screen.AllScreens.FirstOrDefault(candidate =>
+            candidate.Bounds.Height - candidate.WorkingArea.Height > 4 || candidate.Bounds.Width - candidate.WorkingArea.Width > 4);
+        Assert.IsNotNull(screen, "This fixture requires a real monitor work area distinct from fullscreen geometry.");
+        var target = NativeMethods.FindWorkerW();
+        Assert.IsNotNull(target, "The native scan requires a real Shell target.");
+        var fictional = new Window
+        {
+            Title = "Fictional Dango maximized working-area fixture", ShowActivated = false, ShowInTaskbar = false,
+            WindowStyle = WindowStyle.SingleBorderWindow, ResizeMode = ResizeMode.CanResize,
+            Width = 320, Height = 240, Background = Brushes.Beige,
+        };
+        try
+        {
+            fictional.Show();
+            var handle = new WindowInteropHelper(fictional).Handle;
+            var positioned = (bool)typeof(NativeMethods).GetMethod("SetWindowPos", BindingFlags.Static | BindingFlags.NonPublic)!
+                .Invoke(null, [handle, nint.Zero, screen.WorkingArea.X + 30, screen.WorkingArea.Y + 30, 320, 240, (uint)0x14])!;
+            Assert.IsTrue(positioned);
+            fictional.WindowState = WindowState.Maximized;
+            Pump(75);
+            var maximized = (bool)typeof(NativeMethods).GetMethod("IsRoomWindowMaximized", BindingFlags.Static | BindingFlags.NonPublic)!
+                .Invoke(null, [handle])!;
+            Assert.IsTrue(maximized, "The fixture must actually publish IsZoomed=true.");
+            var actual = OwnWindowFrame(handle);
+            var monitor = new DesktopPixelRect(screen.Bounds.Left, screen.Bounds.Top, screen.Bounds.Right, screen.Bounds.Bottom);
+            Assert.IsFalse(FullscreenGeometryClassifier.IsFullscreen(actual, monitor),
+                "The maximized fixture must remain working-area sized, proving a distinct native source from fullscreen.");
+            var visible = (bool)typeof(NativeMethods).GetMethod("IsWindowVisible", BindingFlags.Static | BindingFlags.NonPublic)!
+                .Invoke(null, [handle])!;
+            var minimized = (bool)typeof(NativeMethods).GetMethod("IsRoomWindowMinimized", BindingFlags.Static | BindingFlags.NonPublic)!
+                .Invoke(null, [handle])!;
+            var cloakedArguments = new object?[] { handle, (uint)14, 0, sizeof(int) };
+            Assert.AreEqual(0, (int)typeof(NativeMethods).GetMethod("GetRoomWindowCloaked", BindingFlags.Static | BindingFlags.NonPublic)!
+                .Invoke(null, cloakedArguments)!);
+            var shellArguments = new object?[] { target.ShellViewHandle, (uint)0 };
+            _ = typeof(NativeMethods).GetMethod("GetWindowThreadProcessId", BindingFlags.Static | BindingFlags.NonPublic)!
+                .Invoke(null, shellArguments);
+            var shellProcess = (uint)shellArguments[1]!;
+            Assert.AreNotEqual((uint)Environment.ProcessId, shellProcess, "The owned fixture must be a non-Shell application.");
+            var state = new WallpaperWheelWindowState(visible, minimized, (int)cloakedArguments[2]! != 0,
+                false, actual, maximized);
+            Assert.IsTrue(WallpaperWheelInputPolicy.IsBlockingFullscreen(state, monitor),
+                "Actual IsZoomed and actual DWM geometry must independently prove this fixture blocks.");
+            Assert.IsFalse(WallpaperWheelInputPolicy.IsBlockingFullscreen(state with { IsMaximized = false }, monitor));
+            var scanArguments = new object?[] { shellProcess, false };
+            var known = (bool)typeof(NativeMethods).GetMethod("TryHasRoomFullscreenApplication", BindingFlags.Static | BindingFlags.NonPublic)!
+                .Invoke(null, scanArguments)!;
+            Assert.IsTrue(known);
+            Assert.IsTrue((bool)scanArguments[1]!);
+            TestContext.WriteLine("Own maximized fixture: nativeMaximized=true, geometryFullscreen=false, classifierBlocked=true, allMonitorScanKnown=true, allMonitorScanBlocked=true.");
+        }
+        finally
+        {
+            fictional.Close();
+            if (NativeMethods.IsValidWindow(previousForeground) && TestGetForegroundWindow() != previousForeground)
+                Assert.IsTrue(TestSetForegroundWindow(previousForeground) || TestGetForegroundWindow() == previousForeground,
+                    "Restore the exact foreground if maximizing our owned fixture activated it.");
+        }
+    }
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]

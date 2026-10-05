@@ -104,4 +104,34 @@ public sealed class WallpaperWheelInputPolicyTests
         Assert.IsFalse(WallpaperWheelInputPolicy.IsDesktopForeground(legacy, 20, 99, 20, "WorkerW", false));
         Assert.IsFalse(WallpaperWheelInputPolicy.IsDesktopForeground(legacy, 20, 99, 30, "WorkerW", true));
     }
+
+    [TestMethod]
+    public void ProvenSystemShellProgmanIsAllowedWhenItsRootDiffersFromTheWallpaperLayer()
+    {
+        Assert.IsTrue(WallpaperWheelInputPolicy.IsDesktopForeground(Context.Target, 20, 30, 30,
+            "Progman", true, systemShellWindow: 30));
+        Assert.IsFalse(WallpaperWheelInputPolicy.IsDesktopForeground(Context.Target, 20, 31, 31,
+            "Progman", true, systemShellWindow: 30));
+        Assert.IsFalse(WallpaperWheelInputPolicy.IsDesktopForeground(Context.Target, 20, 30, 30,
+            "Progman", false, systemShellWindow: 30));
+        Assert.IsFalse(WallpaperWheelInputPolicy.IsDesktopForeground(Context.Target, 20, 30, 30,
+            "CabinetWClass", true, systemShellWindow: 30));
+        Assert.IsFalse(WallpaperWheelInputPolicy.IsDesktopForeground(Context.Target, 20, 30, 30,
+            "Shell_TrayWnd", true, systemShellWindow: 30));
+    }
+
+    [TestMethod]
+    public void MaximizedWorkingAreaOnAnotherMonitorBlocksWithoutFullscreenGeometry()
+    {
+        var monitor = new DesktopPixelRect(-1920, -100, 0, 980);
+        var application = new WallpaperWheelWindowState(true, false, false, false,
+            new DesktopPixelRect(-1920, -100, 0, 940), IsMaximized: true);
+        Assert.IsFalse(FullscreenGeometryClassifier.IsFullscreen(application.Bounds, monitor));
+        Assert.IsTrue(WallpaperWheelInputPolicy.IsBlockingFullscreen(application, monitor));
+        Assert.IsFalse(WallpaperWheelInputPolicy.IsBlockingFullscreen(application with { IsMaximized = false }, monitor));
+        Assert.IsFalse(WallpaperWheelInputPolicy.IsBlockingFullscreen(application with { IsVisible = false }, monitor));
+        Assert.IsFalse(WallpaperWheelInputPolicy.IsBlockingFullscreen(application with { IsMinimized = true }, monitor));
+        Assert.IsFalse(WallpaperWheelInputPolicy.IsBlockingFullscreen(application with { IsCloaked = true }, monitor));
+        Assert.IsFalse(WallpaperWheelInputPolicy.IsBlockingFullscreen(application with { IsShell = true }, monitor));
+    }
 }

@@ -39,6 +39,7 @@ public partial class ProductHomeView
 
     internal void ResumePorch(long generation = 0)
     {
+        SetDangoAway(false);
         porchReturnGeneration = generation;
         ShowHomePage();
         EnterPorch();
@@ -49,6 +50,7 @@ public partial class ProductHomeView
 
     internal void ResumeHomeAfterRoom()
     {
+        SetDangoAway(false);
         porchReturnGeneration = 0;
         ShowHomePage();
         porchPhysicsConfigured = true; // The room also owns native sides; Home must explicitly clear them.
@@ -89,7 +91,7 @@ public partial class ProductHomeView
 
     private void RefreshLiveSceneOwnership()
     {
-        if (liveSceneSuspended || BoundRuntime is null || !IsLoaded || !IsVisible || IsSettingsOpen)
+        if (liveSceneSuspended || IsDangoAway || BoundRuntime is null || !IsLoaded || !IsVisible || IsSettingsOpen)
         {
             StopLiveScene();
             return;
@@ -175,7 +177,8 @@ public partial class ProductHomeView
             PorchScene.ApplyFrame(frame, BoundRuntime, now - lastPorchFrame, ReduceMotion || !SystemParameters.ClientAreaAnimation);
             lastPorchFrame = now;
             LiveSceneStatusText.Visibility = Visibility.Collapsed;
-            porchFrameHealthy = PorchScene.LiveBody.Visibility == Visibility.Visible && PorchScene.LiveBody.LastContourFailure == DangoContourFailure.None;
+            porchFrameHealthy = PorchScene.IsVisible && PorchScene.ActualWidth > 0 && PorchScene.ActualHeight > 0 &&
+                PorchScene.LiveBody.IsVisible && PorchScene.LiveBody.LastContourFailure == DangoContourFailure.None;
             ConfirmHealthyPorchFrame();
             return;
         }
@@ -202,6 +205,7 @@ public partial class ProductHomeView
             Dispatcher.BeginInvoke(() =>
             {
                 if (!porchFrameHealthy || porchReturnGeneration != attempt || !IsInPorch || !IsVisible || !OwnsLiveFrameDriver ||
+                    !PorchScene.IsVisible || PorchScene.ActualWidth <= 0 || PorchScene.ActualHeight <= 0 || !PorchScene.LiveBody.IsVisible ||
                     liveSurfaceNeedsAlignment || liveSurfaceFailure is not null || BoundRuntime?.LastError is not null ||
                     PorchScene.LiveBody.LastContourFailure != DangoContourFailure.None ||
                     PresentationSource.FromVisual(PorchScene) is null) return;

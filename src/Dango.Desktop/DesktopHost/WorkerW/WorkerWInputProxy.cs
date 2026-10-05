@@ -29,6 +29,7 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
     private readonly Action cancelDrag;
     private readonly Action<double, double>? completePointer;
     private readonly Action? contextRequested;
+    private readonly Func<bool>? inputEligibility;
     private readonly WorkerWDesktopTarget target;
     private readonly WinFormsTimer inputPriorityTimer;
     private NativeMethods.NativePoint dragOrigin;
@@ -48,7 +49,7 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
         Action<double, double> moveDrag,
         Action completeDrag,
         Action cancelDrag,
-        Action<double, double>? completePointer = null, Action? contextRequested = null)
+        Action<double, double>? completePointer = null, Action? contextRequested = null, Func<bool>? inputEligibility = null)
     {
         this.target = target;
         this.beginDrag = beginDrag;
@@ -57,6 +58,7 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
         this.cancelDrag = cancelDrag;
         this.completePointer = completePointer;
         this.contextRequested = contextRequested;
+        this.inputEligibility = inputEligibility;
         inputPriorityTimer = new WinFormsTimer
         {
             Interval = 50,
@@ -133,17 +135,18 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
     {
         switch (message.Msg)
         {
-            case 0x0205 when enabled && contextRequested is not null: // WM_RBUTTONUP, bounded pet proxy only
+            case 0x0205 when enabled && contextRequested is not null && IsInputEligible(): // WM_RBUTTONUP, bounded pet proxy only
                 CancelActiveDrag();
                 contextRequested();
                 return;
             case WmNcHitTest when enabled:
-                message.Result = HtClient;
+                message.Result = IsInputEligible() ? HtClient : -1;
                 return;
             case WmMouseActivate:
                 message.Result = MaNoActivate;
                 return;
             case WmLeftButtonDown when enabled:
+                if (!IsInputEligible()) { CancelActiveDrag(); return; }
                 var localX = unchecked((short)((long)message.LParam & 0xffff));
                 var localY = unchecked((short)(((long)message.LParam >> 16) & 0xffff));
                 if (NativeMethods.GetCursorPos(out dragOrigin) && beginDrag(localX, localY) && completePointer is null)
@@ -206,7 +209,7 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
 
     public bool TryCapturePointer()
     {
-        if (disposed || !enabled) return false;
+        if (disposed || !enabled || !IsInputEligible()) return false;
         _ = NativeMethods.SetCapture(Handle);
         return dragging = GetCapture() == Handle;
     }
@@ -229,12 +232,14 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
             return;
         }
 
+        var eligible = IsInputEligible();
+        if (!eligible) CancelActiveDrag();
         var cursorAvailable = NativeMethods.GetCursorPos(out var cursor);
         var cursorWithinBounds = cursorAvailable &&
             NativeMethods.IsPointWithinWindow(Handle, cursor.X, cursor.Y);
         var querySucceeded = false;
         var iconHit = false;
-        if (enabled && !dragging && cursorWithinBounds)
+        if (enabled && eligible && !dragging && cursorWithinBounds)
         {
             querySucceeded = NativeMethods.TryIsDesktopIconAtPoint(
                 target,
@@ -244,7 +249,7 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
         }
 
         var shouldShow = dragging || DesktopIconPriorityPolicy.ShouldShowInputProxy(
-            enabled,
+            enabled && eligible,
             cursorAvailable ? cursorWithinBounds : true,
             querySucceeded,
             iconHit);
@@ -255,6 +260,12 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
 
         _ = NativeMethods.ShowWindow(Handle, shouldShow ? SwShowNoActivate : SwHide);
         isWindowShown = shouldShow;
+    }
+
+    private bool IsInputEligible()
+    {
+        try { return inputEligibility?.Invoke() ?? true; }
+        catch { return false; }
     }
 
     private void CancelActiveDrag()

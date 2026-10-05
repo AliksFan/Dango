@@ -25,7 +25,8 @@ internal readonly record struct WallpaperWheelWindowState(
     bool IsMinimized,
     bool IsCloaked,
     bool IsShell,
-    DesktopPixelRect Bounds);
+    DesktopPixelRect Bounds,
+    bool IsMaximized = false);
 
 internal static class WallpaperWheelInputPolicy
 {
@@ -51,14 +52,17 @@ internal static class WallpaperWheelInputPolicy
 
     internal static bool IsBlockingFullscreen(WallpaperWheelWindowState window, DesktopPixelRect monitor) =>
         window.IsVisible && !window.IsMinimized && !window.IsCloaked && !window.IsShell &&
-        FullscreenGeometryClassifier.IsFullscreen(window.Bounds, monitor);
+        ((window.IsMaximized && window.Bounds.Left < monitor.Right && window.Bounds.Right > monitor.Left &&
+          window.Bounds.Top < monitor.Bottom && window.Bounds.Bottom > monitor.Top) ||
+         FullscreenGeometryClassifier.IsFullscreen(window.Bounds, monitor));
 
     internal static bool IsDesktopForeground(WorkerWDesktopTarget target, nint shellViewRoot,
-        nint foreground, nint foregroundRoot, string className, bool isShellProcess) =>
+        nint foreground, nint foregroundRoot, string className, bool isShellProcess, nint systemShellWindow = 0) =>
         foreground != 0 && foregroundRoot != 0 && shellViewRoot != 0 && isShellProcess &&
         IsDesktopShellClass(className) &&
         (foregroundRoot == shellViewRoot || foregroundRoot == target.ParentHandle ||
-         foregroundRoot == target.WallpaperLayerHandle);
+         foregroundRoot == target.WallpaperLayerHandle ||
+         (systemShellWindow != 0 && (foreground == systemShellWindow || foregroundRoot == systemShellWindow)));
 
     internal static bool IsDesktopShellClass(string className) =>
         className is "Progman" or "WorkerW" or "SHELLDLL_DefView" or "SysListView32";

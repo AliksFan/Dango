@@ -44,6 +44,16 @@ internal sealed class WallpaperWheelInputBridge : IDisposable
     internal bool IsHookReleasePending => hook != 0 && !active;
     internal bool IsListening => active && hook != 0 && !disposed;
 
+    // Another qualified observer may see a rejection before this wheel batch is flushed.
+    // Invalidate only bridge state here; the caller clears the shared scene accumulator.
+    internal void ResetInput()
+    {
+        dispatcher.VerifyAccess();
+        revision++;
+        pending.Clear(); recent = null; rejected = false;
+        timer.Stop();
+    }
+
     internal WallpaperWheelInputBridge(Dispatcher dispatcher, Func<WallpaperWheelInputContext?> context,
         Action<int> applyRawDelta, Action clearPendingInput)
         : this(dispatcher, context, applyRawDelta, clearPendingInput, new NativeWallpaperWheelInputPlatform()) { }

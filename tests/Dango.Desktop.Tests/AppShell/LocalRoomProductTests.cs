@@ -48,6 +48,9 @@ public sealed class LocalRoomProductTests
             "Camera/resize cannot call AttachSurface or move the logical entity.");
         Assert.AreEqual(ground, runtime.LocalGroundY);
         Capture(host.LocalWindow.Scene, "room-window.png");
+        host.LocalWindow.OpenMenu(); host.LocalWindow.UpdateLayout();
+        Capture((FrameworkElement)host.LocalWindow.Content, "room-menu.png");
+        host.LocalWindow.CloseMenu(); host.LocalWindow.FocusScene();
         var driver = Field<LocalRoomSceneDriver>(host, "localRoomDriver");
         Assert.IsTrue(driver.Key(Key.D, true, false)); Pump(220);
         host.HideLocalRoom();
@@ -123,14 +126,80 @@ public sealed class LocalRoomProductTests
         host.ShowDiagnostics();
         var main = Field<ControlCenterWindow>(host, "controlCenterWindow");
         Assert.IsTrue(main.ProductHome.IsSettingsOpen, "The existing diagnostics command must open its actual page.");
-        Assert.IsNull(runtime.FrameDriver);
+        var roomOwner = runtime.FrameDriver;
+        Assert.IsNotNull(roomOwner, "Opening diagnostics must preserve the active room owner.");
         var homeButton = (System.Windows.Controls.Button)main.ProductHome.FindName("HomeNavigation");
         homeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
         Pump(350);
         Assert.IsFalse(main.ProductHome.IsSettingsOpen);
         Assert.IsFalse(main.ProductHome.IsInPorch);
-        Assert.IsTrue(main.ProductHome.OwnsLiveFrameDriver, "Leaving diagnostics must resume Home rather than leave a suspended empty scene.");
-        Assert.IsNull(typeof(StackedDangoSceneRuntime).GetField("localHorizontalBounds", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(runtime));
+        Assert.IsFalse(main.ProductHome.OwnsLiveFrameDriver, "Away Home cannot create a second frame owner.");
+        Assert.AreSame(roomOwner, runtime.FrameDriver);
+        Assert.IsTrue(main.ProductHome.IsDangoAway);
+        Assert.AreEqual(LocalRoomPresentation.Window, host.LocalPresentation);
+        Assert.IsNotNull(typeof(StackedDangoSceneRuntime).GetField("localHorizontalBounds", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(runtime));
+    }
+
+    [STATestMethod]
+    [TestCategory("NativeIntegration")]
+    public void ControlCenterCanOpenDuringRoomWithoutReturningOrShowingAnotherDango()
+    {
+        using var host = CreateHost();
+        var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
+        Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
+        host.ShowControlCenter(); Pump(350);
+        host.EnterLocalRoom(); Pump(450);
+        Assert.AreEqual(LocalRoomPresentation.Window, host.LocalPresentation, host.LocalRoomFailure);
+        var owner = runtime.FrameDriver;
+        var entity = runtime.EntityIds.Single();
+        var window = Field<ControlCenterWindow>(host, "controlCenterWindow");
+        var home = window.ProductHome;
+        host.ShowControlCenter(); Pump(100);
+        Assert.IsTrue(window.IsVisible);
+        Assert.IsTrue(host.LocalWindow!.IsVisible);
+        Assert.AreEqual(LocalRoomPresentation.Window, host.LocalPresentation);
+        Assert.IsTrue(home.IsDangoAway);
+        Assert.IsFalse(home.OwnsLiveFrameDriver);
+        Assert.AreSame(owner, runtime.FrameDriver);
+        Assert.AreEqual(entity, runtime.EntityIds.Single());
+        foreach (var name in new[] { "Presence", "Launchers", "EditorPanel", "PorchContent", "HomeFooter" })
+            Assert.AreEqual(Visibility.Collapsed, ((UIElement)home.FindName(name)).Visibility, name);
+        var notice = (System.Windows.Controls.TextBlock)home.FindName("RoomAwayNotice");
+        Assert.AreEqual(Visibility.Visible, notice.Visibility);
+        Assert.AreEqual("团子去玩拉！回来才能换衣服哦", notice.Text);
+        Capture(home, "room-away-home.png");
+        home.ShowEditor(HomeEditor.Face);
+        Assert.IsFalse(home.IsEditing, "Programmatic and keyboard routes must also block appearance edits while away.");
+        home.ShowSettingsPage(); home.ShowHomePage(); Pump(100);
+        Assert.IsTrue(home.IsDangoAway);
+        Assert.AreSame(owner, runtime.FrameDriver);
+        host.HideLocalRoom(); Pump(100);
+        Assert.IsTrue(window.IsVisible, "Hiding the room must not hide an independently opened control center.");
+        Assert.IsTrue(home.IsDangoAway);
+        Assert.IsNull(runtime.FrameDriver);
+        host.ShowControlCenter(); Pump(100);
+        Assert.IsNull(runtime.FrameDriver, "Opening Home must not resume a hidden room through another owner.");
+        host.RestoreLocalRoom(); Pump(450);
+        Assert.AreEqual(entity, runtime.EntityIds.Single());
+        var porch = (PorchSceneView)home.FindName("PorchScene");
+        porch.Visibility = Visibility.Hidden;
+        host.ReturnToPorch(); Pump(150);
+        Assert.IsTrue(host.LocalHandoffPending, "A hidden target body cannot acknowledge its first frame.");
+        Pump(3750);
+        Assert.AreEqual(LocalRoomPresentation.Window, host.LocalPresentation, "A failed return must recover its room source.");
+        Assert.IsTrue(home.IsDangoAway, "A failed porch first frame cannot restore appearance editing while the dango is still in its room.");
+        Assert.IsFalse(home.OwnsLiveFrameDriver);
+        home.ShowEditor(HomeEditor.Wardrobe);
+        Assert.IsFalse(home.IsEditing);
+        porch.Visibility = Visibility.Visible;
+        host.ReturnToPorch(); Pump(450);
+        Assert.IsFalse(home.IsDangoAway);
+        Assert.IsTrue(home.IsInPorch);
+        Assert.IsTrue(home.OwnsLiveFrameDriver);
+        host.ShowControlCenter(); Pump(150);
+        Assert.AreEqual(Visibility.Visible, ((UIElement)home.FindName("Presence")).Visibility);
+        Assert.AreEqual(Visibility.Visible, ((UIElement)home.FindName("Launchers")).Visibility);
+        Assert.AreEqual(Visibility.Collapsed, notice.Visibility);
     }
 
     [STATestMethod]

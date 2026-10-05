@@ -82,7 +82,7 @@ public partial class ProductHomeView : UserControl
 
     public void ShowEditor(HomeEditor editor)
     {
-        if (IsInPorch) return;
+        if (IsInPorch || IsDangoAway) return;
         ClearLiveDirectionalInput();
         var wasOpen = IsEditing;
         var editorChanged = !wasOpen || SelectedEditor != editor;
@@ -154,6 +154,7 @@ public partial class ProductHomeView : UserControl
         UpdateNavigationSelection();
         Stage.Focus();
         RefreshLiveSceneOwnership();
+        UpdateRoomAwayPresentation();
     }
 
     public void RestoreKeyboardFocus()
@@ -330,7 +331,7 @@ public partial class ProductHomeView : UserControl
             e.Handled = true;
             return;
         }
-        if (IsSettingsOpen)
+        if (IsSettingsOpen || IsDangoAway)
             return;
         if (!IsInPorch && e.Key is (Key.A or Key.D))
         {
@@ -354,7 +355,7 @@ public partial class ProductHomeView : UserControl
 
     private void OnPreviewKeyUp(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        if (IsSettingsOpen) return;
+        if (IsSettingsOpen || IsDangoAway) return;
         if (!IsInPorch && e.Key is (Key.A or Key.D)) { e.Handled = true; return; }
         e.Handled = SetLiveDirectionalKey(e.Key, false, false);
     }
@@ -363,7 +364,7 @@ public partial class ProductHomeView : UserControl
 
     private void EnterPorch()
     {
-        if (IsInPorch) return;
+        if (IsInPorch || IsDangoAway) return;
         ClearLiveDirectionalInput();
         IsInPorch = true;
         roomNavigation.ShowPorch();
@@ -642,6 +643,7 @@ public partial class ProductHomeView : UserControl
         {
             if (version == transitionVersion && !IsInPorch) PorchContent.Visibility = Visibility.Hidden;
         });
+        UpdateRoomAwayPresentation();
     }
 
     private static void Animate(Animatable target, DependencyProperty property, double destination, bool animate)

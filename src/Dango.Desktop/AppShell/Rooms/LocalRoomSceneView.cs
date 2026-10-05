@@ -28,17 +28,41 @@ internal sealed class LocalRoomSceneView : Grid
     private double projectedHeight;
     private double projectedGround = double.NaN;
     private string? unavailableMessage;
+    private LogicalRect? bodyWorldBounds;
+    private Thickness safeInsets;
+    private bool inputBlocked;
     internal RoomViewController Camera { get; } = new(WorldWidth, WorldHeight);
-    internal Thickness SafeInsets { get; set; }
+    internal Thickness SafeInsets
+    {
+        get => safeInsets;
+        set
+        {
+            if (safeInsets == value) return;
+            InputInvalidated?.Invoke();
+            safeInsets = value;
+            ClearWheel();
+            UpdateProjection(0);
+        }
+    }
     private RoomProjection Projection => Camera.Projection with
     { OffsetX = Camera.Projection.OffsetX + SafeInsets.Left, OffsetY = Camera.Projection.OffsetY + SafeInsets.Top };
     internal LogicalRect? PetScreenBounds { get; private set; }
     internal bool HasHealthyFrame { get; private set; }
-    internal bool InputBlocked { get; set; }
+    internal bool InputBlocked
+    {
+        get => inputBlocked;
+        set
+        {
+            if (inputBlocked == value) return;
+            if (value) InputInvalidated?.Invoke();
+            inputBlocked = value;
+        }
+    }
     internal bool IsHeightLimited => Camera.Preset is RoomViewPreset.Standard or RoomViewPreset.Near &&
         Camera.Scale + .001 < Camera.StandardScale * (Camera.Preset == RoomViewPreset.Near ? 1.3 : 1);
     internal event Action? ViewChanged;
     internal event Action? FrameApplied;
+    internal event Action? InputInvalidated;
 
     internal LocalRoomSceneView()
     {
@@ -48,7 +72,7 @@ internal sealed class LocalRoomSceneView : Grid
         entityLayer.Children.Add(body);
         entityLayer.Children.Add(hat);
         Children.Add(entityLayer);
-        SizeChanged += (_, _) => { ClearWheel(); UpdateProjection(0); };
+        SizeChanged += (_, _) => { InputInvalidated?.Invoke(); ClearWheel(); UpdateProjection(0); };
         MouseLeave += (_, _) => ClearWheel();
         MouseLeftButtonDown += (_, _) => Focus();
         body.Visibility = hat.Visibility = Visibility.Collapsed;
@@ -56,8 +80,8 @@ internal sealed class LocalRoomSceneView : Grid
 
     internal void BeginPresentation()
     {
+        InvalidateInputFrame();
         unavailableMessage = null;
-        HasHealthyFrame = false;
         previousFrame = 0;
         ClearWheel();
     }
@@ -67,14 +91,22 @@ internal sealed class LocalRoomSceneView : Grid
         if (ActualWidth <= 0 || ActualHeight <= 0 || frame.Bodies.Count != 1 || frame.ConstraintsReleased ||
             runtime.LastError is not null || !frame.Bodies[0].IsVisible ||
             frame.Bodies[0].FallbackReason != PhysicsPresentationFallbackReason.None || runtime.LocalGroundY is not { } floor)
-            return HasHealthyFrame = false;
+        {
+            InvalidateInputFrame();
+            return false;
+        }
         groundY = floor;
         petX = runtime.CurrentSelectedCenter?.X ?? DangoHostFrameBinding.Bounds(frame, 0).Center.X;
         if (runtime.NeutralBodyVisibleWidth is { } neutral) Camera.CalibrateStandardScale(neutral);
         var bodyGroundAlignment = new LogicalVector(0, runtime.NeutralBodyGroundOffset);
         DangoHostFrameBinding.Apply(body, hat, frame, 0, bodyGroundAlignment, appearance: runtime.DisplayHatAppearance,
             hatSize: runtime.DisplayHatSize, bodyFillOverride: runtime.BodyPreviewFill);
-        if (body.LastContourFailure != DangoContourFailure.None) return HasHealthyFrame = false;
+        if (body.LastContourFailure != DangoContourFailure.None)
+        {
+            InvalidateInputFrame();
+            return false;
+        }
+        bodyWorldBounds = DangoHostFrameBinding.Bounds(frame, 0).Translate(bodyGroundAlignment);
         var now = Environment.TickCount64;
         UpdateProjection(previousFrame == 0 ? 0 : now - previousFrame);
         previousFrame = now;
@@ -93,6 +125,7 @@ internal sealed class LocalRoomSceneView : Grid
 
     internal void SelectView(RoomViewPreset preset)
     {
+        InputInvalidated?.Invoke();
         ClearWheel();
         Camera.SelectPreset(preset);
         UpdateProjection(0);
@@ -101,6 +134,7 @@ internal sealed class LocalRoomSceneView : Grid
 
     internal void ApplyWheel(int nativeDelta)
     {
+        InputInvalidated?.Invoke();
         if (!HasHealthyFrame || InputBlocked) { ClearWheel(); return; }
         var steps = wheel.Add(nativeDelta, Environment.TickCount64);
         if (steps != 0 && Camera.ApplyZoomSteps(steps))
@@ -111,13 +145,25 @@ internal sealed class LocalRoomSceneView : Grid
     }
 
     internal void ClearWheel() => wheel.Clear();
+    internal LogicalPoint ScreenToWorld(Point sceneDip) => Projection.ScreenToWorld(new(sceneDip.X, sceneDip.Y));
+    internal bool IsPetHit(Point sceneDip) => HasHealthyFrame && !InputBlocked && bodyWorldBounds is { } bounds &&
+        double.IsFinite(sceneDip.X) && double.IsFinite(sceneDip.Y) && bounds.Contains(ScreenToWorld(sceneDip));
+
     internal void ShowUnavailable(string message)
     {
-        HasHealthyFrame = false;
+        InvalidateInputFrame();
         body.Visibility = hat.Visibility = Visibility.Collapsed;
         unavailableMessage = message;
         ClearWheel();
         InvalidateVisual();
+    }
+
+    private void InvalidateInputFrame()
+    {
+        InputInvalidated?.Invoke();
+        HasHealthyFrame = false;
+        bodyWorldBounds = null;
+        PetScreenBounds = null;
     }
 
     private void UpdateProjection(double elapsedMs)

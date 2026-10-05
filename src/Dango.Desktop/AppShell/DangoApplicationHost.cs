@@ -103,8 +103,17 @@ internal sealed partial class DangoApplicationHost : IDisposable
     public void ShowControlCenter()
     {
         ThrowIfDisposed();
-        if (localRoomSelected || roomHandoff.Pending) { ReturnToPorch(); return; }
         var window = GetOrCreateControlCenter();
+        if (roomHandoff.Pending && roomHandoff.Target == Rooms.LocalRoomPresentation.Porch)
+        {
+            ShowAndActivate(window);
+            return;
+        }
+        if (localRoomSelected || roomHandoff.Pending)
+        {
+            roomControlCenterRequested = true;
+            window.ProductHome.SetDangoAway(true);
+        }
         window.ShowOverview();
         ShowAndActivate(window);
         if (eyeHatReview && stackedRuntime.AttachmentsEnabled)
@@ -118,8 +127,13 @@ internal sealed partial class DangoApplicationHost : IDisposable
     {
         ThrowIfDisposed();
         var window = GetOrCreateControlCenter();
+        if (roomHandoff.Pending) HideLocalRoom();
+        if (localRoomSelected)
+        {
+            roomControlCenterRequested = true;
+            window.ProductHome.SetDangoAway(true);
+        }
         window.ShowDiagnostics();
-        if (localRoomSelected || roomHandoff.Pending) HideLocalRoom();
         ShowAndActivate(window);
     }
 

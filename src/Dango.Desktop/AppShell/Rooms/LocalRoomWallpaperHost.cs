@@ -8,6 +8,7 @@ using Dango.Desktop.DesktopHost.Win32;
 using Dango.Desktop.DesktopHost.WorkerW;
 using Forms = System.Windows.Forms;
 using Color = System.Windows.Media.Color;
+using Point = System.Windows.Point;
 
 namespace Dango.Desktop.AppShell.Rooms;
 
@@ -17,6 +18,8 @@ internal sealed class LocalRoomWallpaperHost : IDisposable
     private HwndSource? source;
     private WorkerWDesktopTarget? target;
     private WallpaperWheelInputBridge? wheelBridge;
+    private WallpaperGameplayInputBridge? gameplayBridge;
+    private LocalRoomSceneDriver? driver;
     private readonly DispatcherTimer shellCheck = new(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(500) };
     private LogicalRect screenBounds;
     private System.Drawing.Rectangle workArea;
@@ -30,6 +33,27 @@ internal sealed class LocalRoomWallpaperHost : IDisposable
     internal event Action? LostDesktop;
     internal event Action? ReturnRequested;
     internal event Action? WindowRequested;
+    internal event Action? MenuRequested;
+
+    internal void Bind(LocalRoomSceneDriver value)
+    {
+        if (ReferenceEquals(driver, value)) return;
+        if (driver is not null) driver.PointerCancelled -= OnPointerCancelled;
+        driver = value;
+        driver.PointerCancelled += OnPointerCancelled;
+    }
+    private void RequestRoomMenu() => MenuRequested?.Invoke();
+    private void OnPointerCancelled() { petMenuProxy?.ReleasePointerCapture(); gameplayBridge?.CancelPointer(); }
+    private void ClearGameplayInput()
+    {
+        if (ready && source is not null) driver?.ClearInput();
+        petMenuProxy?.ReleasePointerCapture(); wheelBridge?.ResetInput(); Scene.ClearWheel();
+    }
+    private void OnSceneInputInvalidated()
+    {
+        gameplayBridge?.CancelPointer(); petMenuProxy?.ReleasePointerCapture();
+        if (ready && source is not null && gameplayBridge?.IsListening == true) driver?.CancelPointer();
+    }
 
     internal LocalRoomWallpaperHost()
     {
@@ -42,9 +66,10 @@ internal sealed class LocalRoomWallpaperHost : IDisposable
         petMenu.Items.Add(view);
         var window = new Forms.ToolStripMenuItem("用窗口打开"); window.Click += (_, _) => WindowRequested?.Invoke(); petMenu.Items.Add(window);
         var door = new Forms.ToolStripMenuItem("房门 · 返回门廊"); door.Click += (_, _) => ReturnRequested?.Invoke(); petMenu.Items.Add(door);
-        petMenu.Opening += (_, _) => { Scene.InputBlocked = true; Scene.ClearWheel(); };
+        petMenu.Opening += (_, _) => { Scene.InputBlocked = true; gameplayBridge?.ResetInput(); ClearGameplayInput(); };
         petMenu.Closed += (_, _) => { Scene.InputBlocked = false; Scene.ClearWheel(); };
         Scene.FrameApplied += UpdatePetMenuBounds;
+        Scene.InputInvalidated += OnSceneInputInvalidated;
         shellCheck.Tick += (_, _) =>
         {
             if (target is null || !NativeMethods.IsValidDesktopTarget(target) ||
@@ -57,6 +82,8 @@ internal sealed class LocalRoomWallpaperHost : IDisposable
     internal void Show(long attempt, Forms.Screen screen)
     {
         Hide();
+        if (gameplayBridge?.IsHookReleasePending == true || wheelBridge?.IsHookReleasePending == true)
+            throw new InvalidOperationException("上一轮壁纸输入监听仍在释放，可重试或用窗口打开。");
         generation = attempt;
         target = NativeMethods.FindWorkerW() ?? throw new InvalidOperationException("壁纸挂接暂不可用，可重试或用窗口打开。");
         try
@@ -82,8 +109,14 @@ internal sealed class LocalRoomWallpaperHost : IDisposable
             wheelBridge = new(Scene.Dispatcher, CreateInputContext, Scene.ApplyWheel, Scene.ClearWheel);
             wheelBridge.Start();
             if (!wheelBridge.IsListening) throw new InvalidOperationException("壁纸滚轮监听未能启动，可重试或用窗口打开。");
-            petMenuProxy = new(target, (_, _) => false, (_, _) => { }, () => { }, Scene.ClearWheel,
-                contextRequested: () => { Scene.ClearWheel(); petMenu.Show(Forms.Cursor.Position); });
+            petMenuProxy = new(target, (_, _) => false, (_, _) => { }, () => { }, ClearGameplayInput,
+                contextRequested: OpenPetMenu, inputEligibility: IsGameplayEnvironmentEligible);
+            gameplayBridge = new(Scene.Dispatcher, CreateInputContext, new(
+                (key, down, repeat) => driver?.Key(key, down, repeat) == true,
+                BeginPointer, (point, shift) => driver?.PointerMove(ToScenePoint(point), shift) == true,
+                CompletePointer, point => Scene.IsPetHit(ToScenePoint(point)), RequestRoomMenu, ClearGameplayInput));
+            gameplayBridge.Start();
+            if (!gameplayBridge.IsListening) throw new InvalidOperationException("壁纸互动监听未能启动，可重试或用窗口打开。");
             shellCheck.Start();
         }
         catch { Hide(); throw; }
@@ -110,6 +143,39 @@ internal sealed class LocalRoomWallpaperHost : IDisposable
     }
     private WallpaperWheelInputContext? CreateInputContext() => source is not null && target is not null
         ? new(target, screenBounds, generation, ready && Scene.HasHealthyFrame, Scene.InputBlocked) : null;
+    private Point ToScenePoint(WallpaperWheelPoint point)
+    {
+        if (source is null) return new(double.NaN, double.NaN);
+        return source.CompositionTarget.TransformFromDevice.Transform(new Point(point.X - screenBounds.X, point.Y - screenBounds.Y));
+    }
+    private bool BeginPointer(WallpaperWheelPoint point, bool shift)
+    {
+        if (driver?.PointerDown(ToScenePoint(point), shift) != true) return false;
+        if (petMenuProxy?.TryCapturePointer() == true) return true;
+        driver.CancelPointer();
+        return false;
+    }
+    private bool CompletePointer(WallpaperWheelPoint point, bool shift)
+    {
+        try { return driver?.PointerUp(ToScenePoint(point), shift) == true; }
+        finally { petMenuProxy?.ReleasePointerCapture(); }
+    }
+    private bool IsGameplayEnvironmentEligible()
+    {
+        if (CreateInputContext() is not { } captured) return false;
+        var environment = NativeMethods.InspectRoomGameplayInput(captured, null, false, allowShift: true);
+        return WallpaperWheelInputPolicy.IsSamePresentation(captured, CreateInputContext()) && environment.IsKnown &&
+            environment.IsDesktopForeground && !environment.HasFullscreenApplication && !environment.HasModifier;
+    }
+    private void OpenPetMenu()
+    {
+        if (CreateInputContext() is not { } captured || !NativeMethods.GetCursorPos(out var point)) return;
+        var p = new WallpaperWheelPoint(point.X, point.Y);
+        var environment = NativeMethods.InspectRoomGameplayInput(captured, p, false, allowShift: true);
+        if (!WallpaperWheelInputPolicy.ShouldApply(captured, CreateInputContext(), p, environment) || !Scene.IsPetHit(ToScenePoint(p))) return;
+        gameplayBridge?.ResetInput(); ClearGameplayInput();
+        petMenu.Show(Forms.Cursor.Position);
+    }
     private void LayoutScene()
     {
         if (source is null) return;
@@ -130,20 +196,39 @@ internal sealed class LocalRoomWallpaperHost : IDisposable
         if (message == 0x0084) { handled = true; return -1; } // background never consumes Shell mouse input
         if (message == 0x0021) { handled = true; return 3; }
         if (message == 0x02E0 || message == 0x007E)
-        { Scene.ClearWheel(); Scene.Dispatcher.BeginInvoke(LayoutScene); }
+        {
+            if (ready && source is not null)
+            { gameplayBridge?.ResetInput(); ClearGameplayInput(); }
+            else { gameplayBridge?.CancelPointer(); petMenuProxy?.ReleasePointerCapture(); Scene.ClearWheel(); }
+            Scene.Dispatcher.BeginInvoke(LayoutScene);
+        }
         return 0;
     }
     internal void StopInput()
-    { ready = false; wheelBridge?.Stop(); petMenuProxy?.SetEnabled(false); petMenu.Close(); Scene.ClearWheel(); shellCheck.Stop(); }
+    {
+        var wasActive = ready && source is not null;
+        ready = false; gameplayBridge?.Stop(); wheelBridge?.Stop();
+        if (wasActive) driver?.ClearInput();
+        petMenuProxy?.ReleasePointerCapture(); petMenuProxy?.SetEnabled(false); petMenu.Close(); Scene.ClearWheel(); shellCheck.Stop();
+    }
     internal void Hide()
     {
         StopInput();
         ++generation;
-        wheelBridge?.Dispose(); wheelBridge = null;
+        gameplayBridge?.Dispose();
+        if (gameplayBridge?.IsHookReleasePending != true) gameplayBridge = null;
+        wheelBridge?.Dispose();
+        if (wheelBridge?.IsHookReleasePending != true) wheelBridge = null;
         petMenuProxy?.Dispose(); petMenuProxy = null;
         if (source is not null) { source.RootVisual = null; source.Dispose(); source = null; }
         nativeHost?.Dispose(); nativeHost = null;
         target = null;
     }
-    public void Dispose() { Hide(); petMenu.Dispose(); }
+    public void Dispose()
+    {
+        Hide();
+        if (driver is not null) driver.PointerCancelled -= OnPointerCancelled;
+        driver = null;
+        petMenu.Dispose();
+    }
 }

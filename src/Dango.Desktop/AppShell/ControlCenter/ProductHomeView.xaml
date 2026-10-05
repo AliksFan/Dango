@@ -270,6 +270,10 @@
                     <Button x:Name="BackFromPorchButton" Content="首页 ↗" HorizontalAlignment="Right" VerticalAlignment="Top" BorderBrush="Transparent"
                             Padding="8,4" MinHeight="30" Click="OnBackFromPorchClick" AutomationProperties.Name="返回我的团子" ToolTip="Esc · 返回首页" />
                 </Grid>
+                <TextBlock x:Name="RoomAwayNotice" Grid.ColumnSpan="3" Grid.RowSpan="2"
+                           Text="团子去玩拉！回来才能换衣服哦" Visibility="Collapsed"
+                           FontSize="18" TextWrapping="Wrap" TextAlignment="Center" Margin="24"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Grid>
         </ScrollViewer>
         <ScrollViewer x:Name="SettingsPage" Grid.Row="2" Visibility="Collapsed" VerticalScrollBarVisibility="Auto"
