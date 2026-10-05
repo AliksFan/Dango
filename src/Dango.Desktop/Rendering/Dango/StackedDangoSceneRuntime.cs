@@ -46,6 +46,8 @@ public sealed class StackedDangoSceneRuntime : IDisposable
     public bool RequiresInitialization { get; private init; }
     public SceneInitializationState InitializationState { get; private set; }
     public int CalibrationStepCount { get; private set; }
+    internal double? NeutralBodyVisibleWidth { get; private set; }
+    internal double NeutralBodyGroundOffset { get; private set; }
     public bool AttachmentsEnabled => attachments is not null;
     public string CurrentHatPresetId { get; private set; } = "sprout";
     public HatAppearance CurrentHatAppearance => DangoHatPresets.GetAppearance(CurrentHatPresetId);
@@ -283,6 +285,11 @@ public sealed class StackedDangoSceneRuntime : IDisposable
                                 "眼帽标定失败。", frame.Physics.ErrorCode);
                     }
                     baseline = calibration.LastFrame!.Bodies.Single().Presentation;
+                    var geometry = DangoStreamGeometryFactory.TryCreate(baseline.Contour, 160, 120);
+                    if (!geometry.Succeeded) throw new InvalidOperationException("中性身体轮廓不可用。");
+                    NeutralBodyVisibleWidth = geometry.Geometry!.Bounds.Width;
+                    NeutralBodyGroundOffset = calibration.GroundY -
+                        (calibration.LastFrame.Bodies.Single().Bounds.Y + geometry.Geometry.Bounds.Bottom);
                 }
                 // The calibration world has been released before the live world is created.
                 attachments = new(baseline);

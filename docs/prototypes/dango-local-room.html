@@ -1,0 +1,242 @@
+<div id="dango-local-room" aria-label="Dango 本地普通房交互示意">
+  <div class="viz-row dr-previewbar">
+    <span class="text-small text-muted">交互示意 · 未接 WPF / 物理</span>
+    <button class="btn btn-ghost" type="button" data-demo="start">从首页走一遍</button>
+    <button class="btn btn-ghost" type="button" data-demo="fail">试一次打不开</button>
+  </div>
+  <div class="dr-desktop">
+    <section class="dr-window" aria-label="普通房窗口">
+      <header class="dr-chrome">
+        <button class="dr-return cursor-interaction" type="button" data-action="back" aria-label="房门：返回门廊"><i data-lucide="door-open" aria-hidden="true"></i><span>房门</span></button>
+        <span class="dr-title">初始房间</span>
+        <span class="dr-local">本地 · 单人</span>
+        <button class="dr-close cursor-interaction" type="button" data-action="hide" aria-label="隐藏画面"><i data-lucide="x" aria-hidden="true"></i></button>
+      </header>
+      <div class="dr-stage">
+        <div class="dr-home">
+          <button type="button" class="dr-editor dr-face cursor-interaction" data-action="face">捏脸 <small>D</small></button>
+          <button type="button" class="dr-editor dr-outfit cursor-interaction" data-action="outfit">换装 <small>A</small></button>
+          <button type="button" class="dr-home-door cursor-interaction" data-action="porch"><i data-lucide="door-open" aria-hidden="true"></i><span>房门</span><small>W</small></button>
+          <div class="dr-panel" hidden><span class="dr-panel-title">捏脸</span><span class="dr-swatches"><b></b><b></b><b></b></span><button type="button" class="cursor-interaction" data-action="dismiss">收起</button></div>
+        </div>
+        <div class="dr-porch" hidden>
+          <div class="dr-porch-wall"></div>
+          <div class="dr-porch-ground"></div>
+          <div class="dr-porch-world">
+            <div class="dr-door-label">初始房间 <small>本地单人</small></div>
+            <button type="button" class="dr-porch-door cursor-interaction" data-action="enter" aria-label="进入初始房间，本地单人"><span class="dr-door-knob"></span><span class="dr-door-w">W 进入</span></button>
+          </div>
+        </div>
+        <div class="dr-room">
+          <div class="dr-wall"></div>
+          <div class="dr-floor"></div>
+        </div>
+        <div class="dr-shadow" aria-hidden="true"></div>
+        <div class="dr-pet" role="img" aria-label="团子，外形和动作均为示意"><span class="dr-eye dr-eye-left"></span><span class="dr-eye dr-eye-right"></span><span class="dr-cheek dr-cheek-left"></span><span class="dr-cheek dr-cheek-right"></span><span class="dr-mouth"></span></div>
+        <div class="dr-entry" hidden><div class="dr-entrycard"><span class="dr-entry-message">正在开门…</span><div class="dr-entry-actions"><button type="button" class="cursor-interaction" data-action="retry" hidden>重试</button><button type="button" class="cursor-interaction" data-action="cancel">回门廊</button></div></div></div>
+        <div class="dr-inputs">
+          <button type="button" class="cursor-interaction" data-play="left" aria-label="A：向左">A <span>左</span></button>
+          <button type="button" class="cursor-interaction" data-play="right" aria-label="D：向右">D <span>右</span></button>
+          <button type="button" class="cursor-interaction" data-play="squash" aria-label="S：轻压">S <span>轻压</span></button>
+          <button type="button" class="cursor-interaction" data-play="jump" aria-label="空格：跳跃">空格 <span>跳跃</span></button>
+        </div>
+      </div>
+    </section>
+    <div class="dr-hidden" hidden><i data-lucide="eye-off" aria-hidden="true"></i><span>画面已隐藏</span></div>
+    <div class="dr-traymenu" hidden aria-label="托盘示意菜单"><button type="button" class="cursor-interaction" data-action="restore">恢复房间</button><button type="button" class="cursor-interaction" data-action="trayporch">房门</button></div>
+    <button type="button" class="dr-tray cursor-interaction" data-action="tray" aria-label="打开托盘示意菜单"><i data-lucide="circle-dot" aria-hidden="true"></i><span>托盘</span></button>
+  </div>
+  <div class="dr-caption text-small text-muted" aria-live="polite">初始房间 · 连续地面与纯色墙面</div>
+</div>
+<style>
+#dango-local-room { --dr-paper:light-dark(#fdfcf9,#282723); --dr-wall:light-dark(#f5f0e8,#38342e); --dr-floor:light-dark(#e7d5bd,#594b3d); --dr-line:light-dark(#e9e4da,#50483e); --dr-ink:light-dark(#443d34,#f1e9db); --dr-muted:light-dark(#807568,#c7bbaa); --dr-accent:light-dark(#885e3e,#d4ae84); --dr-door:light-dark(#e4cdb0,#76614b); --dr-doorline:light-dark(#b7926b,#b29878); --dr-sky:light-dark(#d7e6e4,#3d5358); --dr-cloud:light-dark(#f5f7f0,#829190); --dr-leaf:light-dark(#799180,#728775); --dr-pet:light-dark(#f2cba5,#d7b494); --dr-eye:#594336; --dr-shadow:light-dark(#73553d23,#00000028); --dr-sun:light-dark(#fff6dc,#887249); width:100%; }
+#dango-local-room .dr-previewbar { margin-bottom:14px; padding-right:92px; }
+#dango-local-room .dr-desktop { position:relative; padding-bottom:48px; }
+#dango-local-room .dr-window { background:var(--dr-paper); color:var(--dr-ink); border-radius:14px; overflow:hidden; box-shadow:0 8px 26px var(--dr-shadow); font-family:"Segoe UI","Microsoft YaHei",sans-serif; font-size:14px; line-height:1.4; }
+#dango-local-room .dr-chrome { display:flex; align-items:center; gap:14px; height:40px; padding:0 8px 0 14px; background:var(--dr-paper); position:relative; z-index:4; }
+#dango-local-room .dr-chrome button { display:flex; align-items:center; gap:6px; border:0; background:transparent; color:var(--dr-ink); padding:7px 8px; border-radius:6px; font:inherit; }
+#dango-local-room .dr-chrome button:hover { background:var(--dr-wall); }
+#dango-local-room .dr-return { min-width:72px; }
+#dango-local-room .dr-title { flex:1; font-size:12px; color:var(--dr-muted); }
+#dango-local-room .dr-local { font-size:11px; color:var(--dr-muted); white-space:nowrap; }
+#dango-local-room .dr-close { width:32px; justify-content:center; }
+#dango-local-room .dr-stage { position:relative; height:clamp(300px,48vw,490px); overflow:hidden; background:var(--dr-paper); }
+#dango-local-room .dr-home,#dango-local-room .dr-porch,#dango-local-room .dr-room { position:absolute; inset:0; }
+#dango-local-room [hidden] { display:none !important; }
+#dango-local-room .dr-wall { position:absolute; inset:0 0 10%; background:var(--dr-wall); }
+#dango-local-room .dr-floor { position:absolute; inset:90% 0 0; background:var(--dr-floor); border-top:1px solid var(--dr-doorline); }
+#dango-local-room .dr-door-knob { position:absolute; right:15%; top:65%; width:6px; height:6px; border-radius:50%; background:var(--dr-accent); }
+#dango-local-room .dr-pet { position:absolute; width:var(--dr-pet-width,16.5%); height:auto; aspect-ratio:1.55; left:var(--dr-pet-x,42%); bottom:var(--dr-pet-bottom,10%); transform:translateX(-50%) translateY(var(--dr-hop,0px)) scaleX(var(--dr-sx,1)) scaleY(var(--dr-sy,1)); transform-origin:center bottom; border-radius:46% 46% 34% 34% / 65% 65% 22% 22%; background:var(--dr-pet); box-shadow:inset 0 -5px 0 #a6784320; z-index:2; transition:transform 100ms ease; }
+#dango-local-room .dr-shadow { position:absolute; width:10%; height:1.5%; left:var(--dr-pet-x,42%); bottom:calc(var(--dr-pet-bottom,10%) - .5%); transform:translateX(-50%); background:var(--dr-shadow); border-radius:50%; z-index:1; }
+#dango-local-room .dr-eye { position:absolute; top:43%; width:5.5%; height:12%; border-radius:50%; background:var(--dr-eye); }
+#dango-local-room .dr-eye-left { left:32%; }
+#dango-local-room .dr-eye-right { right:32%; }
+#dango-local-room .dr-mouth { position:absolute; left:47%; top:61%; width:6%; height:3%; background:var(--dr-eye); border-radius:50%; }
+#dango-local-room .dr-cheek { position:absolute; top:58%; width:11%; height:7%; background:#d8907b; border-radius:50%; opacity:.35; }
+#dango-local-room .dr-cheek-left { left:19%; }
+#dango-local-room .dr-cheek-right { right:19%; }
+#dango-local-room .dr-inputs { position:absolute; bottom:12px; left:0; right:0; display:flex; justify-content:center; gap:8px; z-index:3; }
+#dango-local-room .dr-inputs button { border:0; padding:5px 9px; background:transparent; color:var(--dr-ink); font:inherit; font-size:11px; border-radius:6px; }
+#dango-local-room .dr-inputs button:hover,#dango-local-room .dr-inputs button:active { background:var(--dr-door); }
+#dango-local-room .dr-inputs span { color:var(--dr-muted); margin-left:3px; }
+#dango-local-room .dr-editor { position:absolute; top:41%; border:0; background:transparent; color:var(--dr-ink); padding:10px; font:inherit; }
+#dango-local-room .dr-face { left:16%; }
+#dango-local-room .dr-outfit { right:16%; }
+#dango-local-room small { font-size:11px; color:var(--dr-muted); }
+#dango-local-room .dr-editor small { display:block; }
+#dango-local-room .dr-home-door { position:absolute; bottom:20%; left:50%; transform:translateX(-50%); border:0; background:transparent; color:var(--dr-ink); display:flex; gap:8px; align-items:center; padding:10px 14px; font:inherit; }
+#dango-local-room .dr-panel { position:absolute; right:3%; top:26%; width:30%; height:37%; background:var(--dr-wall); border-radius:12px; padding:18px; display:flex; flex-direction:column; align-items:center; justify-content:space-around; z-index:3; }
+#dango-local-room .dr-panel button { background:transparent; border:0; color:var(--dr-muted); font:inherit; padding:7px; }
+#dango-local-room .dr-swatches { display:flex; gap:8px; }
+#dango-local-room .dr-swatches b { width:20px; height:20px; border-radius:50%; background:var(--dr-pet); }
+#dango-local-room .dr-swatches b:nth-child(2) { background:var(--dr-leaf); }
+#dango-local-room .dr-swatches b:nth-child(3) { background:var(--dr-sky); }
+#dango-local-room .dr-porch-wall { position:absolute; inset:0 0 27%; background:var(--dr-paper); }
+#dango-local-room .dr-porch-ground { position:absolute; inset:73% 0 0; background:var(--dr-wall); border-top:1px solid var(--dr-line); }
+#dango-local-room .dr-porch-world { position:absolute; inset:0; transform:translateX(var(--dr-camera,0%)); }
+#dango-local-room .dr-porch-door { position:absolute; left:calc(56% - 62px); bottom:27%; width:124px; height:194px; border:3px solid var(--dr-doorline); border-radius:62px 62px 1px 1px; background:var(--dr-door); padding:0; color:var(--dr-accent); }
+#dango-local-room .dr-door-label { position:absolute; left:56%; bottom:calc(27% + 205px); transform:translateX(-50%); text-align:center; white-space:nowrap; font-size:13px; }
+#dango-local-room .dr-door-label small { display:block; }
+#dango-local-room .dr-door-w { position:absolute; top:52%; left:0; right:0; font-size:12px; }
+#dango-local-room .dr-other-door { position:absolute; left:calc(56% + 158px); bottom:27%; width:124px; height:194px; border:3px solid var(--dr-line); border-radius:62px 62px 1px 1px; opacity:.45; }
+#dango-local-room .dr-entry { position:absolute; inset:0; z-index:5; display:flex; align-items:center; justify-content:center; background:var(--dr-paper); }
+#dango-local-room .dr-entrycard { display:flex; align-items:center; flex-direction:column; gap:20px; color:var(--dr-ink); }
+#dango-local-room .dr-entry-actions { display:flex; gap:10px; }
+#dango-local-room .dr-entry-actions button { font:inherit; border:1px solid var(--dr-line); background:var(--dr-wall); color:var(--dr-ink); border-radius:7px; padding:8px 14px; }
+#dango-local-room .dr-hidden { height:clamp(340px,48vw + 40px,530px); display:flex; align-items:center; justify-content:center; gap:10px; color:var(--dr-muted); }
+#dango-local-room .dr-tray { position:absolute; bottom:0; right:0; display:flex; gap:6px; align-items:center; border:0; padding:8px 12px; background:var(--dr-paper); color:var(--dr-ink); border-radius:8px; font-size:12px; }
+#dango-local-room .dr-traymenu { position:absolute; right:0; bottom:42px; z-index:6; padding:6px; background:var(--dr-paper); color:var(--dr-ink); border:1px solid var(--dr-line); border-radius:9px; box-shadow:0 6px 18px var(--dr-shadow); display:flex; flex-direction:column; min-width:154px; font-family:"Segoe UI","Microsoft YaHei",sans-serif; }
+#dango-local-room .dr-traymenu button { border:0; padding:10px 14px; border-radius:6px; font:inherit; text-align:left; color:var(--dr-ink); background:transparent; }
+#dango-local-room .dr-traymenu button:hover { background:var(--dr-wall); }
+#dango-local-room .dr-caption { padding-top:6px; }
+@media(max-width:480px) { #dango-local-room .dr-chrome { gap:6px; padding-left:6px; } #dango-local-room .dr-title { font-size:11px; } #dango-local-room .dr-stage { height:330px; } #dango-local-room .dr-pet { min-width:54px; } #dango-local-room .dr-shadow { min-width:48px; } #dango-local-room .dr-inputs { gap:0; } #dango-local-room .dr-inputs button { padding:8px 7px; } #dango-local-room .dr-panel { padding:8px; width:36%; } }
+@media(pointer:coarse) { #dango-local-room .dr-chrome { height:48px; } #dango-local-room .dr-chrome button,#dango-local-room .dr-inputs button,#dango-local-room .dr-tray { min-height:44px; } #dango-local-room .dr-close { min-width:44px; } }
+@media(prefers-reduced-motion:reduce) { #dango-local-room .dr-pet { transition:none; } }
+</style>
+<script>
+(() => {
+  const root = document.getElementById('dango-local-room');
+  const get = selector => root.querySelector(selector);
+  const win = get('.dr-window'), stage = get('.dr-stage'), pet = get('.dr-pet');
+  const home = get('.dr-home'), porch = get('.dr-porch'), room = get('.dr-room');
+  const entry = get('.dr-entry'), panel = get('.dr-panel'), traymenu = get('.dr-traymenu');
+  const caption = get('.dr-caption'), back = get('[data-action="back"]'), title = get('.dr-title');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const state = { view:'room', hidden:false, failed:false, failNext:false, panel:null, x:42, porchX:56, generation:0 };
+  let keys = new Set(), last = 0, frame = 0, hop = null, squash = null, pendingTimer = null;
+  function save() {
+    if (window.openai?.setWidgetState) window.openai.setWidgetState({ modelContent:{ design:'初始房间', view:state.view, hidden:state.hidden }, privateContent:{ view:state.view, hidden:state.hidden } }).catch(() => {});
+  }
+  function render() {
+    win.hidden = state.hidden; get('.dr-hidden').hidden = !state.hidden;
+    home.hidden = state.view !== 'home'; porch.hidden = state.view !== 'porch' && state.view !== 'entering'; room.hidden = state.view !== 'room';
+    entry.hidden = state.view !== 'entering'; panel.hidden = !state.panel || state.view !== 'home';
+    title.textContent = state.view === 'home' ? '团子' : state.view === 'room' ? '初始房间' : '房门';
+    back.querySelector('span').textContent = state.view === 'home' ? '房门' : state.view === 'porch' || state.view === 'entering' ? '首页' : '房门';
+    get('.dr-panel-title').textContent = state.panel === 'outfit' ? '换装' : '捏脸';
+    get('.dr-entry-message').textContent = state.failed ? '房间暂时打不开' : '正在开门…';
+    get('[data-action="retry"]').hidden = !state.failed;
+    get('[data-action="restore"]').textContent = state.view === 'room' ? '恢复房间' : '恢复画面';
+    let screenX = state.x;
+    if (state.view === 'home') screenX = state.panel ? 32 : 50;
+    if (state.view === 'porch' || state.view === 'entering') {
+      const camera = Math.max(-12,Math.min(35,state.porchX - 56));
+      stage.style.setProperty('--dr-camera',`${-camera}%`); screenX = state.porchX - camera;
+    }
+    stage.style.setProperty('--dr-pet-x',`${screenX}%`);
+    stage.style.setProperty('--dr-pet-width',state.view === 'home' ? '20%' : '16.5%');
+    stage.style.setProperty('--dr-pet-height',state.view === 'home' ? '28%' : '22%');
+    stage.style.setProperty('--dr-pet-bottom',state.view === 'home' ? '44%' : '10%');
+    caption.textContent = state.hidden ? '× 仅隐藏 · 托盘可恢复画面或回门廊' : state.view === 'home' ? '首页示意 · W 房门 · D 捏脸 · A 换装' : state.view === 'porch' ? '门廊示意 · A / D 移动 · W 进入本地房间 · Esc 首页' : state.view === 'entering' ? state.failed ? '失败示意 · 门廊保持可操作，重试或返回' : '转场示意 · 目标画面就绪后才收起主界面' : '初始房间 · 连续地面与纯色墙面 · Esc 回门廊';
+  }
+  function clear() {
+    keys.clear(); cancelAnimationFrame(frame); frame = 0; last = 0;
+    cancelAnimationFrame(hop); clearTimeout(squash); hop = squash = null;
+    stage.style.setProperty('--dr-hop','0px'); stage.style.setProperty('--dr-sx','1'); stage.style.setProperty('--dr-sy','1');
+  }
+  function navigate(view) {
+    clear(); clearTimeout(pendingTimer); state.generation++; state.failed = false; state.panel = null; state.hidden = false; traymenu.hidden = true;
+    state.view = view;
+    if(view === 'room') state.x = 30;
+    if(view === 'porch') state.porchX = 56;
+    render(); save();
+  }
+  function enter() {
+    if(state.view !== 'porch') return;
+    if(Math.abs(state.porchX - 56) > 20) { caption.textContent = '靠近初始房间的门再进入'; return; }
+    clear(); state.view = 'entering'; state.failed = false; const generation = ++state.generation;
+    const fail = state.failNext; state.failNext = false; render(); save();
+    pendingTimer = setTimeout(() => {
+      if(generation !== state.generation || state.view !== 'entering') return;
+      if(fail) { state.failed = true; render(); return; }
+      requestAnimationFrame(() => { if(generation === state.generation && state.view === 'entering') navigate('room'); });
+    },reduced ? 120 : 650);
+  }
+  function move(amount) {
+    if(state.hidden || state.view === 'entering') return;
+    if(state.view === 'room') state.x = Math.max(8,Math.min(92,state.x + amount));
+    if(state.view === 'porch') state.porchX = Math.max(18,Math.min(120,state.porchX + amount));
+    render();
+  }
+  function animate(action) {
+    if(state.hidden || state.view === 'entering') return;
+    if(action === 'squash') {
+      stage.style.setProperty('--dr-sx','1.1'); stage.style.setProperty('--dr-sy','.78');
+      clearTimeout(squash); squash = setTimeout(() => { stage.style.setProperty('--dr-sx','1'); stage.style.setProperty('--dr-sy','1'); },350);
+    } else if(action === 'jump') {
+      if(hop) return; const start = performance.now();
+      const jump = now => {
+        const p = Math.min(1,(now - start)/600);
+        stage.style.setProperty('--dr-hop',`${reduced ? 0 : -4*p*(1-p)*65}px`);
+        if(p < 1) hop = requestAnimationFrame(jump); else { hop = null; stage.style.setProperty('--dr-hop','0px'); }
+      }; hop = requestAnimationFrame(jump);
+    }
+  }
+  function tick(now) {
+    const dt = Math.min(40,last ? now-last : 16); last = now;
+    move((Number(keys.has('d')) - Number(keys.has('a'))) * dt *.025);
+    frame = keys.size ? requestAnimationFrame(tick) : 0;
+  }
+  root.addEventListener('click',event => {
+    const button = event.target.closest('button'); if(!button) return;
+    const action = button.dataset.action, demo = button.dataset.demo, play = button.dataset.play;
+    if(demo === 'start') { state.failNext = false; navigate('home'); }
+    if(demo === 'fail') { navigate('porch'); state.failNext = true; enter(); }
+    if(play === 'left' || play === 'right') { if(state.view === 'home') {state.panel = play === 'left' ? 'outfit' : 'face'; render();} else move(play === 'left' ? -7 : 7); }
+    if(play === 'squash' || play === 'jump') animate(play);
+    if(action === 'porch') navigate('porch');
+    if(action === 'enter') enter();
+    if(action === 'back') navigate(state.view === 'home' ? 'porch' : state.view === 'porch' || state.view === 'entering' ? 'home' : 'porch');
+    if(action === 'face' || action === 'outfit') { state.panel = state.panel === action ? null : action; clear(); render(); save(); }
+    if(action === 'dismiss') { state.panel = null; clear(); render(); }
+    if(action === 'hide') { clear(); if(state.view === 'entering') navigate('porch'); state.hidden = true; traymenu.hidden = true; render(); save(); }
+    if(action === 'tray') traymenu.hidden = !traymenu.hidden;
+    if(action === 'restore') { clear(); state.hidden = false; traymenu.hidden = true; render(); save(); }
+    if(action === 'trayporch' || action === 'cancel') navigate('porch');
+    if(action === 'retry') { navigate('porch'); enter(); }
+  });
+  root.addEventListener('keydown',event => {
+    if(state.hidden || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName) || event.target.isContentEditable || event.defaultPrevented) return;
+    const key = event.key.toLowerCase(); if(!['a','d','s','w',' ','escape'].includes(key)) return;
+    event.preventDefault();
+    if(key === 'escape') { if(state.panel) { state.panel = null; clear(); render(); } else navigate(state.view === 'room' || state.view === 'entering' ? 'porch' : 'home'); return; }
+    if(event.repeat && !['a','d'].includes(key)) return;
+    if(key === 'w') { if(state.view === 'home') navigate('porch'); else if(state.view === 'porch') enter(); return; }
+    if(key === 's') animate('squash'); if(key === ' ') animate('jump');
+    if(key === 'a' || key === 'd') {
+      if(state.view === 'home') {state.panel = key === 'a' ? 'outfit' : 'face'; render();}
+      else if(state.view !== 'entering') { keys.add(key); if(!frame) frame = requestAnimationFrame(tick); }
+    }
+  });
+  root.addEventListener('keyup',event => { keys.delete(event.key.toLowerCase()); if(!keys.size) {cancelAnimationFrame(frame); frame = 0; last = 0;} });
+  root.addEventListener('focusout',event => { if(!root.contains(event.relatedTarget)) clear(); });
+  window.addEventListener('blur',clear);
+  document.addEventListener('visibilitychange',() => { if(document.hidden) clear(); });
+  function restore(saved) {
+    const value = saved?.privateContent; if(!value || !['home','porch','room'].includes(value.view)) return;
+    clear(); state.view = value.view; state.hidden = !!value.hidden; render();
+  }
+  restore(window.openai?.widgetState); render();
+  window.addEventListener('openai:set_globals',event => restore(event.detail?.globals?.widgetState));
+})();
+</script>

@@ -19,6 +19,8 @@ public partial class ProductHomeView
     private DangoPhysicsException? liveSurfacePhysicsError;
 
     internal RoomNavigationCoordinator RoomNavigation => roomNavigation;
+    internal event Action? LocalRoomRequested;
+    internal void EnableLocalRoomDoor() => PorchScene.SetLocalRoomEnabled(true);
 
     internal void SetPorchReviewMode(bool enabled)
     {
@@ -30,6 +32,7 @@ public partial class ProductHomeView
     {
         PorchScene.DoorSelected += id => roomNavigation.SelectDoor(id);
         PorchScene.GameplayFocusRequested += () => Stage.Focus();
+        PorchScene.LocalRoomRequested += () => LocalRoomRequested?.Invoke();
     }
 
     private void ChangeLiveSurface()

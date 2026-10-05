@@ -1,0 +1,173 @@
+<div id="dango-room-view" aria-label="普通房视距与呈现方式示意">
+  <div class="viz-controls rv-preview">
+    <label class="form-label">呈现 <select class="form-select" data-host><option value="window">普通房窗口</option><option value="wallpaper">普通房壁纸层</option></select></label>
+    <label class="form-label">层示意 <select class="form-select" data-layer><option value="both">两层一起</option><option value="wall">墙面层</option><option value="ground">地面层</option></select></label>
+    <label class="form-label">焦点示意 <select class="form-select" data-wheel-context><option value="active">房间窗口获焦点</option><option value="other">其他应用获焦点</option></select></label>
+    <label class="form-check"><input class="form-check-input" type="checkbox" data-fullscreen><span class="form-check-label">存在全屏应用</span></label>
+    <span class="text-small text-muted">交互示意 · 未接 WPF / 物理</span>
+  </div>
+  <section class="rv-surface" aria-label="普通房视角示意">
+    <header class="rv-titlebar">
+      <span class="rv-roomdoor"><i data-lucide="door-open" aria-hidden="true"></i> 房门</span>
+      <span class="rv-name">初始房间</span>
+      <button type="button" class="rv-view-trigger cursor-interaction" data-view-menu aria-label="选择房间视距" aria-expanded="false"><i data-lucide="scan-eye" aria-hidden="true"></i><span>视角 · 标准</span></button>
+      <span class="rv-local">本地 · 单人</span>
+    </header>
+    <div class="rv-viewport" role="group" aria-label="同一普通房，滚轮向上拉近、向下拉远，视距仅改变画面投影">
+      <div class="rv-world">
+        <div class="rv-wall"></div><div class="rv-floor"></div>
+        <div class="rv-shadow" aria-hidden="true"></div>
+        <div class="rv-pet" aria-hidden="true"><span class="rv-eye rv-eye-left"></span><span class="rv-eye rv-eye-right"></span><span class="rv-mouth"></span></div>
+      </div>
+      <div class="rv-distance-menu" hidden aria-label="视角菜单">
+        <button type="button" class="cursor-interaction" data-distance="standard" aria-pressed="true"><span>标准</span><small>默认 · 100%</small></button>
+        <button type="button" class="cursor-interaction" data-distance="near" aria-pressed="false"><span>近景</span><small>130%</small></button>
+        <button type="button" class="cursor-interaction" data-distance="whole" aria-pressed="false"><span>全景</span><small>整间房</small></button>
+      </div>
+    </div>
+    <div class="rv-taskbar" hidden><span class="rv-fictional">桌面示意</span><button type="button" class="cursor-interaction" data-tray-view aria-expanded="false"><i data-lucide="circle-dot" aria-hidden="true"></i> 托盘 · 视角</button></div>
+  </section>
+  <div class="viz-row rv-bottom">
+    <button type="button" class="btn btn-ghost" data-move="left">A 向左</button>
+    <button type="button" class="btn btn-ghost" data-move="right">D 向右</button>
+    <span class="text-small text-muted" data-model-size>窗口 960 × 600 DIP</span>
+  </div>
+  <div class="text-small text-muted" data-view-detail aria-live="polite">标准 · 舒适尺寸 · 视野不足时横向跟随</div>
+</div>
+<style>
+#dango-room-view { --rv-paper:light-dark(#fdfcf9,#282723); --rv-wall:light-dark(#f5f0e8,#38342e); --rv-floor:light-dark(#e7d5bd,#594b3d); --rv-ink:light-dark(#443d34,#f1e9db); --rv-muted:light-dark(#807568,#c7bbaa); --rv-line:light-dark(#e9e4da,#50483e); --rv-door:light-dark(#e4cdb0,#76614b); --rv-edge:light-dark(#b7926b,#b29878); --rv-accent:light-dark(#885e3e,#d4ae84); --rv-sky:light-dark(#d7e6e4,#3d5358); --rv-leaf:light-dark(#799180,#728775); --rv-cloud:light-dark(#f5f7f0,#829190); --rv-pet:light-dark(#f2cba5,#d7b494); --rv-eye:light-dark(#594336,#503c31); --rv-shadow:light-dark(#73553d23,#00000028); width:100%; }
+#dango-room-view [hidden] { display:none !important; }
+#dango-room-view .rv-preview { padding-right:92px; margin-bottom:14px; }
+#dango-room-view .rv-surface { overflow:hidden; border-radius:14px; background:var(--rv-wall); color:var(--rv-ink); font-family:"Segoe UI","Microsoft YaHei",sans-serif; font-size:14px; line-height:1.4; box-shadow:0 7px 24px var(--rv-shadow); }
+#dango-room-view .rv-titlebar { display:flex; align-items:center; gap:14px; padding:0 16px; height:40px; background:var(--rv-paper); }
+#dango-room-view .rv-roomdoor { display:flex; gap:5px; align-items:center; font-size:12px; }
+#dango-room-view .rv-name { flex:1; color:var(--rv-muted); font-size:12px; }
+#dango-room-view .rv-local { font-size:11px; white-space:nowrap; color:var(--rv-muted); }
+#dango-room-view .rv-view-trigger { display:flex; align-items:center; gap:5px; color:var(--rv-ink); background:transparent; border:0; padding:7px 8px; border-radius:6px; font:inherit; font-size:12px; }
+#dango-room-view .rv-view-trigger:hover { background:var(--rv-wall); }
+#dango-room-view .rv-viewport { position:relative; height:clamp(270px,51vw,510px); overflow:hidden; background:var(--rv-wall); }
+#dango-room-view .rv-world { position:absolute; width:720px; height:360px; transform-origin:0 0; }
+#dango-room-view .rv-wall { position:absolute; left:0; top:0; width:720px; height:360px; background:var(--rv-wall); }
+#dango-room-view .rv-floor { position:absolute; left:0; top:360px; width:720px; height:40px; background:var(--rv-floor); border-top:1px solid var(--rv-edge); }
+#dango-room-view .rv-pet { position:absolute; left:var(--rv-pet-x,220px); bottom:0; width:110px; height:71px; transform:translateX(-50%); background:var(--rv-pet); border-radius:46% 46% 34% 34% / 65% 65% 22% 22%; box-shadow:inset 0 -4px 0 var(--rv-shadow); }
+#dango-room-view .rv-eye { position:absolute; top:30px; width:5px; height:8px; background:var(--rv-eye); border-radius:50%; }
+#dango-room-view .rv-eye-left { left:34px; } #dango-room-view .rv-eye-right { right:34px; }
+#dango-room-view .rv-mouth { position:absolute; left:52px; top:45px; width:6px; height:2px; border-radius:50%; background:var(--rv-eye); }
+#dango-room-view .rv-shadow { position:absolute; left:var(--rv-pet-x,220px); bottom:-3px; width:106px; height:8px; border-radius:50%; background:var(--rv-shadow); transform:translateX(-50%); }
+#dango-room-view .rv-distance-menu { position:absolute; right:12px; top:10px; z-index:4; min-width:168px; padding:5px; border-radius:9px; border:1px solid var(--rv-line); background:var(--rv-paper); box-shadow:0 5px 18px var(--rv-shadow); }
+#dango-room-view .rv-distance-menu button { display:flex; align-items:center; justify-content:space-between; gap:20px; width:100%; padding:10px; border:0; border-radius:6px; color:var(--rv-ink); background:transparent; font:inherit; text-align:left; }
+#dango-room-view .rv-distance-menu button:hover,#dango-room-view .rv-distance-menu button[aria-pressed="true"] { background:var(--rv-door); }
+#dango-room-view .rv-distance-menu small { font-size:11px; color:var(--rv-muted); }
+#dango-room-view .rv-taskbar { height:36px; padding:0 12px; background:var(--rv-paper); display:flex; align-items:center; gap:12px; }
+#dango-room-view .rv-fictional { flex:1; font-size:11px; color:var(--rv-muted); }
+#dango-room-view .rv-taskbar button { font:inherit; display:flex; align-items:center; gap:5px; font-size:12px; color:var(--rv-ink); border:0; padding:6px 8px; background:transparent; border-radius:5px; }
+#dango-room-view .rv-taskbar button:hover { background:var(--rv-wall); }
+#dango-room-view .rv-bottom { margin:9px 0 5px; }
+@media(max-width:480px) { #dango-room-view .rv-titlebar { gap:7px; padding:0 9px; } #dango-room-view .rv-name { display:none; } #dango-room-view .rv-view-trigger { margin-left:auto; } }
+@media(pointer:coarse) { #dango-room-view .rv-view-trigger,#dango-room-view .rv-taskbar button { min-height:44px; } #dango-room-view .rv-titlebar { height:48px; } #dango-room-view .rv-taskbar { height:48px; } }
+</style>
+<script>
+(() => {
+  const root = document.getElementById('dango-room-view');
+  const host = root.querySelector('[data-host]'), viewport = root.querySelector('.rv-viewport'), world = root.querySelector('.rv-world');
+  const menu = root.querySelector('.rv-distance-menu'), trigger = root.querySelector('[data-view-menu]'), tray = root.querySelector('[data-tray-view]');
+  const labels = {standard:'标准',near:'近景',whole:'全景'};
+  const state = {host:'window',views:{window:'standard',wallpaper:'standard'},zooms:{window:1,wallpaper:1},x:220,layer:'both',wheelContext:'active',fullscreen:false};
+  let camera = 0, previousHost = state.host, wheelDelta = 0, wheelTime = 0;
+  function clearWheel() { wheelDelta=0;wheelTime=0; }
+  function wheelAllowed() { return state.layer==='both'&&state.wheelContext==='active'&&(state.host==='window'||!state.fullscreen)&&menu.hidden; }
+  function render() {
+    const wallpaper = state.host === 'wallpaper', mode = state.views[state.host];
+    host.value = state.host; root.querySelector('.rv-titlebar').hidden = wallpaper; root.querySelector('.rv-taskbar').hidden = !wallpaper;
+    root.querySelector('[data-layer]').value=state.layer;
+    root.querySelector('[data-wheel-context]').value=state.wheelContext;
+    root.querySelector('[data-wheel-context] option[value="active"]').textContent=wallpaper?'桌面前台，无应用窗口焦点':'房间窗口获焦点';
+    root.querySelector('[data-fullscreen]').checked=state.fullscreen;
+    root.querySelector('.rv-wall').hidden=state.layer==='ground';
+    root.querySelector('.rv-floor').hidden=state.layer==='wall';
+    viewport.style.background=state.layer==='ground'?'var(--rv-paper)':'var(--rv-wall)';
+    for(const element of root.querySelectorAll('.rv-pet,.rv-shadow'))element.hidden=state.layer!=='both';
+    const vw = wallpaper ? 1920 : 960, vh = wallpaper ? 1040 : 560;
+    const pw = viewport.clientWidth, ph = viewport.clientHeight;
+    // Preview downscales a fictional reference viewport; no OS or physical state.
+    const presentationScale = Math.min(pw/vw,ph/vh);
+    const outerX = (pw-vw*presentationScale)/2, outerY = (ph-vh*presentationScale)/2;
+    const ground = vh-72;
+    const wholeScale = Math.min(1.4,(vw-48)/720,(ground-28)/360);
+    const scale = mode === 'whole' ? wholeScale : mode === 'near' ? 1.4*1.3 : mode === 'custom' ? Math.max(wholeScale,Math.min(1.4*1.3,1.4*state.zooms[state.host])) : 1.4;
+    state.zooms[state.host]=scale/1.4;
+    const visibleWidth = vw/scale;
+    let offsetX = 0;
+    if(visibleWidth >= 720) { camera = 0; offsetX = (vw-720*scale)/2; }
+    else {
+      const petScreen = (state.x-camera)*scale;
+      if(petScreen<vw*.4) camera = state.x-vw*.4/scale;
+      if(petScreen>vw*.6) camera = state.x-vw*.6/scale;
+      camera = Math.max(0,Math.min(720-visibleWidth,camera));
+    }
+    world.style.setProperty('--rv-pet-x',`${state.x}px`);
+    const projectedX = outerX+(offsetX-camera*scale)*presentationScale;
+    const screenScale = scale*presentationScale;
+    world.style.transform = `translate(${projectedX}px,${outerY+(ground-360*scale)*presentationScale}px) scale(${screenScale})`;
+    // Extend the flat visual fill; the contact line and logical safety bounds stay fixed.
+    const floor = root.querySelector('.rv-floor');
+    floor.style.left = `${-projectedX/screenScale}px`;
+    floor.style.width = `${pw/screenScale}px`;
+    floor.style.height = `${Math.max(0,ph-outerY-ground*presentationScale)/screenScale}px`;
+    world.dataset.scale = scale; world.dataset.camera = camera; world.dataset.worldX = state.x;world.dataset.wholeScale=wholeScale;world.dataset.mode=mode;
+    root.querySelector('[data-model-size]').textContent = wallpaper ? '壁纸层 1920 × 1080 DIP 示意' : '窗口 960 × 600 DIP 示意';
+    const viewLabel=labels[mode]||`${Math.round(scale/1.4*100)}%`;
+    trigger.querySelector('span').textContent = `视角 · ${viewLabel}`;
+    for(const button of root.querySelectorAll('[data-distance]')) button.setAttribute('aria-pressed',String(button.dataset.distance===mode));
+    root.querySelector('[data-view-detail]').textContent = state.layer==='both'?`${viewLabel} · ${mode==='whole'?'整间房完整可见':visibleWidth>=720?'尺寸保持，房间居中':'尺寸保持，横向跟随'} · ${wheelAllowed()?'滚轮可调：上近下远':'滚轮暂停'} · 示意身体宽 ${Math.round(110*scale)} DIP`:state.layer==='wall'?'墙面层 · 纯色后景，无碰撞':'地面层 · 连续平面，上沿为落地面';
+  }
+  function save() {
+    if(window.openai?.setWidgetState) window.openai.setWidgetState({modelContent:{viewHost:state.host,windowView:state.views.window,wallpaperView:state.views.wallpaper,windowZoom:state.zooms.window,wallpaperZoom:state.zooms.wallpaper,environmentLayers:'ground-and-wall'},privateContent:{host:state.host,views:{...state.views},zooms:{...state.zooms},x:state.x,layer:state.layer,wheelContext:state.wheelContext,fullscreen:state.fullscreen}}).catch(()=>{});
+  }
+  function toggle() { clearWheel();menu.hidden=!menu.hidden; trigger.setAttribute('aria-expanded',String(!menu.hidden)); tray.setAttribute('aria-expanded',String(!menu.hidden));render(); }
+  host.addEventListener('change',()=>{clearWheel();state.host=host.value; if(previousHost!==state.host) camera=0; previousHost=state.host; menu.hidden=true;trigger.setAttribute('aria-expanded','false');tray.setAttribute('aria-expanded','false');render();save();});
+  root.querySelector('[data-layer]').addEventListener('change',event=>{clearWheel();state.layer=event.target.value;render();save();});
+  root.querySelector('[data-wheel-context]').addEventListener('change',event=>{clearWheel();state.wheelContext=event.target.value;render();save();});
+  root.querySelector('[data-fullscreen]').addEventListener('change',event=>{clearWheel();state.fullscreen=event.target.checked;render();save();});
+  // Only this mock scene receives wheel events. The controls simulate OS eligibility.
+  viewport.addEventListener('wheel',event=>{
+    if(!wheelAllowed()||event.defaultPrevented||event.ctrlKey||event.altKey||event.shiftKey||event.metaKey||event.target.closest('button,input,select,textarea')) {clearWheel();return;}
+    const delta=event.deltaMode===1?event.deltaY*40:event.deltaMode===2?event.deltaY*100:event.deltaY;
+    if(!Number.isFinite(delta)||delta===0)return;
+    event.preventDefault();
+    const now=performance.now();if(now-wheelTime>250)wheelDelta=0;wheelTime=now;wheelDelta+=delta;
+    const ticks=Math.trunc(wheelDelta/100);if(!ticks)return;wheelDelta-=ticks*100;
+    const current=Number(world.dataset.scale)/1.4,min=Number(world.dataset.wholeScale)/1.4;
+    const next=Math.max(min,Math.min(1.3,Math.round((current-ticks*.1)*1000000)/1000000));
+    state.zooms[state.host]=next;
+    state.views[state.host]=Math.abs(next-min)<1e-6?'whole':Math.abs(next-1)<1e-6?'standard':Math.abs(next-1.3)<1e-6?'near':'custom';
+    render();save();
+  },{passive:false});
+  viewport.addEventListener('pointerleave',clearWheel);
+  window.addEventListener('blur',clearWheel);
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)clearWheel();});
+  root.addEventListener('click',event=>{
+    const button=event.target.closest('button'); if(!button)return;
+    if(button.hasAttribute('data-view-menu')||button.hasAttribute('data-tray-view')) toggle();
+    if(button.dataset.distance) {clearWheel();state.views[state.host]=button.dataset.distance;menu.hidden=true;trigger.setAttribute('aria-expanded','false');tray.setAttribute('aria-expanded','false');render();save();}
+    if(button.dataset.move) {state.x=Math.max(55,Math.min(665,state.x+(button.dataset.move==='left'?-55:55)));render();save();}
+  });
+  root.addEventListener('keydown',event=>{if(event.key==='Escape'&&!menu.hidden){event.preventDefault();event.stopPropagation();clearWheel();menu.hidden=true;trigger.setAttribute('aria-expanded','false');tray.setAttribute('aria-expanded','false');render();}});
+  function restore(saved) {
+    const value=saved?.privateContent;if(!value)return;
+    if(['window','wallpaper'].includes(value.host))state.host=value.host;
+    clearWheel();
+    for(const kind of ['window','wallpaper']) {
+      if(Number.isFinite(value.zooms?.[kind]))state.zooms[kind]=Math.max(.1,Math.min(1.3,value.zooms[kind]));
+      if(labels[value.views?.[kind]]||value.views?.[kind]==='custom'&&Number.isFinite(value.zooms?.[kind]))state.views[kind]=value.views[kind];
+    }
+    if(['active','other'].includes(value.wheelContext))state.wheelContext=value.wheelContext;
+    if(typeof value.fullscreen==='boolean')state.fullscreen=value.fullscreen;
+    if(['both','wall','ground'].includes(value.layer))state.layer=value.layer;
+    if(Number.isFinite(value.x))state.x=Math.max(55,Math.min(665,value.x));camera=0;render();
+  }
+  restore(window.openai?.widgetState);render();
+  new ResizeObserver(render).observe(viewport);
+  window.addEventListener('openai:set_globals',event=>restore(event.detail?.globals?.widgetState));
+})();
+</script>

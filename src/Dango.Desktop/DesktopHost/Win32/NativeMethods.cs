@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using Dango.Desktop.DesktopHost.WorkerW;
@@ -10,7 +11,6 @@ internal static partial class NativeMethods
     private const int GwlStyle = -16;
     private const int GwlExStyle = -20;
     private const uint SmtoNormal = 0x0000;
-    private const uint SmtoAbortIfHung = 0x0002;
     private const uint SwpFrameChanged = 0x0020;
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpNoZOrder = 0x0004;
@@ -31,6 +31,7 @@ internal static partial class NativeMethods
     private const uint PageReadWrite = 0x04;
     private const uint LvmHitTest = 0x1012;
     private const int WhKeyboardLl = 13;
+    private static readonly SingleOutstandingQueryGate<DesktopIconQuery, nint> DesktopIconQueries = new(QueryDesktopIcon);
 
     public static WorkerWDesktopTarget? FindWorkerW()
     {
@@ -119,66 +120,99 @@ internal static partial class NativeMethods
         WorkerWDesktopTarget target,
         int screenX,
         int screenY,
-        out bool iconHit)
+        out bool iconHit,
+        uint timeoutMilliseconds = 75,
+        long? deadlineTimestamp = null)
     {
         iconHit = false;
-        if (!IsValidWindow(target.ShellViewHandle))
+        if (timeoutMilliseconds == 0 || !HasRoomInspectionTime(deadlineTimestamp)) return false;
+        var queryDeadline = Stopwatch.GetTimestamp() + Stopwatch.Frequency * timeoutMilliseconds / 1000;
+        if (deadlineTimestamp is { } eventDeadline) queryDeadline = Math.Min(queryDeadline, eventDeadline);
+        if (!TryGetRoomWindowIdentity(target.ShellViewHandle, out var shellClass, out var shellProcess) ||
+            shellClass != "SHELLDLL_DefView" || !HasRoomInspectionTime(queryDeadline))
         {
             return false;
         }
 
-        var listView = FindDescendantWindowByClass(target.ShellViewHandle, "SysListView32");
-        var point = new NativePoint { X = screenX, Y = screenY };
-        if (!IsValidWindow(listView) || !ScreenToClient(listView, ref point))
+        var listView = FindDescendantWindowByClass(target.ShellViewHandle, "SysListView32", queryDeadline);
+        if (!HasRoomInspectionTime(queryDeadline) ||
+            !TryGetRoomWindowIdentity(listView, out var listClass, out var listProcess) ||
+            listClass != "SysListView32" || listProcess != shellProcess)
         {
             return false;
         }
 
-        _ = GetWindowThreadProcessId(listView, out var processId);
-        var process = OpenProcess(ProcessVmOperation | ProcessVmRead | ProcessVmWrite, false, processId);
-        if (process == nint.Zero)
-        {
-            return false;
-        }
+        var query = new DesktopIconQuery(target, listView, GetParent(target.ShellViewHandle),
+            GetParent(listView), shellProcess, screenX, screenY, queryDeadline);
+        var remaining = RemainingRoomInspectionMilliseconds(queryDeadline);
+        if (!DesktopIconQueries.TryQuery(query, remaining, out var hitTestResult) ||
+            !HasRoomInspectionTime(queryDeadline)) return false;
+        iconHit = hitTestResult.ToInt64() >= 0;
+        return true;
+    }
+
+    private static OutstandingQueryResult<nint> QueryDesktopIcon(DesktopIconQuery query)
+    {
+        if (!HasRoomInspectionTime(query.Deadline) || !IsCapturedDesktopIconTarget(query)) return default;
+        var point = new NativePoint { X = query.ScreenX, Y = query.ScreenY };
+        if (!ScreenToClient(query.ListView, ref point) || !HasRoomInspectionTime(query.Deadline)) return default;
+        var process = OpenProcess(ProcessVmOperation | ProcessVmRead | ProcessVmWrite, false, query.ProcessId);
+        if (process == nint.Zero) return default;
 
         nint remoteBuffer = nint.Zero;
+        var result = default(OutstandingQueryResult<nint>);
+        var cleanupSucceeded = true;
         try
         {
             var hitTest = new ListViewHitTestInfo { Point = point, ItemIndex = -1 };
             var size = (nuint)Marshal.SizeOf<ListViewHitTestInfo>();
-            remoteBuffer = VirtualAllocEx(process, nint.Zero, size, MemCommit | MemReserve, PageReadWrite);
-            if (remoteBuffer == nint.Zero ||
-                !WriteProcessMemory(process, remoteBuffer, ref hitTest, size, out var bytesWritten) ||
-                bytesWritten != size)
+            if (HasRoomInspectionTime(query.Deadline))
             {
-                return false;
+                remoteBuffer = VirtualAllocEx(process, nint.Zero, size, MemCommit | MemReserve, PageReadWrite);
+                if (remoteBuffer != nint.Zero && HasRoomInspectionTime(query.Deadline) &&
+                    WriteProcessMemory(process, remoteBuffer, ref hitTest, size, out var bytesWritten) &&
+                    bytesWritten == size && IsCapturedDesktopIconTarget(query) && HasRoomInspectionTime(query.Deadline))
+                {
+                    // This worker retains the LVM_HITTEST buffer until the synchronous control query returns.
+                    // A caller timeout only abandons its result; it never frees resources or reopens the slot.
+                    Marshal.SetLastPInvokeError(0);
+                    var hitTestResult = SendRoomIconMessage(query.ListView, LvmHitTest, nint.Zero, remoteBuffer);
+                    var sendError = Marshal.GetLastPInvokeError();
+                    if (sendError == 0 && IsCapturedDesktopIconTarget(query)) result = new(true, hitTestResult);
+                }
             }
-
-            if (SendMessageTimeout(
-                    listView,
-                    LvmHitTest,
-                    nint.Zero,
-                    remoteBuffer,
-                    SmtoAbortIfHung,
-                    75,
-                    out var hitTestResult) == nint.Zero)
-            {
-                return false;
-            }
-
-            iconHit = hitTestResult.ToInt64() >= 0;
-            return true;
         }
         finally
         {
             if (remoteBuffer != nint.Zero)
             {
-                _ = VirtualFreeEx(process, remoteBuffer, 0, MemRelease);
+                cleanupSucceeded = VirtualFreeEx(process, remoteBuffer, 0, MemRelease);
             }
 
-            _ = CloseHandle(process);
+            cleanupSucceeded &= CloseHandle(process);
+            if (!cleanupSucceeded)
+            {
+                // Keep the process-wide service closed if cleanup failed; never accumulate remote allocations.
+                DesktopIconQueries.Dispose();
+            }
         }
+
+        return cleanupSucceeded ? result : default;
     }
+
+    private static bool IsCapturedDesktopIconTarget(DesktopIconQuery query) =>
+        IsValidDesktopTarget(query.Target) &&
+        TryGetRoomWindowIdentity(query.Target.ParentHandle, out _, out var parentProcess) && parentProcess == query.ProcessId &&
+        TryGetRoomWindowIdentity(query.Target.WallpaperLayerHandle, out _, out var layerProcess) && layerProcess == query.ProcessId &&
+        TryGetRoomWindowIdentity(query.Target.ShellViewHandle, out var shellClass, out var shellProcess) &&
+        shellClass == "SHELLDLL_DefView" && shellProcess == query.ProcessId &&
+        GetParent(query.Target.ShellViewHandle) == query.ShellParent && IsValidWindow(query.ShellParent) &&
+        TryGetRoomWindowIdentity(query.ListView, out var listClass, out var listProcess) &&
+        listClass == "SysListView32" && listProcess == query.ProcessId &&
+        GetParent(query.ListView) == query.ListParent && IsChild(query.Target.ShellViewHandle, query.ListView);
+
+    private readonly record struct DesktopIconQuery(WorkerWDesktopTarget Target, nint ListView,
+        nint ShellParent, nint ListParent, uint ProcessId, int ScreenX, int ScreenY, long Deadline);
 
     public static (int Width, int Height) AttachWorkerWLayeredHost(
         nint hostWindow,
@@ -421,17 +455,18 @@ internal static partial class NativeMethods
     private static bool HasExtendedStyle(nint windowHandle, nint style) =>
         (GetWindowLongPtr(windowHandle, GwlExStyle) & style) == style;
 
-    private static nint FindDescendantWindowByClass(nint parentWindow, string className)
+    private static nint FindDescendantWindowByClass(nint parentWindow, string className, long? deadlineTimestamp = null)
     {
         var child = nint.Zero;
         while ((child = FindWindowEx(parentWindow, child, null, null)) != nint.Zero)
         {
+            if (!HasRoomInspectionTime(deadlineTimestamp)) return nint.Zero;
             if (string.Equals(GetWindowClassName(child), className, StringComparison.Ordinal))
             {
                 return child;
             }
 
-            var descendant = FindDescendantWindowByClass(child, className);
+            var descendant = FindDescendantWindowByClass(child, className, deadlineTimestamp);
             if (descendant != nint.Zero)
             {
                 return descendant;
@@ -551,6 +586,9 @@ internal static partial class NativeMethods
         uint flags,
         uint timeoutMilliseconds,
         out nint result);
+
+    [DllImport("user32.dll", EntryPoint = "SendMessageW", SetLastError = true)]
+    private static extern nint SendRoomIconMessage(nint windowHandle, uint message, nint wordParameter, nint longParameter);
 
     [DllImport("user32.dll")]
     private static extern nint GetParent(nint childWindow);

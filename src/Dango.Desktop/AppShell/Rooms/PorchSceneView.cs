@@ -30,6 +30,9 @@ public sealed class PorchSceneView : Grid
         new("preview-private", "小茶室", "私密共同房", 1000),
         new("preview-public", "云间", "公共共同房", 1220),
     ];
+    private static readonly PreviewDoor[] LocalDoors = [new("local-single", "普通房", "本地单人", 560)];
+    private bool localRoomEnabled;
+    private PreviewDoor[] VisibleDoors => IsReviewMode ? ReviewDoors : localRoomEnabled ? LocalDoors : [];
     private readonly PorchCameraController camera = new();
     private readonly Canvas liveLayer = new() { IsHitTestVisible = false };
     private readonly DeformableDangoVisual body = new() { ShowHat = false, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
@@ -53,8 +56,9 @@ public sealed class PorchSceneView : Grid
 
     internal event Action<string>? DoorSelected;
     internal event Action? GameplayFocusRequested;
+    internal event Action? LocalRoomRequested;
     internal bool IsReviewMode { get; private set; }
-    internal int DoorCount => IsReviewMode ? ReviewDoors.Length : 0;
+    internal int DoorCount => VisibleDoors.Length;
     internal bool CanEnterRoom => false;
     internal double PetWorldX { get; private set; } = 560;
     internal double CameraX => camera.CameraX;
@@ -64,10 +68,16 @@ public sealed class PorchSceneView : Grid
     internal double DoorBottomY => BackWallGroundY;
     internal double FrontGroundY => ActualHeight - 48 * SceneScale;
     internal string? SelectedDoorId => selectedDoor;
-    private PreviewDoor? NearestDoor => IsReviewMode ? ReviewDoors.MinBy(door => Math.Abs(door.X - PetWorldX)) : null;
+    private PreviewDoor? NearestDoor => VisibleDoors.MinBy(door => Math.Abs(door.X - PetWorldX));
     internal string? NearbyDoorId => NearestDoor is { } door && Math.Abs(door.X - PetWorldX) <= InteractionDistance ? door.Id : null;
-    internal IReadOnlyList<Rect> DoorBounds => IsReviewMode ? Array.AsReadOnly(ReviewDoors.Select(DoorRect).ToArray()) : Array.Empty<Rect>();
+    internal IReadOnlyList<Rect> DoorBounds => Array.AsReadOnly(VisibleDoors.Select(DoorRect).ToArray());
     internal DeformableDangoVisual LiveBody => body;
+    internal void SetLocalRoomEnabled(bool enabled)
+    {
+        localRoomEnabled = enabled;
+        AutomationProperties.SetName(this, "二维门廊，普通房为本地单人");
+        InvalidateVisual();
+    }
 
     internal void SetReviewMode(bool enabled)
     {
@@ -121,6 +131,13 @@ public sealed class PorchSceneView : Grid
         if (Math.Abs(door.X - PetWorldX) > InteractionDistance)
         { status = "走近房门，再按 W"; InvalidateVisual(); return false; }
         selectedDoor = door.Id;
+        if (door.Id == "local-single")
+        {
+            status = "准备进入普通房 · 本地单人";
+            LocalRoomRequested?.Invoke();
+            InvalidateVisual();
+            return true;
+        }
         status = $"{door.Name} · 仅选门预览，未接入房间";
         DoorSelected?.Invoke(door.Id);
         InvalidateVisual();
@@ -131,9 +148,8 @@ public sealed class PorchSceneView : Grid
     {
         GameplayFocusRequested?.Invoke();
         base.OnMouseLeftButtonDown(e);
-        if (!IsReviewMode) return;
         var pointer = e.GetPosition(this);
-        foreach (var door in ReviewDoors)
+        foreach (var door in VisibleDoors)
             if (DoorRect(door).Contains(pointer)) { SelectPreviewDoor(door); e.Handled = true; break; }
     }
 
@@ -153,10 +169,10 @@ public sealed class PorchSceneView : Grid
                 new Point(ActualWidth * .48, BackWallGroundY + 20), ActualWidth * .46, ActualHeight * .75);
         dc.DrawRectangle(soft, null, new Rect(0, Math.Max(0, BackWallGroundY), ActualWidth, Math.Max(0, ActualHeight - BackWallGroundY)));
         dc.DrawLine(new Pen(line, 1), new Point(0, BackWallGroundY), new Point(ActualWidth, BackWallGroundY));
-        if (IsReviewMode)
+        if (VisibleDoors.Length != 0)
         {
             var nearbyDoorId = NearbyDoorId;
-            foreach (var door in ReviewDoors)
+            foreach (var door in VisibleDoors)
             {
                 var rect = DoorRect(door);
                 if (rect.Right < 0 || rect.Left > ActualWidth) continue;

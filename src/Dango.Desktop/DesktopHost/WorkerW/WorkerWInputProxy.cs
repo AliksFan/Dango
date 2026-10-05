@@ -28,6 +28,7 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
     private readonly Action completeDrag;
     private readonly Action cancelDrag;
     private readonly Action<double, double>? completePointer;
+    private readonly Action? contextRequested;
     private readonly WorkerWDesktopTarget target;
     private readonly WinFormsTimer inputPriorityTimer;
     private NativeMethods.NativePoint dragOrigin;
@@ -47,7 +48,7 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
         Action<double, double> moveDrag,
         Action completeDrag,
         Action cancelDrag,
-        Action<double, double>? completePointer = null)
+        Action<double, double>? completePointer = null, Action? contextRequested = null)
     {
         this.target = target;
         this.beginDrag = beginDrag;
@@ -55,6 +56,7 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
         this.completeDrag = completeDrag;
         this.cancelDrag = cancelDrag;
         this.completePointer = completePointer;
+        this.contextRequested = contextRequested;
         inputPriorityTimer = new WinFormsTimer
         {
             Interval = 50,
@@ -131,6 +133,10 @@ internal sealed class WorkerWInputProxy : WinFormsNativeWindow, IDisposable
     {
         switch (message.Msg)
         {
+            case 0x0205 when enabled && contextRequested is not null: // WM_RBUTTONUP, bounded pet proxy only
+                CancelActiveDrag();
+                contextRequested();
+                return;
             case WmNcHitTest when enabled:
                 message.Result = HtClient;
                 return;

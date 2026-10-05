@@ -1,7 +1,11 @@
 using System.Drawing;
 using Forms = System.Windows.Forms;
+using Dango.Desktop.AppShell.Rooms;
 
 namespace Dango.Desktop.AppShell.Tray;
+
+internal sealed record LocalRoomTrayActions(Func<bool> IsSelected, Func<bool> IsVisible,
+    Action Restore, Action Hide, Action Return, Action<LocalRoomPresentation> Present, Action<RoomViewPreset> View, Action Recover);
 
 internal sealed class DangoTrayIcon : IDisposable
 {
@@ -11,17 +15,19 @@ internal sealed class DangoTrayIcon : IDisposable
     private readonly Action requestExit;
     private readonly Forms.NotifyIcon notifyIcon;
     private readonly Forms.ToolStripMenuItem visibilityItem;
+    private readonly LocalRoomTrayActions? localRoom;
 
     public DangoTrayIcon(
         ApplicationCommandController commandController,
         Action showControlCenter,
         Action showDiagnostics,
-        Action requestExit)
+        Action requestExit, LocalRoomTrayActions? localRoom = null)
     {
         this.commandController = commandController ?? throw new ArgumentNullException(nameof(commandController));
         this.showControlCenter = showControlCenter ?? throw new ArgumentNullException(nameof(showControlCenter));
         this.showDiagnostics = showDiagnostics ?? throw new ArgumentNullException(nameof(showDiagnostics));
         this.requestExit = requestExit ?? throw new ArgumentNullException(nameof(requestExit));
+        this.localRoom = localRoom;
 
         var openItem = new Forms.ToolStripMenuItem("打开 Dango 控制中心");
         openItem.Click += (_, _) => this.showControlCenter();
@@ -39,6 +45,26 @@ internal sealed class DangoTrayIcon : IDisposable
         menu.Opening += (_, _) => RefreshVisibilityText();
         menu.Items.Add(openItem);
         menu.Items.Add(visibilityItem);
+        if (localRoom is not null)
+        {
+            var roomMenu = new Forms.ToolStripMenuItem("普通房 · 本地单人");
+            void Add(Forms.ToolStripMenuItem parent, string text, Action action)
+            { var item = new Forms.ToolStripMenuItem(text); item.Click += (_, _) => action(); parent.DropDownItems.Add(item); }
+            Add(roomMenu, "恢复房间", localRoom.Restore);
+            Add(roomMenu, "隐藏房间", localRoom.Hide);
+            Add(roomMenu, "恢复团子并重试", localRoom.Recover);
+            Add(roomMenu, "房门 · 返回门廊", localRoom.Return);
+            var presentation = new Forms.ToolStripMenuItem("显示方式");
+            Add(presentation, "窗口", () => localRoom.Present(LocalRoomPresentation.Window));
+            Add(presentation, "壁纸", () => localRoom.Present(LocalRoomPresentation.Wallpaper));
+            roomMenu.DropDownItems.Add(presentation);
+            var view = new Forms.ToolStripMenuItem("视角");
+            Add(view, "标准", () => localRoom.View(RoomViewPreset.Standard));
+            Add(view, "近景", () => localRoom.View(RoomViewPreset.Near));
+            Add(view, "全景", () => localRoom.View(RoomViewPreset.Whole));
+            roomMenu.DropDownItems.Add(view);
+            menu.Items.Add(roomMenu);
+        }
         menu.Items.Add(diagnosticsItem);
         menu.Items.Add(new Forms.ToolStripSeparator());
         menu.Items.Add(exitItem);
@@ -50,7 +76,7 @@ internal sealed class DangoTrayIcon : IDisposable
             Text = "Dango 控制中心",
             Visible = true,
         };
-        notifyIcon.DoubleClick += (_, _) => this.showControlCenter();
+        notifyIcon.DoubleClick += (_, _) => { if (this.localRoom?.IsSelected() == true) this.localRoom.Restore(); else this.showControlCenter(); };
         RefreshVisibilityText();
     }
 
@@ -63,9 +89,12 @@ internal sealed class DangoTrayIcon : IDisposable
 
     public void ShowSettingsWarning(string message) => notifyIcon.ShowBalloonTip(
         5000, "Dango 设置未保存", message, Forms.ToolTipIcon.Warning);
+    public void ShowRoomWarning(string message) => notifyIcon.ShowBalloonTip(5000, "Dango 普通房", message, Forms.ToolTipIcon.Warning);
 
     private void ToggleVisibility()
     {
+        if (localRoom?.IsSelected() == true)
+        { if (localRoom.IsVisible()) localRoom.Hide(); else localRoom.Restore(); RefreshVisibilityText(); return; }
         var snapshot = commandController.GetSnapshot();
         if (!snapshot.IsVisible && !commandController.CanShowDesktop)
         {
@@ -87,6 +116,8 @@ internal sealed class DangoTrayIcon : IDisposable
 
     private void RefreshVisibilityText()
     {
+        if (localRoom?.IsSelected() == true)
+        { visibilityItem.Text = localRoom.IsVisible() ? "隐藏普通房" : "恢复普通房"; visibilityItem.Enabled = true; return; }
         var isVisible = commandController.GetSnapshot().IsVisible;
         visibilityItem.Text = !commandController.CanShowDesktop ? "进入房间后显示桌面团子"
             : isVisible ? "隐藏桌面团子" : "显示桌面团子";

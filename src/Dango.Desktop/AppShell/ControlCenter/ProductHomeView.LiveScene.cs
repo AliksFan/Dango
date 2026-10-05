@@ -17,11 +17,45 @@ public partial class ProductHomeView
     private DirectionalControlIntent liveIntent;
     private LogicalPoint? visualAnchor;
     private Window? ownerWindow;
+    private bool liveSceneSuspended;
+    private long porchReturnGeneration;
+    private EventHandler? porchConfirmation;
+    private bool porchFrameHealthy;
+    internal event Action<long>? HealthyPorchFrameReady;
 
     internal DesktopSceneSession? BoundSceneSession { get; private set; }
     internal StackedDangoSceneRuntime? BoundRuntime { get; private set; }
     internal bool OwnsLiveFrameDriver => liveScheduler?.OwnsRuntime == true;
     internal void ReleaseLiveScene() => StopLiveScene();
+
+    internal void SuspendForRoom()
+    {
+        if (IsInPorch) porchResumeX = PorchScene.PetWorldX;
+        ClearLiveDirectionalInput();
+        if (OwnsLiveFrameDriver) BoundRuntime!.CancelInput();
+        liveSceneSuspended = true;
+        StopLiveScene();
+    }
+
+    internal void ResumePorch(long generation = 0)
+    {
+        porchReturnGeneration = generation;
+        ShowHomePage();
+        EnterPorch();
+        ChangeLiveSurface();
+        liveSceneSuspended = false;
+        RefreshLiveSceneOwnership();
+    }
+
+    internal void ResumeHomeAfterRoom()
+    {
+        porchReturnGeneration = 0;
+        ShowHomePage();
+        porchPhysicsConfigured = true; // The room also owns native sides; Home must explicitly clear them.
+        ChangeLiveSurface();
+        liveSceneSuspended = false;
+        RefreshLiveSceneOwnership();
+    }
 
     internal void BindLiveScene(DesktopSceneSession session, StackedDangoSceneRuntime runtime)
     {
@@ -55,7 +89,7 @@ public partial class ProductHomeView
 
     private void RefreshLiveSceneOwnership()
     {
-        if (BoundRuntime is null || !IsLoaded || !IsVisible || IsSettingsOpen)
+        if (liveSceneSuspended || BoundRuntime is null || !IsLoaded || !IsVisible || IsSettingsOpen)
         {
             StopLiveScene();
             return;
@@ -90,6 +124,9 @@ public partial class ProductHomeView
     {
         var mayStopRuntime = liveScheduler?.OwnsRuntime == true || BoundRuntime?.FrameDriver is null;
         liveScheduler?.Stop();
+        porchFrameHealthy = false;
+        if (porchConfirmation is not null) System.Windows.Media.CompositionTarget.Rendering -= porchConfirmation;
+        porchConfirmation = null;
         liveIntent = DirectionalControlIntent.None;
         visualAnchor = null;
         if (mayStopRuntime && BoundRuntime?.IsRunning == true) BoundRuntime.Stop();
@@ -116,8 +153,9 @@ public partial class ProductHomeView
 
     private void ApplyLiveFrame(StackedPhysicsPresentationFrame frame)
     {
+        porchFrameHealthy = false;
         if (BoundRuntime is null) return;
-        if (frame.Bodies.Count == 0 || frame.ConstraintsReleased || BoundRuntime.LastError is not null ||
+        if (frame.Bodies.Count == 0 || !frame.Bodies[0].IsVisible || frame.ConstraintsReleased || BoundRuntime.LastError is not null ||
             frame.Bodies[0].FallbackReason != PhysicsPresentationFallbackReason.None)
         {
             LiveDangoVisual.Visibility = LiveDangoHat.Visibility = Visibility.Collapsed;
@@ -137,6 +175,8 @@ public partial class ProductHomeView
             PorchScene.ApplyFrame(frame, BoundRuntime, now - lastPorchFrame, ReduceMotion || !SystemParameters.ClientAreaAnimation);
             lastPorchFrame = now;
             LiveSceneStatusText.Visibility = Visibility.Collapsed;
+            porchFrameHealthy = PorchScene.LiveBody.Visibility == Visibility.Visible && PorchScene.LiveBody.LastContourFailure == DangoContourFailure.None;
+            ConfirmHealthyPorchFrame();
             return;
         }
         var bounds = DangoHostFrameBinding.Bounds(frame, 0);
@@ -149,6 +189,27 @@ public partial class ProductHomeView
             hatSize: BoundRuntime.DisplayHatSize,
             bodyFillOverride: BoundRuntime.BodyPreviewFill);
         LiveSceneStatusText.Visibility = Visibility.Collapsed;
+    }
+
+    private void ConfirmHealthyPorchFrame()
+    {
+        if (!porchFrameHealthy || porchReturnGeneration == 0 || porchConfirmation is not null) return;
+        var attempt = porchReturnGeneration;
+        porchConfirmation = (_, _) =>
+        {
+            System.Windows.Media.CompositionTarget.Rendering -= porchConfirmation;
+            porchConfirmation = null;
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (!porchFrameHealthy || porchReturnGeneration != attempt || !IsInPorch || !IsVisible || !OwnsLiveFrameDriver ||
+                    liveSurfaceNeedsAlignment || liveSurfaceFailure is not null || BoundRuntime?.LastError is not null ||
+                    PorchScene.LiveBody.LastContourFailure != DangoContourFailure.None ||
+                    PresentationSource.FromVisual(PorchScene) is null) return;
+                porchReturnGeneration = 0;
+                HealthyPorchFrameReady?.Invoke(attempt);
+            }, System.Windows.Threading.DispatcherPriority.Render);
+        };
+        System.Windows.Media.CompositionTarget.Rendering += porchConfirmation;
     }
 
     private void SetLivePreviewColor(Color color)
