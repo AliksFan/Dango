@@ -49,6 +49,8 @@ public sealed class FaceReviewEntryTests
         Assert.ThrowsExactly<FileNotFoundException>(() => Resolve(NewRoot()));
         var daily = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Dango");
         Assert.ThrowsExactly<InvalidDataException>(() => Resolve(daily));
+        Assert.ThrowsExactly<InvalidDataException>(() => Resolve(daily + "."));
+        Assert.ThrowsExactly<InvalidDataException>(() => Resolve(daily + " "));
         Assert.ThrowsExactly<InvalidDataException>(() => Resolve(Path.Combine(daily, "fictional-review")));
         Assert.ThrowsExactly<InvalidDataException>(() => Resolve(Path.GetDirectoryName(daily)!));
         Assert.ThrowsExactly<InvalidDataException>(() => Resolve(AppContext.BaseDirectory));

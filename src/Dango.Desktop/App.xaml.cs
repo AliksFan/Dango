@@ -132,6 +132,8 @@ public partial class App : System.Windows.Application
         static bool IsWithin(string candidate, string parent) => candidate.Equals(parent.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)
             || candidate.StartsWith(parent.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
         if (!Path.IsPathFullyQualified(directory) || root.Length < 3 || root[1] != ':' ||
+            root.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                .Any(component => component.EndsWith('.') || component.EndsWith(' ')) ||
             Path.GetPathRoot(root)?.TrimEnd(Path.DirectorySeparatorChar) == root ||
             IsWithin(root, dailyRoot) || IsWithin(dailyRoot, root) ||
             IsWithin(root, AppContext.BaseDirectory) || IsWithin(AppContext.BaseDirectory, root))
