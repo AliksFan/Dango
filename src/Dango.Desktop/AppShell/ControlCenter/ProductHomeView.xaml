@@ -247,8 +247,9 @@
                     <TextBlock x:Name="LiveSceneStatusText" Text="界面预览 · 无实时场景" FontSize="12" TextAlignment="Center"
                                Foreground="{DynamicResource HomeMuted}" VerticalAlignment="Center" IsHitTestVisible="False" />
                     </Grid>
-                    <StackPanel x:Name="Launchers" HorizontalAlignment="Center" Margin="0,24,0,0">
-                        <Button x:Name="EnterRoomButton" Style="{StaticResource Launcher}" HorizontalAlignment="Center" Margin="0,0,0,4"
+                </StackPanel>
+                <Canvas x:Name="Launchers" Grid.RowSpan="2" Grid.ColumnSpan="3" VerticalAlignment="Top">
+                        <Button x:Name="EnterRoomButton" Style="{StaticResource Launcher}"
                                 Click="OnEnterRoomClick" ToolTip="W · 进入门廊，前往房间" AutomationProperties.Name="W · 进入门廊，前往房间">
                             <StackPanel Orientation="Horizontal">
                                 <Border Style="{StaticResource ShortcutKeycap}">
@@ -260,7 +261,6 @@
                                 </Canvas></Viewbox>
                             </StackPanel>
                         </Button>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                         <Button x:Name="FaceButton" Style="{StaticResource Launcher}" Click="OnFaceClick" ToolTip="D · 捏脸" AutomationProperties.Name="D · 捏脸">
                             <StackPanel Orientation="Horizontal">
                                 <Border Style="{StaticResource ShortcutKeycap}">
@@ -274,7 +274,7 @@
                                 </Canvas></Viewbox>
                             </StackPanel>
                         </Button>
-                        <Button x:Name="WardrobeButton" Style="{StaticResource Launcher}" Margin="12,0,0,0" Click="OnWardrobeClick" ToolTip="A · 换装" AutomationProperties.Name="A · 换装">
+                        <Button x:Name="WardrobeButton" Style="{StaticResource Launcher}" Click="OnWardrobeClick" ToolTip="A · 换装" AutomationProperties.Name="A · 换装">
                             <StackPanel Orientation="Horizontal">
                                 <Border Style="{StaticResource ShortcutKeycap}">
                                     <TextBlock Text="A" FontSize="12" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -285,9 +285,7 @@
                                 </Canvas></Viewbox>
                             </StackPanel>
                         </Button>
-                        </StackPanel>
-                    </StackPanel>
-                </StackPanel>
+                </Canvas>
                 <Grid x:Name="EditorPanel" Grid.Column="2" Opacity="0" Visibility="Hidden" IsEnabled="False" IsHitTestVisible="False"
                       Margin="4,10,4,10" MinHeight="310" VerticalAlignment="Top" KeyboardNavigation.TabNavigation="Continue" AutomationProperties.Name="外观预览选项">
                     <Grid.RenderTransform><TranslateTransform x:Name="PanelTranslation" X="46" /></Grid.RenderTransform>

@@ -85,10 +85,11 @@ public sealed class HomePresentationLayoutTests
     }
 
     [STATestMethod]
+    [DataRow(480, 270)]
     [DataRow(640, 360)]
     [DataRow(960, 540)]
     [DataRow(360, 640)]
-    public void HomeIconEntriesExposeDAndAAndPlaceTheWorkingWDoorAboveThem(int width, int height)
+    public void HomeIconEntriesPlaceWardrobeOnTheLeftFaceOnTheRightAndTheWorkingDoorAboveTheDango(int width, int height)
     {
         var home = new ProductHomeView { ReduceMotion = true };
         var size = new Size(width, height);
@@ -124,12 +125,27 @@ public sealed class HomePresentationLayoutTests
             StringAssert.Contains(AutomationProperties.GetName(button), action,
                 $"{name} needs an understandable accessible action name.");
             AssertInside(Bounds(home, "Stage"), Bounds(home, name), name);
-            AssertNoOverlap(Bounds(home, "PetPreview"), Bounds(home, name), name + " and the Dango preview");
+            if (name == "EnterRoomButton")
+                AssertNoOverlap(Bounds(home, "PetPreview"), Bounds(home, name), name + " and the Dango preview");
             AssertNoOverlap(Bounds(home, "PetShadow"), Bounds(home, name), name + " and the ground shadow");
         }
         var door = Bounds(home, "EnterRoomButton");
-        Assert.IsTrue(door.Bottom + 3 <= Math.Min(Bounds(home, "FaceButton").Top, Bounds(home, "WardrobeButton").Top),
-            "The W door must form a separate row above the D/A entries.");
+        var preview = Bounds(home, "PetPreview");
+        var face = Bounds(home, "FaceButton");
+        var wardrobe = Bounds(home, "WardrobeButton");
+        var previewCenter = preview.Left + preview.Width / 2;
+        Assert.IsTrue(door.Bottom + 3 <= preview.Top,
+            $"The W door must be entirely above the Dango; door {door}, preview {preview}.");
+        Assert.AreEqual(previewCenter, door.Left + door.Width / 2, 1,
+            "The W door must align with the Dango's horizontal anchor.");
+        Assert.IsTrue(wardrobe.Right + 3 <= previewCenter && face.Left >= previewCenter + 3,
+            $"A must be on the left and D on the right of the Dango; A {wardrobe}, D {face}, preview {preview}.");
+        Assert.AreEqual(wardrobe.Top + wardrobe.Height / 2, face.Top + face.Height / 2, 1,
+            "The A and D entries must share one horizontal row on either side of the Dango.");
+        foreach (var (name, bounds) in new[] { ("A", wardrobe), ("D", face) })
+            Assert.IsTrue(bounds.Top < preview.Bottom && bounds.Bottom > preview.Top,
+                $"The {name} entry must sit beside the Dango rather than below it; entry {bounds}, preview {preview}.");
+        AssertNoOverlap(wardrobe, face, "A and D entries");
         AssertNoBottomShortcutDescription(home);
         Click(home, "EnterRoomButton");
         Assert.IsTrue(home.IsInPorch, "The W door must enter the existing porch instead of showing a cosmetic response.");
@@ -173,6 +189,7 @@ public sealed class HomePresentationLayoutTests
         var names = new[] { "DefaultAppearanceButton", "CancelAppearanceButton", "ApplyButton" };
         var stage = Bounds(home, "Stage");
         var shadow = Bounds(home, "PetShadow");
+        var saving = Bounds(home, "FaceEditorSaveActions");
         var row = names.Select(name => Bounds(home, name)).ToArray();
         foreach (var (name, index) in names.Select((name, index) => (name, index)))
         {
@@ -191,8 +208,28 @@ public sealed class HomePresentationLayoutTests
         }
         Assert.IsTrue(row[0].Right + 3 <= row[1].Left && row[1].Right + 3 <= row[2].Left,
             "Default, cancel and apply must keep separate hit targets in that order.");
-        Assert.AreEqual(Bounds(home, "FaceEditorSaveActions").Right, row[2].Right, 1,
+        Assert.AreEqual(saving.Right, row[2].Right, 1,
             "The apply icon must align to the right edge of the fixed saving area.");
+        AssertInside(Bounds(home, "FaceEditorTools"), saving, "fixed saving area within preview tools");
+        if (height > width * 1.2)
+        {
+            var tools = Element<FrameworkElement>(home, "FaceEditorTools");
+            var preview = Bounds(home, "PetPreview");
+            Assert.AreEqual(0, Grid.GetRow(tools), "Portrait tools must use the upper preview row.");
+            Assert.AreEqual(1, Grid.GetRowSpan(tools), "Portrait tools must not span to the page bottom.");
+            Assert.AreEqual(preview.Width, saving.Width, 1,
+                "Portrait saving controls must use the Dango preview width rather than the page width.");
+            Assert.AreEqual(preview.Left, saving.Left, 1,
+                "Portrait saving controls must share the Dango's horizontal anchor.");
+            var previewArea = new Rect(stage.Left, stage.Top, stage.Width,
+                Element<RowDefinition>(home, "PresenceStageRow").ActualHeight);
+            AssertInside(previewArea, saving, "portrait saving area in the upper preview region");
+            AssertInside(Bounds(home, "HomeContent"), saving, "portrait saving area in the visible window");
+            Assert.IsTrue(saving.Top >= shadow.Bottom + 3,
+                "Portrait saving feedback and actions must stay below the ground shadow.");
+            Assert.IsTrue(saving.Bottom + 3 <= Bounds(home, "EditorPanel").Top,
+                "Portrait saving controls must sit above the lower parameter area, not at the bottom of the page.");
+        }
         Element<ScrollViewer>(home, "HomeContent").ScrollToBottom();
         home.UpdateLayout();
         foreach (var name in names)

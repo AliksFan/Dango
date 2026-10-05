@@ -46,14 +46,14 @@ public sealed class FaceEditorLayoutTests
         Assert.AreEqual(Visibility.Collapsed, Element<TextBlock>(home, "EditorTitle").Visibility,
             "The face title must release its space rather than keep an empty heading slot.");
         Assert.IsTrue(viewport.Top <= parameterColumn.Top + 8,
-            $"Face parameters should start at the top of the left column; parameters {parameterColumn}, viewport {viewport}.");
+            $"Face parameters should start at the top of the right column; parameters {parameterColumn}, viewport {viewport}.");
         foreach (var name in Tools)
         {
             var tool = Element<FrameworkElement>(home, name);
             var bounds = Bounds(home, name);
             Assert.IsFalse(options.IsAncestorOf(tool), $"{name} must not scroll with the parameter list.");
-            Assert.IsTrue(bounds.Left >= parameterColumn.Right + 4,
-                $"{name} must use the right preview column; tool {bounds}, parameters {parameterColumn}.");
+            Assert.IsTrue(bounds.Right <= parameterColumn.Left - 4,
+                $"{name} must use the left preview column; tool {bounds}, parameters {parameterColumn}.");
             AssertInside(stage, bounds, name);
             AssertNoOverlap(preview, bounds, $"{name} and the Dango preview");
         }
@@ -70,7 +70,7 @@ public sealed class FaceEditorLayoutTests
         Assert.IsTrue(Bounds(home, "AppearanceStatus").Bottom <= Bounds(home, "ApplyButton").Top,
             "Saving feedback must not overlap the fixed action row.");
         AssertDisjointButtons(home);
-        SaveImage(home, size, $"face-right-tools-{width}x{height}");
+        SaveImage(home, size, $"face-left-tools-{width}x{height}");
     }
 
     [STATestMethod]
@@ -128,12 +128,22 @@ public sealed class FaceEditorLayoutTests
         {
             var tool = Bounds(home, name);
             AssertInside(stage, tool, name);
+            AssertInside(Bounds(home, "HomeContent"), tool, name + " in the portrait viewport");
             AssertNoOverlap(pet, tool, $"{name} and the Dango preview");
         }
+        var fixedTools = Element<FrameworkElement>(home, "FaceEditorTools");
+        Assert.AreEqual(0, Grid.GetRow(fixedTools), "Portrait face tools must stay in the upper preview row.");
+        Assert.AreEqual(1, Grid.GetRowSpan(fixedTools), "Portrait face tools must not stretch across the lower parameter row.");
+        var saving = Bounds(home, "FaceEditorSaveActions");
+        var parameters = Bounds(home, "EditorPanel");
+        Assert.IsTrue(saving.Top >= Bounds(home, "PetShadow").Bottom + 3,
+            "Portrait saving controls must remain below the ground shadow.");
+        Assert.IsTrue(saving.Bottom + 3 <= parameters.Top,
+            "Portrait saving controls must belong to the upper preview area, above the separate parameter list.");
         AssertIconRails(home, pet);
         AssertDisjointButtons(home);
         Assert.AreEqual(Visibility.Collapsed, Element<TextBlock>(home, "EditorTitle").Visibility);
-        SaveImage(home, size, $"face-right-tools-portrait-{width}x{height}");
+        SaveImage(home, size, $"face-preview-tools-portrait-{width}x{height}");
     }
 
     [STATestMethod]
@@ -165,7 +175,7 @@ public sealed class FaceEditorLayoutTests
         }
         foreach (var name in Tools)
             AssertNoOverlap(Bounds(home, name), Bounds(home, "RecoverAppearanceButton"), name + " and recovery");
-        SaveImage(home, size, $"face-right-tools-recovery-{width}x{height}");
+        SaveImage(home, size, $"face-preview-tools-recovery-{width}x{height}");
     }
 
     [STATestMethod]

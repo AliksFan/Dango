@@ -65,3 +65,23 @@
 原验收窗口PID8536经精确exe／settings归属核对，确认真实草稿等于当前保存值且无pending后，通过产品设置及所属确认框正常退出（exit0）。没有kill，也没有将上一轮记录覆盖到用户新数据。此次读到用户已保存的大小100、椭圆度0、高度51、眼距24.5，身体／眼睛颜色仍为`#FFE8C2`／`#2B201E`；新窗口和门廊往返后六项读回一致。appearance更新前后SHA256均为`10135A8CED7C7836FA0AD1A912536C91EF96AEEA350CBDB5A8E07AB5A6EAA4F9`。
 
 新验收窗口PID7500保留，仍使用原隔离settings，实际144 DPI、960×540物理像素。仅捕获所属产品窗口的首页、捏脸、换装；检查三者身体贴影、同一高度及清晰键帽，眨眼、睡眠／醒来和W门廊往返可用。现场记录为`artifacts/home-presentation/keycaps-contact-review-window.json`；截图为同目录`keycaps-contact-home-window.png`、`keycaps-contact-face-window.png`、`keycaps-contact-wardrobe-window.png`。实际观感待用户确认，100%／125%系统缩放及其它显示器仍未验证。未合并main、推送或更新日常安装；只保留本任务新验收窗口，无新增服务、端口或持久数据。
+
+## 2026-10-06：三侧入口、镜像面板与纵向保存区
+
+用户要求W＋门移到团子上方、D捏脸改到右边并从右向左展开、A时装相反；经询问明确A／D入口放在团子左右两侧。随后补充纵向按钮超出窗口，恢复默认／取消／应用须位于团子右下而非整页右下。以干净的`bd775bc`开始，只修改首页XAML及布局后置、六个直接相关测试文件和本验证记录。
+
+- 首页入口改为Stage中的独立Canvas：上方W＋门、左A＋T恤、右D＋团子。保持键帽及正常团子尺寸；窄窗口使用预览矩形两侧的空白，三个入口仍在Stage内。W放在跳跃安全空间上方，A／D与实际身体及帽子轮廓保持间隔。两个编辑态均收起首页入口。
+- 横向捏脸参数列在右，工具与团子在左，面板从正X向0展开、退出到正X；时装参数在左、团子在右，方向相反。关闭动画完成前保留所属列。非编辑预览宽度独立于关闭中的分栏，防止小窗口回到首页时产生一个物理像素的横向漂移。
+- 纵向预览工具只占上方PresenceStageRow，保存区与团子预览同宽、同一水平锚点，三按钮仍同排靠右，位于阴影下方。上部按真实保存反馈高度留白，参数列在第二行的OptionsBody内滚动；去掉原本额外强制的300 DIP页面高度和页面底部保存占位。团子高度及尺寸不变。
+
+旧代码的79项相关检查中31项失败、48项通过：`artifacts/home-presentation/results/home-orbit-portrait-red-20261006.trx`。360×640纵向恢复默认按钮位于Y666、超出窗口；原W按钮底边305.333，而真实跳跃最高轮廓110.244。镜像列、入口位置及纵向工具跨度均能够在旧实现下失败。
+
+最终完整回归**104/104通过、零跳过**：`artifacts/home-presentation/results/home-orbit-portrait-delivery-20261006.trx`。保留真实Native的24次起落、接触、顶空、阴影绘制和门廊往返，并新增真实轮廓与三侧入口间隔检查。Face／Wardrobe进出动画用真实WPF时钟验证方向、首帧后继续推进、归零和关闭期间保列；测试在首个渲染帧后读取动画值，未用动画尚未开始时的目标base值冒充首帧。单独动画结果为`orbit-animation-20261006.trx`。
+
+本轮Native证据为`artifacts/test-runs/be4adce416b14a13a04e16b0946d9e4a/home-jump-shadow/`。W按钮与全程真实跳跃最高轮廓净距至少20.244 DIP，A左侧至少19.698、D右侧至少20.978 DIP；落地身体／阴影间隙0.516–1.173 DIP，阴影至少548个实际着色像素。720步门廊往返身体底边差0.011 DIP，阴影地面差0。
+
+隔离Release构建`artifacts/face-review/home-orbit-portrait-20261006-v1/`为0警告、0错误，受保护旧DLL及候选Native哈希不变。PID7500经草稿／保存值和准确exe／settings归属核对，通过产品设置及所属确认正常退出（exit0）；新PID29740沿用原隔离settings。当前用户窗口已是纵向，更新后保留该选择，并通过产品预设往返核对横向960×540与纵向540×960物理像素，均为144 DPI。
+
+现场证据为`artifacts/home-presentation/orbit-portrait-review-window.json`及`orbit-landscape-review-window.json`；同目录`orbit-landscape-{home,face,wardrobe}-window.png`、`orbit-portrait-vertical-{home,face,wardrobe}-window.png`及`orbit-portrait-return-face-window.png`仅捕获本任务产品窗口。纵向八个预览／操作按钮均未offscreen且完整包含在所属窗口边界内。六项外观在窗口更新、眨眼／睡眠、门廊往返及尺寸切换后读回一致，appearance哈希始终为`10135A8CED7C7836FA0AD1A912536C91EF96AEEA350CBDB5A8E07AB5A6EAA4F9`。
+
+最终保留一个本任务验收窗口，显示纵向捏脸页；参数在下方滚动、保存图标位于团子右下。自动和实窗证据不替代用户观感验收，真实100%／125%缩放及其它显示器仍未验证。未合并main、推送、修改日常安装或新增服务／端口。

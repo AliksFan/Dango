@@ -176,6 +176,7 @@ public sealed class HomeJumpShadowTests
         var navigationBottom = navigation.TransformToAncestor(home).TransformBounds(new Rect(navigation.RenderSize)).Bottom;
         var headBoundary = Math.Max(contentTop, navigationBottom) + 8;
         var minimumHead = RenderedHeadTop(home);
+        var settledPetBounds = mode == "Home" ? RenderedPetBounds(home) : Rect.Empty;
         var maxCoreY = groundedCoreY;
         var apexIndex = -1;
         var apexScale = groundedScale;
@@ -221,16 +222,37 @@ public sealed class HomeJumpShadowTests
         Assert.AreEqual(groundedOpacity, shadow.Opacity, .005, $"{mode}: landing must restore the shadow opacity.");
         Assert.IsTrue(minimumHead >= headBoundary,
             $"{mode}: the full body/hat outline reached {minimumHead:F3} DIP, above the safe boundary {headBoundary:F3} DIP.");
+        double? homeDoorBottom = null, homeDoorJumpClearance = null, wardrobeLeftGap = null, faceRightGap = null;
+        if (mode == "Home")
+        {
+            var door = RenderedButtonBounds(home, "EnterRoomButton");
+            homeDoorBottom = door.Bottom;
+            homeDoorJumpClearance = minimumHead - door.Bottom;
+            Assert.IsTrue(homeDoorJumpClearance >= 8,
+                $"Home: the entire W entrance must stay above the real native jump arc by at least 8 DIP; " +
+                $"button bottom {door.Bottom:F3}, highest body/hat outline {minimumHead:F3}, clearance {homeDoorJumpClearance:F3} DIP.");
+            var wardrobe = RenderedButtonBounds(home, "WardrobeButton");
+            var face = RenderedButtonBounds(home, "FaceButton");
+            wardrobeLeftGap = settledPetBounds.Left - wardrobe.Right;
+            faceRightGap = face.Left - settledPetBounds.Right;
+            Assert.IsTrue(wardrobeLeftGap >= 8,
+                $"Home: the entire A wardrobe entry must sit left of the actual grounded body/hat outline with 8 DIP clearance; " +
+                $"entry right {wardrobe.Right:F3}, outline left {settledPetBounds.Left:F3}, gap {wardrobeLeftGap:F3} DIP.");
+            Assert.IsTrue(faceRightGap >= 8,
+                $"Home: the entire D face entry must sit right of the actual grounded body/hat outline with 8 DIP clearance; " +
+                $"entry left {face.Left:F3}, outline right {settledPetBounds.Right:F3}, gap {faceRightGap:F3} DIP.");
+        }
         return new(mode, groundedCoreY, maxCoreY, apexIndex, airborneFrames, minimumHead, headBoundary,
             ground.Y, groundedScale, apexScale, scale.ScaleX, groundedOpacity, apexOpacity, shadow.Opacity,
-            paintedShadowPixels, groundedBodyShadowGap);
+            paintedShadowPixels, groundedBodyShadowGap, homeDoorBottom, homeDoorJumpClearance, wardrobeLeftGap, faceRightGap);
     }
 
     private sealed record JumpEvidence(string Mode, double GroundedCoreY, double ApexCoreY, int ApexFrame,
         int AirborneFrames, double HighestBodyAndHatY, double SafeTopY, double FixedShadowGroundY,
         double GroundedShadowScale, double ApexShadowScale, double LandedShadowScale,
         double GroundedShadowOpacity, double ApexShadowOpacity, double LandedShadowOpacity, int PaintedShadowPixels,
-        double GroundedBodyShadowGap);
+        double GroundedBodyShadowGap, double? HomeDoorBottom, double? HomeDoorJumpClearance,
+        double? WardrobeLeftGap, double? FaceRightGap);
 
     private static double AssertGroundedBodyTouchesShadow(NativeFixture fixture, string mode)
     {
@@ -427,6 +449,27 @@ public sealed class HomeJumpShadowTests
         var path = (DrawingPath)body.FindName("BodyPath");
         Assert.AreEqual(Visibility.Visible, path.Visibility);
         return RenderedPoints(path, home).Max(point => point.Y);
+    }
+
+    private static Rect RenderedPetBounds(ProductHomeView home)
+    {
+        var body = Element<DeformableDangoVisual>(home, "LiveDangoVisual");
+        var hat = Element<DangoHatVisual>(home, "LiveDangoHat");
+        var bodyPath = (DrawingPath)body.FindName("BodyPath");
+        var hatLayer = (Canvas)hat.FindName("HatLayer");
+        var points = new[] { bodyPath }.Concat(hatLayer.Children.OfType<DrawingPath>())
+            .SelectMany(path => RenderedPoints(path, home)).ToArray();
+        Assert.IsTrue(points.Length > 0, "Home entrance separation requires the actual rendered body/hat outlines.");
+        return new Rect(new Point(points.Min(point => point.X), points.Min(point => point.Y)),
+            new Point(points.Max(point => point.X), points.Max(point => point.Y)));
+    }
+
+    private static Rect RenderedButtonBounds(ProductHomeView home, string name)
+    {
+        var button = Element<Button>(home, name);
+        Assert.IsTrue(button.IsVisible && button.ActualWidth > 0 && button.ActualHeight > 0,
+            $"{name} must be a visible home entry before measuring its separation from the native body.");
+        return button.TransformToAncestor(home).TransformBounds(new Rect(button.RenderSize));
     }
 
     private static IEnumerable<Point> RenderedPoints(DrawingPath path, UIElement ancestor)

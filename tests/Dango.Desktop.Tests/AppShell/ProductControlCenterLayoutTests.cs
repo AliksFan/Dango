@@ -149,6 +149,8 @@ public sealed class ProductControlCenterLayoutTests
             home.Measure(size);
             home.Arrange(new Rect(size));
             home.UpdateLayout();
+            Assert.AreEqual(Visibility.Collapsed, ((UIElement)home.FindName("Launchers")).Visibility,
+                $"{editor} editing must hide the home launchers so they do not occupy editor space.");
             var stage = Bounds(home, (FrameworkElement)home.FindName("Stage"));
             var panel = Bounds(home, (FrameworkElement)home.FindName("EditorPanel"));
             Assert.IsTrue(panel.Left >= stage.Left - 1 && panel.Right <= stage.Right + 1 &&
@@ -211,7 +213,7 @@ public sealed class ProductControlCenterLayoutTests
                       Bounds(home, content).Bottom + 1, "Both home actions must remain reachable by scrolling.");
         var normalPreviewSize = Bounds(home, (FrameworkElement)home.FindName("PetPreview")).Size;
 
-        foreach (var (editor, column) in new[] { (HomeEditor.Face, 0), (HomeEditor.Wardrobe, 2) })
+        foreach (var (editor, column) in new[] { (HomeEditor.Face, 2), (HomeEditor.Wardrobe, 0) })
         {
             home.ShowEditor(editor);
             home.UpdateLayout();
