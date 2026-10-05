@@ -45,6 +45,13 @@
                                 </MultiTrigger.Conditions>
                                 <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HomeSelected}" />
                             </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                    <Condition Property="Tag" Value="Primary" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HomeSelected}" />
+                            </MultiTrigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
                                 <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource HomeAccent}" />
                             </Trigger>
@@ -208,8 +215,8 @@
                 <Grid x:Name="EditorPanel" Grid.Column="2" Opacity="0" Visibility="Hidden" IsEnabled="False" IsHitTestVisible="False"
                       Margin="4,10,4,10" MinHeight="310" VerticalAlignment="Top" KeyboardNavigation.TabNavigation="Continue" AutomationProperties.Name="外观预览选项">
                     <Grid.RenderTransform><TranslateTransform x:Name="PanelTranslation" X="46" /></Grid.RenderTransform>
-                    <Grid.RowDefinitions><RowDefinition Height="36" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                    <Grid>
+                    <Grid.RowDefinitions><RowDefinition x:Name="EditorHeadingRow" Height="36" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <Grid x:Name="EditorHeading">
                         <TextBlock x:Name="EditorTitle" Text="捏脸" FontSize="15" VerticalAlignment="Center" />
                         <Button x:Name="CloseEditorButton" Content="×" FontSize="20" Width="36" MinHeight="36" Height="36"
                                 HorizontalAlignment="Right" BorderBrush="Transparent" Padding="0" Click="OnCloseClick"
@@ -220,11 +227,6 @@
                                   CanContentScroll="False" Focusable="False">
                       <Grid>
                         <StackPanel x:Name="FaceOptions">
-                            <WrapPanel Margin="0,0,0,16">
-                                <Button x:Name="AppearanceColorsTab" Content="颜色" Tag="Colors" Click="OnAppearanceTabClick" Margin="0,0,8,0" />
-                                <Button x:Name="AppearanceEyesTab" Content="眼睛" Tag="Eyes" Click="OnAppearanceTabClick" />
-                            </WrapPanel>
-                            <TextBlock x:Name="AppearancePreviewNotice" Text="拖动即时预览 · 应用后保存" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource HomeMuted}" Margin="0,0,0,14" />
                             <StackPanel x:Name="AppearanceColorsPanel">
                                 <TextBlock Text="身体" Margin="0,0,0,8" />
                                 <Button x:Name="BodyColorPickerButton" Click="OnBodyColorPickerClick" HorizontalContentAlignment="Stretch" Margin="0,0,0,12">
@@ -249,23 +251,18 @@
                             </StackPanel>
                             <StackPanel x:Name="AppearanceEyesPanel" Visibility="Collapsed">
                                 <TextBlock x:Name="EyeSizeValue" Text="大小 · 100%" />
-                                <Slider x:Name="EyeSizeSlider" Minimum="70" Maximum="140" Value="100" TickFrequency="1" SmallChange="1" LargeChange="10" IsSnapToTickEnabled="True" ValueChanged="OnEyeSliderChanged" Margin="0,10,0,4" AutomationProperties.Name="眼睛大小" />
-                                <Grid Margin="0,0,0,18"><TextBlock Text="小" FontSize="11" /><TextBlock Text="大" FontSize="11" HorizontalAlignment="Right" /></Grid>
+                                <Slider x:Name="EyeSizeSlider" Minimum="70" Maximum="140" Value="100" TickFrequency="1" SmallChange="1" LargeChange="10" IsSnapToTickEnabled="True" ValueChanged="OnEyeSliderChanged" Margin="0,6,0,2" AutomationProperties.Name="眼睛大小" />
+                                <Grid Margin="0,0,0,8"><TextBlock Text="小" FontSize="11" /><TextBlock Text="大" FontSize="11" HorizontalAlignment="Right" /></Grid>
                                 <TextBlock x:Name="EyeOvalValue" Text="椭圆度 · 圆形" />
-                                <Slider x:Name="EyeOvalSlider" Minimum="-100" Maximum="100" Value="0" TickFrequency="1" SmallChange="1" LargeChange="10" IsSnapToTickEnabled="True" ValueChanged="OnEyeSliderChanged" Margin="0,10,0,4" AutomationProperties.Name="眼睛椭圆度" />
-                                <Grid Margin="0,0,0,18"><TextBlock Text="横椭圆" FontSize="11" /><TextBlock Text="圆形" FontSize="11" HorizontalAlignment="Center" /><TextBlock Text="竖椭圆" FontSize="11" HorizontalAlignment="Right" /></Grid>
+                                <Slider x:Name="EyeOvalSlider" Minimum="-100" Maximum="100" Value="0" TickFrequency="1" SmallChange="1" LargeChange="10" IsSnapToTickEnabled="True" ValueChanged="OnEyeSliderChanged" Margin="0,6,0,2" AutomationProperties.Name="眼睛椭圆度" />
+                                <Grid Margin="0,0,0,8"><TextBlock Text="横椭圆" FontSize="11" /><TextBlock Text="圆形" FontSize="11" HorizontalAlignment="Center" /><TextBlock Text="竖椭圆" FontSize="11" HorizontalAlignment="Right" /></Grid>
                                 <TextBlock x:Name="EyeHeightValue" Text="高度 · 默认" />
-                                <Slider x:Name="EyeHeightSlider" Minimum="32" Maximum="66" Value="51" TickFrequency="1" SmallChange="1" LargeChange="5" IsSnapToTickEnabled="True" ValueChanged="OnEyeSliderChanged" Margin="0,10,0,4" AutomationProperties.Name="眼睛高度" />
-                                <Grid Margin="0,0,0,18"><TextBlock Text="高" FontSize="11" /><TextBlock Text="低" FontSize="11" HorizontalAlignment="Right" /></Grid>
+                                <Slider x:Name="EyeHeightSlider" Minimum="32" Maximum="66" Value="51" TickFrequency="1" SmallChange="1" LargeChange="5" IsSnapToTickEnabled="True" ValueChanged="OnEyeSliderChanged" Margin="0,6,0,2" AutomationProperties.Name="眼睛高度" />
+                                <Grid Margin="0,0,0,8"><TextBlock Text="高" FontSize="11" /><TextBlock Text="低" FontSize="11" HorizontalAlignment="Right" /></Grid>
                                 <TextBlock x:Name="EyeSpacingValue" Text="眼距 · 默认" />
-                                <Slider x:Name="EyeSpacingSlider" Minimum="12" Maximum="34" Value="24.5" TickFrequency="0.5" SmallChange="0.5" LargeChange="2" IsSnapToTickEnabled="True" ValueChanged="OnEyeSliderChanged" Margin="0,10,0,4" AutomationProperties.Name="眼距" />
+                                <Slider x:Name="EyeSpacingSlider" Minimum="12" Maximum="34" Value="24.5" TickFrequency="0.5" SmallChange="0.5" LargeChange="2" IsSnapToTickEnabled="True" ValueChanged="OnEyeSliderChanged" Margin="0,6,0,2" AutomationProperties.Name="眼距" />
                                 <Grid><TextBlock Text="近" FontSize="11" /><TextBlock Text="远" FontSize="11" HorizontalAlignment="Right" /></Grid>
                             </StackPanel>
-                            <WrapPanel Margin="0,16,0,0">
-                                <Button x:Name="PreviewBlinkButton" Content="眨一下" Click="OnAppearanceBlinkClick" Margin="0,0,8,0" />
-                                <Button x:Name="PreviewSleepButton" Content="预览睡眠" Click="OnAppearanceSleepClick" />
-                            </WrapPanel>
-                            <Button x:Name="RecoverAppearanceButton" Content="备份原文件并应用" Click="OnRecoverAppearanceClick" Visibility="Collapsed" HorizontalAlignment="Left" />
                         </StackPanel>
                         <StackPanel x:Name="WardrobeOptions" Visibility="Collapsed">
                             <WrapPanel Margin="0,0,0,24">
@@ -279,17 +276,53 @@
                         </StackPanel>
                       </Grid>
                     </ScrollViewer>
-                    <Grid Grid.Row="2">
-                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="40" /></Grid.RowDefinitions>
-                        <TextBlock x:Name="AppearanceStatus" TextWrapping="Wrap" FontSize="11" Margin="0,0,0,8" Foreground="{DynamicResource HomeMuted}" />
-                        <Grid Grid.Row="1">
+                </Grid>
+                <Grid x:Name="FaceEditorTools" Grid.Column="2" Grid.RowSpan="2" Visibility="Hidden" Opacity="0"
+                      IsEnabled="False" IsHitTestVisible="False" Margin="4,8,4,8" VerticalAlignment="Center"
+                      KeyboardNavigation.TabNavigation="Continue" AutomationProperties.Name="捏脸预览与保存">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition x:Name="FacePreviewRow" Height="*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition x:Name="FaceParameterSpacerRow" Height="0" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel x:Name="FaceEditorTabs">
+                        <Grid>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <Button x:Name="AppearanceColorsTab" Content="颜色" Tag="Colors" Click="OnAppearanceTabClick"
+                                        Padding="18,5" MinHeight="34" Margin="0,0,6,0" AutomationProperties.Name="捏脸：颜色" />
+                                <Button x:Name="AppearanceEyesTab" Content="眼睛" Tag="Eyes" Click="OnAppearanceTabClick"
+                                        Padding="18,5" MinHeight="34" AutomationProperties.Name="捏脸：眼睛" />
+                            </StackPanel>
+                            <Button x:Name="FaceCloseEditorButton" Content="×" FontSize="20" Width="30" MinHeight="30" Height="30"
+                                    HorizontalAlignment="Right" BorderBrush="Transparent" Padding="0" Click="OnCloseClick"
+                                    ToolTip="收起捏脸" AutomationProperties.Name="收起捏脸" />
+                        </Grid>
+                        <TextBlock x:Name="AppearancePreviewNotice" Text="拖动即时预览 · 应用后保存" FontSize="11" TextWrapping="Wrap"
+                                   TextAlignment="Center" Foreground="{DynamicResource HomeMuted}" Margin="0,6,0,0" />
+                    </StackPanel>
+                    <Grid x:Name="FacePreviewSlot" Grid.Row="1" IsHitTestVisible="False" SizeChanged="OnFacePreviewSlotSizeChanged" />
+                    <StackPanel x:Name="FaceEditorPreviewActions" Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,12">
+                        <Button x:Name="PreviewBlinkButton" Content="眨一下" Click="OnAppearanceBlinkClick" Margin="0,0,8,0"
+                                MinHeight="30" Padding="12,4" Background="{DynamicResource HomeSoft}" FontSize="12" />
+                        <Button x:Name="PreviewSleepButton" Content="预览睡眠" Click="OnAppearanceSleepClick"
+                                MinHeight="30" Padding="12,4" FontSize="12" />
+                    </StackPanel>
+                    <StackPanel x:Name="FaceEditorSaveActions" Grid.Row="4">
+                        <TextBlock x:Name="AppearanceStatus" TextWrapping="Wrap" FontSize="11" Margin="0,0,0,8" Foreground="{DynamicResource HomeMuted}"
+                                   AutomationProperties.LiveSetting="Polite" />
+                        <Button x:Name="RecoverAppearanceButton" Content="备份原文件并应用" Click="OnRecoverAppearanceClick" Visibility="Collapsed"
+                                MinHeight="32" Padding="8,4" HorizontalAlignment="Stretch" Margin="0,0,0,8" />
+                        <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                        <Button x:Name="DefaultAppearanceButton" Content="恢复默认" Click="OnDefaultAppearanceClick" Padding="6,8" Margin="0,0,6,0" FontSize="12" />
-                        <Button x:Name="CancelAppearanceButton" Grid.Column="1" Content="取消" Click="OnCancelAppearanceClick" Padding="6,8" Margin="0,0,6,0" FontSize="12" />
-                        <Button x:Name="ApplyButton" Grid.Column="2" Content="应用" IsEnabled="False" MinWidth="76" Padding="6,8"
+                        <Button x:Name="DefaultAppearanceButton" Content="恢复默认" Click="OnDefaultAppearanceClick" Padding="4,6" MinHeight="34" Margin="0,0,6,0" FontSize="12" />
+                        <Button x:Name="CancelAppearanceButton" Grid.Column="1" Content="取消" Click="OnCancelAppearanceClick" Padding="4,6" MinHeight="34" Margin="0,0,6,0" FontSize="12" />
+                        <Button x:Name="ApplyButton" Grid.Column="2" Content="应用" Tag="Primary" IsEnabled="False" Padding="4,6" MinHeight="34"
+                                Background="{DynamicResource HomeSelected}" BorderBrush="{DynamicResource HomeAccent}"
                                 Click="OnApplyAppearanceClick" ToolTip="保存整套外观" AutomationProperties.Name="应用并保存外观" />
                         </Grid>
-                    </Grid>
+                    </StackPanel>
                 </Grid>
                 <Grid x:Name="PorchContent" Grid.Column="0" Grid.ColumnSpan="3" Grid.RowSpan="2"
                       VerticalAlignment="Stretch" Visibility="Hidden" Opacity="0" IsHitTestVisible="False"

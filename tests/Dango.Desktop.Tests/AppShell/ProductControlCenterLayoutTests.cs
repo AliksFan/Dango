@@ -156,13 +156,15 @@ public sealed class ProductControlCenterLayoutTests
                 $"{editor} panel must stay inside the scrollable stage at {width}×{height}; panel {panel}, stage {stage}.");
             var options = Assert.IsInstanceOfType<ScrollViewer>(home.FindName("OptionsBody"),
                 "Editor options need their own scroll viewport when the display is short.");
-            var apply = Bounds(home, (FrameworkElement)home.FindName("ApplyButton"));
-            foreach (var actionName in new[] { "DefaultAppearanceButton", "CancelAppearanceButton", "ApplyButton" })
-            {
-                var action = Bounds(home, (FrameworkElement)home.FindName(actionName));
-                Assert.IsTrue(action.Top >= panel.Top && action.Bottom <= panel.Bottom + 1 && action.Left >= panel.Left - 1 && action.Right <= panel.Right + 1,
-                    $"The fixed {actionName} must remain inside its panel while options scroll.");
-            }
+            var actionNames = editor == HomeEditor.Face
+                ? new[] { "DefaultAppearanceButton", "CancelAppearanceButton", "ApplyButton" }
+                : new[] { "CloseEditorButton" };
+            var actionBounds = actionNames.ToDictionary(name => name,
+                name => Bounds(home, (FrameworkElement)home.FindName(name)));
+            foreach (var (name, action) in actionBounds)
+                Assert.IsTrue(action.Top >= stage.Top && action.Bottom <= stage.Bottom + 1 &&
+                              action.Left >= stage.Left - 1 && action.Right <= stage.Right + 1,
+                    $"The fixed {name} must remain inside its stage while options scroll; action {action}, stage {stage}.");
             if (editor == HomeEditor.Face)
             {
                 var faceOptions = (StackPanel)home.FindName("FaceOptions");
@@ -174,8 +176,9 @@ public sealed class ProductControlCenterLayoutTests
                 options.ScrollToBottom();
                 home.UpdateLayout();
                 Assert.IsTrue(options.VerticalOffset > 0, "The editor must actually scroll to its lower controls.");
-                Assert.IsTrue(Bounds(home, (FrameworkElement)home.FindName("ApplyButton")).Bottom <= panel.Bottom + 1,
-                    "Scrolling options must not displace the fixed action row.");
+                foreach (var (name, before) in actionBounds)
+                    Assert.AreEqual(before, Bounds(home, (FrameworkElement)home.FindName(name)),
+                        $"Scrolling options must not displace the fixed {name}.");
                 faceOptions.Children.Remove(overflowProbe);
             }
         }
@@ -217,7 +220,8 @@ public sealed class ProductControlCenterLayoutTests
             Assert.AreEqual(column, Grid.GetColumn(panel));
             content.ScrollToBottom();
             home.UpdateLayout();
-            Assert.IsTrue(Bounds(home, (FrameworkElement)home.FindName("ApplyButton")).Bottom <=
+            var fixedAction = editor == HomeEditor.Face ? "ApplyButton" : "CloseEditorButton";
+            Assert.IsTrue(Bounds(home, (FrameworkElement)home.FindName(fixedAction)).Bottom <=
                           Bounds(home, content).Bottom + 1, "The editor action must remain reachable by scrolling.");
         }
     }

@@ -24,7 +24,6 @@ public sealed class ProductHomeInteractionTests
         Assert.AreEqual(Visibility.Hidden, Element<UIElement>(home, "EditorPanel").Visibility);
         Assert.IsFalse(Element<UIElement>(home, "EditorPanel").IsEnabled);
         var petBefore = Bounds(home, "PetPreview");
-        var buttonsBefore = Bounds(home, "Launchers");
         var navigationBefore = Bounds(home, "TopNavigation");
         Assert.AreEqual(width / 2d, petBefore.Left + petBefore.Width / 2, 1, "Pet starts centered.");
         Assert.AreEqual(Visibility.Collapsed, Element<UIElement>(home, "HomeNavigation").Visibility,
@@ -34,17 +33,15 @@ public sealed class ProductHomeInteractionTests
         Click(home, "FaceButton");
         Layout(home, width);
         var petAfter = Bounds(home, "PetPreview");
-        var buttonsAfter = Bounds(home, "Launchers");
         var panel = Bounds(home, "EditorPanel");
         Assert.IsTrue(petAfter.Left > petBefore.Left + 20, "Face options on the left must shift the pet right.");
-        Assert.AreEqual(petBefore.Top, petAfter.Top, .1, "Opening must not move the pet vertically.");
-        Assert.AreEqual(buttonsBefore.Top, buttonsAfter.Top, .1);
-        Assert.AreEqual(petAfter.Left - petBefore.Left, buttonsAfter.Left - buttonsBefore.Left, .1);
+        Assert.AreEqual(Visibility.Collapsed, Element<UIElement>(home, "Launchers").Visibility,
+            "Face editing gives the preview column to its own tools.");
         Assert.AreEqual(navigationBefore, Bounds(home, "TopNavigation"));
-        Assert.IsTrue(panel.Right + 4 < Math.Min(petAfter.Left, buttonsAfter.Left),
+        Assert.IsTrue(panel.Right + 4 < petAfter.Left,
             "Face options must enter from the left without overlapping the pet.");
         Assert.IsTrue(panel.Right <= width && panel.Left > 0, "Panel stays inside the window.");
-        Assert.IsTrue(petAfter.Left >= 0 && buttonsAfter.Left >= 0);
+        Assert.IsTrue(petAfter.Left >= 0);
         Assert.IsTrue(Bounds(home, "AppearancePreviewNotice").Bottom <= Bounds(home, "ApplyButton").Top, "Detail text must not overlap apply.");
         Assert.IsFalse(Element<Button>(home, "ApplyButton").IsEnabled, "No fake save.");
         Assert.AreEqual("拖动即时预览 · 应用后保存", Element<TextBlock>(home, "AppearancePreviewNotice").Text);
@@ -54,12 +51,13 @@ public sealed class ProductHomeInteractionTests
         Click(home, "AppearanceEyesTab");
         Layout(home, width);
         Assert.AreEqual(petAfter, Bounds(home, "PetPreview"), "Switching appearance tabs must not shift the pet vertically.");
-        Assert.IsTrue(Bounds(home, "OptionsBody").Bottom <= Bounds(home, "ApplyButton").Top);
+        Assert.IsTrue(Rect.Intersect(Bounds(home, "OptionsBody"), Bounds(home, "FaceEditorTools")).IsEmpty,
+            "Parameters and fixed tools use separate columns.");
         SaveImage(home, width, "eyes");
         Click(home, "AppearanceColorsTab");
 
         Click(home, "PeachButton");
-        Click(home, "WardrobeButton");
+        home.ShowEditor(HomeEditor.Wardrobe);
         Layout(home, width);
         Assert.AreEqual(HomeEditor.Wardrobe, home.SelectedEditor);
         var wardrobePet = Bounds(home, "PetPreview");
@@ -103,7 +101,7 @@ public sealed class ProductHomeInteractionTests
                 Assert.IsTrue(moving.Left > closed.Left + 1 && moving.Left < open.Left - 1,
                     "With system animation enabled, the 80ms frame must be between start and end, not a static jump.");
             }
-            Click(home, "CloseEditorButton");
+            Click(home, "FaceCloseEditorButton");
             Assert.IsFalse(Element<UIElement>(home, "EditorPanel").IsEnabled, "Closing immediately removes keyboard access.");
             Click(home, "WardrobeButton");
             Pump(520);
@@ -145,7 +143,7 @@ public sealed class ProductHomeInteractionTests
                 "After opening a panel, Space should act on the Dango instead of clicking the launcher again.");
             Assert.AreEqual(0, Grid.GetColumn(Element<UIElement>(home, "EditorPanel")));
 
-            Click(home, "CloseEditorButton");
+            Click(home, "FaceCloseEditorButton");
             Assert.AreEqual(0, Grid.GetColumn(Element<UIElement>(home, "EditorPanel")),
                 "An exiting face panel must not teleport to the opposite side before fading out.");
             Assert.IsTrue(Element<FrameworkElement>(home, "Stage").IsKeyboardFocused);

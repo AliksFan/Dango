@@ -77,7 +77,10 @@ public partial class ProductHomeView
             var spacing = draft.EyeLayout.SpacingControlPercent - 24.5;
             EyeSpacingValue.Text = spacing == 0 ? "眼距 · 默认" : $"眼距 · {(spacing < 0 ? "靠近" : "分开")} {Math.Abs(spacing):0.#}";
             DefaultAppearanceButton.IsEnabled = IsEditing && SelectedEditor == HomeEditor.Face;
-            ApplyButton.IsEnabled = IsEditing && SelectedEditor == HomeEditor.Face && appearanceSession?.HasPendingSave == true && !appearanceSession.IsWriteProtected;
+            var canApply = IsEditing && SelectedEditor == HomeEditor.Face && appearanceSession?.HasPendingSave == true && !appearanceSession.IsWriteProtected;
+            ApplyButton.IsEnabled = canApply;
+            ApplyButton.Foreground = highContrast && canApply ? System.Windows.SystemColors.HighlightTextBrush
+                : (System.Windows.Media.Brush)Resources["HomeInk"];
             AppearanceStatus.Text = appearanceSession?.StatusMessage ?? "应用后保存到本机。";
             RecoverAppearanceButton.Visibility = appearanceSession?.IsWriteProtected == true ? Visibility.Visible : Visibility.Collapsed;
             AppearancePreviewNotice.Text = appearanceSession?.IsDirty == true ? "预览中 · 应用后保存" : "拖动即时预览 · 应用后保存";
@@ -192,6 +195,6 @@ public partial class ProductHomeView
     {
         if (Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.ComboBox or PasswordBox) return true;
         return Keyboard.FocusedElement is DependencyObject focused &&
-            (focused is Slider || IsEditing && EditorPanel.IsAncestorOf(focused));
+            (focused is Slider || IsEditing && (EditorPanel.IsAncestorOf(focused) || FaceEditorTools.IsAncestorOf(focused)));
     }
 }
