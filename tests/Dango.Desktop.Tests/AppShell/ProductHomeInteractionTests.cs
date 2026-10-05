@@ -45,20 +45,18 @@ public sealed class ProductHomeInteractionTests
             "Face options must enter from the left without overlapping the pet.");
         Assert.IsTrue(panel.Right <= width && panel.Left > 0, "Panel stays inside the window.");
         Assert.IsTrue(petAfter.Left >= 0 && buttonsAfter.Left >= 0);
-        Assert.IsTrue(Bounds(home, "MoreOptions").Bottom <= Bounds(home, "ApplyButton").Top, "Detail text must not overlap apply.");
+        Assert.IsTrue(Bounds(home, "AppearancePreviewNotice").Bottom <= Bounds(home, "ApplyButton").Top, "Detail text must not overlap apply.");
         Assert.IsFalse(Element<Button>(home, "ApplyButton").IsEnabled, "No fake save.");
-        Assert.AreEqual("仅预览 · 不保存", Element<TextBlock>(home, "AppearancePreviewNotice").Text);
+        Assert.AreEqual("拖动即时预览 · 应用后保存", Element<TextBlock>(home, "AppearancePreviewNotice").Text);
         Assert.AreEqual(Visibility.Visible, Element<TextBlock>(home, "AppearancePreviewNotice").Visibility);
         SaveImage(home, width, "face");
 
-        Element<Expander>(home, "MoreOptions").IsExpanded = true;
+        Click(home, "AppearanceEyesTab");
         Layout(home, width);
-        Assert.AreEqual(petAfter, Bounds(home, "PetPreview"), "Expanding detail must not shift the pet vertically.");
+        Assert.AreEqual(petAfter, Bounds(home, "PetPreview"), "Switching appearance tabs must not shift the pet vertically.");
         Assert.IsTrue(Bounds(home, "OptionsBody").Bottom <= Bounds(home, "ApplyButton").Top);
-        Assert.IsTrue(Bounds(home, "MoreOptions").Bottom <= Bounds(home, "OptionsBody").Bottom + 1,
-            "Expanded detail must remain above the footer.");
-        SaveImage(home, width, "more");
-        Element<Expander>(home, "MoreOptions").IsExpanded = false;
+        SaveImage(home, width, "eyes");
+        Click(home, "AppearanceColorsTab");
 
         Click(home, "PeachButton");
         Click(home, "WardrobeButton");
@@ -78,8 +76,8 @@ public sealed class ProductHomeInteractionTests
         Assert.AreEqual(petBefore, Bounds(home, "PetPreview"));
         Assert.IsFalse(Element<UIElement>(home, "EditorPanel").IsHitTestVisible);
         Click(home, "FaceButton");
-        Assert.AreEqual(Color.FromRgb(242, 182, 168), home.PreviewColor, "Close/reopen preserves only the in-memory preview.");
-        Assert.AreEqual(Color.FromRgb(245, 213, 165), new ProductHomeView().PreviewColor, "A new instance must not claim persistence.");
+        Assert.AreEqual(Color.FromRgb(255, 232, 194), home.PreviewColor, "Leaving the editor cancels the whole draft.");
+        Assert.AreEqual(Color.FromRgb(255, 232, 194), new ProductHomeView().PreviewColor, "A new instance must not claim persistence.");
     }
 
     [STATestMethod]

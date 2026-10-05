@@ -220,27 +220,57 @@
                                   CanContentScroll="False" Focusable="False">
                       <Grid>
                         <StackPanel x:Name="FaceOptions">
-                            <WrapPanel Margin="0,0,0,12">
-                                <TextBlock Text="颜色" Margin="0,0,12,0" />
-                                <TextBlock x:Name="AppearancePreviewNotice" Text="仅预览 · 不保存" FontSize="11"
-                                           Foreground="{DynamicResource HomeMuted}" VerticalAlignment="Center" />
+                            <WrapPanel Margin="0,0,0,16">
+                                <Button x:Name="AppearanceColorsTab" Content="颜色" Tag="Colors" Click="OnAppearanceTabClick" Margin="0,0,8,0" />
+                                <Button x:Name="AppearanceEyesTab" Content="眼睛" Tag="Eyes" Click="OnAppearanceTabClick" />
                             </WrapPanel>
-                            <WrapPanel x:Name="Colors" Margin="0,0,0,24">
-                                <Button x:Name="CreamButton" Style="{StaticResource ColorButton}" Tag="#F5D5A5" Click="OnColorClick" ToolTip="奶油" AutomationProperties.Name="奶油">
-                                    <Grid Width="30" Height="30"><Ellipse Fill="#F5D5A5" /><TextBlock x:Name="CreamCheck" Text="✓" Foreground="#44382B" HorizontalAlignment="Center" VerticalAlignment="Center" /></Grid>
+                            <TextBlock x:Name="AppearancePreviewNotice" Text="拖动即时预览 · 应用后保存" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource HomeMuted}" Margin="0,0,0,14" />
+                            <StackPanel x:Name="AppearanceColorsPanel">
+                                <TextBlock Text="身体" Margin="0,0,0,8" />
+                                <Button x:Name="BodyColorPickerButton" Click="OnBodyColorPickerClick" HorizontalContentAlignment="Stretch" Margin="0,0,0,12">
+                                    <StackPanel Orientation="Horizontal"><Border x:Name="BodyColorSwatch" Width="24" Height="24" BorderBrush="#807568" BorderThickness="1" Margin="0,0,10,0" /><TextBlock x:Name="BodyColorHex" VerticalAlignment="Center" /></StackPanel>
                                 </Button>
-                                <Button x:Name="PeachButton" Style="{StaticResource ColorButton}" Tag="#F2B6A8" Click="OnColorClick" ToolTip="蜜桃" AutomationProperties.Name="蜜桃">
-                                    <Grid Width="30" Height="30"><Ellipse Fill="#F2B6A8" /><TextBlock x:Name="PeachCheck" Text="✓" Foreground="#44382B" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Hidden" /></Grid>
+                                <WrapPanel x:Name="Colors" Margin="0,0,0,22">
+                                    <Button x:Name="CreamButton" Style="{StaticResource ColorButton}" Tag="#FFE8C2" Click="OnColorClick" ToolTip="奶油" AutomationProperties.Name="奶油">
+                                        <Grid Width="30" Height="30"><Ellipse Fill="#FFE8C2" /><TextBlock x:Name="CreamCheck" Text="✓" Foreground="#44382B" HorizontalAlignment="Center" VerticalAlignment="Center" /></Grid>
+                                    </Button>
+                                    <Button x:Name="PeachButton" Style="{StaticResource ColorButton}" Tag="#F2B6A8" Click="OnColorClick" ToolTip="蜜桃" AutomationProperties.Name="蜜桃">
+                                        <Grid Width="30" Height="30"><Ellipse Fill="#F2B6A8" /><TextBlock x:Name="PeachCheck" Text="✓" Foreground="#44382B" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Hidden" /></Grid>
+                                    </Button>
+                                    <Button x:Name="GreenButton" Style="{StaticResource ColorButton}" Tag="#C8D6AF" Click="OnColorClick" ToolTip="抹茶" AutomationProperties.Name="抹茶">
+                                        <Grid Width="30" Height="30"><Ellipse Fill="#C8D6AF" /><TextBlock x:Name="GreenCheck" Text="✓" Foreground="#44382B" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Hidden" /></Grid>
+                                    </Button>
+                                </WrapPanel>
+                                <TextBlock Text="眼睛" Margin="0,0,0,8" />
+                                <Button x:Name="EyeColorPickerButton" Click="OnEyeColorPickerClick" HorizontalContentAlignment="Stretch" Margin="0,0,0,8">
+                                    <StackPanel Orientation="Horizontal"><Border x:Name="EyeColorSwatch" Width="24" Height="24" BorderBrush="#807568" BorderThickness="1" Margin="0,0,10,0" /><TextBlock x:Name="EyeColorHex" VerticalAlignment="Center" /></StackPanel>
                                 </Button>
-                                <Button x:Name="GreenButton" Style="{StaticResource ColorButton}" Tag="#C8D6AF" Click="OnColorClick" ToolTip="抹茶" AutomationProperties.Name="抹茶">
-                                    <Grid Width="30" Height="30"><Ellipse Fill="#C8D6AF" /><TextBlock x:Name="GreenCheck" Text="✓" Foreground="#44382B" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Hidden" /></Grid>
-                                </Button>
+                                <TextBlock Text="点击色块选择 RGB" FontSize="11" Foreground="{DynamicResource HomeMuted}" />
+                            </StackPanel>
+                            <StackPanel x:Name="AppearanceEyesPanel" Visibility="Collapsed">
+                                <TextBlock x:Name="EyeSizeValue" Text="大小 · 100%" />
+                                <Slider x:Name="EyeSizeSlider" Minimum="70" Maximum="140" Value="100" TickFrequency="1" SmallChange="1" LargeChange="10" IsSnapToTickEnabled="True" ValueChanged="OnEyeSliderChanged" Margin="0,10,0,4" AutomationProperties.Name="眼睛大小" />
+                                <Grid Margin="0,0,0,18"><TextBlock Text="小" FontSize="11" /><TextBlock Text="大" FontSize="11" HorizontalAlignment="Right" /></Grid>
+                                <TextBlock x:Name="EyeOvalValue" Text="椭圆度 · 圆形" />
+                                <Slider x:Name="EyeOvalSlider" Minimum="-100" Maximum="100" Value="0" TickFrequency="1" SmallChange="1" LargeChange="10" IsSnapToTickEnabled="True" ValueChanged="OnEyeSliderChanged" Margin="0,10,0,4" AutomationProperties.Name="眼睛椭圆度" />
+                                <Grid Margin="0,0,0,18"><TextBlock Text="横椭圆" FontSize="11" /><TextBlock Text="圆形" FontSize="11" HorizontalAlignment="Center" /><TextBlock Text="竖椭圆" FontSize="11" HorizontalAlignment="Right" /></Grid>
+                                <TextBlock x:Name="EyeHeightValue" Text="高度 · 默认" />
+                                <Slider x:Name="EyeHeightSlider" Minimum="32" Maximum="66" Value="51" TickFrequency="1" SmallChange="1" LargeChange="5" IsSnapToTickEnabled="True" ValueChanged="OnEyeSliderChanged" Margin="0,10,0,4" AutomationProperties.Name="眼睛高度" />
+                                <Grid Margin="0,0,0,18"><TextBlock Text="高" FontSize="11" /><TextBlock Text="低" FontSize="11" HorizontalAlignment="Right" /></Grid>
+                                <TextBlock x:Name="EyeSpacingValue" Text="眼距 · 默认" />
+                                <Slider x:Name="EyeSpacingSlider" Minimum="12" Maximum="34" Value="24.5" TickFrequency="0.5" SmallChange="0.5" LargeChange="2" IsSnapToTickEnabled="True" ValueChanged="OnEyeSliderChanged" Margin="0,10,0,4" AutomationProperties.Name="眼距" />
+                                <Grid><TextBlock Text="近" FontSize="11" /><TextBlock Text="远" FontSize="11" HorizontalAlignment="Right" /></Grid>
+                            </StackPanel>
+                            <WrapPanel Margin="0,16,0,0">
+                                <Button x:Name="PreviewBlinkButton" Content="眨一下" Click="OnAppearanceBlinkClick" Margin="0,0,8,0" />
+                                <Button x:Name="PreviewSleepButton" Content="预览睡眠" Click="OnAppearanceSleepClick" />
                             </WrapPanel>
-                            <TextBlock Text="眼型" Margin="0,0,0,12" />
-                            <Button x:Name="EyePresetButton" Content="默认" IsEnabled="False" HorizontalAlignment="Left" Margin="0,0,0,24" ToolTip="眼型选择 · 未开发" AutomationProperties.Name="默认眼型，未开发" />
-                            <Expander x:Name="MoreOptions" Header="更多" FontSize="12" Foreground="{DynamicResource HomeMuted}">
-                                <WrapPanel Margin="0,10,0,0"><TextBlock Text="体型 / 柔软度" Margin="0,0,8,0" /><TextBlock Text="未开发" /></WrapPanel>
-                            </Expander>
+                            <TextBlock x:Name="AppearanceStatus" TextWrapping="Wrap" FontSize="11" Margin="0,18,0,6" Foreground="{DynamicResource HomeMuted}" />
+                            <Button x:Name="RecoverAppearanceButton" Content="备份原文件并应用" Click="OnRecoverAppearanceClick" Visibility="Collapsed" HorizontalAlignment="Left" />
+                            <WrapPanel Margin="0,12,0,0">
+                                <Button x:Name="DefaultAppearanceButton" Content="恢复默认" Click="OnDefaultAppearanceClick" Margin="0,0,8,0" />
+                                <Button x:Name="CancelAppearanceButton" Content="取消" Click="OnCancelAppearanceClick" />
+                            </WrapPanel>
                         </StackPanel>
                         <StackPanel x:Name="WardrobeOptions" Visibility="Collapsed">
                             <WrapPanel Margin="0,0,0,24">
@@ -255,7 +285,7 @@
                       </Grid>
                     </ScrollViewer>
                     <Button x:Name="ApplyButton" Grid.Row="2" Content="应用" IsEnabled="False" MinWidth="90"
-                            HorizontalAlignment="Right" ToolTip="应用与保存 · 未开发" AutomationProperties.Name="应用与保存，未开发" />
+                            HorizontalAlignment="Right" Click="OnApplyAppearanceClick" ToolTip="保存整套外观" AutomationProperties.Name="应用并保存外观" />
                 </Grid>
                 <Grid x:Name="PorchContent" Grid.Column="0" Grid.ColumnSpan="3" Grid.RowSpan="2"
                       VerticalAlignment="Stretch" Visibility="Hidden" Opacity="0" IsHitTestVisible="False"

@@ -30,7 +30,7 @@ public sealed record ProductSettingsState(
     string? LastError, bool HasSaveWarning, bool IsWriteProtected, string SaveMessage,
     bool CanShowDesktop = true);
 
-/// <summary>The product shell: the home shows the shared live scene; appearance edits stay session-only.</summary>
+/// <summary>The product shell: the home shows the shared live scene; appearance drafts save only on explicit apply.</summary>
 public partial class ProductHomeView : UserControl
 {
     private int transitionVersion;
@@ -48,7 +48,7 @@ public partial class ProductHomeView : UserControl
     public bool IsSettingsOpen { get; private set; }
     public bool IsInPorch { get; private set; }
     public HomeEditor SelectedEditor { get; private set; }
-    public Color PreviewColor { get; private set; } = Color.FromRgb(245, 213, 165);
+    public Color PreviewColor { get; private set; } = Color.FromRgb(255, 232, 194);
     public bool ReduceMotion
     {
         get => reduceMotion;
@@ -57,11 +57,13 @@ public partial class ProductHomeView : UserControl
 
     public ProductHomeView()
     {
+        AppearanceColorPicker = ShowAppearanceColorPicker;
         InitializeComponent();
         InitializePorchNavigation();
+        RefreshAppearanceControls();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
-        IsVisibleChanged += (_, _) => RefreshLiveSceneOwnership();
+        IsVisibleChanged += (_, _) => { if (!IsVisible) CancelAppearancePreview(); RefreshLiveSceneOwnership(); };
         IsKeyboardFocusWithinChanged += (_, e) =>
         {
             if (e.NewValue is false) ClearLiveDirectionalInput();
@@ -84,6 +86,7 @@ public partial class ProductHomeView : UserControl
     {
         if (IsInPorch) return;
         ClearLiveDirectionalInput();
+        if (IsEditing && SelectedEditor == HomeEditor.Face) CancelAppearancePreview();
         var wasOpen = IsEditing;
         var editorChanged = !wasOpen || SelectedEditor != editor;
         if (editorChanged)
@@ -98,6 +101,7 @@ public partial class ProductHomeView : UserControl
         FaceOptions.Visibility = editor == HomeEditor.Face ? Visibility.Visible : Visibility.Collapsed;
         WardrobeOptions.Visibility = editor == HomeEditor.Wardrobe ? Visibility.Visible : Visibility.Collapsed;
         if (editorChanged) OptionsBody.ScrollToTop();
+        RefreshAppearanceControls();
         EditorTitle.Text = editor == HomeEditor.Face ? "捏脸" : "换装";
         if (IsLoaded && !IsSettingsOpen) Stage.Focus();
         UpdateTransition(true);
@@ -108,6 +112,7 @@ public partial class ProductHomeView : UserControl
     private void CloseEditor(bool focusStage)
     {
         if (!IsEditing) return;
+        CancelAppearancePreview();
         if (focusStage) Stage.Focus();
         IsEditing = false;
         UpdateTransition(true);
@@ -313,8 +318,7 @@ public partial class ProductHomeView : UserControl
     }
     private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        if (!IsKeyboardFocusWithin || Keyboard.Modifiers != ModifierKeys.None ||
-            Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.ComboBox or PasswordBox)
+        if (!IsKeyboardFocusWithin || Keyboard.Modifiers != ModifierKeys.None)
             return;
         if (e.Key == Key.Escape)
         {
@@ -330,7 +334,7 @@ public partial class ProductHomeView : UserControl
             e.Handled = true;
             return;
         }
-        if (IsSettingsOpen)
+        if (IsSettingsOpen || IsAppearanceInputFocused())
             return;
         if (!IsInPorch && e.Key is (Key.A or Key.D))
         {
@@ -354,7 +358,7 @@ public partial class ProductHomeView : UserControl
 
     private void OnPreviewKeyUp(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        if (IsSettingsOpen) return;
+        if (IsSettingsOpen || IsAppearanceInputFocused()) { ClearLiveDirectionalInput(); return; }
         if (!IsInPorch && e.Key is (Key.A or Key.D)) { e.Handled = true; return; }
         e.Handled = SetLiveDirectionalKey(e.Key, false, false);
     }
@@ -365,6 +369,8 @@ public partial class ProductHomeView : UserControl
     {
         if (IsInPorch) return;
         ClearLiveDirectionalInput();
+        if (IsEditing) CloseEditor(focusStage: false);
+        CancelAppearancePreview();
         IsInPorch = true;
         roomNavigation.ShowPorch();
         ChangeLiveSurface();
@@ -401,6 +407,7 @@ public partial class ProductHomeView : UserControl
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        CancelAppearancePreview();
         SystemParameters.StaticPropertyChanged -= OnSystemPreferenceChanged;
         DetachLiveFocusSafety();
         UpdateTransition(false);
@@ -435,7 +442,7 @@ public partial class ProductHomeView : UserControl
         Resources["HomeSelected"] = contrast ? System.Windows.SystemColors.HighlightBrush : Brush("#EFE3D4");
         PorchScene.InvalidateVisual();
         UpdateLauncherSelection();
-        UpdateColorSelection();
+        RefreshAppearanceControls();
         UpdatePresetSelection();
         if (settingsState is not null) UpdateSettings(settingsState);
     }
@@ -443,9 +450,8 @@ public partial class ProductHomeView : UserControl
     private void OnColorClick(object sender, RoutedEventArgs e)
     {
         if (!IsEditing || SelectedEditor != HomeEditor.Face || sender is not Button { Tag: string color }) return;
-        PreviewColor = (Color)ColorConverter.ConvertFromString(color);
-        SetLivePreviewColor(PreviewColor);
-        UpdateColorSelection();
+        var value = Dango.Desktop.Rendering.Visuals.OpaqueSrgbColor.Parse(color);
+        StageAppearance(new(value, DraftAppearance.EyeColor, DraftAppearance.EyeLayout));
         Stage.Focus();
     }
 
@@ -538,7 +544,6 @@ public partial class ProductHomeView : UserControl
         foreach (var button in new[] { CreamButton, PeachButton, GreenButton })
             button.Margin = new Thickness(0, 0, portrait ? 10 : 8, 0);
         Colors.Margin = new Thickness(0, 0, 0, portrait ? 16 : 24);
-        EyePresetButton.Margin = new Thickness(0, 0, 0, portrait ? 16 : 24);
         ApplyButton.MinWidth = portrait ? 76 : 90;
         EditorPanel.MinHeight = portrait ? 290 : shortLandscape ? 245 : compactLandscape ? 300 : 340;
         EditorPanel.Margin = portrait ? new Thickness(12, 4, 12, 8)

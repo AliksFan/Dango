@@ -30,6 +30,7 @@ public partial class ProductHomeView
 
     internal void SuspendForRoom()
     {
+        CancelAppearancePreview();
         if (IsInPorch) porchResumeX = PorchScene.PetWorldX;
         ClearLiveDirectionalInput();
         if (OwnsLiveFrameDriver) BoundRuntime!.CancelInput();
@@ -65,8 +66,10 @@ public partial class ProductHomeView
         BoundSceneSession = session;
         BoundRuntime = runtime;
         liveScheduler = new HostFrameScheduler(runtime, PrepareLiveFrame, CreateLiveInput, ApplyLiveFrame);
-        SetLivePreviewColor(PreviewColor);
-        PetPreview.ToolTip = "同一只实时物理团子 · 外观仅预览";
+        if (appearanceSession is not null) runtime.SetAppearance(appearanceSession.DraftAppearance);
+        else { standaloneDraft = runtime.EffectiveAppearance; runtime.SetAppearance(standaloneDraft); }
+        RefreshAppearanceControls();
+        PetPreview.ToolTip = "同一只实时物理团子";
         RefreshLiveSceneOwnership();
     }
 
@@ -187,7 +190,7 @@ public partial class ProductHomeView
             new LogicalVector(-bounds.X + dx, -bounds.Y + dy),
             appearance: BoundRuntime.DisplayHatAppearance,
             hatSize: BoundRuntime.DisplayHatSize,
-            bodyFillOverride: BoundRuntime.BodyPreviewFill);
+            bodyFillOverride: BoundRuntime.BodyPreviewFill, eyeFillOverride: BoundRuntime.EyePreviewFill, appearanceEntity: BoundRuntime.AppearanceEntity);
         LiveSceneStatusText.Visibility = Visibility.Collapsed;
     }
 
