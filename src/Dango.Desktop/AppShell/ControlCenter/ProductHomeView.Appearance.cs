@@ -86,7 +86,12 @@ public partial class ProductHomeView
             AppearancePreviewNotice.Text = appearanceSession?.IsDirty == true ? "预览中 · 应用后保存" : "拖动即时预览 · 应用后保存";
             var compare = IsEditing && SelectedEditor == HomeEditor.Face && BoundRuntime?.InitializationState == SceneInitializationState.Ready;
             PreviewBlinkButton.IsEnabled = PreviewSleepButton.IsEnabled = compare;
-            PreviewSleepButton.Content = appearanceSleeping ? "醒来" : "预览睡眠";
+            var sleepAction = appearanceSleeping ? "醒来" : "预览睡眠";
+            PreviewSleepButton.ToolTip = sleepAction;
+            System.Windows.Automation.AutomationProperties.SetName(PreviewSleepButton, sleepAction);
+            SleepPreviewIcon.Visibility = appearanceSleeping ? Visibility.Collapsed : Visibility.Visible;
+            WakePreviewIcon.Visibility = appearanceSleeping ? Visibility.Visible : Visibility.Collapsed;
+            Select(PreviewSleepButton, appearanceSleeping);
             Select(AppearanceColorsTab, AppearanceColorsPanel.Visibility == Visibility.Visible);
             Select(AppearanceEyesTab, AppearanceEyesPanel.Visibility == Visibility.Visible);
             UpdateColorSelection();

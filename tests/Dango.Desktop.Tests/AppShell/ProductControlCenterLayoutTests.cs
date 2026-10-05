@@ -209,6 +209,7 @@ public sealed class ProductControlCenterLayoutTests
         home.UpdateLayout();
         Assert.IsTrue(Bounds(home, (FrameworkElement)home.FindName("Launchers")).Bottom <=
                       Bounds(home, content).Bottom + 1, "Both home actions must remain reachable by scrolling.");
+        var normalPreviewSize = Bounds(home, (FrameworkElement)home.FindName("PetPreview")).Size;
 
         foreach (var (editor, column) in new[] { (HomeEditor.Face, 0), (HomeEditor.Wardrobe, 2) })
         {
@@ -218,6 +219,9 @@ public sealed class ProductControlCenterLayoutTests
             Assert.AreEqual(1, Grid.GetColumnSpan(panel),
                 "The landscape preset must not turn into the portrait editor solely because DIP width is small.");
             Assert.AreEqual(column, Grid.GetColumn(panel));
+            if (editor == HomeEditor.Face)
+                Assert.AreEqual(normalPreviewSize, Bounds(home, (FrameworkElement)home.FindName("PetPreview")).Size,
+                    "The 200% landscape viewport must preserve the normal Dango preview and scroll its content.");
             content.ScrollToBottom();
             home.UpdateLayout();
             var fixedAction = editor == HomeEditor.Face ? "ApplyButton" : "CloseEditorButton";

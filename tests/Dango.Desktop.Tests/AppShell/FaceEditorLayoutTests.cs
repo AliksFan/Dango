@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -30,6 +31,7 @@ public sealed class FaceEditorLayoutTests
         var home = new ProductHomeView { ReduceMotion = true };
         var size = new Size(width, height);
         Layout(home, size);
+        var normalPreview = Bounds(home, "PetPreview").Size;
         home.ShowEditor(HomeEditor.Face);
         Click(home, "AppearanceEyesTab");
         Layout(home, size);
@@ -39,6 +41,8 @@ public sealed class FaceEditorLayoutTests
         var viewport = Bounds(home, "OptionsBody");
         var preview = Bounds(home, "PetPreview");
         var options = Element<ScrollViewer>(home, "OptionsBody");
+        Assert.AreEqual(normalPreview, preview.Size,
+            "Opening face controls must keep the Dango at its normal preview size.");
         Assert.AreEqual(Visibility.Collapsed, Element<TextBlock>(home, "EditorTitle").Visibility,
             "The face title must release its space rather than keep an empty heading slot.");
         Assert.IsTrue(viewport.Top <= parameterColumn.Top + 8,
@@ -60,10 +64,7 @@ public sealed class FaceEditorLayoutTests
             Assert.IsTrue(bounds.Width >= 160,
                 $"{name} needs a usable dragging width at {width}x{height}; actual {bounds.Width:F1} DIP.");
         }
-        Assert.IsTrue(Bounds(home, "AppearanceColorsTab").Bottom <= preview.Top,
-            "Appearance tabs should sit above the preview.");
-        Assert.IsTrue(Bounds(home, "PreviewBlinkButton").Top >= preview.Bottom,
-            "Blink and sleep preview actions should sit below the Dango.");
+        AssertIconRails(home, preview);
         Assert.IsTrue(Bounds(home, "PreviewSleepButton").Bottom <= Bounds(home, "AppearanceStatus").Top,
             "Preview actions must leave a separate area for saving feedback.");
         Assert.IsTrue(Bounds(home, "AppearanceStatus").Bottom <= Bounds(home, "ApplyButton").Top,
@@ -81,9 +82,11 @@ public sealed class FaceEditorLayoutTests
         var home = new ProductHomeView { ReduceMotion = true };
         var size = new Size(width, height);
         Layout(home, size);
+        var normalPreview = Bounds(home, "PetPreview").Size;
         home.ShowEditor(HomeEditor.Face);
         Click(home, "AppearanceEyesTab");
         Layout(home, size);
+        Assert.AreEqual(normalPreview, Bounds(home, "PetPreview").Size);
         var before = Tools.ToDictionary(name => name, name => Bounds(home, name));
         var faceOptions = Element<StackPanel>(home, "FaceOptions");
         var probe = new Border { Height = 800, IsHitTestVisible = false };
@@ -98,6 +101,8 @@ public sealed class FaceEditorLayoutTests
             Assert.IsTrue(options.VerticalOffset > 0);
             foreach (var name in Tools)
                 Assert.AreEqual(before[name], Bounds(home, name), $"{name} must remain fixed when parameters scroll.");
+            Assert.AreEqual(normalPreview, Bounds(home, "PetPreview").Size,
+                "Scrolling appearance parameters must preserve the normal preview size.");
         }
         finally { faceOptions.Children.Remove(probe); }
     }
@@ -111,17 +116,21 @@ public sealed class FaceEditorLayoutTests
         home.SetWindowPreset(ControlCenterWindowPreset.Portrait);
         var size = new Size(width, height);
         Layout(home, size);
+        var normalPreview = Bounds(home, "PetPreview").Size;
         home.ShowEditor(HomeEditor.Face);
         Click(home, "AppearanceEyesTab");
         Layout(home, size);
         var stage = Bounds(home, "Stage");
         var pet = Bounds(home, "PetPreview");
+        Assert.AreEqual(normalPreview, pet.Size,
+            "Portrait face editing must keep the Dango at its normal preview size.");
         foreach (var name in Tools)
         {
             var tool = Bounds(home, name);
             AssertInside(stage, tool, name);
             AssertNoOverlap(pet, tool, $"{name} and the Dango preview");
         }
+        AssertIconRails(home, pet);
         AssertDisjointButtons(home);
         Assert.AreEqual(Visibility.Collapsed, Element<TextBlock>(home, "EditorTitle").Visibility);
         SaveImage(home, size, $"face-right-tools-portrait-{width}x{height}");
@@ -140,8 +149,11 @@ public sealed class FaceEditorLayoutTests
         home.BindAppearance(new AppearanceSettingsSession(path));
         var size = new Size(width, height);
         Layout(home, size);
+        var normalPreview = Bounds(home, "PetPreview").Size;
         home.ShowEditor(HomeEditor.Face);
         Layout(home, size);
+        Assert.AreEqual(normalPreview, Bounds(home, "PetPreview").Size,
+            "Recovery feedback must not shrink the Dango preview to make room for controls.");
         var recover = Element<Button>(home, "RecoverAppearanceButton");
         Assert.AreEqual(Visibility.Visible, recover.Visibility, "The test must exercise protected-file recovery.");
         Assert.IsFalse(Element<ScrollViewer>(home, "OptionsBody").IsAncestorOf(recover),
@@ -175,9 +187,9 @@ public sealed class FaceEditorLayoutTests
         var initialScroll = Element<ScrollViewer>(home, "HomeContent").ScrollableHeight;
         home.ShowEditor(HomeEditor.Face);
         Layout(home, size);
-        var faceHeight = Element<FrameworkElement>(home, "Stage").ActualHeight;
-        Assert.IsTrue(faceHeight > initialHeight + 10,
-            $"The long protected-file feedback must exercise a taller face stage before this regression can pass; initial {initialHeight:F1}, face {faceHeight:F1}.");
+        Assert.AreEqual(Visibility.Visible, Element<Button>(home, "RecoverAppearanceButton").Visibility);
+        Assert.IsTrue(Element<TextBlock>(home, "AppearanceStatus").ActualHeight > 25,
+            "The real protected-file recovery warning must wrap to multiple lines before this regression can pass.");
         if (destination == "Close") home.CloseEditor();
         else home.ShowEditor(HomeEditor.Wardrobe);
         Layout(home, size);
@@ -185,6 +197,32 @@ public sealed class FaceEditorLayoutTests
             $"{destination} must release the extra space reserved for face recovery feedback.");
         Assert.AreEqual(initialScroll, Element<ScrollViewer>(home, "HomeContent").ScrollableHeight, 1,
             "Face recovery must not leave a permanent scrollbar after its tools disappear.");
+    }
+
+    [STATestMethod]
+    public void TwoHundredPercentFaceKeepsItsNormalPreviewAndEveryIconReachableByScrolling()
+    {
+        var home = new ProductHomeView { ReduceMotion = true };
+        var size = new Size(480, 270); // 960x540 at 200% system DPI.
+        Layout(home, size);
+        var normalPreview = Bounds(home, "PetPreview").Size;
+        home.ShowEditor(HomeEditor.Face);
+        Click(home, "AppearanceEyesTab");
+        Layout(home, size);
+        Assert.AreEqual(normalPreview, Bounds(home, "PetPreview").Size,
+            "A small DIP viewport must use scrolling instead of shrinking the Dango to fit the icon rails.");
+        AssertIconRails(home, Bounds(home, "PetPreview"));
+        var content = Element<ScrollViewer>(home, "HomeContent");
+        foreach (var name in Tools.Where(name => name != "AppearanceStatus"))
+        {
+            var tool = Bounds(home, name);
+            var viewport = Bounds(home, "HomeContent");
+            content.ScrollToVerticalOffset(content.VerticalOffset + tool.Top - viewport.Top - 4);
+            home.UpdateLayout();
+            AssertInside(Bounds(home, "HomeContent"), Bounds(home, name),
+                name + " after scrolling the small viewport");
+        }
+        SaveImage(home, size, "face-icon-rails-480x270");
     }
 
     [STATestMethod]
@@ -303,6 +341,47 @@ public sealed class FaceEditorLayoutTests
         var intersection = Rect.Intersect(a, b);
         Assert.IsTrue(intersection.IsEmpty || intersection.Width <= .5 || intersection.Height <= .5,
             $"{names} must not overlap; first {a}, second {b}.");
+    }
+    private static void AssertIconRails(ProductHomeView home, Rect preview)
+    {
+        var region = Bounds(home, "FaceEditorPreviewRegion");
+        var colors = Bounds(home, "AppearanceColorsTab");
+        var eyes = Bounds(home, "AppearanceEyesTab");
+        var blink = Bounds(home, "PreviewBlinkButton");
+        var sleep = Bounds(home, "PreviewSleepButton");
+        Assert.AreEqual(colors.Top, blink.Top, 1, "The first icons on both sides must share one horizontal row.");
+        Assert.AreEqual(eyes.Top, sleep.Top, 1, "The second icons on both sides must share one horizontal row.");
+        Assert.AreEqual(region.Top + 6, colors.Top, 1, "The color rail must anchor to the requested preview region top.");
+        Assert.AreEqual(region.Top + 6, blink.Top, 1, "The action rail must anchor to the requested preview region top.");
+        Assert.AreEqual(colors.Left, eyes.Left, 1, "Color and eyes must form one vertical icon rail.");
+        Assert.IsTrue(colors.Bottom + 3 <= eyes.Top, "Eyes must sit below color with a clear gap.");
+        Assert.AreEqual(blink.Left, sleep.Left, 1, "Blink and sleep must form one vertical icon rail.");
+        Assert.IsTrue(blink.Bottom + 3 <= sleep.Top, "Sleep must sit below blink with a clear gap.");
+        foreach (var (name, bounds) in new[] { ("color", colors), ("eyes", eyes) })
+        {
+            Assert.IsTrue(bounds.Right <= preview.Left - 3,
+                $"The {name} icon must sit to the left of the normal-sized preview; icon {bounds}, preview {preview}.");
+            Assert.IsTrue(preview.Left - bounds.Right <= 8,
+                $"The {name} rail must stay close to the Dango at every window size; gap {preview.Left - bounds.Right:F1} DIP.");
+            AssertInside(region, bounds, name + " icon rail");
+        }
+        foreach (var (name, bounds) in new[] { ("blink", blink), ("sleep", sleep) })
+        {
+            Assert.IsTrue(bounds.Left >= preview.Right + 3,
+                $"The {name} icon must sit to the right of the normal-sized preview; icon {bounds}, preview {preview}.");
+            Assert.IsTrue(bounds.Left - preview.Right <= 8,
+                $"The {name} rail must stay close to the Dango at every window size; gap {bounds.Left - preview.Right:F1} DIP.");
+            AssertInside(region, bounds, name + " icon rail");
+        }
+        foreach (var name in new[] { "AppearanceColorsTab", "AppearanceEyesTab", "PreviewBlinkButton", "PreviewSleepButton" })
+        {
+            var button = Element<Button>(home, name);
+            Assert.IsInstanceOfType<FrameworkElement>(button.Content,
+                $"{name} needs a visual icon rather than a text-only action label.");
+            Assert.IsFalse(string.IsNullOrWhiteSpace(button.ToolTip?.ToString()), $"{name} needs a readable tooltip.");
+            Assert.IsFalse(string.IsNullOrWhiteSpace(AutomationProperties.GetName(button)),
+                $"{name} needs a readable automation name even when its visible label is an icon.");
+        }
     }
     private static void AssertDisjointButtons(ProductHomeView home)
     {

@@ -96,6 +96,19 @@
             <Setter Property="MinHeight" Value="30" />
             <Setter Property="BorderThickness" Value="0" />
         </Style>
+        <Style x:Key="FaceIconButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="5" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="ToolTipService.InitialShowDelay" Value="250" />
+            <Style.Triggers>
+                <Trigger Property="Tag" Value="Selected">
+                    <Setter Property="BorderBrush" Value="{DynamicResource HomeAccent}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
         <Style x:Key="Launcher" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="MinWidth" Value="72" />
             <Setter Property="BorderBrush" Value="Transparent" />
@@ -283,33 +296,61 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition x:Name="FacePreviewRow" Height="*" />
-                        <RowDefinition Height="Auto" />
                         <RowDefinition x:Name="FaceParameterSpacerRow" Height="0" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <StackPanel x:Name="FaceEditorTabs">
-                        <Grid>
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                <Button x:Name="AppearanceColorsTab" Content="颜色" Tag="Colors" Click="OnAppearanceTabClick"
-                                        Padding="18,5" MinHeight="34" Margin="0,0,6,0" AutomationProperties.Name="捏脸：颜色" />
-                                <Button x:Name="AppearanceEyesTab" Content="眼睛" Tag="Eyes" Click="OnAppearanceTabClick"
-                                        Padding="18,5" MinHeight="34" AutomationProperties.Name="捏脸：眼睛" />
-                            </StackPanel>
-                            <Button x:Name="FaceCloseEditorButton" Content="×" FontSize="20" Width="30" MinHeight="30" Height="30"
-                                    HorizontalAlignment="Right" BorderBrush="Transparent" Padding="0" Click="OnCloseClick"
-                                    ToolTip="收起捏脸" AutomationProperties.Name="收起捏脸" />
-                        </Grid>
+                    <Grid x:Name="FaceEditorHeader" MinHeight="30">
                         <TextBlock x:Name="AppearancePreviewNotice" Text="拖动即时预览 · 应用后保存" FontSize="11" TextWrapping="Wrap"
-                                   TextAlignment="Center" Foreground="{DynamicResource HomeMuted}" Margin="0,6,0,0" />
-                    </StackPanel>
-                    <Grid x:Name="FacePreviewSlot" Grid.Row="1" IsHitTestVisible="False" SizeChanged="OnFacePreviewSlotSizeChanged" />
-                    <StackPanel x:Name="FaceEditorPreviewActions" Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,12">
-                        <Button x:Name="PreviewBlinkButton" Content="眨一下" Click="OnAppearanceBlinkClick" Margin="0,0,8,0"
-                                MinHeight="30" Padding="12,4" Background="{DynamicResource HomeSoft}" FontSize="12" />
-                        <Button x:Name="PreviewSleepButton" Content="预览睡眠" Click="OnAppearanceSleepClick"
-                                MinHeight="30" Padding="12,4" FontSize="12" />
-                    </StackPanel>
-                    <StackPanel x:Name="FaceEditorSaveActions" Grid.Row="4">
+                                   TextAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource HomeMuted}" Margin="30,0,30,0" />
+                        <Button x:Name="FaceCloseEditorButton" Content="×" FontSize="20" Width="30" MinHeight="30" Height="30"
+                                HorizontalAlignment="Right" BorderBrush="Transparent" Padding="0" Click="OnCloseClick"
+                                ToolTip="收起捏脸" AutomationProperties.Name="收起捏脸" />
+                    </Grid>
+                    <Grid x:Name="FaceEditorPreviewRegion" Grid.Row="1" HorizontalAlignment="Center">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel x:Name="FaceEditorTabs" VerticalAlignment="Top" Margin="0,6,6,0">
+                            <Button x:Name="AppearanceColorsTab" Style="{StaticResource FaceIconButton}" Click="OnAppearanceTabClick" Margin="0,0,0,8"
+                                    ToolTip="颜色 · 身体与眼睛 RGB" AutomationProperties.Name="捏脸：颜色">
+                                <Viewbox Width="20" Height="20"><Canvas Width="24" Height="24" IsHitTestVisible="False">
+                                    <Path Data="M12,3 C6,3 3,7 3,12 C3,17 7,21 12,21 L14,21 C16,21 17,19 16,17 C15,15 17,14 19,14 C22,14 22,11 21,8 C19,5 16,3 12,3 Z"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeLineJoin="Round" />
+                                    <Ellipse Width="2.5" Height="2.5" Canvas.Left="6" Canvas.Top="10" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                    <Ellipse Width="2.5" Height="2.5" Canvas.Left="10" Canvas.Top="6" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                    <Ellipse Width="2.5" Height="2.5" Canvas.Left="15" Canvas.Top="7" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                </Canvas></Viewbox>
+                            </Button>
+                            <Button x:Name="AppearanceEyesTab" Style="{StaticResource FaceIconButton}" Click="OnAppearanceTabClick"
+                                    ToolTip="眼睛 · 大小、椭圆度、高度、眼距" AutomationProperties.Name="捏脸：眼睛">
+                                <Viewbox Width="20" Height="20"><Canvas Width="24" Height="24" IsHitTestVisible="False">
+                                    <Path Data="M2,12 C7,4 17,4 22,12 C17,20 7,20 2,12 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeLineJoin="Round" />
+                                    <Ellipse Width="6" Height="6" Canvas.Left="9" Canvas.Top="9" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" />
+                                </Canvas></Viewbox>
+                            </Button>
+                        </StackPanel>
+                        <Grid x:Name="FacePreviewSlot" Grid.Column="1" IsHitTestVisible="False" SizeChanged="OnFacePreviewSlotSizeChanged" />
+                        <StackPanel x:Name="FaceEditorPreviewActions" Grid.Column="2" VerticalAlignment="Top" Margin="6,6,0,0">
+                            <Button x:Name="PreviewBlinkButton" Style="{StaticResource FaceIconButton}" Click="OnAppearanceBlinkClick" Margin="0,0,0,8"
+                                    ToolTip="眨一下 · 临时预览" AutomationProperties.Name="眨一下">
+                                <Viewbox Width="20" Height="20"><Canvas Width="24" Height="24" IsHitTestVisible="False">
+                                    <Path Data="M3,9 Q12,20 21,9 M6,12 L4,15 M12,15 L12,18 M18,12 L20,15"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                                </Canvas></Viewbox>
+                            </Button>
+                            <Button x:Name="PreviewSleepButton" Style="{StaticResource FaceIconButton}" Click="OnAppearanceSleepClick"
+                                    ToolTip="预览睡眠" AutomationProperties.Name="预览睡眠">
+                                <Viewbox Width="20" Height="20"><Grid Width="24" Height="24" IsHitTestVisible="False">
+                                    <Path x:Name="SleepPreviewIcon" Data="M14,2 A10,10 0 1 0 22,14 A9,9 0 0 1 14,2 Z"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeLineJoin="Round" />
+                                    <Canvas x:Name="WakePreviewIcon" Width="24" Height="24" Visibility="Collapsed">
+                                        <Ellipse Width="8" Height="8" Canvas.Left="8" Canvas.Top="8" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" />
+                                        <Path Data="M12,2 L12,4 M12,20 L12,22 M2,12 L4,12 M20,12 L22,12 M5,5 L6.5,6.5 M17.5,17.5 L19,19 M5,19 L6.5,17.5 M17.5,6.5 L19,5"
+                                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                    </Canvas>
+                                </Grid></Viewbox>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                    <StackPanel x:Name="FaceEditorSaveActions" Grid.Row="3">
                         <TextBlock x:Name="AppearanceStatus" TextWrapping="Wrap" FontSize="11" Margin="0,0,0,8" Foreground="{DynamicResource HomeMuted}"
                                    AutomationProperties.LiveSetting="Polite" />
                         <Button x:Name="RecoverAppearanceButton" Content="备份原文件并应用" Click="OnRecoverAppearanceClick" Visibility="Collapsed"

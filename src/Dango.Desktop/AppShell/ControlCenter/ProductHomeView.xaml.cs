@@ -567,8 +567,8 @@ public partial class ProductHomeView : UserControl
     {
         if (Stage is null || HomeContent is null) return;
         Stage.MinHeight = IsEditing && SelectedEditor == HomeEditor.Face && !IsPortraitLayout
-            ? Math.Max(minimumStageHeight, FaceEditorTabs.DesiredSize.Height + FaceEditorPreviewActions.DesiredSize.Height +
-                FaceEditorSaveActions.DesiredSize.Height + 106)
+            ? Math.Max(minimumStageHeight, FaceEditorHeader.DesiredSize.Height + BasePreviewWidth * .75 +
+                FaceEditorSaveActions.DesiredSize.Height + 28)
             : minimumStageHeight;
         var available = HomeContent.ActualHeight - Stage.Margin.Top - Stage.Margin.Bottom;
         var height = Math.Max(Stage.MinHeight, available);
@@ -605,10 +605,10 @@ public partial class ProductHomeView : UserControl
         var compactLandscape = !portrait && ActualWidth < 800;
         var shortLandscape = !portrait && ActualHeight <= 400;
         var faceEditing = IsEditing && SelectedEditor == HomeEditor.Face;
-        var petShare = compactLandscape ? 50 : 57;
-        var panelShare = compactLandscape ? 50 : 43;
         var faceOnLeft = SelectedEditor == HomeEditor.Face &&
             (IsEditing || EditorPanel.Visibility == Visibility.Visible && !IsInPorch);
+        var panelShare = compactLandscape ? faceOnLeft && ActualWidth < 600 ? 33 : 50 : 43;
+        var petShare = 100 - panelShare;
         LeftColumn.Width = new GridLength(portrait ? 1 : faceOnLeft ? panelShare : petShare, GridUnitType.Star);
         RightColumn.Width = new GridLength(portrait ? 0 : faceOnLeft ? petShare : panelShare, GridUnitType.Star);
         PresenceStageRow.Height = portrait
@@ -628,9 +628,10 @@ public partial class ProductHomeView : UserControl
         Grid.SetColumnSpan(FaceEditorTools, portrait ? 3 : 1);
         FaceEditorTools.Margin = portrait ? new Thickness(12, 4, 12, 8) : EditorPanel.Margin;
         FaceEditorTools.VerticalAlignment = portrait ? System.Windows.VerticalAlignment.Stretch : System.Windows.VerticalAlignment.Center;
+        FaceEditorPreviewRegion.Width = BasePreviewWidth + 76;
         FacePreviewRow.Height = portrait
             ? new GridLength(Math.Max(60, PresenceStageRow.Height.Value - FaceEditorTools.Margin.Top -
-                FaceEditorTabs.DesiredSize.Height - FaceEditorPreviewActions.DesiredSize.Height))
+                FaceEditorHeader.DesiredSize.Height))
             : new GridLength(1, GridUnitType.Star);
         FaceParameterSpacerRow.Height = portrait ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
         Grid.SetRow(PorchContent, 0);
@@ -641,9 +642,6 @@ public partial class ProductHomeView : UserControl
         var left = available * LeftColumn.Width.Value / (LeftColumn.Width.Value + RightColumn.Width.Value);
         var right = available - left;
         var previewWidth = BasePreviewWidth;
-        if (faceEditing && FacePreviewSlot.ActualHeight > 0 && FacePreviewSlot.ActualWidth > 0)
-            previewWidth = Math.Max(32, Math.Min(previewWidth,
-                Math.Min(FacePreviewSlot.ActualWidth - 16, Math.Max(24, FacePreviewSlot.ActualHeight - 12) / .75)));
         PetPreview.Width = previewWidth;
         PetPreview.Height = PetVisualArea.Height = previewWidth * .75;
         Presence.Width = portrait ? Math.Min(width, Math.Max(250, PetPreview.Width + 16))
@@ -660,7 +658,8 @@ public partial class ProductHomeView : UserControl
         animate &= IsLoaded && !ReduceMotion && SystemParameters.ClientAreaAnimation;
         UpdateLauncherSelection();
         var horizontalPanelHeight = Math.Max(EditorPanel.MinHeight,
-            Math.Min(420, height - EditorPanel.Margin.Top - EditorPanel.Margin.Bottom));
+            faceEditing ? height - EditorPanel.Margin.Top - EditorPanel.Margin.Bottom
+                : Math.Min(420, height - EditorPanel.Margin.Top - EditorPanel.Margin.Bottom));
         EditorPanel.Height = portrait ? double.NaN : horizontalPanelHeight;
         FaceEditorTools.Height = portrait ? double.NaN : horizontalPanelHeight;
         PorchContent.Height = double.NaN;
