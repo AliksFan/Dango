@@ -17,6 +17,7 @@ public partial class ProductHomeView
     private DirectionalControlIntent liveIntent;
     private LogicalPoint? visualAnchor;
     private double? shadowGroundCenterY;
+    private double? groundedVisualOffset;
     private Window? ownerWindow;
     private bool liveSceneSuspended;
     private long porchReturnGeneration;
@@ -123,6 +124,7 @@ public partial class ProductHomeView
         BoundRuntime.UpdateWanderScreenWidth(this, IsInPorch ? PorchScene.ViewportWorldWidth : null);
         visualAnchor = null;
         shadowGroundCenterY = null;
+        groundedVisualOffset = null;
         liveScheduler!.Start();
     }
 
@@ -136,6 +138,7 @@ public partial class ProductHomeView
         liveIntent = DirectionalControlIntent.None;
         visualAnchor = null;
         shadowGroundCenterY = null;
+        groundedVisualOffset = null;
         PetShadow.Visibility = Visibility.Collapsed;
         if (mayStopRuntime && BoundRuntime?.IsRunning == true) BoundRuntime.Stop();
     }
@@ -208,6 +211,16 @@ public partial class ProductHomeView
             appearance: BoundRuntime.DisplayHatAppearance,
             hatSize: BoundRuntime.DisplayHatSize,
             bodyFillOverride: BoundRuntime.BodyPreviewFill, eyeFillOverride: BoundRuntime.EyePreviewFill, appearanceEntity: BoundRuntime.AppearanceEntity);
+        if (grounded && LiveDangoVisual.RenderedBodyBottom is { } bodyBottom && PetPreview.Width > 0)
+        {
+            // Align the rendered contour, rather than its larger preview box,
+            // to the fixed shadow. Keep one DIP of softness at the contact.
+            var scale = PetPreview.Width / LiveSceneCanvas.Width;
+            var contactY = LiveSceneCanvas.Height + (PetShadow.Height / 2 - 1) / scale;
+            groundedVisualOffset = contactY - bodyBottom;
+        }
+        System.Windows.Controls.Canvas.SetTop(LiveDangoVisual, dy + (groundedVisualOffset ?? 0));
+        System.Windows.Controls.Canvas.SetTop(LiveDangoHat, dy + (groundedVisualOffset ?? 0));
         var lift = shadowGroundCenterY is { } floor
             ? Math.Clamp((floor - bounds.Center.Y) * .4 / 42, 0, 1) : 0;
         PetShadowScale.ScaleX = 1 - .32 * lift;
@@ -278,6 +291,7 @@ public partial class ProductHomeView
         BoundRuntime!.UpdateWanderScreenWidth(this, IsInPorch ? PorchScene.ViewportWorldWidth : null);
         visualAnchor = null;
         shadowGroundCenterY = null;
+        groundedVisualOffset = null;
         PetShadow.Visibility = Visibility.Collapsed;
     }
 

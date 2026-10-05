@@ -168,6 +168,7 @@ public sealed class HomeJumpShadowTests
         var groundedOpacity = shadow.Opacity;
         Assert.IsTrue(groundedScale > 0 && groundedOpacity > 0,
             "The grounded shadow must have a visible, nonzero footprint.");
+        var groundedBodyShadowGap = AssertGroundedBodyTouchesShadow(fixture, mode);
         var paintedShadowPixels = AssertGroundShadowIsPainted(fixture, mode);
         var contentTop = Element<FrameworkElement>(home, "HomeContent")
             .TransformToAncestor(home).Transform(new Point()).Y;
@@ -222,13 +223,28 @@ public sealed class HomeJumpShadowTests
             $"{mode}: the full body/hat outline reached {minimumHead:F3} DIP, above the safe boundary {headBoundary:F3} DIP.");
         return new(mode, groundedCoreY, maxCoreY, apexIndex, airborneFrames, minimumHead, headBoundary,
             ground.Y, groundedScale, apexScale, scale.ScaleX, groundedOpacity, apexOpacity, shadow.Opacity,
-            paintedShadowPixels);
+            paintedShadowPixels, groundedBodyShadowGap);
     }
 
     private sealed record JumpEvidence(string Mode, double GroundedCoreY, double ApexCoreY, int ApexFrame,
         int AirborneFrames, double HighestBodyAndHatY, double SafeTopY, double FixedShadowGroundY,
         double GroundedShadowScale, double ApexShadowScale, double LandedShadowScale,
-        double GroundedShadowOpacity, double ApexShadowOpacity, double LandedShadowOpacity, int PaintedShadowPixels);
+        double GroundedShadowOpacity, double ApexShadowOpacity, double LandedShadowOpacity, int PaintedShadowPixels,
+        double GroundedBodyShadowGap);
+
+    private static double AssertGroundedBodyTouchesShadow(NativeFixture fixture, string mode)
+    {
+        Assert.IsTrue(fixture.Runtime.LastPhysicsFrame!.Bodies.Single().IsGrounded,
+            "Body-to-shadow contact must be measured in a real grounded native frame.");
+        var bodyBottom = RenderedBodyBottom(fixture.Home);
+        var shadowGround = ShadowCenter(fixture.Home).Y;
+        var gap = shadowGround - bodyBottom;
+        Assert.IsTrue(gap >= -1e-6 && gap <= 2,
+            $"{mode}: the actual grounded body bottom must meet the fixed shadow center within 0–2 DIP; " +
+            $"body bottom {bodyBottom:F3}, shadow center {shadowGround:F3}, gap {gap:F3} DIP. " +
+            "The body's preview rectangle and the independent shadow must not substitute for its rendered contour.");
+        return gap;
+    }
 
     private static int AssertGroundShadowIsPainted(NativeFixture fixture, string mode)
     {

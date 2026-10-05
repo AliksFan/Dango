@@ -100,8 +100,23 @@ public sealed class HomePresentationLayoutTests
         {
             var button = Element<Button>(home, name);
             Assert.IsTrue(button.IsEnabled && button.IsHitTestVisible, $"{name} must be an available home entry.");
-            Assert.IsTrue(Descendants<TextBlock>(button).Any(text => text.Text == key),
-                $"{name} must visibly show its {key} shortcut beside its icon.");
+            var letter = Descendants<TextBlock>(button).Single(text => text.Text == key);
+            var keycap = Descendants<Border>(button).SingleOrDefault(border => ReferenceEquals(border.Child, letter));
+            Assert.IsNotNull(keycap, $"{name} must enclose the {key} letter in a real keycap Border.");
+            Assert.AreEqual(22, keycap.Width, .001, "Shortcut keycaps need a consistent 22-DIP width.");
+            Assert.AreEqual(22, keycap.Height, .001, "Shortcut keycaps need a consistent 22-DIP height.");
+            Assert.AreEqual(new CornerRadius(4), keycap.CornerRadius, "Shortcut keycaps need rounded, recognizable key outlines.");
+            Assert.AreEqual(new Thickness(1), keycap.BorderThickness, "The shortcut letter must have a real visible key outline.");
+            Assert.IsNotNull(keycap.BorderBrush, "A keycap Border must actually draw its outline.");
+            Assert.AreEqual(button.Foreground, letter.Foreground,
+                "Shortcut letters must retain the button foreground through their new keycap container.");
+            var letterBounds = letter.TransformToAncestor(keycap).TransformBounds(new Rect(letter.RenderSize));
+            AssertInside(new Rect(keycap.RenderSize), letterBounds, key + " letter within its keycap");
+            var icon = Descendants<Viewbox>(button).Single();
+            var capBounds = keycap.TransformToAncestor(button).TransformBounds(new Rect(keycap.RenderSize));
+            var iconBounds = icon.TransformToAncestor(button).TransformBounds(new Rect(icon.RenderSize));
+            Assert.AreEqual(8, iconBounds.Left - capBounds.Right, 1,
+                "Shortcut keycaps need an 8-DIP gap before their action icon.");
             Assert.IsTrue(Descendants<Shape>(button).Any(shape => shape.ActualWidth > 0 && shape.ActualHeight > 0),
                 $"{name} must render a vector action icon rather than repeat a text-only label.");
             StringAssert.Contains(button.ToolTip?.ToString() ?? string.Empty, key,

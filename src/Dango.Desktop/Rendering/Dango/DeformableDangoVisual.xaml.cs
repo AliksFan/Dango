@@ -38,6 +38,17 @@ public partial class DeformableDangoVisual : System.Windows.Controls.UserControl
 
     public DangoContourFailure LastContourFailure { get; private set; }
 
+    internal double? RenderedBodyBottom
+    {
+        get
+        {
+            if (Visibility != Visibility.Visible || BodyPath.Visibility != Visibility.Visible ||
+                BodyPath.Data is null || BodyPath.Data.Bounds.IsEmpty) return null;
+            var bottom = GaitBodyLayer.RenderTransform.TransformBounds(BodyPath.Data.Bounds).Bottom;
+            return double.IsFinite(bottom) ? bottom : null;
+        }
+    }
+
     // The default WPF template can hit the union of transformed descendant bounds,
     // even when those drawing layers ignore input. Keep the existing root rectangle
     // as the sole input surface; this does not clip the hat or move the drag threshold.

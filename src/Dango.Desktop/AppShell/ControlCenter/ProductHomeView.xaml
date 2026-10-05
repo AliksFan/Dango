@@ -14,6 +14,15 @@
         <SolidColorBrush x:Key="HomeSoft" Color="#F3EFE8" />
         <SolidColorBrush x:Key="HomeAccent" Color="#885E3E" />
         <SolidColorBrush x:Key="HomeSelected" Color="#EFE3D4" />
+        <Style x:Key="ShortcutKeycap" TargetType="Border">
+            <Setter Property="Width" Value="22" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
         <Style TargetType="Button">
             <Setter Property="Foreground" Value="{DynamicResource HomeInk}" />
             <Setter Property="Background" Value="Transparent" />
@@ -242,7 +251,9 @@
                         <Button x:Name="EnterRoomButton" Style="{StaticResource Launcher}" HorizontalAlignment="Center" Margin="0,0,0,4"
                                 Click="OnEnterRoomClick" ToolTip="W · 进入门廊，前往房间" AutomationProperties.Name="W · 进入门廊，前往房间">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="W" FontSize="12" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" VerticalAlignment="Center" Margin="0,0,9,0" />
+                                <Border Style="{StaticResource ShortcutKeycap}">
+                                    <TextBlock Text="W" FontSize="12" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
                                 <Viewbox Width="20" Height="20"><Canvas Width="24" Height="24" IsHitTestVisible="False">
                                     <Path Data="M5,21 L5,3 L19,3 L19,21 M3,21 L21,21 M8,21 L8,6 L16,4 L16,21 Z M13,13 L14,13"
                                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
@@ -252,7 +263,9 @@
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                         <Button x:Name="FaceButton" Style="{StaticResource Launcher}" Click="OnFaceClick" ToolTip="D · 捏脸" AutomationProperties.Name="D · 捏脸">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="D" FontSize="12" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" VerticalAlignment="Center" Margin="0,0,9,0" />
+                                <Border Style="{StaticResource ShortcutKeycap}">
+                                    <TextBlock Text="D" FontSize="12" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
                                 <Viewbox Width="20" Height="20"><Canvas Width="24" Height="24" IsHitTestVisible="False">
                                     <Path Data="M3,16 C3,10 7,7 12,7 C17,7 21,10 21,16 C21,20 17,21 12,21 C7,21 3,20 3,16 Z M12,7 L12,3 M12,5 Q7,5 7,2 Q11,2 12,5 M12,5 Q17,5 17,2 Q13,2 12,5"
                                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" />
@@ -263,7 +276,9 @@
                         </Button>
                         <Button x:Name="WardrobeButton" Style="{StaticResource Launcher}" Margin="12,0,0,0" Click="OnWardrobeClick" ToolTip="A · 换装" AutomationProperties.Name="A · 换装">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="A" FontSize="12" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" VerticalAlignment="Center" Margin="0,0,9,0" />
+                                <Border Style="{StaticResource ShortcutKeycap}">
+                                    <TextBlock Text="A" FontSize="12" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
                                 <Viewbox Width="20" Height="20"><Canvas Width="24" Height="24" IsHitTestVisible="False">
                                     <Path Data="M8,4 L3,7 L1,12 L6,14 L7,11 L7,21 L17,21 L17,11 L18,14 L23,12 L21,7 L16,4 Q12,9 8,4 Z"
                                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" />

@@ -544,7 +544,7 @@ public partial class ProductHomeView : UserControl
         {
             button.MinWidth = compactLandscape ? 66 : 76;
             button.MinHeight = 28;
-            button.Padding = new Thickness(10, 3, 10, 3);
+            button.Padding = new Thickness(10, 2, 10, 2);
         }
         foreach (var button in new[] { CreamButton, PeachButton, GreenButton })
             button.Margin = new Thickness(0, 0, portrait ? 10 : 8, 0);
