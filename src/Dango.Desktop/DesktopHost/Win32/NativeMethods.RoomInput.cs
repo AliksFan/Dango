@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using Dango.Desktop.DesktopHost.WorkerW;
@@ -33,51 +34,68 @@ internal static partial class NativeMethods
     }
 
     internal static WallpaperWheelInputEnvironment InspectRoomWheelInput(
-        WallpaperWheelInputContext context, WallpaperWheelPoint point)
+        WallpaperWheelInputContext context, WallpaperWheelPoint point) => InspectRoomWheelInputCore(context, point, null);
+
+    internal static WallpaperWheelInputEnvironment InspectRoomWheelInputAtEvent(
+        WallpaperWheelInputContext context, WallpaperWheelPoint point) => InspectRoomWheelInputCore(context, point,
+            Stopwatch.GetTimestamp() + Stopwatch.Frequency * 20 / 1000);
+
+    private static WallpaperWheelInputEnvironment InspectRoomWheelInputCore(
+        WallpaperWheelInputContext context, WallpaperWheelPoint point, long? deadlineTimestamp)
     {
         // Only transient handles, classes, rectangles and hit booleans are queried. No titles or contents are read.
         try
         {
+            if (!HasRoomInspectionTime(deadlineTimestamp)) return default;
             if (HasRoomMouseModifier()) return new(true, false, false, false, false, true);
             if (!WallpaperWheelInputPolicy.IsContextEligible(context) || !IsValidDesktopTarget(context.Target) ||
                 !TryGetRoomWindowIdentity(context.Target.ShellViewHandle, out var shellClass, out var shellProcess) ||
-                shellClass != "SHELLDLL_DefView") return default;
+                shellClass != "SHELLDLL_DefView" || !HasRoomInspectionTime(deadlineTimestamp)) return default;
 
             var shellRoot = GetRoomWindowAncestor(context.Target.ShellViewHandle, 2);
             if (!IsValidWindow(shellRoot) ||
-                !TryIsRoomDesktopForeground(context.Target, shellRoot, shellProcess, out var desktopForeground)) return default;
+                !TryIsRoomDesktopForeground(context.Target, shellRoot, shellProcess, out var desktopForeground) ||
+                !HasRoomInspectionTime(deadlineTimestamp)) return default;
             if (!desktopForeground) return new(true, false, false, false, false);
 
-            if (!TryHasRoomFullscreenApplication(shellProcess, out var fullscreen)) return default;
+            if (!TryHasRoomFullscreenApplicationWithinBudget(shellProcess, out var fullscreen, deadlineTimestamp)) return default;
             if (fullscreen) return new(true, true, true, false, false);
 
-            if (!GetCursorPos(out var cursor)) return default;
+            if (!HasRoomInspectionTime(deadlineTimestamp) || !GetCursorPos(out var cursor)) return default;
             var currentPoint = new WallpaperWheelPoint(cursor.X, cursor.Y);
             if (!WallpaperWheelInputPolicy.ContainsDevicePoint(context.ScreenBounds, point) ||
                 !WallpaperWheelInputPolicy.ContainsDevicePoint(context.ScreenBounds, currentPoint))
                 return new(true, true, false, false, false);
 
-            if (!TryIsRoomDesktopPoint(context.Target, shellRoot, shellProcess, point, out var pointerAllowed) ||
-                !TryIsDesktopIconAtPoint(context.Target, point.X, point.Y, out var iconHit)) return default;
+            if (!HasRoomInspectionTime(deadlineTimestamp) ||
+                !TryIsRoomDesktopPoint(context.Target, shellRoot, shellProcess, point, out var pointerAllowed) ||
+                !TryIsDesktopIconAtPoint(context.Target, point.X, point.Y, out var iconHit,
+                    deadlineTimestamp: deadlineTimestamp)) return default;
             if (currentPoint != point)
             {
-                if (!TryIsRoomDesktopPoint(context.Target, shellRoot, shellProcess, currentPoint, out var currentAllowed) ||
-                    !TryIsDesktopIconAtPoint(context.Target, currentPoint.X, currentPoint.Y, out var currentIconHit)) return default;
+                if (!HasRoomInspectionTime(deadlineTimestamp) ||
+                    !TryIsRoomDesktopPoint(context.Target, shellRoot, shellProcess, currentPoint, out var currentAllowed) ||
+                    !TryIsDesktopIconAtPoint(context.Target, currentPoint.X, currentPoint.Y, out var currentIconHit,
+                        deadlineTimestamp: deadlineTimestamp)) return default;
                 pointerAllowed &= currentAllowed;
                 iconHit |= currentIconHit;
             }
 
             // Shell hit tests can pump messages or wait. Refresh every eligibility fact they may have outlived.
-            if (!TryHasRoomFullscreenApplication(shellProcess, out fullscreen) ||
+            if (!TryHasRoomFullscreenApplicationWithinBudget(shellProcess, out fullscreen, deadlineTimestamp) ||
                 !GetCursorPos(out cursor)) return default;
             if (fullscreen) return new(true, true, true, false, false);
             if (new WallpaperWheelPoint(cursor.X, cursor.Y) != currentPoint)
                 return new(true, true, false, false, false);
-            if (!TryIsRoomDesktopPoint(context.Target, shellRoot, shellProcess, currentPoint, out var finalAllowed))
+            if (!HasRoomInspectionTime(deadlineTimestamp) ||
+                !TryIsRoomDesktopPoint(context.Target, shellRoot, shellProcess, currentPoint, out var finalAllowed))
                 return default;
             pointerAllowed &= finalAllowed;
-            if (!TryIsRoomDesktopForeground(context.Target, shellRoot, shellProcess, out desktopForeground)) return default;
-            return new(true, desktopForeground, false, pointerAllowed, iconHit, HasRoomMouseModifier());
+            if (!HasRoomInspectionTime(deadlineTimestamp) ||
+                !TryIsRoomDesktopForeground(context.Target, shellRoot, shellProcess, out desktopForeground)) return default;
+            var modified = HasRoomMouseModifier();
+            return HasRoomInspectionTime(deadlineTimestamp)
+                ? new(true, desktopForeground, false, pointerAllowed, iconHit, modified) : default;
         }
         catch
         {
@@ -126,45 +144,67 @@ internal static partial class NativeMethods
         return true;
     }
 
-    private static bool TryHasRoomFullscreenApplication(uint shellProcess, out bool fullscreen)
+    private static bool TryHasRoomFullscreenApplication(uint shellProcess, out bool fullscreen) =>
+        TryHasRoomFullscreenApplicationWithinBudget(shellProcess, out fullscreen, null);
+
+    private static bool TryHasRoomFullscreenApplicationWithinBudget(uint shellProcess, out bool fullscreen,
+        long? deadlineTimestamp)
     {
         fullscreen = false;
+        if (!HasRoomInspectionTime(deadlineTimestamp)) return false;
         var monitors = new List<DesktopPixelRect>();
         var known = true;
         if (!EnumRoomDisplayMonitors(0, 0, (nint monitor, nint _, ref NativeRect _, nint _) =>
             {
+                if (!HasRoomInspectionTime(deadlineTimestamp)) { known = false; return false; }
                 var information = new MonitorInfo { Size = (uint)Marshal.SizeOf<MonitorInfo>() };
-                if (!GetMonitorInfo(monitor, ref information) || !IsRoomRectangleValid(information.Monitor))
+                if (!GetMonitorInfo(monitor, ref information) || !IsRoomRectangleValid(information.Monitor) ||
+                    !HasRoomInspectionTime(deadlineTimestamp))
                 {
                     known = false;
                     return false;
                 }
                 monitors.Add(ToRoomPixelRect(information.Monitor));
                 return true;
-            }, 0) || !known || monitors.Count == 0) return false;
+            }, 0) || !known || monitors.Count == 0 || !HasRoomInspectionTime(deadlineTimestamp)) return false;
 
         var foundFullscreen = false;
         var completed = EnumWindows((window, _) =>
         {
+            if (!HasRoomInspectionTime(deadlineTimestamp)) { known = false; return false; }
             if (!IsValidWindow(window)) { known = false; return false; }
             if (!IsWindowVisible(window) || IsRoomWindowMinimized(window)) return true;
-            if (!TryGetRoomWindowIdentity(window, out var className, out var process))
+            if (!HasRoomInspectionTime(deadlineTimestamp) ||
+                !TryGetRoomWindowIdentity(window, out var className, out var process) ||
+                !HasRoomInspectionTime(deadlineTimestamp))
             {
                 known = false;
                 return false;
             }
             if (process == shellProcess && WallpaperWheelInputPolicy.IsShellClass(className)) return true;
-            if (GetRoomWindowCloaked(window, 14, out var cloaked, sizeof(int)) != 0)
+            if (GetRoomWindowCloaked(window, 14, out var cloaked, sizeof(int)) != 0 ||
+                !HasRoomInspectionTime(deadlineTimestamp))
             {
                 known = false;
                 return false;
             }
             if (cloaked != 0) return true;
-            if (GetRoomWindowFrame(window, 9, out var bounds, Marshal.SizeOf<NativeRect>()) != 0 ||
-                !IsRoomRectangleValid(bounds))
+            if (!HasRoomInspectionTime(deadlineTimestamp) ||
+                GetRoomWindowFrame(window, 9, out var bounds, Marshal.SizeOf<NativeRect>()) != 0 ||
+                !HasRoomInspectionTime(deadlineTimestamp) ||
+                bounds.Right < bounds.Left || bounds.Bottom < bounds.Top)
             {
                 known = false;
                 return false;
+            }
+            // Some helpers publish an empty DWM frame. Check their native rectangle before
+            // declaring a known zero-area window harmless; failed/reversed geometry stays unknown.
+            if (bounds.Right == bounds.Left || bounds.Bottom == bounds.Top)
+            {
+                if (!HasRoomInspectionTime(deadlineTimestamp) || !GetWindowRect(window, out bounds) ||
+                    !HasRoomInspectionTime(deadlineTimestamp) || bounds.Right < bounds.Left || bounds.Bottom < bounds.Top)
+                { known = false; return false; }
+                if (bounds.Right == bounds.Left || bounds.Bottom == bounds.Top) return true;
             }
             var state = new WallpaperWheelWindowState(true, false, false, false, ToRoomPixelRect(bounds));
             if (monitors.Any(monitor => WallpaperWheelInputPolicy.IsBlockingFullscreen(state, monitor)))
@@ -176,8 +216,19 @@ internal static partial class NativeMethods
         }, 0);
         fullscreen = foundFullscreen;
         // A deliberate early stop after a blocking window is a known rejection, never a query success for input.
-        return known && (completed || foundFullscreen);
+        return known && (completed || foundFullscreen) && HasRoomInspectionTime(deadlineTimestamp);
     }
+
+    // This is a cooperative query deadline, including each enumeration callback and every Shell-message wait.
+    // Native cleanup and OS scheduling cannot be preempted, so this does not promise a hard real-time callback bound.
+    private static uint RemainingRoomInspectionMilliseconds(long? deadlineTimestamp)
+    {
+        if (deadlineTimestamp is null) return uint.MaxValue;
+        var remaining = deadlineTimestamp.Value - Stopwatch.GetTimestamp();
+        return remaining <= 0 ? 0 : (uint)Math.Min(uint.MaxValue, Math.Floor(remaining * 1000d / Stopwatch.Frequency));
+    }
+
+    private static bool HasRoomInspectionTime(long? deadlineTimestamp) => RemainingRoomInspectionMilliseconds(deadlineTimestamp) > 0;
 
     private static bool IsRoomRectangleValid(NativeRect bounds) => bounds.Right > bounds.Left && bounds.Bottom > bounds.Top;
 

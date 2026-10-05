@@ -11,6 +11,7 @@ internal interface IWallpaperWheelInputPlatform
     bool Uninstall(nint hook);
     nint CallNext(nint hook, int code, nint wordParameter, nint longParameter);
     WallpaperWheelHookData Read(nint longParameter);
+    WallpaperWheelInputEnvironment InspectAtEvent(WallpaperWheelInputContext context, WallpaperWheelPoint point);
     WallpaperWheelInputEnvironment Inspect(WallpaperWheelInputContext context, WallpaperWheelPoint point);
 }
 
@@ -35,11 +36,13 @@ internal sealed class WallpaperWheelInputBridge : IDisposable
     private bool disposed;
     private bool stopping;
     private bool active;
+    private bool inspecting;
     private RecentWheel? recent;
     private long recentTimestamp;
     private long lastInspectionTimestamp;
 
     internal bool IsHookReleasePending => hook != 0 && !active;
+    internal bool IsListening => active && hook != 0 && !disposed;
 
     internal WallpaperWheelInputBridge(Dispatcher dispatcher, Func<WallpaperWheelInputContext?> context,
         Action<int> applyRawDelta, Action clearPendingInput)
@@ -121,46 +124,56 @@ internal sealed class WallpaperWheelInputBridge : IDisposable
 
     private nint OnMouse(int code, nint wordParameter, nint longParameter)
     {
+        var eventRevision = revision;
+        var eventHook = hook;
         try
         {
             if (code >= 0 && active && !disposed && !dispatcher.HasShutdownStarted &&
                 wordParameter == WmMouseWheel)
             {
                 var data = platform.Read(longParameter);
-                if ((data.Flags & Injected) == 0)
+                if ((data.Flags & Injected) == 0 && IsCurrentEvent(eventRevision, eventHook))
                 {
                     var captured = context();
                     var delta = WallpaperWheelInputPolicy.DecodeRawDelta(data.MouseData);
                     if (data.HasModifier || !WallpaperWheelInputPolicy.IsContextEligible(captured) ||
                         !WallpaperWheelInputPolicy.ContainsDevicePoint(captured!.ScreenBounds, data.Point))
                     {
-                        RejectPending();
+                        if (IsCurrentEvent(eventRevision, eventHook)) RejectPending();
                     }
                     else if (delta != 0 && !rejected)
                     {
-                        if (pending.Count != 0 && pending[^1] is var previous &&
+                        // Qualify the actual event before queuing it: a later desktop recovery cannot bless old input.
+                        if (!IsEligible(captured!, data.Point, eventRevision, atEvent: true))
+                        {
+                            if (IsCurrentEvent(eventRevision, eventHook)) RejectPending();
+                        }
+                        else if (pending.Count != 0 && pending[^1] is var previous &&
                             previous.Context == captured && previous.Point == data.Point &&
-                            Math.Sign(previous.Delta) == Math.Sign(delta))
+                            previous.Revision == eventRevision && Math.Sign(previous.Delta) == Math.Sign(delta))
                         {
                             pending[^1] = previous with { Delta = checked(previous.Delta + delta) };
                         }
                         else if (pending.Count < MaximumPendingPoints)
                         {
-                            pending.Add(new PendingWheel(captured!, data.Point, delta, revision));
+                            pending.Add(new PendingWheel(captured!, data.Point, delta, eventRevision));
                         }
                         else RejectPending();
-                        ScheduleCheck(recentOnly: false);
+                        if (active && !disposed) ScheduleCheck(recentOnly: false);
                     }
                 }
             }
         }
         catch
         {
-            RejectPending();
+            if (IsCurrentEvent(eventRevision, eventHook)) RejectPending();
         }
         // The desktop observer never consumes input, including exceptions and rejected events.
-        return platform.CallNext(hook, code, wordParameter, longParameter);
+        return platform.CallNext(eventHook, code, wordParameter, longParameter);
     }
+
+    private bool IsCurrentEvent(long eventRevision, nint eventHook) =>
+        eventRevision == revision && eventHook == hook && active && !disposed && !dispatcher.HasShutdownStarted;
 
     private void RejectPending()
     {
@@ -168,7 +181,7 @@ internal sealed class WallpaperWheelInputBridge : IDisposable
         recent = null;
         revision++;
         rejected = true;
-        if (!dispatcher.HasShutdownStarted) ScheduleCheck(recentOnly: false);
+        if (active && !disposed && !dispatcher.HasShutdownStarted) ScheduleCheck(recentOnly: false);
     }
 
     private void OnTimerTick(object? sender, EventArgs args) => FlushPendingInput();
@@ -179,6 +192,12 @@ internal sealed class WallpaperWheelInputBridge : IDisposable
     internal void FlushPendingInput()
     {
         dispatcher.VerifyAccess();
+        // SendMessageTimeout can pump this timer inside a hook check. Apply only after that check has unwound.
+        if (inspecting)
+        {
+            if (active && !disposed && !dispatcher.HasShutdownStarted) ScheduleCheck(recentOnly: false);
+            return;
+        }
         timer.Stop();
         if (disposed || !active || dispatcher.HasShutdownStarted)
         {
@@ -203,7 +222,7 @@ internal sealed class WallpaperWheelInputBridge : IDisposable
                 {
                     if (!IsEligible(wheel.Context, wheel.Point, wheel.Revision))
                     {
-                        ClearEligibility();
+                        if (wheel.Revision == revision) ClearEligibility();
                         return;
                     }
                     applyRawDelta(wheel.Delta);
@@ -213,7 +232,7 @@ internal sealed class WallpaperWheelInputBridge : IDisposable
                 }
                 catch
                 {
-                    ClearEligibility();
+                    if (wheel.Revision == revision) ClearEligibility();
                     return;
                 }
             }
@@ -227,9 +246,9 @@ internal sealed class WallpaperWheelInputBridge : IDisposable
                     lastInspectionTimestamp = now;
                     try
                     {
-                        if (!IsEligible(last.Context, last.Point, last.Revision)) ClearEligibility();
+                        if (!IsEligible(last.Context, last.Point, last.Revision) && last.Revision == revision) ClearEligibility();
                     }
-                    catch { ClearEligibility(); }
+                    catch { if (last.Revision == revision) ClearEligibility(); }
                 }
             }
         }
@@ -243,11 +262,21 @@ internal sealed class WallpaperWheelInputBridge : IDisposable
         }
     }
 
-    private bool IsEligible(WallpaperWheelInputContext captured, WallpaperWheelPoint point, long capturedRevision) =>
-        capturedRevision == revision && WallpaperWheelInputPolicy.IsSamePresentation(captured, context()) &&
-        WallpaperWheelInputPolicy.ShouldApply(captured, context(), point, platform.Inspect(captured, point)) &&
-        WallpaperWheelInputPolicy.IsSamePresentation(captured, context()) && capturedRevision == revision &&
-        !disposed && active && !dispatcher.HasShutdownStarted;
+    private bool IsEligible(WallpaperWheelInputContext captured, WallpaperWheelPoint point, long capturedRevision,
+        bool atEvent = false)
+    {
+        if (inspecting || capturedRevision != revision || disposed || !active || dispatcher.HasShutdownStarted) return false;
+        inspecting = true;
+        try
+        {
+            if (!WallpaperWheelInputPolicy.IsSamePresentation(captured, context())) return false;
+            var environment = atEvent ? platform.InspectAtEvent(captured, point) : platform.Inspect(captured, point);
+            return WallpaperWheelInputPolicy.ShouldApply(captured, context(), point, environment) &&
+                WallpaperWheelInputPolicy.IsSamePresentation(captured, context()) && capturedRevision == revision &&
+                !disposed && active && !dispatcher.HasShutdownStarted;
+        }
+        finally { inspecting = false; }
+    }
 
     private void ClearEligibility()
     {
@@ -276,6 +305,8 @@ internal sealed class NativeWallpaperWheelInputPlatform : IWallpaperWheelInputPl
     public nint CallNext(nint hook, int code, nint wordParameter, nint longParameter) =>
         NativeMethods.CallNextKeyboardHook(hook, code, wordParameter, longParameter);
     public WallpaperWheelHookData Read(nint longParameter) => NativeMethods.ReadRoomMouseInput(longParameter);
+    public WallpaperWheelInputEnvironment InspectAtEvent(WallpaperWheelInputContext context, WallpaperWheelPoint point) =>
+        NativeMethods.InspectRoomWheelInputAtEvent(context, point);
     public WallpaperWheelInputEnvironment Inspect(WallpaperWheelInputContext context, WallpaperWheelPoint point) =>
         NativeMethods.InspectRoomWheelInput(context, point);
 }

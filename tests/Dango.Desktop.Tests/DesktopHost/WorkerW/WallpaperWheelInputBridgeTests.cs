@@ -13,14 +13,149 @@ public sealed class WallpaperWheelInputBridgeTests
         new WorkerWDesktopTarget(10, 11, 12, 13, true), new LogicalRect(-1920, 0, 1920, 1080), 1, true, false);
 
     [STATestMethod]
-    public void HookOnlyQueuesCandidateAndPreservesPartialRawDeltasAtUiBoundary()
+    [DataRow(true, false, false, true, false)]
+    [DataRow(true, true, true, true, false)]
+    [DataRow(true, true, false, true, true)]
+    [DataRow(false, true, false, true, false)]
+    public void IneligibleEventCannotBecomeEligibleWhenEnvironmentRecoversBeforeFlush(
+        bool known, bool foreground, bool fullscreen, bool desktopPointer, bool icon)
+    {
+        var environment = new WallpaperWheelInputEnvironment(known, foreground, fullscreen, desktopPointer, icon);
+        var platform = new FakePlatform { Inspection = (_, _) => environment };
+        var applied = new List<int>();
+        var cleared = 0;
+        using var bridge = Create(platform, () => Context, applied, () => cleared++);
+        bridge.Start();
+        Assert.AreEqual((nint)987, platform.Emit(120));
+        environment = new(true, true, false, true, false);
+        bridge.FlushPendingInput();
+        Assert.HasCount(0, applied,
+            "An event from an application, fullscreen, icon or unknown environment must never be accepted after the environment recovers.");
+        Assert.AreEqual(1, cleared);
+        Assert.AreEqual(1, platform.NextCount);
+    }
+
+    [STATestMethod]
+    public void EventInspectionStopStartDiscardsOldEventWithoutPoisoningTheFreshGesture()
+    {
+        var platform = new FakePlatform();
+        var applied = new List<int>();
+        var cleared = 0;
+        using var bridge = Create(platform, () => Context, applied, () => cleared++);
+        bridge.Start();
+        platform.Inspection = (_, _) =>
+        {
+            bridge.Stop(); bridge.Start();
+            return new(true, true, false, true, false);
+        };
+        platform.Emit(60);
+        platform.Inspection = (_, _) => new(true, true, false, true, false);
+        platform.Emit(120);
+        bridge.FlushPendingInput();
+        CollectionAssert.AreEqual(new[] { 120 }, applied);
+        Assert.AreEqual(1, cleared, "The old event cannot clear or reject the new hook epoch.");
+        Assert.AreEqual(2, platform.NextCount);
+        Assert.AreEqual(1, platform.UninstallCount);
+    }
+
+    [STATestMethod]
+    public void HookReadReentryCapturesEpochBeforeReadingAndPreservesTheNewQualifiedEvent()
+    {
+        var platform = new FakePlatform();
+        var applied = new List<int>();
+        using var bridge = Create(platform, () => Context, applied);
+        bridge.Start();
+        platform.BeforeRead = () =>
+        {
+            platform.BeforeRead = null;
+            bridge.Stop(); bridge.Start();
+            platform.Emit(120);
+        };
+        platform.Emit(60);
+        bridge.FlushPendingInput();
+        CollectionAssert.AreEqual(new[] { 120 }, applied);
+        Assert.AreEqual(1, platform.EventInspectionCount);
+        Assert.AreEqual(2, platform.NextCount);
+    }
+
+    [STATestMethod]
+    public void NestedReverseWheelDuringInspectionRejectsBothWithoutRecursiveQueriesAndKeepsHookChain()
+    {
+        var platform = new FakePlatform();
+        var applied = new List<int>();
+        var cleared = 0;
+        using var bridge = Create(platform, () => Context, applied, () => cleared++);
+        bridge.Start();
+        platform.Inspection = (_, _) =>
+        {
+            platform.Emit(-120);
+            return new(true, true, false, true, false);
+        };
+        Assert.AreEqual((nint)987, platform.Emit(120));
+        bridge.FlushPendingInput();
+        Assert.HasCount(0, applied);
+        Assert.AreEqual(1, platform.EventInspectionCount);
+        Assert.AreEqual(0, platform.InspectionCount);
+        Assert.AreEqual(2, platform.NextCount);
+        Assert.AreEqual(1, cleared);
+    }
+
+    [STATestMethod]
+    public void NestedFlushDuringInspectionCannotApplyQueuedInputInsideTheHook()
+    {
+        var platform = new FakePlatform();
+        var applied = new List<int>();
+        using var bridge = Create(platform, () => Context, applied);
+        bridge.Start();
+        platform.Emit(60);
+        var appliedInsideInspection = false;
+        platform.Inspection = (_, _) =>
+        {
+            bridge.FlushPendingInput();
+            appliedInsideInspection |= applied.Count != 0;
+            return new(true, true, false, true, false);
+        };
+        platform.Emit(60);
+        Assert.HasCount(0, applied);
+        bridge.FlushPendingInput();
+        Assert.IsFalse(appliedInsideInspection);
+        CollectionAssert.AreEqual(new[] { 120 }, applied);
+        Assert.AreEqual(2, platform.EventInspectionCount);
+        Assert.AreEqual(1, platform.InspectionCount);
+    }
+
+    [STATestMethod]
+    public void CommandInspectionStopStartCannotClearTheFreshEpochAfterOldBatchReturns()
+    {
+        var platform = new FakePlatform();
+        var applied = new List<int>();
+        var cleared = 0;
+        using var bridge = Create(platform, () => Context, applied, () => cleared++);
+        bridge.Start();
+        platform.Emit(60);
+        platform.Inspection = (_, _) =>
+        {
+            bridge.Stop(); bridge.Start();
+            return new(true, true, false, true, false);
+        };
+        bridge.FlushPendingInput();
+        platform.Inspection = (_, _) => new(true, true, false, true, false);
+        platform.Emit(120);
+        bridge.FlushPendingInput();
+        CollectionAssert.AreEqual(new[] { 120 }, applied);
+        Assert.AreEqual(1, cleared);
+    }
+
+    [STATestMethod]
+    public void HookQualifiesWithoutApplyingAndPreservesPartialRawDeltasAtUiBoundary()
     {
         var platform = new FakePlatform();
         var applied = new List<int>();
         using var bridge = Create(platform, () => Context, applied);
         bridge.Start();
         Assert.AreEqual((nint)987, platform.Emit(60));
-        Assert.AreEqual(0, platform.InspectionCount, "Native eligibility queries must never run in the low-level hook.");
+        Assert.AreEqual(1, platform.EventInspectionCount, "Event qualification must happen before the candidate is queued.");
+        Assert.AreEqual(0, platform.InspectionCount, "Application still waits for the Dispatcher command boundary.");
         Assert.HasCount(0, applied);
         bridge.FlushPendingInput();
         platform.Emit(-60);
@@ -37,6 +172,7 @@ public sealed class WallpaperWheelInputBridgeTests
         using var bridge = Create(platform, () => Context, applied);
         bridge.Start();
         for (var i = 0; i < 100; i++) platform.Emit(60);
+        Assert.AreEqual(100, platform.EventInspectionCount, "Every event must independently qualify before coalescing.");
         Assert.AreEqual(0, platform.InspectionCount);
         bridge.FlushPendingInput();
         CollectionAssert.AreEqual(new[] { 6000 }, applied);
@@ -501,10 +637,12 @@ public sealed class WallpaperWheelInputBridgeTests
         private WallpaperWheelHookData data;
         internal int NextCount { get; private set; }
         internal int InspectionCount { get; private set; }
+        internal int EventInspectionCount { get; private set; }
         internal int InstallCount { get; private set; }
         internal int UninstallCount { get; private set; }
         internal nint HookHandle { get; init; } = 42;
         internal bool ThrowOnRead { get; set; }
+        internal Action? BeforeRead { get; set; }
         internal bool UninstallSucceeds { get; set; } = true;
         internal Func<WallpaperWheelInputContext, WallpaperWheelPoint, WallpaperWheelInputEnvironment> Inspection { get; set; } =
             (_, _) => new(true, true, false, true, false);
@@ -512,10 +650,19 @@ public sealed class WallpaperWheelInputBridgeTests
         public nint Install(NativeMethods.LowLevelMouseProcedure value) { procedure = value; InstallCount++; return HookHandle; }
         public bool Uninstall(nint hook) { UninstallCount++; return UninstallSucceeds; }
         public nint CallNext(nint hook, int code, nint wordParameter, nint longParameter) { NextCount++; return 987; }
-        public WallpaperWheelHookData Read(nint longParameter) => ThrowOnRead ? throw new InvalidOperationException() : data;
+        public WallpaperWheelHookData Read(nint longParameter)
+        {
+            BeforeRead?.Invoke();
+            return ThrowOnRead ? throw new InvalidOperationException() : data;
+        }
         public WallpaperWheelInputEnvironment Inspect(WallpaperWheelInputContext context, WallpaperWheelPoint point)
         {
             InspectionCount++;
+            return Inspection(context, point);
+        }
+        public WallpaperWheelInputEnvironment InspectAtEvent(WallpaperWheelInputContext context, WallpaperWheelPoint point)
+        {
+            EventInspectionCount++;
             return Inspection(context, point);
         }
         internal nint Emit(int delta, int x = -100, int code = 0,

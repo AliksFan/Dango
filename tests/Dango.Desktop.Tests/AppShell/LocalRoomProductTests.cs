@@ -1,0 +1,178 @@
+using System.Reflection;
+using System.Windows;
+using System.Windows.Input;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
+using Dango.Desktop.AppShell;
+using Dango.Desktop.AppShell.ControlCenter;
+using Dango.Desktop.AppShell.Rooms;
+using Dango.Desktop.Rendering.Visuals;
+
+namespace Dango.Desktop.Tests.AppShell;
+
+[TestClass]
+public sealed class LocalRoomProductTests
+{
+    [STATestMethod]
+    [TestCategory("NativeIntegration")]
+    public void ActualWindowHandoffWaitsForFrameAndPreservesEntityThroughHideReturnAndZoom()
+    {
+        using var host = CreateHost();
+        var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
+        Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
+        host.ShowControlCenter(); Pump(450);
+        var homeWindow = Field<ControlCenterWindow>(host, "controlCenterWindow");
+        var home = homeWindow.ProductHome;
+        home.ResumePorch(); Pump(400);
+        Assert.IsTrue(home.OwnsLiveFrameDriver);
+        var id = runtime.EntityIds.Single();
+        host.EnterLocalRoom();
+        Assert.IsTrue(homeWindow.IsVisible, "Show alone must never hide the source.");
+        Assert.IsTrue(host.LocalHandoffPending);
+        Assert.IsFalse(home.OwnsLiveFrameDriver);
+        homeWindow.Width += 10; homeWindow.UpdateLayout();
+        Assert.IsFalse(home.OwnsLiveFrameDriver, "The visible suspended source cannot reclaim ownership.");
+        Pump(450);
+        Assert.IsFalse(host.LocalHandoffPending, host.LocalRoomFailure);
+        Assert.AreEqual(LocalRoomPresentation.Window, host.LocalPresentation);
+        Assert.IsFalse(homeWindow.IsVisible);
+        Assert.IsTrue(host.LocalWindow!.Scene.HasHealthyFrame);
+        Assert.AreEqual(id, runtime.EntityIds.Single());
+        var snapshot = Field<Dango.Desktop.DesktopHost.DesktopSceneSession>(host, "sceneSession").Snapshot;
+        var ground = runtime.LocalGroundY;
+        foreach (var preset in new[] { RoomViewPreset.Near, RoomViewPreset.Whole, RoomViewPreset.Standard })
+            host.LocalWindow.Scene.SelectView(preset);
+        host.LocalWindow.Scene.ApplyWheel(-120);
+        host.LocalWindow.Width += 200; host.LocalWindow.UpdateLayout();
+        Assert.AreSame(snapshot, Field<Dango.Desktop.DesktopHost.DesktopSceneSession>(host, "sceneSession").Snapshot,
+            "Camera/resize cannot call AttachSurface or move the logical entity.");
+        Assert.AreEqual(ground, runtime.LocalGroundY);
+        Capture(host.LocalWindow.Scene, "room-window.png");
+        var driver = Field<LocalRoomSceneDriver>(host, "localRoomDriver");
+        Assert.IsTrue(driver.Key(Key.D, true, false)); Pump(220);
+        host.HideLocalRoom();
+        Assert.IsNull(runtime.FrameDriver);
+        Assert.IsFalse(runtime.IsRunning);
+        Assert.AreEqual(Dango.Core.Animation.DirectionalControlIntent.None, Field<Dango.Core.Animation.DirectionalControlIntent>(driver, "intent"));
+        host.RestoreLocalRoom();
+        Assert.IsTrue(host.LocalHandoffPending, "Restore must wait for a fresh frame, never reuse cached readiness.");
+        Pump(350);
+        Assert.AreEqual(id, runtime.EntityIds.Single());
+        host.ReturnToPorch();
+        host.HideLocalRoom();
+        Assert.IsNull(runtime.FrameDriver, "Cancelling return must also release the pending porch owner.");
+        Assert.IsFalse(runtime.IsRunning);
+        Assert.IsFalse(homeWindow.IsVisible);
+        host.RestoreLocalRoom(); Pump(350);
+        host.ReturnToPorch();
+        Assert.IsTrue(host.LocalWindow.IsVisible, "Return also keeps its source until the porch is ready.");
+        Pump(400);
+        Assert.AreEqual(LocalRoomPresentation.Porch, host.LocalPresentation, host.LocalRoomFailure);
+        Assert.IsTrue(home.IsInPorch, "The room door returns to porch, not home.");
+        Assert.IsTrue(home.OwnsLiveFrameDriver);
+        Assert.AreEqual(id, runtime.EntityIds.Single());
+        Assert.IsNull(home.RoomNavigation.Authority.RoomId, "Local room cannot fabricate formal authority.");
+    }
+
+    [STATestMethod]
+    [TestCategory("NativeIntegration")]
+    public void NoFrameTimeoutKeepsRecoveryAndRetryCanRender()
+    {
+        using var host = CreateHost();
+        Assert.IsTrue(Field<StackedDangoSceneRuntime>(host, "stackedRuntime").TryInitialize());
+        host.ShowControlCenter(); Pump(350);
+        var window = Field<ControlCenterWindow>(host, "controlCenterWindow");
+        window.ProductHome.ResumePorch(); Pump(350);
+        host.LocalWindow!.Scene.Visibility = Visibility.Hidden;
+        host.EnterLocalRoom(); Pump(100);
+        Assert.IsTrue(window.IsVisible);
+        Assert.IsTrue(host.LocalHandoffPending);
+        Pump(3200);
+        Assert.IsFalse(host.LocalHandoffPending);
+        Assert.IsNotNull(host.LocalRoomFailure);
+        Assert.IsTrue(window.IsVisible);
+        Assert.IsTrue(window.ProductHome.IsInPorch);
+        Assert.IsTrue(window.ProductHome.OwnsLiveFrameDriver);
+        host.LocalWindow.Scene.Visibility = Visibility.Visible;
+        host.EnterLocalRoom(); Pump(450);
+        Assert.AreEqual(LocalRoomPresentation.Window, host.LocalPresentation, host.LocalRoomFailure);
+        Assert.IsTrue(host.LocalWindow.Scene.HasHealthyFrame);
+    }
+
+    [STATestMethod]
+    [TestCategory("NativeIntegration")]
+    public void RunningFaultReleasesOwnerAndExplicitRecoveryKeepsEntity()
+    {
+        using var host = CreateHost();
+        var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
+        Assert.IsTrue(runtime.TryInitialize());
+        host.ShowControlCenter(); Pump(350);
+        host.EnterLocalRoom(); Pump(400);
+        var id = runtime.EntityIds.Single();
+        typeof(StackedDangoSceneRuntime).GetProperty(nameof(StackedDangoSceneRuntime.LastError))!.SetValue(runtime, "fictional local-room fault");
+        Pump(150);
+        Assert.IsNotNull(host.LocalRoomFailure);
+        Assert.IsNull(runtime.FrameDriver);
+        Assert.IsFalse(runtime.IsRunning);
+        Assert.IsFalse(host.LocalWindow!.Scene.HasHealthyFrame);
+        host.RecoverLocalRoom(); Pump(450);
+        Assert.IsNull(runtime.LastError);
+        Assert.AreEqual(id, runtime.EntityIds.Single());
+        Assert.IsTrue(host.LocalWindow.Scene.HasHealthyFrame, host.LocalRoomFailure);
+        Assert.IsFalse(host.LocalHandoffPending);
+        host.ShowDiagnostics();
+        var main = Field<ControlCenterWindow>(host, "controlCenterWindow");
+        Assert.IsTrue(main.ProductHome.IsSettingsOpen, "The existing diagnostics command must open its actual page.");
+        Assert.IsNull(runtime.FrameDriver);
+        var homeButton = (System.Windows.Controls.Button)main.ProductHome.FindName("HomeNavigation");
+        homeButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        Pump(350);
+        Assert.IsFalse(main.ProductHome.IsSettingsOpen);
+        Assert.IsFalse(main.ProductHome.IsInPorch);
+        Assert.IsTrue(main.ProductHome.OwnsLiveFrameDriver, "Leaving diagnostics must resume Home rather than leave a suspended empty scene.");
+        Assert.IsNull(typeof(StackedDangoSceneRuntime).GetField("localHorizontalBounds", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(runtime));
+    }
+
+    [STATestMethod]
+    public void LocalDoorIsExplicitAndDoesNotBecomeFormalAdmission()
+    {
+        var porch = new PorchSceneView();
+        Assert.AreEqual(0, porch.DoorCount);
+        porch.SetLocalRoomEnabled(true);
+        Assert.AreEqual(1, porch.DoorCount);
+        var count = 0;
+        porch.LocalRoomRequested += () => count++;
+        Assert.IsTrue(porch.InteractNearestDoor());
+        Assert.AreEqual(1, count);
+        Assert.IsFalse(porch.CanEnterRoom);
+        porch.SetReviewMode(true);
+        Assert.AreEqual(4, porch.DoorCount);
+    }
+
+    private static DangoApplicationHost CreateHost()
+    {
+        var root = Path.Combine(TestRepository.Root, "artifacts", "local-room", "tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        return new(settingsFile: Path.Combine(root, "settings.json"), isolatedLocalRoomReview: true);
+    }
+    private static T Field<T>(object instance, string name) =>
+        (T)instance.GetType().GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(instance)!;
+    private static void Pump(int ms)
+    {
+        var frame = new DispatcherFrame();
+        var timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(ms) };
+        timer.Tick += (_, _) => { timer.Stop(); frame.Continue = false; };
+        timer.Start(); Dispatcher.PushFrame(frame);
+    }
+    private static void Capture(FrameworkElement scene, string name)
+    {
+        var bitmap = new RenderTargetBitmap((int)scene.ActualWidth, (int)scene.ActualHeight, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+        var drawing = new System.Windows.Media.DrawingVisual();
+        using (var dc = drawing.RenderOpen())
+            dc.DrawRectangle(new System.Windows.Media.VisualBrush(scene), null, new Rect(0, 0, scene.ActualWidth, scene.ActualHeight));
+        bitmap.Render(drawing);
+        var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        var directory = Path.Combine(TestRepository.Root, "artifacts", "local-room", "visual"); Directory.CreateDirectory(directory);
+        using var stream = File.Create(Path.Combine(directory, name)); encoder.Save(stream);
+    }
+}
