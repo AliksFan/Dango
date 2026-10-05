@@ -2,6 +2,8 @@
 
 日期：2026-10-05。状态：**环境范围已明确；视角等候选待评审，实施未开始**。
 
+以上是该版本检查时的评审状态。本记录保留两层修订版的110／67项和hash；后续用户已通过两层环境与视角方案并追加滚轮操作，当前视角原型和状态见[滚轮修订记录](2026-10-05-room-wheel-design.md)。
+
 ## 范围
 
 用户澄清只参照两层结构，不要方块外观。本轮更新[房间设计](../planning/2026-10-05-local-single-room-design.md)、[候选计划](../planning/2026-10-05-local-single-room-plan.md)、[视角提案](../planning/2026-10-05-room-view-mechanism-proposal.md)，以及两份交互示意：[流程](../prototypes/dango-local-room.html)、[两层与视距](../prototypes/dango-room-view.html)。
