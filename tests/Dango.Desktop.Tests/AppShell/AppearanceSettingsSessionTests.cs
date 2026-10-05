@@ -1,4 +1,5 @@
 using Dango.Desktop.AppShell.ControlCenter;
+using Dango.Desktop.Physics.Presentation.Attachments;
 using Dango.Desktop.Rendering.Visuals;
 using Dango.Desktop.Verification;
 
@@ -67,25 +68,169 @@ public sealed class AppearanceSettingsSessionTests
     }
 
     [TestMethod]
-    public void LegacySchemaOnlyMigratesOnExplicitSave()
+    [DataRow("{\"appearanceSchemaVersion\":1,\"bodyColorHex\":\"#000000\"}", "#2B201E")]
+    [DataRow("{\"appearanceSchemaVersion\":2,\"bodyColorHex\":\"#000000\",\"eyeColorHex\":\"#000000\"}", "#000000")]
+    public void LegacySchemaOnlyMigratesOnExplicitSave(string original, string expectedEyes)
     {
         var path = NewPath();
-        const string original = "{\"appearanceSchemaVersion\":1,\"bodyColorHex\":\"#000000\"}";
         Write(path, original);
         var session = new AppearanceSettingsSession(path);
 
         Assert.AreEqual("#000000", session.SavedBodyColor.ToHex());
-        Assert.AreEqual("#2B201E", session.SavedEyeColor.ToHex());
+        Assert.AreEqual(expectedEyes, session.SavedEyeColor.ToHex());
+        Assert.AreEqual(EyeLayoutParameters.Default, session.SavedAppearance.EyeLayout);
         Assert.IsFalse(session.IsDirty);
         Assert.IsTrue(session.HasPendingSave);
         session.CancelPreview();
         Assert.AreEqual(original, File.ReadAllText(path));
+        Assert.IsFalse(session.IsDirty);
+        Assert.IsTrue(session.HasPendingSave);
 
         Assert.IsTrue(session.TrySave());
         Assert.IsFalse(session.HasPendingSave);
         Assert.AreEqual("#000000", new AppearanceSettingsStore().Load(path).BodyColor.ToHex());
-        Assert.AreEqual("#2B201E", new AppearanceSettingsStore().Load(path).EyeColor.ToHex());
-        StringAssert.Contains(File.ReadAllText(path), "\"appearanceSchemaVersion\": 2");
+        Assert.AreEqual(expectedEyes, new AppearanceSettingsStore().Load(path).EyeColor.ToHex());
+        StringAssert.Contains(File.ReadAllText(path), "\"appearanceSchemaVersion\": 3");
+        var reopened = new AppearanceSettingsSession(path);
+        Assert.AreEqual(session.SavedAppearance, reopened.SavedAppearance);
+        Assert.IsFalse(reopened.HasPendingSave);
+    }
+
+    [TestMethod]
+    public void WholeAppearanceDraftCancelDefaultsAndReopenRestoreEveryField()
+    {
+        var path = NewPath();
+        var session = new AppearanceSettingsSession(path);
+        var appearance = NondefaultAppearance();
+
+        session.StagePreview(appearance);
+        Assert.AreEqual(appearance, session.DraftAppearance);
+        Assert.AreEqual(DangoAppearanceConfiguration.Default, session.SavedAppearance);
+        Assert.IsTrue(session.IsDirty);
+        Assert.IsFalse(File.Exists(path));
+        session.CancelPreview();
+        Assert.AreEqual(DangoAppearanceConfiguration.Default, session.DraftAppearance);
+        Assert.IsFalse(session.HasPendingSave);
+        session.StagePreview(appearance);
+        Assert.IsTrue(session.TrySave());
+        Assert.AreEqual(appearance, session.SavedAppearance);
+        Assert.AreEqual(appearance, new AppearanceSettingsSession(path).SavedAppearance);
+        Assert.IsFalse(session.IsDirty);
+
+        session.RestoreDefault();
+        Assert.AreEqual(DangoAppearanceConfiguration.Default, session.DraftAppearance);
+        Assert.AreEqual(appearance, session.SavedAppearance);
+        Assert.IsTrue(session.IsDirty);
+        session.CancelPreview();
+        Assert.AreEqual(appearance, session.DraftAppearance);
+        Assert.IsFalse(session.IsDirty);
+    }
+
+    [TestMethod]
+    public void StagingEyesDoesNotDiscardColorDraftAndColorDefaultsKeepEyeDraft()
+    {
+        var session = new AppearanceSettingsSession(NewPath());
+        var black = OpaqueSrgbColor.Parse("#000000");
+        var eyes = new EyeLayoutParameters(140, 100, 66, 34);
+        session.StageBodyPreview(black);
+        session.StageEyePreview(black);
+        session.StageEyes(eyes);
+
+        Assert.AreEqual(new DangoAppearanceConfiguration(black, black, eyes), session.DraftAppearance);
+        Assert.IsTrue(session.IsDirty);
+        session.RestoreDefaultBody();
+        Assert.AreEqual(OpaqueSrgbColor.Default, session.PreviewBodyColor);
+        Assert.AreEqual(black, session.PreviewEyeColor);
+        Assert.AreEqual(eyes, session.DraftAppearance.EyeLayout);
+        session.RestoreDefaultEye();
+        Assert.AreEqual(AppearanceSettings.DefaultEyeColor, session.PreviewEyeColor);
+        Assert.AreEqual(eyes, session.DraftAppearance.EyeLayout);
+    }
+
+    [TestMethod]
+    public void FailedWholeAppearanceSaveKeepsSavedAndCompleteDraftUntilRetry()
+    {
+        var path = NewPath();
+        var store = new AppearanceSettingsStore();
+        store.Save(path, AppearanceSettings.CreateDefault());
+        var original = File.ReadAllBytes(path);
+        var writer = new SwitchableWriter();
+        var session = new AppearanceSettingsSession(path, new AppearanceSettingsStore(writer));
+        var appearance = NondefaultAppearance();
+        session.StagePreview(appearance);
+
+        Assert.IsFalse(session.TrySave());
+        CollectionAssert.AreEqual(original, File.ReadAllBytes(path));
+        Assert.AreEqual(DangoAppearanceConfiguration.Default, session.SavedAppearance);
+        Assert.AreEqual(appearance, session.DraftAppearance);
+        Assert.IsTrue(session.HasPendingSave);
+        writer.Fail = false;
+        Assert.IsTrue(session.TrySave());
+        Assert.AreEqual(appearance, session.SavedAppearance);
+        Assert.AreEqual(appearance, new AppearanceSettingsSession(path).SavedAppearance);
+        Assert.IsFalse(session.HasPendingSave);
+    }
+
+    [TestMethod]
+    public void RealLockedTargetReplacementFailsThenUnlockRetryReloadsWholeAppearance()
+    {
+        var path = NewPath();
+        new AppearanceSettingsStore().Save(path, AppearanceSettings.CreateDefault());
+        var original = File.ReadAllBytes(path);
+        var session = new AppearanceSettingsSession(path);
+        var appearance = NondefaultAppearance();
+        session.StagePreview(appearance);
+
+        using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Assert.IsFalse(session.TrySave(), "The real Windows target lock must reject the atomic replacement.");
+            CollectionAssert.AreEqual(original, File.ReadAllBytes(path));
+            Assert.AreEqual(DangoAppearanceConfiguration.Default, session.SavedAppearance);
+            Assert.AreEqual(appearance, session.DraftAppearance);
+            Assert.IsTrue(session.IsDirty);
+            Assert.IsTrue(session.HasPendingSave);
+            Assert.AreEqual(0, Directory.GetFiles(Path.GetDirectoryName(path)!, "*.tmp").Length);
+        }
+
+        Assert.IsTrue(session.TrySave());
+        Assert.AreEqual(appearance, session.SavedAppearance);
+        Assert.IsFalse(session.HasPendingSave);
+        var reopened = new AppearanceSettingsSession(path);
+        Assert.AreEqual(appearance, reopened.SavedAppearance);
+        Assert.AreEqual(appearance, reopened.DraftAppearance);
+        Assert.IsFalse(reopened.IsWriteProtected);
+        Assert.IsFalse(reopened.HasPendingSave);
+    }
+
+    [TestMethod]
+    public void ProtectedDefaultBackupThenRealReplacementFailureRetainsPendingAndDoesNotRepeatBackup()
+    {
+        var path = NewPath();
+        const string original = "future-or-corrupt";
+        Write(path, original);
+        var session = new AppearanceSettingsSession(path);
+
+        using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Assert.IsFalse(session.TryRecoverAndSave());
+            Assert.IsFalse(session.IsWriteProtected);
+            Assert.IsFalse(session.IsDirty);
+            Assert.IsTrue(session.HasPendingSave);
+            Assert.AreEqual(original, File.ReadAllText(path));
+            var backups = Directory.GetFiles(Path.GetDirectoryName(path)!, "appearance.json.backup-*");
+            Assert.AreEqual(1, backups.Length);
+            Assert.AreEqual(original, File.ReadAllText(backups[0]));
+            Assert.IsFalse(session.TryRecoverAndSave());
+            Assert.AreEqual(1, Directory.GetFiles(Path.GetDirectoryName(path)!, "appearance.json.backup-*").Length);
+            Assert.AreEqual(0, Directory.GetFiles(Path.GetDirectoryName(path)!, "*.tmp").Length);
+            session.CancelPreview();
+            Assert.IsTrue(session.HasPendingSave);
+        }
+
+        Assert.IsTrue(session.TrySave());
+        Assert.IsFalse(session.HasPendingSave);
+        Assert.AreEqual(DangoAppearanceConfiguration.Default, new AppearanceSettingsSession(path).SavedAppearance);
+        Assert.AreEqual(1, Directory.GetFiles(Path.GetDirectoryName(path)!, "appearance.json.backup-*").Length);
     }
 
     [TestMethod]
@@ -118,7 +263,7 @@ public sealed class AppearanceSettingsSessionTests
     public void ProtectedSidecarRejectsNormalSaveThenBackupSuccessUnlocksRetryAfterWriteFailure()
     {
         var path = NewPath();
-        const string original = "{\"appearanceSchemaVersion\":3,\"bodyColorHex\":\"#C9E2FF\",\"eyeColorHex\":\"#2B201E\"}";
+        const string original = "{\"appearanceSchemaVersion\":4,\"bodyColorHex\":\"#C9E2FF\",\"eyeColorHex\":\"#2B201E\",\"eyeSizePercent\":100,\"eyeOvalityPercent\":0,\"eyeHeightControlPercent\":51,\"eyeSpacingControlPercent\":24.5}";
         Write(path, original);
         var writer = new SwitchableWriter();
         var backups = new List<string>();
@@ -200,6 +345,10 @@ public sealed class AppearanceSettingsSessionTests
 
     private static string NewPath() => Path.Combine(TestRepository.Root, "artifacts", "test-runs", "appearance",
         Guid.NewGuid().ToString("N"), "appearance.json");
+
+    private static DangoAppearanceConfiguration NondefaultAppearance() => new(
+        OpaqueSrgbColor.Parse("#000000"), OpaqueSrgbColor.Parse("#000000"),
+        new EyeLayoutParameters(139.75, -67.125, 40.25, 33.875));
 
     private static void Write(string path, string text)
     {
