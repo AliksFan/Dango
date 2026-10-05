@@ -2,6 +2,8 @@
 
 `Dango` 是一个多人联机桌面宠物项目的开发代号。
 
+2026-10-06：本地任务候选已实现身体／眼睛 RGB、四个眼睛滑块与整套显式保存；首页三侧按键入口、镜像面板、贴地阴影及纵向保存位置获用户人工观感确认。此前对话设计已归档为[当前首页与自身外观设计](docs/planning/2026-10-06-home-and-appearance-design.md)，证据见[捏脸实现](docs/verification/2026-10-05-face-implementation.md)和[最新布局验收](docs/verification/2026-10-05-home-icons-and-ground-shadow.md)。实际 100%／125% 缩放及其它显示器未验证；未合并 main、推送或更新日常安装，不代表整个 Windows 或多人阶段完成。
+
 2026-10-04：在独立任务分支实施 E1 二维跟随门廊与本地导航，见[专项验证](docs/verification/2026-10-04-room-porch-e1.md)和[实施计划](docs/planning/2026-10-04-room-entry-implementation-plan.md)。虚构门只在隔离场景预览中展示；正式房间业务、服务器、数据库、合并、推送和日常安装更新不在本轮范围，候选待人工验收。
 
 2026-10-03：按用户单独授权，已将团队整合与 Windows 本地收口成果经 `codex/team-integration` 快进合入本地 `main`；见[本地整合记录](docs/verification/2026-10-03-windows-local-main-integration.md)。日常安装沿用已验收新版，不重新发布或迁移；未推送远端。已知自动差异、专项未验证项及 Phase 2A/M7 未验收边界保留，本次不是完整阶段验收或正式发布。
