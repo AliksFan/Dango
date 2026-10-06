@@ -30,9 +30,18 @@ public sealed class PorchSceneView : Grid
         new("preview-private", "小茶室", "私密共同房", 1000),
         new("preview-public", "云间", "公共共同房", 1220),
     ];
-    private static readonly PreviewDoor[] LocalDoors = [new("local-single", "普通房", "本地单人", 560)];
+    private static readonly PreviewDoor OrdinaryDoor = new("local-single", "普通房", "本地单人", 560);
+    private static readonly PreviewDoor DesktopPetDoor = new("local-desktop-pet", "桌宠房间", "本地单人", 780);
     private bool localRoomEnabled;
-    private PreviewDoor[] VisibleDoors => IsReviewMode ? ReviewDoors : localRoomEnabled ? LocalDoors : [];
+    private bool desktopPetRoomEnabled;
+    private PreviewDoor[] VisibleDoors => IsReviewMode ? ReviewDoors :
+        (localRoomEnabled, desktopPetRoomEnabled) switch
+        {
+            (true, true) => [OrdinaryDoor, DesktopPetDoor],
+            (true, false) => [OrdinaryDoor],
+            (false, true) => [DesktopPetDoor],
+            _ => [],
+        };
     private readonly PorchCameraController camera = new();
     private readonly Canvas liveLayer = new() { IsHitTestVisible = false };
     private readonly DeformableDangoVisual body = new() { ShowHat = false, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
@@ -57,6 +66,7 @@ public sealed class PorchSceneView : Grid
     internal event Action<string>? DoorSelected;
     internal event Action? GameplayFocusRequested;
     internal event Action? LocalRoomRequested;
+    internal event Action? DesktopPetRoomRequested;
     internal bool IsReviewMode { get; private set; }
     internal int DoorCount => VisibleDoors.Length;
     internal bool CanEnterRoom => false;
@@ -76,6 +86,13 @@ public sealed class PorchSceneView : Grid
     {
         localRoomEnabled = enabled;
         AutomationProperties.SetName(this, "二维门廊，普通房为本地单人");
+        InvalidateVisual();
+    }
+
+    internal void SetDesktopPetRoomEnabled(bool enabled)
+    {
+        desktopPetRoomEnabled = enabled;
+        AutomationProperties.SetName(this, "二维门廊，普通房与桌宠房间为本地单人");
         InvalidateVisual();
     }
 
@@ -136,6 +153,13 @@ public sealed class PorchSceneView : Grid
         {
             status = "准备进入普通房 · 本地单人";
             LocalRoomRequested?.Invoke();
+            InvalidateVisual();
+            return true;
+        }
+        if (door.Id == "local-desktop-pet")
+        {
+            status = "准备进入桌宠房间 · 本地单人";
+            DesktopPetRoomRequested?.Invoke();
             InvalidateVisual();
             return true;
         }

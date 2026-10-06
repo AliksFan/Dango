@@ -21,6 +21,8 @@ public partial class ProductHomeView
     internal RoomNavigationCoordinator RoomNavigation => roomNavigation;
     internal event Action? LocalRoomRequested;
     internal void EnableLocalRoomDoor() => PorchScene.SetLocalRoomEnabled(true);
+    internal event Action? DesktopPetRoomRequested;
+    internal void EnableDesktopPetRoomDoor() => PorchScene.SetDesktopPetRoomEnabled(true);
 
     internal void SetPorchReviewMode(bool enabled)
     {
@@ -33,6 +35,7 @@ public partial class ProductHomeView
         PorchScene.DoorSelected += id => roomNavigation.SelectDoor(id);
         PorchScene.GameplayFocusRequested += () => Stage.Focus();
         PorchScene.LocalRoomRequested += () => LocalRoomRequested?.Invoke();
+        PorchScene.DesktopPetRoomRequested += () => DesktopPetRoomRequested?.Invoke();
     }
 
     private void ChangeLiveSurface()

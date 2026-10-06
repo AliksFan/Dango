@@ -39,11 +39,12 @@ internal sealed partial class DangoApplicationHost : IDisposable
     public DangoApplicationHost(bool isolatedPhysicsReview = false, bool isolatedEyeHatReview = false,
         string? settingsFile = null, string? nativeLibraryPath = null, ControlCenterWindowSettingsStore? settingsStore = null,
         bool isolatedUnifiedHomeReview = false, bool isolatedPorchReview = false, bool isolatedLocalRoomReview = false,
-        bool isolatedFaceReview = false)
+        bool isolatedFaceReview = false, bool isolatedDesktopPetRoomReview = false)
     {
         if ((isolatedPhysicsReview ? 1 : 0) + (isolatedEyeHatReview ? 1 : 0) +
             (isolatedUnifiedHomeReview ? 1 : 0) + (isolatedPorchReview ? 1 : 0) +
-            (isolatedLocalRoomReview ? 1 : 0) + (isolatedFaceReview ? 1 : 0) > 1)
+            (isolatedLocalRoomReview ? 1 : 0) + (isolatedFaceReview ? 1 : 0) +
+            (isolatedDesktopPetRoomReview ? 1 : 0) > 1)
             throw new ArgumentException("Choose one isolated review mode.");
         porchReview = isolatedPorchReview;
         faceReview = isolatedFaceReview;
@@ -58,7 +59,9 @@ internal sealed partial class DangoApplicationHost : IDisposable
         if (uiMode == ApplicationUiMode.Product) desktopHost.SetRoomPresentationAllowed(false);
         commandController = new ApplicationCommandController(desktopHost, uiMode);
         verificationDefinition = isolatedEyeHatReview ? VerificationDefinition.CreateEyeHatHosts() : VerificationDefinition.CreatePhysicsModuleHosts();
-        settingsPath = settingsFile ?? (isolatedLocalRoomReview
+        settingsPath = settingsFile ?? (isolatedDesktopPetRoomReview
+            ? Path.Combine(AppContext.BaseDirectory, "desktop-pet-room-review-state", "settings.json")
+            : isolatedLocalRoomReview
             ? Path.Combine(AppContext.BaseDirectory, "local-room-review-state", "settings.json")
             : isolatedFaceReview
             ? Path.Combine(AppContext.BaseDirectory, "face-review-state", "settings.json")

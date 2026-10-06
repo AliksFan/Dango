@@ -61,6 +61,9 @@ public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopDispla
     private DesktopDisplayMode activeMode = DesktopDisplayMode.Wallpaper;
     private bool switchInProgress;
     private bool roomPresentationAllowed = true;
+    private DesktopDisplayMode? roomDisplayModeLock;
+
+    internal void SetRoomDisplayModeLock(DesktopDisplayMode? mode) => roomDisplayModeLock = mode;
     private readonly StackedDangoSceneRuntime? runtime;
 
     public DesktopHostCoordinator(IDesktopHostControl wallpaper, IDesktopHostControl window,
@@ -195,6 +198,8 @@ public sealed class DesktopHostCoordinator : IDesktopHostControl, IDesktopDispla
 
     public void SetMode(DesktopDisplayMode mode)
     {
+        if (roomDisplayModeLock is { } required && mode != required)
+            throw new DesktopHostSwitchException("桌宠房间使用壁纸层，请从房门返回门廊后选择普通房。");
         if (mode == activeMode)
         {
             return;

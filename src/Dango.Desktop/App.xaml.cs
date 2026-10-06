@@ -80,8 +80,9 @@ public partial class App : System.Windows.Application
         var porchReview = e.Args.Contains("--porch-scene-review", StringComparer.Ordinal);
         var localRoomReview = e.Args.Contains("--local-room-review", StringComparer.Ordinal);
         var faceReview = e.Args.Contains("--face-review", StringComparer.Ordinal);
+        var desktopPetRoomReview = e.Args.Contains("--desktop-pet-room-review", StringComparer.Ordinal);
         if ((physicsReview ? 1 : 0) + (eyeHatReview ? 1 : 0) + (unifiedHomeReview ? 1 : 0) +
-            (porchReview ? 1 : 0) + (localRoomReview ? 1 : 0) + (faceReview ? 1 : 0) > 1)
+            (porchReview ? 1 : 0) + (localRoomReview ? 1 : 0) + (faceReview ? 1 : 0) + (desktopPetRoomReview ? 1 : 0) > 1)
             throw new ArgumentException("Choose one isolated review mode.");
         var instanceName = ResolveSingleInstanceName(e.Args);
         singleInstanceCoordinator = SingleInstanceCoordinator.TryBecomePrimary(
@@ -102,7 +103,8 @@ public partial class App : System.Windows.Application
             isolatedUnifiedHomeReview: unifiedHomeReview,
             isolatedPorchReview: porchReview,
             isolatedLocalRoomReview: localRoomReview,
-            isolatedFaceReview: faceReview);
+            isolatedFaceReview: faceReview,
+            isolatedDesktopPetRoomReview: desktopPetRoomReview);
         applicationHost.Start();
         if (physicsReview || eyeHatReview) applicationHost.ShowControlCenter();
     }
@@ -168,12 +170,15 @@ public partial class App : System.Windows.Application
     internal static void ValidateIsolatedReviewSelection(string[] args)
     {
         string[] flags = ["--home-ui-review", "--settings-ui-review", "--physics-host-review",
-            "--eye-hat-review", "--unified-live-home-review", "--porch-scene-review", "--local-room-review", "--face-review"];
+            "--eye-hat-review", "--unified-live-home-review", "--porch-scene-review", "--local-room-review", "--face-review",
+            "--desktop-pet-room-review"];
         if (flags.Count(flag => args.Contains(flag, StringComparer.Ordinal)) > 1)
             throw new ArgumentException("Choose one isolated review mode.");
     }
 
     internal static string ResolveSingleInstanceName(string[] args) =>
+        args.Contains("--desktop-pet-room-review", StringComparer.Ordinal) ? SingleInstanceName + ".DesktopPetRoomReview"
+        :
         args.Contains("--face-review", StringComparer.Ordinal) ? SingleInstanceName + ".FaceReview"
         : args.Contains("--local-room-review", StringComparer.Ordinal) ? SingleInstanceName + ".LocalRoomReview"
         : args.Contains("--eye-hat-review", StringComparer.Ordinal) ? SingleInstanceName + ".EyeHatReview"

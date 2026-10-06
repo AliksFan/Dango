@@ -184,8 +184,9 @@ public partial class ProductHomeView : UserControl
                      WallpaperModeButton, WindowModeButton })
             button.IsEnabled = ready;
         DisplayToggleButton.IsEnabled = ready && state.CanShowDesktop;
+        if (isDesktopPetRoomContext) WindowModeButton.IsEnabled = false;
         var wallpaper = string.Equals(state.Mode, "Wallpaper", StringComparison.Ordinal);
-        BelowIconsButton.IsEnabled = AboveIconsButton.IsEnabled = ready && wallpaper;
+        BelowIconsButton.IsEnabled = AboveIconsButton.IsEnabled = ready && wallpaper && !isDesktopPetRoomContext;
         RetryInitializationButton.Visibility = ready ? Visibility.Collapsed : Visibility.Visible;
         RetryInitializationButton.IsEnabled = !ready;
         RestoreDangoSettingsButton.IsEnabled = RetryWallpaperSettingsButton.IsEnabled = ready;
@@ -198,8 +199,8 @@ public partial class ProductHomeView : UserControl
         ShowDiagnosticsButton.IsEnabled = SettingsExitButton.IsEnabled = true;
         Select(WallpaperModeButton, wallpaper);
         Select(WindowModeButton, string.Equals(state.Mode, "Window", StringComparison.Ordinal));
-        Select(BelowIconsButton, state.DangoLayer == DesktopObjectLayer.BelowDesktopIcons);
-        Select(AboveIconsButton, state.DangoLayer == DesktopObjectLayer.AboveDesktopIcons);
+        Select(BelowIconsButton, isDesktopPetRoomContext || state.DangoLayer == DesktopObjectLayer.BelowDesktopIcons);
+        Select(AboveIconsButton, !isDesktopPetRoomContext && state.DangoLayer == DesktopObjectLayer.AboveDesktopIcons);
         UpdateSettingsFeedback();
     }
 

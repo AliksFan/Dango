@@ -5,6 +5,13 @@ namespace Dango.Desktop.AppShell.ControlCenter;
 public partial class ProductHomeView
 {
     internal bool IsDangoAway { get; private set; }
+    private bool isDesktopPetRoomContext;
+
+    internal void SetDesktopPetRoomContext(bool active)
+    {
+        isDesktopPetRoomContext = active;
+        if (settingsState is { } state) UpdateSettings(state);
+    }
 
     internal void SetDangoAway(bool away)
     {

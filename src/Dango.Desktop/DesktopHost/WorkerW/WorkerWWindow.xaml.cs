@@ -90,6 +90,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
             RebuildHitTestPolicy();
             motionController?.ObservePresentationFrame();
         });
+        InitializeDesktopPetRoom();
         shellTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromSeconds(1),
@@ -104,7 +105,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
 
     public int DangoCount => motionRuntime.DangoCount;
 
-    public bool AddDango() => motionRuntime.AddDangoInViewport(
+    public bool AddDango() => !desktopPetRoomMode && motionRuntime.AddDangoInViewport(
         new(0, 0, Math.Max(480, ActualWidth), Math.Max(360, ActualHeight)));
 
     public bool RemoveDango() => motionRuntime.RemoveDango();
@@ -157,8 +158,8 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
     public DesktopHostSnapshot GetSnapshot() =>
         new(
             "Wallpaper",
-            isVisible && recoveryState.State == WorkerWRecoveryState.Attached,
-            isInteractionEnabled,
+            isVisible && recoveryState.State == WorkerWRecoveryState.Attached && (!desktopPetRoomMode || Opacity > 0),
+            desktopPetRoomMode ? desktopPetRequestedInteraction : isInteractionEnabled,
             motionRuntime.LayoutWarning ?? (recoveryState.State == WorkerWRecoveryState.Attached ? "宿主已验收；新物理接入待人工验收" : StateText()),
             motionRuntime.LastError ?? lastError);
 
@@ -166,6 +167,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
     {
         if (!isVisible)
         {
+            CancelDesktopPetPresentation();
             CancelDrag(DragCancellationReason.WindowDeactivated);
             shellTimer.Stop();
             DisposeSurface();
@@ -189,6 +191,11 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
 
     public void SetInteractionEnabled(bool isEnabled)
     {
+        desktopPetRequestedInteraction = isEnabled;
+        if (desktopPetRoomMode)
+        {
+            isEnabled &= desktopPetPresentation.InputEnabled && !desktopPetSuspended;
+        }
         if (!isEnabled)
         {
             CancelDrag(DragCancellationReason.WindowDeactivated);
@@ -199,7 +206,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         keyboardInputBridge?.Refresh(
             recoveryState.State == WorkerWRecoveryState.Attached && isVisible,
             isEnabled,
-            roomGameplayInputActive: false);
+            roomGameplayInputActive: desktopPetRoomMode && DesktopPetInputActive);
         DangoVisual.IsHitTestVisible = isEnabled;
         MiddleDangoVisual.IsHitTestVisible = isEnabled;
         TopDangoVisual.IsHitTestVisible = isEnabled;
@@ -272,7 +279,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
 
     private void BeginAttachment()
     {
-        if (isClosed)
+        if (isClosed || desktopPetRoomMode && (desktopPetFailed || desktopPetSuspended))
         {
             return;
         }
@@ -281,7 +288,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         recoveryState.BeginAttach(DateTimeOffset.Now);
         lastError = null;
         TryAttach();
-        shellTimer.Start();
+        if (!desktopPetRoomMode || !desktopPetFailed && !desktopPetSuspended) shellTimer.Start();
     }
 
     private void TryAttach()
@@ -296,7 +303,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
             return;
         }
 
-        var target = NativeMethods.FindWorkerW();
+        var target = desktopPetRoomMode ? DesktopPetTargetFinder() : NativeMethods.FindWorkerW();
         if (!NativeMethods.IsValidDesktopTarget(target))
         {
             lastError = "未发现兼容的 WorkerW 桌面层，已保持安全隐藏。";
@@ -308,7 +315,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
             CreateSurface(target!);
             currentTarget = target;
             recoveryState.AttachSucceeded(target!.ParentHandle);
-            Opacity = 1;
+            Opacity = desktopPetRoomMode ? 0 : 1;
             isVisible = true;
             var dpi = VisualTreeHelper.GetDpi(this);
             var logicalSurface = WorkerWSurfaceCoordinateMapper.ToLogicalBounds(
@@ -325,15 +332,26 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
             lastError = exception is System.ComponentModel.Win32Exception win32Exception
                 ? $"WorkerW 挂载失败：Win32 {win32Exception.NativeErrorCode}，{win32Exception.Message}"
                 : $"WorkerW 挂载失败：{exception.GetType().Name}。";
+            if (desktopPetRoomMode) ReportDesktopPetFailure(lastError);
         }
     }
 
     private void OnShellTimerTick(object? sender, EventArgs e)
     {
+        if (desktopPetRoomMode && (desktopPetFailed || desktopPetSuspended))
+        {
+            shellTimer.Stop();
+            return;
+        }
         if (recoveryState.State == WorkerWRecoveryState.Attached &&
             !NativeMethods.IsValidDesktopTarget(currentTarget))
         {
             Opacity = 0;
+            if (desktopPetRoomMode)
+            {
+                ReportDesktopPetFailure("桌面宿主已失效，请从门廊重新进入桌宠房间。");
+                return;
+            }
             StopMotion();
             DisposeSurface();
             currentTarget = null;
@@ -354,6 +372,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         currentTarget = null;
         recoveryState.EnterSafeHidden();
         lastError = error;
+        if (desktopPetRoomMode) ReportDesktopPetFailure(error);
     }
 
     private string StateText() => recoveryState.State switch
@@ -450,6 +469,9 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         }
 
         isClosed = true;
+        CancelDesktopPetPresentation();
+        desktopPetMenu.Dispose();
+        motionScheduler.CallbackCompleted -= OnDesktopPetFrameCompleted;
         shellTimer.Stop();
         CancelDrag(DragCancellationReason.WindowClosing);
         StopMotion();
@@ -495,6 +517,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         windowSource.CompositionTarget.BackgroundColor = WpfColor.FromRgb(0xEA, 0xF4, 0xFF);
         windowSource.RootVisual = this;
         windowSource.AddHook(WindowMessageHook);
+        ConfigureDesktopPetSurface();
 
 
         keyboardInputBridge = new WorkerWKeyboardInputBridge(target);
@@ -661,14 +684,16 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
             {
                 proxy = new WorkerWInputProxy(currentTarget,
                     (x, y) => BeginProxyDrag(id, x, y), MoveProxyDrag, CompleteProxyDrag, CancelProxyDrag,
-                    motionRuntime.LightInteractionsEnabled ? (x, y) => EndLightPointer(ProxyPoint(x, y)) : null);
+                    motionRuntime.LightInteractionsEnabled ? (x, y) => EndLightPointer(ProxyPoint(x, y)) : null,
+                    desktopPetRoomMode ? OpenDesktopPetMenu : null,
+                    desktopPetRoomMode ? DesktopPetProxyEligible : null);
                 inputProxies.Add(id, proxy);
             }
             var bounds = DangoHostFrameBinding.Bounds(frame, i);
             proxy.SetBounds((int)Math.Round(bounds.X * dpi.DpiScaleX), (int)Math.Round(bounds.Y * dpi.DpiScaleY),
                 (int)Math.Round(bounds.Width * dpi.DpiScaleX), (int)Math.Round(bounds.Height * dpi.DpiScaleY));
             proxy.SetEnabled(isInteractionEnabled && motionRuntime.LastError is null &&
-                layeringSettings.DangoLayer == DesktopObjectLayer.BelowDesktopIcons);
+                (desktopPetRoomMode ? DesktopPetInputActive : layeringSettings.DangoLayer == DesktopObjectLayer.BelowDesktopIcons));
         }
     }
 
@@ -680,8 +705,8 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
             return;
         }
 
-        var dangoAbove = layeringSettings.DangoLayer == DesktopObjectLayer.AboveDesktopIcons;
-        var cushionAbove = layeringSettings.GetFurnitureLayer(DesktopLayeringSettings.PrototypeCushionId) ==
+        var dangoAbove = !desktopPetRoomMode && layeringSettings.DangoLayer == DesktopObjectLayer.AboveDesktopIcons;
+        var cushionAbove = !desktopPetRoomMode && layeringSettings.GetFurnitureLayer(DesktopLayeringSettings.PrototypeCushionId) ==
             DesktopObjectLayer.AboveDesktopIcons;
         var bodyVisuals = new[] { DangoVisual, MiddleDangoVisual, TopDangoVisual };
         var hatVisuals = new[] { DangoHat, MiddleDangoHat, TopDangoHat };
@@ -691,7 +716,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
             var show = !dangoAbove && i < (frame?.Bodies.Count ?? 1);
             bodyVisuals[i].Visibility = hatVisuals[i].Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         }
-        CushionVisual.Visibility = cushionAbove ? Visibility.Collapsed : Visibility.Visible;
+        CushionVisual.Visibility = desktopPetRoomMode || cushionAbove ? Visibility.Collapsed : Visibility.Visible;
         IslandVisual.Visibility = Visibility.Collapsed;
         dangoAboveWindow.SetInteractionEnabled(isInteractionEnabled && motionRuntime.LastError is null);
         if (frame is not null) dangoAboveWindow.ApplyFrame(frame, motionRuntime.DisplayHatAppearance, motionRuntime.DisplayHatSize, motionRuntime.BodyPreviewFill, motionRuntime.EyePreviewFill, motionRuntime.AppearanceEntity);
@@ -700,9 +725,10 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         if (dangoAboveWindow.IsVisible && frame is not null) dangoAboveWindow.ApplyFrame(frame, motionRuntime.DisplayHatAppearance, motionRuntime.DisplayHatSize, motionRuntime.BodyPreviewFill, motionRuntime.EyePreviewFill, motionRuntime.AppearanceEntity);
         cushionAboveWindow.SetPosition(WpfCanvas.GetLeft(CushionVisual), WpfCanvas.GetTop(CushionVisual));
         SetWindowVisibility(cushionAboveWindow, cushionAbove);
-        islandOverlayWindow.SetDesiredVisibility(true);
+        islandOverlayWindow.SetDesiredVisibility(!desktopPetRoomMode);
         foreach (var proxy in inputProxies.Values)
-            proxy.SetEnabled(isInteractionEnabled && !dangoAbove && motionRuntime.LastError is null);
+            proxy.SetEnabled(isInteractionEnabled && !dangoAbove && motionRuntime.LastError is null &&
+                (!desktopPetRoomMode || DesktopPetInputActive));
     }
 
     private void HideLayeredObjectWindows()
@@ -751,6 +777,11 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
     {
         if (motionScheduler.IsRunning) return;
         motionScheduler.VerifyCanStart();
+        if (desktopPetRoomMode)
+        {
+            StartDesktopPetMotion(surfaceWidth, surfaceHeight);
+            return;
+        }
         var now = NowMilliseconds();
         motionRuntime.SetViewport(new(0, 0, surfaceWidth, surfaceHeight));
         sceneSession.AttachSurface(new LogicalRect(0, 0, surfaceWidth, surfaceHeight), now);
@@ -776,11 +807,13 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
             return false;
         }
 
+        if (desktopPetRoomMode && !PrepareDesktopPetMotion()) return false;
+
         var now = NowMilliseconds();
         keyboardInputBridge?.Refresh(
             recoveryState.State == WorkerWRecoveryState.Attached && isVisible,
             isInteractionEnabled,
-            roomGameplayInputActive: false);
+            roomGameplayInputActive: desktopPetRoomMode && DesktopPetInputActive);
         var desktopForeground = currentTarget is not null && NativeMethods.IsExplorerDesktopForeground(currentTarget);
         ObserveQuietIdleForeground(desktopForeground);
         motionRuntime.UpdateQuietIdleHost(this, isInteractionEnabled);
@@ -861,6 +894,7 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         DangoHostFrameBinding.Apply(MiddleDangoVisual, MiddleDangoHat, frame, 1, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize, bodyFillOverride: motionRuntime.BodyPreviewFill, eyeFillOverride: motionRuntime.EyePreviewFill, appearanceEntity: motionRuntime.AppearanceEntity);
         DangoHostFrameBinding.Apply(TopDangoVisual, TopDangoHat, frame, 2, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize, bodyFillOverride: motionRuntime.BodyPreviewFill, eyeFillOverride: motionRuntime.EyePreviewFill, appearanceEntity: motionRuntime.AppearanceEntity);
         ApplyObjectLayerVisibility();
+        if (desktopPetRoomMode) desktopPetAppliedFrame = frame;
     }
 
 
@@ -878,7 +912,8 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
 
     private bool LightPointerHostReady() => isVisible && isInteractionEnabled && !isClosed &&
         motionRuntime.IsRunning && motionRuntime.LastError is null && currentTarget is not null &&
-        NativeMethods.IsExplorerDesktopForeground(currentTarget) && !NativeMethods.IsEscapePressed();
+        NativeMethods.IsExplorerDesktopForeground(currentTarget) && !NativeMethods.IsEscapePressed() &&
+        (!desktopPetRoomMode || DesktopPetPointerEligible());
 
     private bool CanContinueLightPointer() => LightPointerHostReady() && NativeMethods.IsInputKeyPressed(0x01);
 

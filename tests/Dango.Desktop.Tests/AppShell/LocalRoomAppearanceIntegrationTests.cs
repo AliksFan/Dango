@@ -30,14 +30,14 @@ public sealed class LocalRoomAppearanceIntegrationTests
     [STATestMethod]
     [DataRow(true)]
     [DataRow(false)]
-    public void FaceAndRoomReviewKeepTheirOwnRoomEntry(bool faceReview)
+    public void FaceReviewHasNoRoomsAndRoomReviewShowsBothLocalRoomEntries(bool faceReview)
     {
         using var host = new DangoApplicationHost(settingsFile: Path.Combine(NewRoot(), "settings.json"),
             isolatedFaceReview: faceReview, isolatedLocalRoomReview: !faceReview);
         host.ShowControlCenter();
         var home = Field<ControlCenterWindow>(host, "controlCenterWindow").ProductHome;
         var porch = E<PorchSceneView>(home, "PorchScene");
-        Assert.AreEqual(faceReview ? 0 : 1, porch.DoorCount);
+        Assert.AreEqual(faceReview ? 0 : 2, porch.DoorCount);
         Assert.AreEqual(faceReview, host.LocalWindow is null);
         Assert.IsFalse(porch.CanEnterRoom, "Neither isolated review can fabricate formal admission.");
     }

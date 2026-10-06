@@ -576,6 +576,7 @@ public partial class ControlCenterWindow : Window
 
     private void OnProductSettingsAction(ProductSettingsAction action)
     {
+        if (RoomSettingsActionHandler?.Invoke(action) == true) return;
         switch (action)
         {
             case ProductSettingsAction.ToggleVisibility:
@@ -626,6 +627,8 @@ public partial class ControlCenterWindow : Window
                 break;
         }
     }
+
+    internal Func<ProductSettingsAction, bool>? RoomSettingsActionHandler { get; set; }
 
     private void OnHatPresetChanged(object sender, SelectionChangedEventArgs e)
     {
