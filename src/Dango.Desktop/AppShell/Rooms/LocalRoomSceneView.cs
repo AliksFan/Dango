@@ -20,6 +20,7 @@ internal sealed class LocalRoomSceneView : Grid
     internal const double SideBoundaryInset = 24;
     internal const double VisualFloorLift = 10;
     private static readonly Brush ExcludedArea = CreateExcludedArea();
+    private static readonly Pen WallTexturePen = CreateWallTexturePen();
     // Fixed conservative envelope for the accepted body, supported hats and native jump.
     internal const double SafeActivityHeight = 260;
     private readonly Canvas entityLayer = new() { IsHitTestVisible = false };
@@ -203,6 +204,11 @@ internal sealed class LocalRoomSceneView : Grid
     protected override void OnRender(DrawingContext dc)
     {
         base.OnRender(dc);
+        var edges = EnvironmentEdges;
+        var left = Math.Clamp(edges.Left, 0, ActualWidth);
+        var right = Math.Clamp(edges.Right, left, ActualWidth);
+        var floorY = Math.Clamp(edges.FloorY, 0, ActualHeight);
+        DrawWallTexture(dc, left, right, floorY);
         if (unavailableMessage is not null)
         {
             var text = new FormattedText(unavailableMessage, System.Globalization.CultureInfo.CurrentUICulture,
@@ -211,10 +217,6 @@ internal sealed class LocalRoomSceneView : Grid
             dc.DrawText(text, new Point(Math.Max(24, (ActualWidth - text.Width) / 2), 48));
         }
         // Only the painted floor is lifted; the camera, body and native collision remain unchanged.
-        var edges = EnvironmentEdges;
-        var left = Math.Clamp(edges.Left, 0, ActualWidth);
-        var right = Math.Clamp(edges.Right, left, ActualWidth);
-        var floorY = Math.Clamp(edges.FloorY, 0, ActualHeight);
         if (right > left && floorY < ActualHeight)
             dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(205, 182, 149)), null,
                 new Rect(left, floorY, right - left, ActualHeight - floorY));
@@ -223,6 +225,38 @@ internal sealed class LocalRoomSceneView : Grid
         var edgePen = new Pen(new SolidColorBrush(Color.FromRgb(138, 119, 95)), 1.5) { DashStyle = DashStyles.Dash };
         foreach (var x in new[] { edges.Left, edges.Right })
             if (x >= 0 && x <= ActualWidth) dc.DrawLine(edgePen, new Point(x, 0), new Point(x, ActualHeight));
+    }
+
+    private void DrawWallTexture(DrawingContext dc, double left, double right, double floorY)
+    {
+        if (right <= left || floorY <= 0) return;
+        var projection = Projection;
+        var topLeft = projection.ScreenToWorld(new(left, 0));
+        var bottomRight = projection.ScreenToWorld(new(right, floorY));
+        dc.PushClip(new RectangleGeometry(new Rect(left, 0, right - left, floorY)));
+        dc.PushTransform(new MatrixTransform(projection.Scale, 0, 0, projection.Scale,
+            projection.OffsetX, projection.OffsetY));
+        // Sparse registration marks stay on the wall's world coordinates so walking
+        // exposes camera motion; viewport-fixed decoration would conceal it.
+        for (var row = (int)Math.Floor(topLeft.Y / 72); row <= Math.Ceiling(bottomRight.Y / 72); row++)
+        {
+            for (var column = (int)Math.Floor(topLeft.X / 96); column <= Math.Ceiling(bottomRight.X / 96); column++)
+            {
+                var x = column * 96 + 48;
+                var y = row * 72 + 36;
+                dc.DrawLine(WallTexturePen, new Point(x - 3, y), new Point(x + 3, y));
+                dc.DrawLine(WallTexturePen, new Point(x, y - 3), new Point(x, y + 3));
+            }
+        }
+        dc.Pop();
+        dc.Pop();
+    }
+
+    private static Pen CreateWallTexturePen()
+    {
+        var pen = new Pen(new SolidColorBrush(Color.FromRgb(212, 201, 184)), .8);
+        pen.Freeze();
+        return pen;
     }
 
     private static Brush CreateExcludedArea()
