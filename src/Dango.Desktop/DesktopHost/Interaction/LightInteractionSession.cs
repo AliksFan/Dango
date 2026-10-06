@@ -4,7 +4,7 @@ using Dango.Physics;
 
 namespace Dango.Desktop.DesktopHost.Interaction;
 
-internal sealed class LightInteractionSession(StackedDangoSceneRuntime runtime)
+internal sealed class LightInteractionSession(StackedDangoSceneRuntime runtime, bool allowPhysicalDrag = true)
 {
     private readonly LightInteractionController controller = new();
     private LightInteractionTarget? target;
@@ -113,6 +113,7 @@ internal sealed class LightInteractionSession(StackedDangoSceneRuntime runtime)
             return;
         }
         if (result != LightInteractionResult.BeginDrag || target is not { } dragTarget) return;
+        if (!allowPhysicalDrag) { CompleteGesture(); return; }
 
         var release = releaseCapture;
         var capture = tryCapture;

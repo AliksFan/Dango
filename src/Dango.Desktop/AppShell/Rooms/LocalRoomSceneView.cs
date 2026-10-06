@@ -8,6 +8,8 @@ using Canvas = System.Windows.Controls.Canvas;
 using Grid = System.Windows.Controls.Grid;
 using Point = System.Windows.Point;
 using Color = System.Windows.Media.Color;
+using Brush = System.Windows.Media.Brush;
+using Pen = System.Windows.Media.Pen;
 
 namespace Dango.Desktop.AppShell.Rooms;
 
@@ -15,6 +17,9 @@ internal sealed class LocalRoomSceneView : Grid
 {
     internal const double WorldWidth = 2160;
     internal const double WorldHeight = 360;
+    internal const double SideBoundaryInset = 24;
+    internal const double VisualFloorLift = 10;
+    private static readonly Brush ExcludedArea = CreateExcludedArea();
     // Fixed conservative envelope for the accepted body, supported hats and native jump.
     internal const double SafeActivityHeight = 260;
     private readonly Canvas entityLayer = new() { IsHitTestVisible = false };
@@ -48,6 +53,15 @@ internal sealed class LocalRoomSceneView : Grid
     { OffsetX = Camera.Projection.OffsetX + SafeInsets.Left, OffsetY = Camera.Projection.OffsetY + SafeInsets.Top };
     internal LogicalRect? PetScreenBounds { get; private set; }
     internal bool HasHealthyFrame { get; private set; }
+    internal (double Left, double Right, double CollisionY, double FloorY) EnvironmentEdges
+    {
+        get
+        {
+            var left = Projection.WorldToScreen(new(SideBoundaryInset, groundY));
+            var right = Projection.WorldToScreen(new(WorldWidth - SideBoundaryInset, groundY));
+            return (left.X, right.X, left.Y, left.Y - VisualFloorLift);
+        }
+    }
     internal bool InputBlocked
     {
         get => inputBlocked;
@@ -195,11 +209,36 @@ internal sealed class LocalRoomSceneView : Grid
                 VisualTreeHelper.GetDpi(this).PixelsPerDip);
             dc.DrawText(text, new Point(Math.Max(24, (ActualWidth - text.Width) / 2), 48));
         }
-        // One continuous floor: its upper edge uses the native ground and the entity projection.
-        var p = Projection;
-        var floor = p.WorldToScreen(new(0, groundY));
-        if (floor.Y < ActualHeight)
+        // Only the painted floor is lifted; the camera, body and native collision remain unchanged.
+        var edges = EnvironmentEdges;
+        var left = Math.Clamp(edges.Left, 0, ActualWidth);
+        var right = Math.Clamp(edges.Right, left, ActualWidth);
+        var floorY = Math.Clamp(edges.FloorY, 0, ActualHeight);
+        if (right > left && floorY < ActualHeight)
             dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(205, 182, 149)), null,
-                new Rect(0, Math.Max(0, floor.Y), ActualWidth, Math.Max(0, ActualHeight - Math.Max(0, floor.Y))));
+                new Rect(left, floorY, right - left, ActualHeight - floorY));
+        if (left > 0) dc.DrawRectangle(ExcludedArea, null, new Rect(0, 0, left, ActualHeight));
+        if (right < ActualWidth) dc.DrawRectangle(ExcludedArea, null, new Rect(right, 0, ActualWidth - right, ActualHeight));
+        var edgePen = new Pen(new SolidColorBrush(Color.FromRgb(138, 119, 95)), 1.5) { DashStyle = DashStyles.Dash };
+        foreach (var x in new[] { edges.Left, edges.Right })
+            if (x >= 0 && x <= ActualWidth) dc.DrawLine(edgePen, new Point(x, 0), new Point(x, ActualHeight));
+    }
+
+    private static Brush CreateExcludedArea()
+    {
+        var tile = new DrawingGroup();
+        using (var dc = tile.Open())
+        {
+            dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(183, 174, 160)), null, new Rect(0, 0, 16, 16));
+            var line = new Pen(new SolidColorBrush(Color.FromRgb(143, 130, 111)), 1.5);
+            dc.DrawLine(line, new Point(0, 16), new Point(16, 0));
+        }
+        var brush = new DrawingBrush(tile)
+        {
+            TileMode = TileMode.Tile, ViewportUnits = BrushMappingMode.Absolute,
+            Viewport = new Rect(0, 0, 16, 16), Stretch = Stretch.Fill,
+        };
+        brush.Freeze();
+        return brush;
     }
 }

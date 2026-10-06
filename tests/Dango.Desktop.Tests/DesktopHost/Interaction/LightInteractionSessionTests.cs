@@ -15,10 +15,12 @@ public sealed class LightInteractionSessionTests
         "ground", new(0, -1), 0, 1, false, true, []);
 
     [TestMethod]
-    public void NormalUpClearsCaptureSessionBeforeSynchronousReleaseCallback()
+    [DataRow(true)]
+    [DataRow(false)]
+    public void NormalUpClearsCaptureSessionBeforeSynchronousReleaseCallback(bool allowPhysicalDrag)
     {
         using var runtime = ReadyRuntime(out var id);
-        var session = new LightInteractionSession(runtime);
+        var session = new LightInteractionSession(runtime, allowPhysicalDrag);
         var captured = 0;
         var released = 0;
         Assert.IsTrue(session.TryBegin(id, BodyCenter(runtime, id), 0, false,
@@ -31,6 +33,60 @@ public sealed class LightInteractionSessionTests
         Assert.IsFalse(session.IsActive, "正常 Up 引发的同步 release callback 不能取消刚接纳的反馈。");
         Assert.IsTrue(runtime.Tick(Primary, Step).Bodies[0].Attachments!.Face.Left.Openness < 1,
             "正常 Up 的 release callback 不能撤销已接纳的 blink。");
+    }
+
+    [TestMethod]
+    public void DragDisabledCompletesBeforePhysicalInputAndCannotClickOnLateUp()
+    {
+        using var runtime = ReadyRuntime(out var id);
+        var session = new LightInteractionSession(runtime, allowPhysicalDrag: false);
+        var captures = 0;
+        var releases = 0;
+        var physicalCancellations = 0;
+        runtime.InputCancelled += () => physicalCancellations++;
+        var point = BodyCenter(runtime, id);
+        Assert.IsTrue(session.TryBegin(id, point, 0, false, () => { captures++; return true; },
+            () => { releases++; session.Cancel(); }, () => true));
+
+        // Adding Shift after Down does not change the branch chosen at Down.
+        session.Move(new(point.X + 3.01, point.Y), 10, true);
+
+        Assert.IsFalse(runtime.IsDragging);
+        Assert.IsFalse(session.IsActive);
+        Assert.AreEqual(1, captures, "禁拖不能开始真实物理拖动再重新捕获。");
+        Assert.AreEqual(1, releases);
+        Assert.AreEqual(0, physicalCancellations,
+            "BeginPhysicalDrag 会通过 SelectEntity 取消物理输入；计数为零防止先拖再结束冒充禁拖。");
+        session.Move(new(point.X + 80, point.Y), 20, false);
+        session.End(point, 30, false);
+        session.Cancel();
+        Assert.IsFalse(runtime.IsDragging);
+        Assert.IsFalse(runtime.HasLightFeedback, "超过阈值后回到原点或迟到 Up 不能补发点击。");
+        Assert.AreEqual(1, releases);
+    }
+
+    [TestMethod]
+    public void DragDisabledStillPetsAndNormalUpPreservesAcceptedFeedback()
+    {
+        using var runtime = ReadyRuntime(out var id);
+        var session = new LightInteractionSession(runtime, allowPhysicalDrag: false);
+        var releases = 0;
+        var point = BodyCenter(runtime, id);
+        var petPoint = new LogicalPoint(point.X + 16.1, point.Y);
+        Assert.IsTrue(session.TryBegin(id, point, 0, true, () => true,
+            () => { releases++; session.Cancel(); }, () => true));
+
+        session.Move(petPoint, 100, true);
+
+        Assert.IsTrue(session.IsActive);
+        Assert.IsFalse(runtime.IsDragging);
+        Assert.IsTrue(runtime.HasLightFeedback, "禁拖不能禁用 Shift 抚摸的真实附件反馈。");
+        session.End(petPoint, 110, true);
+        Assert.IsFalse(session.IsActive);
+        Assert.AreEqual(1, releases);
+        Assert.IsTrue(runtime.HasLightFeedback, "正常 Up 的同步 capture-loss 回调不能撤销抚摸。");
+        for (var index = 0; index < 12; index++) runtime.Tick(Primary, Step);
+        Assert.IsTrue(runtime.LastFrame!.Bodies[0].Attachments!.Face.Left.Openness < .4);
     }
 
     [TestMethod]

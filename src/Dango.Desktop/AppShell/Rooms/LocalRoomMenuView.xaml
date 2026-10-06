@@ -1,0 +1,84 @@
+<UserControl x:Class="Dango.Desktop.AppShell.Rooms.LocalRoomMenuView"
+             x:ClassModifier="internal"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Focusable="True" IsTabStop="False" FocusVisualStyle="{x:Null}"
+             Foreground="#443D34" FontFamily="Segoe UI, Microsoft YaHei" FontSize="13"
+             UseLayoutRounding="True" KeyboardNavigation.TabNavigation="Cycle"
+             PreviewMouseWheel="OnPreviewMouseWheel">
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="RoomMenuPaper" Color="#FDFCF9" />
+        <SolidColorBrush x:Key="RoomMenuInk" Color="#443D34" />
+        <SolidColorBrush x:Key="RoomMenuMuted" Color="#807568" />
+        <SolidColorBrush x:Key="RoomMenuLine" Color="#E9E4DA" />
+        <SolidColorBrush x:Key="RoomMenuSoft" Color="#F3EFE8" />
+        <SolidColorBrush x:Key="RoomMenuAccent" Color="#885E3E" />
+        <Style TargetType="Button">
+            <Setter Property="Foreground" Value="{StaticResource RoomMenuInk}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{StaticResource RoomMenuLine}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome" CornerRadius="7" Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource RoomMenuSoft}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource RoomMenuAccent}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource RoomMenuAccent}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="{StaticResource RoomMenuMuted}" />
+                                <Setter TargetName="Chrome" Property="Background" Value="{StaticResource RoomMenuSoft}" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+    <Grid x:Name="RoomMenuOverlay" Background="#963A342D">
+        <Border x:Name="RoomMenuCard" Width="400" Margin="16" Padding="22,18"
+                HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="14"
+                Background="{StaticResource RoomMenuPaper}" BorderBrush="{StaticResource RoomMenuLine}" BorderThickness="1">
+            <StackPanel>
+                <TextBlock Text="房间菜单" FontSize="22" FontWeight="SemiBold" />
+                <TextBlock x:Name="RoomStatusLabel" Text="普通房 · 本地单人"
+                           Foreground="{StaticResource RoomMenuMuted}" FontSize="12" Margin="0,5,0,12" />
+                <TextBlock Text="按键与操作" FontSize="12" Foreground="{StaticResource RoomMenuMuted}" Margin="0,0,0,5" />
+                <Border Background="{StaticResource RoomMenuSoft}" CornerRadius="7" Padding="12,8" Margin="0,0,0,12">
+                    <TextBlock x:Name="RoomInstructions" LineHeight="20" TextWrapping="Wrap"
+                               Text="A / D 移动    ·    S 轻压&#10;空格 跳跃    ·    滚轮 调视距&#10;Shift + 左键横移 抚摸&#10;Esc 打开 / 收起菜单" />
+                </Border>
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
+                    <Button x:Name="RoomReturnButton" Content="回门廊" Margin="0,0,4,0" Click="OnReturn" />
+                    <Button x:Name="RoomControlCenterButton" Grid.Column="1" Content="控制中心" Margin="4,0,0,0" Click="OnControlCenter" />
+                </Grid>
+                <TextBlock Text="显示方式" FontSize="12" Foreground="{StaticResource RoomMenuMuted}" Margin="0,2,0,5" />
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
+                    <Button x:Name="RoomWindowButton" Content="窗口" Margin="0,0,4,0" Click="OnWindow" />
+                    <Button x:Name="RoomWallpaperButton" Grid.Column="1" Content="壁纸" Margin="4,0,0,0" Click="OnWallpaper" />
+                </Grid>
+                <Button x:Name="RoomRecoverButton" Content="恢复团子" Click="OnRecover" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

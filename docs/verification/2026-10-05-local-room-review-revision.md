@@ -2,7 +2,39 @@
 
 日期：2026-10-05。依据用户对上一版候选的反馈及其补充的壁纸键盘、拖动、抚摸范围，在 `codex/local-room-implementation` 继续修订。人工验收尚未通过。
 
-## 本轮行为
+## 2026-10-06 第二轮修订（当前，人工待验）
+
+用户确认普通房禁拖、保留抚摸；桌宠拖动保持。原左右物理边界以外改用棕灰斜线区域和虚线边缘，不再延续正常墙／地面材质。地面只将绘制上沿抬高 10 DIP，物理地面、左右限制、身体和相机投影不变。
+
+窗口与壁纸复用首页暖白／棕灰菜单，删除“继续游戏”和标准／近景／全景按钮，显示 A/D、S、空格、滚轮、Shift+左键横移、Esc 说明。保留回门廊、控制中心、窗口／壁纸及恢复团子。壁纸 Esc 现在打开只含菜单的顶层蒙版窗口，保持 Wallpaper、源 HWND、代际、session、实体与单帧 owner；菜单期间清输入并阻断玩法。再 Esc 关闭时仅尝试经验证的 Shell 焦点恢复，外部失焦及隐藏不抢前台。关闭成功不等于 Shell 恢复成功。
+
+### 当前实际验证
+
+| 范围 | 结果 | 证据和限制 |
+|---|---|---|
+| 初次相关组 | 66 通过／2 失败 | `room-revision-20261006-focused-r1.trx`。150% DPI 布局取整产生 0.333 DIP 居中误差，以及新展开菜单未完成布局就检查按钮焦点。改为半个设备像素容差、布局后检查真实焦点，仍保留实质断言。 |
+| 修订相关组 | **70/70 通过** | `room-revision-20261006-focused-r2.trx`。普通房禁拖／不补点、桌宠默认拖动、抚摸附件反馈、输入取消、两套菜单、相机、bridge，以及真实壁纸菜单同源／同 owner 和 Hide 清理。环境测试同时检查实际绘制像素、原生地面及左右限制不变。 |
+| 受影响扩展组 | 226 通过／2 失败 | `room-revision-20261006-wide-r1.trx`。轻点反馈的固定时刻采样漏过了短暂闭眼帧；另旧 native baseline 环境变量缺失，旧模块合同未验证，不能拿本轮候选替代。其余 Home／Porch、相机、窗口、互动、资格与桥接门禁通过。 |
+| 反馈帧定位及最终专项 | **24/24 通过** | `room-revision-20261006-ui-pointer-r2.trx`。中间失败保留于 `room-revision-20261006-ui-pointer-final.trx`、`room-click-frame-diagnostic-20261006-r1.trx`、`room-click-frame-diagnostic-20261006-r2.trx`。最后诊断实际观察到 3 个反馈帧、眼睛最小 openness 0.074，证明引擎已发布闭眼，Pump 返回后的最新值采样漏过。最终按真实 FrameApplied 记录同 generation、更大 StepIndex 的原闭眼阈值；下一手势先等双眼恢复，不重播、不强制 Tick、不改生产反馈参数。 |
+| 壁纸 native 指针路由前置 | 未通过 | `wallpaper-pointer-route-20261006-r1.trx` 是测试初始化遗漏，修正后 r2/r3 均被真实前台／背景资格拒绝；r3 已知但 Shell foreground=false，尚未到 BeginPointer／捕获。不能据此认定捕获故障。 |
+| 40 秒实体抚摸诊断首轮 | 未完成操作／测试失败 | `wallpaper-physical-petting-20261006-r1.trx`。低层左键、Shift Down 和资格观察均为 false；gameplay hooks 已释放。用户确认“没看到或来不及操作”，所以这轮没有定位输入故障。下一次等用户回复“开始”再打开临时壁纸计时，不以无事件冒充互动通过。 |
+| 40 秒实体抚摸诊断第二轮 | 收到真实 Shift／左键，但未进入命令 | `wallpaper-physical-petting-20261006-r2.trx`。用户确认看到临时团子并在身体中央操作。低层 Down／Shift Down=true，Command Down=false，原生查询已知；未到捕获，不能认定捕获故障。该轮 BodyMiss 与资格为所有点击的聚合，包含先点击空白处，不能推断 Shift 身体点击未命中。 |
+| Shift Down 专属诊断第三轮 | 未统计到未注入左键／测试失败 | `wallpaper-physical-petting-20261006-r3.trx`。所有未注入 Down 和资格观察为 false，真实 FrameApplied=true，gameplay／wheel hooks 均释放；该版本没有区分监听入口与 injected 事件，不能解释为用户未操作。 |
+| 180 秒实体诊断第四轮 | 未统计到未注入左键／测试失败 | `wallpaper-physical-petting-20261006-r4.trx`。准备好后通过就绪布尔标记通知，仍没有未注入 Down，hooks 均释放。用户后续明确确认刚才一轮也在身体中央操作，并确认使用直接连接本机的鼠标／触控板；不得归因手势或用户未操作。下一轮补原 callback、raw Down、injected 分类和监听状态的聚合布尔。 |
+| Esc 原生重复反例 | 2 失败／8 通过，随后专项全通过 | `wallpaper-esc-native-repeat-red-20261006.trx`。跨前台后 WPF IsRepeat 与原生 bit30 不一致时，旧行为分别误关长按菜单、拒绝真正新按。菜单现在优先使用精确本 HWND 的原生 Esc Down bit30，无有效原生消息才沿用 WPF fallback。 |
+| 连续移动资格反例 | 1 失败／24 通过，随后修正 | `wallpaper-pointer-refresh-red-esc-green-20261006.trx`。同一生产 refresh helper 在合法背景水平移动 1 像素时被旧静止判定拒绝；同组 Esc 10 项全通过。新逻辑检查刷新点的范围、桌面角色与图标，保留之前的否决，仍保留 20ms 预算、两次全局扫描及最终前台／修饰键复核。这个反例证明代码合同缺陷，尚未证明用户现场失败走了该分支。 |
+| 输入与菜单最终相关回归 | **103/103 通过** | `wallpaper-pointer-esc-green-20261006.trx`。最终点移动／越界／其他应用／任务栏／图标／unknown、之前否决保留、Esc native/WPF差异及 fallback，gameplay／wheel bridge 和输入 policy 均通过。 |
+| 带监听入口聚合的第五轮实体诊断 | 真实 Down／命中／捕获通过，抚摸失败 | `wallpaper-physical-petting-20261006-r5.trx`。键盘／鼠标 callback 与非 injected Shift Down=true；存在前台否决，也存在已知 Shell 合格、ShiftBodyHit=true、干净 Down 及 CaptureAccepted=true。没有 Move 动作或新反馈，pending 被取消；Shift 检查包含 RefreshIcon 和预算过期，unknown=true。证据排除了该轮完全没输入或捕获从未成功；聚合结果仍不能把某一次取消唯一归因于某一阶段。用户同时反馈操作卡顿，后续检查低层 hook 的同步资格等待。两个 hooks 均已释放。 |
+
+各组包含重叠，计数不相加。已查看仅渲染本房／本菜单的 `room-visible-boundaries.png` 和 `wallpaper-central-menu.png`；不捕获外部桌面，渲染树图不代表实际桌面合成或人工验收。持续按住打开菜单的 Esc、真实菜单关闭后 Shell 恢复、实际壁纸抚摸与跨屏 DPI 仍待实时／人工验证。
+
+用户明确表示 Shift 手势仍无效，当前没有将问题归因于忘按 Shift。资格查询期间要求光标完全静止的代码合同缺陷已由失败反例证明并修正，但尚未证明是用户现场失败的根因；宿主捕获前置仍没有实际失败证据。没有弱化 20ms 预算、其他应用／图标／任务栏否决或 injected 过滤。真实低层平台／命令包装只原样转发一次，诊断只保存汇总布尔和阶段分类，不保存坐标、输入历史、外部窗口身份或内容。壁纸抚摸尚未宣告修复。
+
+手工诊断现进一步要求干净起始帧、同一次 Shift Down／新反馈 Move／正常 Up，以及真实 FrameApplied 中同实体、同附件 generation、更晚 StepIndex、Soft 双眼及左眼 openness<.4；允许 Up 后等待闭眼帧。取消或新 Down 不拼接旧结果。更新测试辅助代码已编译；关闭手工环境开关时实际结果为 0 通过／0 失败／1 跳过，见 `wallpaper-physical-petting-disabled-20261006-r1.trx`，不计作实体通过。gameplay／wheel hooks 和事件订阅均有释放检查。
+
+本轮代码仍在隔离任务分支且尚未提交，main 与受保护 DLL 保持；未合并、推送或更新日常安装。新产物 `artifacts/local-room/review-revision-20261006-r2/` 已 Release 构建为 0 warning／0 error，native hash 与隔离输入一致；源为 `0682c96` 加本轮未提交修改，`delivery.json` 明确记录 dirty 源及汇总结果。当前尚未启动，先等待用户真实手势诊断就绪；L1–L3 未标记人工验收通过。
+
+## 第一轮行为（历史候选）
 
 - 房间不再显示常驻操作栏。Esc 打开全窗半透明蒙版和中央菜单，第二次 Esc 收起；菜单提供继续游戏、回门廊、控制中心、呈现切换、恢复团子及三档视角。保留极简隐藏／关闭窗控及拖动区。
 - 控制中心可以和房间独立显示。外出首页隐藏团子及外观入口，显示“团子去玩拉！回来才能换衣服哦”。打开首页、设置或诊断不取得房间帧 owner，也不自动返回门廊；隐藏房间仍保持外出状态，明确返回后恢复首页能力。

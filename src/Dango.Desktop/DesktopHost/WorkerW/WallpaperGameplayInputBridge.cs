@@ -315,6 +315,7 @@ internal sealed class WallpaperGameplayInputBridge : IDisposable
 
 internal sealed class NativeWallpaperGameplayInputPlatform : IWallpaperGameplayInputPlatform
 {
+    internal RoomInputInspectionTrace LastInspectionTrace { get; private set; }
     public nint InstallKeyboard(NativeMethods.LowLevelKeyboardProcedure callback) => NativeMethods.InstallRoomKeyboardHook(callback);
     public nint InstallMouse(NativeMethods.LowLevelMouseProcedure callback) => NativeMethods.InstallRoomMouseHook(callback);
     public bool UninstallKeyboard(nint hook) => NativeMethods.UninstallRoomKeyboardHook(hook);
@@ -328,6 +329,11 @@ internal sealed class NativeWallpaperGameplayInputPlatform : IWallpaperGameplayI
     }
     public WallpaperGameplayMouseData ReadMouse(nint data) => NativeMethods.ReadRoomGameplayMouseInput(data);
     public bool IsKeyPressed(int virtualKey) => NativeMethods.IsInputKeyPressed(virtualKey);
-    public WallpaperWheelInputEnvironment Inspect(WallpaperWheelInputContext context, WallpaperWheelPoint? point, bool atEvent, bool allowShift) =>
-        NativeMethods.InspectRoomGameplayInput(context, point, atEvent, allowShift);
+    public WallpaperWheelInputEnvironment Inspect(WallpaperWheelInputContext context, WallpaperWheelPoint? point, bool atEvent, bool allowShift)
+    {
+        var environment = NativeMethods.InspectRoomGameplayInput(context, point, atEvent, allowShift, out var trace);
+        // Keep only phase/role classifications and safety booleans for the attended diagnostic.
+        LastInspectionTrace = trace with { ElapsedMilliseconds = 0 };
+        return environment;
+    }
 }

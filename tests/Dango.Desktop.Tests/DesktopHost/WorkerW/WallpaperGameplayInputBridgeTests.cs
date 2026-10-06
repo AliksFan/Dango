@@ -103,6 +103,49 @@ public sealed class WallpaperGameplayInputBridgeTests
     }
 
     [STATestMethod]
+    public void ShiftStrokePreservesObservedCoordinatesAndNormalCompletionDoesNotClearInput()
+    {
+        var platform = new FakePlatform(); var sink = new Sink();
+        using var bridge = Create(platform, sink); bridge.Start();
+        var begin = new WallpaperWheelPoint(-300, 300);
+        var end = new WallpaperWheelPoint(-280, 300);
+        platform.EmitMouse(0x0201, shift: true, point: begin); bridge.FlushPendingInput();
+        platform.EmitMouse(0x0200, shift: true, point: end); bridge.FlushPendingInput();
+        // The driver may finish its gesture and cancel the pointer token inside the successful Up callback.
+        // That completion must not be treated as a failed gesture that clears its accepted reaction.
+        sink.OnUp = bridge.CancelPointer;
+        platform.EmitMouse(0x0202, point: end); bridge.FlushPendingInput();
+        CollectionAssert.AreEqual(new[]
+        {
+            ("Down", begin, true), ("Move", end, true), ("Up", end, false),
+        }, sink.PointerEvents.ToArray());
+        Assert.AreEqual(0, sink.ClearCount);
+        Assert.AreEqual(3, platform.MouseNext);
+        Assert.IsTrue(platform.PointerAllowsShift);
+        platform.EmitMouse(0x0200, shift: true, point: begin); platform.EmitMouse(0x0202, point: begin);
+        bridge.FlushPendingInput();
+        Assert.AreEqual(3, sink.PointerEvents.Count, "Completed input cannot acquire another stroke without a fresh Down.");
+    }
+
+    [STATestMethod]
+    public void RejectedPointerDownCannotReplayItsQueuedMoveOrUpAfterCaptureBecomesAvailable()
+    {
+        var platform = new FakePlatform(); var sink = new Sink { DownAccepted = false };
+        using var bridge = Create(platform, sink); bridge.Start();
+        platform.EmitMouse(0x0201, shift: true);
+        platform.EmitMouse(0x0200, shift: true); platform.EmitMouse(0x0202);
+        bridge.FlushPendingInput();
+        Assert.AreEqual(1, sink.DownCount); Assert.AreEqual(0, sink.MoveCount); Assert.AreEqual(0, sink.UpCount);
+        sink.DownAccepted = true;
+        platform.EmitMouse(0x0200, shift: true); platform.EmitMouse(0x0202);
+        bridge.FlushPendingInput();
+        Assert.AreEqual(0, sink.MoveCount); Assert.AreEqual(0, sink.UpCount);
+        platform.EmitMouse(0x0201, shift: true); bridge.FlushPendingInput();
+        Assert.AreEqual(2, sink.DownCount, "Recovery requires a fresh physical Down; it cannot import the rejected stroke.");
+        Assert.AreEqual(6, platform.MouseNext);
+    }
+
+    [STATestMethod]
     public void BackgroundMustHitThePetToBeginButMoveAndUpMayLeaveItsBody()
     {
         var platform = new FakePlatform(); var sink = new Sink { Hit = false };
@@ -233,12 +276,16 @@ public sealed class WallpaperGameplayInputBridgeTests
     {
         internal List<(Key, bool, bool)> Keys { get; } = [];
         internal int DownCount, MoveCount, UpCount, ClearCount, MenuCount;
-        internal bool Hit = true, LastShift;
-        internal Action? OnDown, OnKey;
+        internal bool Hit = true, LastShift, DownAccepted = true;
+        internal List<(string Phase, WallpaperWheelPoint Point, bool Shift)> PointerEvents { get; } = [];
+        internal Action? OnDown, OnKey, OnUp;
         internal bool Key(Key key, bool down, bool repeat) { Keys.Add((key, down, repeat)); OnKey?.Invoke(); return true; }
-        internal bool Down(WallpaperWheelPoint point, bool shift) { DownCount++; LastShift = shift; OnDown?.Invoke(); return true; }
-        internal bool Move(WallpaperWheelPoint point, bool shift) { MoveCount++; return true; }
-        internal bool Up(WallpaperWheelPoint point, bool shift) { UpCount++; return true; }
+        internal bool Down(WallpaperWheelPoint point, bool shift)
+        { DownCount++; LastShift = shift; PointerEvents.Add(("Down", point, shift)); OnDown?.Invoke(); return DownAccepted; }
+        internal bool Move(WallpaperWheelPoint point, bool shift)
+        { MoveCount++; PointerEvents.Add(("Move", point, shift)); return true; }
+        internal bool Up(WallpaperWheelPoint point, bool shift)
+        { UpCount++; PointerEvents.Add(("Up", point, shift)); OnUp?.Invoke(); return true; }
     }
     private sealed class FakePlatform : IWallpaperGameplayInputPlatform
     {
@@ -264,7 +311,7 @@ public sealed class WallpaperGameplayInputBridgeTests
         { if (point is null) GlobalQueries++; else { PointerQueries++; PointerAllowsShift = allowShift; } OnInspect?.Invoke(atEvent); return Environment; }
         internal nint EmitKey(Key key, bool down, bool modifier = false, uint flags = 0)
         { keyData = new(KeyInterop.VirtualKeyFromKey(key), flags, modifier); return keyboard!(0, down ? 0x0100 : 0x0101, 0); }
-        internal nint EmitMouse(int message, bool shift = false, bool forbiddenModifier = false, uint flags = 0)
-        { mouseData = new(new(-300, 300), flags, shift, forbiddenModifier); return mouse!(0, message, 0); }
+        internal nint EmitMouse(int message, bool shift = false, bool forbiddenModifier = false, uint flags = 0, WallpaperWheelPoint? point = null)
+        { mouseData = new(point ?? new(-300, 300), flags, shift, forbiddenModifier); return mouse!(0, message, 0); }
     }
 }

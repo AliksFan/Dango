@@ -1,6 +1,9 @@
+using System.Diagnostics;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Threading;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Dango.Core.Coordinates;
 using Dango.Desktop.AppShell.Rooms;
 using Dango.Desktop.DesktopHost;
@@ -12,6 +15,72 @@ namespace Dango.Desktop.Tests.AppShell;
 [TestClass]
 public sealed class LocalRoomPointerTests
 {
+    [STATestMethod]
+    [TestCategory("NativeIntegration")]
+    public void VisibleExcludedSidesAndRaisedPaintKeepTheOriginalNativeGroundAndLimits()
+    {
+        using var fixture = new Fixture();
+        var ground = fixture.Runtime.LocalGroundY!.Value;
+        var limits = ((double Left, double Right))typeof(StackedDangoSceneRuntime)
+            .GetField("localHorizontalBounds", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(fixture.Runtime)!;
+        Assert.AreEqual(24d, limits.Left);
+        Assert.AreEqual(2136d, limits.Right);
+        var snapshot = ((DesktopSceneSession)typeof(LocalRoomSceneDriver)
+            .GetField("session", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(fixture.Driver)!).Snapshot;
+        var owner = fixture.Runtime.FrameDriver;
+        var entity = fixture.Runtime.EntityIds.Single();
+        foreach (var preset in new[] { RoomViewPreset.Standard, RoomViewPreset.Near, RoomViewPreset.Whole })
+        {
+            fixture.Scene.SelectView(preset);
+            var edges = fixture.Scene.EnvironmentEdges;
+            Assert.AreEqual(limits.Left, fixture.Scene.ScreenToWorld(new(edges.Left, edges.CollisionY)).X, 1e-8);
+            Assert.AreEqual(limits.Right, fixture.Scene.ScreenToWorld(new(edges.Right, edges.CollisionY)).X, 1e-8);
+            Assert.AreEqual(ground, fixture.Scene.ScreenToWorld(new(edges.Left, edges.CollisionY)).Y, 1e-8);
+            Assert.AreEqual(10d, edges.CollisionY - edges.FloorY, 1e-8, "Only the drawn floor moves up by ten screen DIP.");
+            Assert.AreEqual(ground, fixture.Runtime.LocalGroundY);
+            Assert.AreEqual(limits, typeof(StackedDangoSceneRuntime)
+                .GetField("localHorizontalBounds", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(fixture.Runtime));
+            Assert.AreSame(snapshot, ((DesktopSceneSession)typeof(LocalRoomSceneDriver)
+                .GetField("session", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(fixture.Driver)!).Snapshot);
+            Assert.AreSame(owner, fixture.Runtime.FrameDriver);
+            Assert.AreEqual(entity, fixture.Runtime.EntityIds.Single());
+        }
+        // Whole view exposes both original unreachable strips. Check actual painted pixels, not only geometry helpers.
+        fixture.Scene.UpdateLayout();
+        var e = fixture.Scene.EnvironmentEdges;
+        Assert.IsTrue(e.Left > 4 && e.Right < fixture.Scene.ActualWidth - 4);
+        var bitmap = new RenderTargetBitmap((int)Math.Ceiling(fixture.Scene.ActualWidth),
+            (int)Math.Ceiling(fixture.Scene.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+        var visual = new DrawingVisual();
+        using (var drawing = visual.RenderOpen())
+            drawing.DrawRectangle(new VisualBrush(fixture.Scene), null,
+                new Rect(0, 0, fixture.Scene.ActualWidth, fixture.Scene.ActualHeight));
+        bitmap.Render(visual);
+        var floor = Pixel(bitmap, e.Left + 50, e.CollisionY + 4);
+        CollectionAssert.AreEqual(floor, Pixel(bitmap, e.Left + 50, e.CollisionY - 5),
+            "The raised band must already display the floor above the unchanged collision line.");
+        var wall = Pixel(bitmap, e.Left + 50, e.FloorY - 8);
+        CollectionAssert.AreNotEqual(wall, floor);
+        foreach (var x in new[] { e.Left / 2, (e.Right + fixture.Scene.ActualWidth) / 2 })
+        {
+            CollectionAssert.AreNotEqual(wall, Pixel(bitmap, x, e.FloorY - 8), "Excluded sides cannot use the normal wall material.");
+            CollectionAssert.AreNotEqual(floor, Pixel(bitmap, x, e.CollisionY + 4), "Excluded sides cannot use the normal floor material.");
+        }
+        var directory = Path.Combine(TestRepository.Root, "artifacts", "local-room", "visual");
+        Directory.CreateDirectory(directory);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var stream = File.Create(Path.Combine(directory, "room-visible-boundaries.png"));
+        encoder.Save(stream);
+    }
+
+    private static byte[] Pixel(BitmapSource bitmap, double x, double y)
+    {
+        var pixel = new byte[4];
+        bitmap.CopyPixels(new Int32Rect((int)Math.Floor(x), (int)Math.Floor(y), 1, 1), pixel, 4, 0);
+        return pixel;
+    }
+
     [STATestMethod]
     [TestCategory("NativeIntegration")]
     public void BodyHitAndInverseProjectionIncludeInsetsAtEveryPreset()
@@ -51,16 +120,18 @@ public sealed class LocalRoomPointerTests
         {
             fixture.Driver.ClearInput();
             fixture.Scene.SelectView(preset);
+            WaitForNeutralFrame(fixture);
             var center = fixture.BodyBounds.Center;
             var point = fixture.ToScene(center);
+            var beforeClick = fixture.Runtime.LastFrame;
             Assert.IsTrue(fixture.Driver.PointerDown(point, nowMilliseconds: 1000));
             Assert.IsTrue(fixture.Driver.PointerUp(point, nowMilliseconds: 1010));
             Assert.IsFalse(fixture.Driver.IsPointerActive);
             Assert.IsTrue(fixture.Runtime.HasLightFeedback, "A short body click must reach the real attachment runtime.");
-            Pump(30);
-            Assert.IsTrue(fixture.Runtime.LastFrame!.Bodies[0].Attachments!.Face.Left.Openness < 1);
+            WaitForFeedbackFrame(fixture, beforeClick!, 1);
 
             fixture.Driver.ClearInput();
+            WaitForNeutralFrame(fixture);
             center = fixture.BodyBounds.Center;
             point = fixture.ToScene(center);
             Assert.IsTrue(fixture.Driver.PointerDown(point, shift: true, nowMilliseconds: 2000));
@@ -68,37 +139,82 @@ public sealed class LocalRoomPointerTests
             Assert.IsTrue(fixture.Driver.PointerMove(petPoint, shift: true, nowMilliseconds: 2100));
             Assert.IsFalse(fixture.Runtime.IsDragging, "Shift keeps the existing pet branch at every camera scale.");
             Assert.IsTrue(fixture.Runtime.HasLightFeedback);
+            var beforePetFrame = fixture.Runtime.LastFrame;
             Assert.IsTrue(fixture.Driver.PointerUp(petPoint, shift: true, nowMilliseconds: 2110));
-            Pump(200);
-            Assert.IsTrue(fixture.Runtime.LastFrame!.Bodies[0].Attachments!.Face.Left.Openness < .4);
+            WaitForFeedbackFrame(fixture, beforePetFrame!, .4);
             Assert.AreSame(owner, fixture.Runtime.FrameDriver);
             Assert.AreEqual(entity, fixture.Runtime.EntityIds.Single());
         }
     }
 
+    private static void WaitForFeedbackFrame(Fixture fixture,
+        Dango.Desktop.Physics.Presentation.StackedPhysicsPresentationFrame previous, double maximumOpenness)
+    {
+        var scheduler = (HostFrameScheduler)typeof(LocalRoomSceneDriver)
+            .GetField("scheduler", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(fixture.Driver)!;
+        var before = scheduler.Snapshot;
+        var cancellations = fixture.InputCancelledCount;
+        var minimumOpenness = 1d;
+        var activeFrames = 0;
+        var observed = false;
+        void Sample()
+        {
+            if (fixture.Runtime.HasLightFeedback) activeFrames++;
+            minimumOpenness = Math.Min(minimumOpenness, fixture.Runtime.LastFrame?.Bodies[0].Attachments?.Face.Left.Openness ?? 1);
+            var current = fixture.Runtime.LastFrame?.Bodies[0].Attachments;
+            var baseline = previous.Bodies[0].Attachments!;
+            observed |= fixture.Runtime.HasLightFeedback && current is not null &&
+                current.Generation == baseline.Generation && current.StepIndex > baseline.StepIndex &&
+                current.Face.Left.Openness < maximumOpenness;
+        }
+        var watch = Stopwatch.StartNew();
+        fixture.Scene.FrameApplied += Sample;
+        try { while (!observed && watch.Elapsed < TimeSpan.FromSeconds(1) && fixture.Runtime.LastError is null) Pump(10); }
+        finally { fixture.Scene.FrameApplied -= Sample; }
+        Assert.IsTrue(observed, $"A newly advanced real feedback frame must render eye closure <{maximumOpenness}. " +
+            $"NewFrame={!ReferenceEquals(previous, fixture.Runtime.LastFrame)}, Feedback={fixture.Runtime.HasLightFeedback}, " +
+            $"Openness={fixture.Runtime.LastFrame?.Bodies[0].Attachments?.Face.Left.Openness}, " +
+            $"Steps={scheduler.Snapshot.SuccessfulSteps - before.SuccessfulSteps}, Applied={scheduler.Snapshot.AppliedFrames - before.AppliedFrames}, " +
+            $"Cancelled={fixture.InputCancelledCount - cancellations}, ActiveFrames={activeFrames}, MinimumOpenness={minimumOpenness}, " +
+            $"Error={fixture.Runtime.LastError}, LightError={fixture.Runtime.LightInteractionError}, AttachmentError={fixture.Runtime.AttachmentError}.");
+    }
+
+    private static void WaitForNeutralFrame(Fixture fixture)
+    {
+        bool Neutral() => !fixture.Runtime.HasLightFeedback && fixture.Runtime.LastFrame?.Bodies[0].Attachments is { } frame &&
+            frame.Face.Left.Openness >= .98 && frame.Face.Right.Openness >= .98;
+        var watch = Stopwatch.StartNew();
+        while (!Neutral() && watch.Elapsed < TimeSpan.FromSeconds(1) && fixture.Runtime.LastError is null) Pump(10);
+        Assert.IsTrue(Neutral(), "Each gesture must begin with open eyes and no residual light feedback.");
+    }
+
     [STATestMethod]
     [TestCategory("NativeIntegration")]
-    public void PlainPointerMoveDragsActualPhysicsAndUpEndsIt()
+    public void PlainPointerMoveCannotDragPhysicsOrReplayClick()
     {
         using var fixture = new Fixture();
         fixture.Scene.SafeInsets = new Thickness(51, 21, 0, 0);
         fixture.Scene.SelectView(RoomViewPreset.Whole);
         var center = fixture.BodyBounds.Center;
-        var physicalCenter = fixture.Runtime.CurrentSelectedCenter!.Value;
         var owner = fixture.Runtime.FrameDriver;
         var entity = fixture.Runtime.EntityIds.Single();
+        var physicalCancellations = 0;
+        var pointerCancellations = 0;
+        fixture.Runtime.InputCancelled += () => physicalCancellations++;
+        fixture.Driver.PointerCancelled += () => pointerCancellations++;
         Assert.IsTrue(fixture.Driver.PointerDown(fixture.ToScene(center), nowMilliseconds: 0));
         Assert.IsTrue(fixture.Driver.PointerMove(fixture.ToScene(new(center.X + 3.01, center.Y)), nowMilliseconds: 10));
-        Assert.IsTrue(fixture.Runtime.IsDragging, "The drag threshold is measured in world units after inverse projection.");
+        Assert.IsFalse(fixture.Runtime.IsDragging, "Ordinary rooms reject physical drag conversion after inverse projection.");
+        Assert.IsFalse(fixture.Driver.IsPointerActive);
+        Assert.AreEqual(0, physicalCancellations, "Disabling drag cannot begin and immediately end a native drag.");
+        Assert.AreEqual(1, pointerCancellations);
         var destination = new LogicalPoint(center.X + 80, center.Y - 35);
-        Assert.IsTrue(fixture.Driver.PointerMove(fixture.ToScene(destination), nowMilliseconds: 20));
+        Assert.IsFalse(fixture.Driver.PointerMove(fixture.ToScene(destination), nowMilliseconds: 20));
         Pump(140);
-        Assert.IsTrue(fixture.Runtime.CurrentSelectedCenter!.Value.X > physicalCenter.X + 1,
-            "A drag must move the real native body, rather than only moving a visual or setting a flag.");
-        Assert.IsTrue(fixture.Driver.PointerUp(fixture.ToScene(destination), nowMilliseconds: 170));
+        Assert.IsFalse(fixture.Driver.PointerUp(fixture.ToScene(center), nowMilliseconds: 170));
         Assert.IsFalse(fixture.Runtime.IsDragging);
         Assert.IsFalse(fixture.Driver.IsPointerActive);
-        Assert.IsFalse(fixture.Runtime.HasLightFeedback, "Dragging cannot fall back to a click.");
+        Assert.IsFalse(fixture.Runtime.HasLightFeedback, "A rejected drag cannot replay a click when the pointer returns.");
         Assert.AreSame(owner, fixture.Runtime.FrameDriver);
         Assert.AreEqual(entity, fixture.Runtime.EntityIds.Single());
     }
@@ -126,9 +242,10 @@ public sealed class LocalRoomPointerTests
             fixture.Scene.InputBlocked = false;
             Pump(40);
             var point = fixture.ToScene(fixture.BodyBounds.Center);
-            Assert.IsTrue(fixture.Driver.PointerDown(point, nowMilliseconds: 100));
-            Assert.IsTrue(fixture.Driver.PointerMove(new(point.X + fixture.Scene.Camera.Scale * 4, point.Y), nowMilliseconds: 110));
-            Assert.IsTrue(fixture.Runtime.IsDragging);
+            Assert.IsTrue(fixture.Driver.PointerDown(point, shift: true, nowMilliseconds: 100));
+            Assert.IsTrue(fixture.Driver.PointerMove(new(point.X + fixture.Scene.Camera.Scale * 4, point.Y), shift: true, nowMilliseconds: 110));
+            Assert.IsTrue(fixture.Driver.IsPointerActive, "Each cancellation must begin with a live Shift gesture, rather than an already rejected drag.");
+            Assert.IsFalse(fixture.Runtime.IsDragging);
             var before = cancellations;
             invalidate();
             Assert.AreEqual(before + 1, cancellations, "Cancellation must notify once, even with reentrant capture loss.");
@@ -204,12 +321,14 @@ public sealed class LocalRoomPointerTests
         internal LocalRoomSceneDriver Driver { get; }
         internal LocalRoomSceneView Scene { get; set; } = new();
         internal System.Windows.Window Window { get; }
+        internal int InputCancelledCount { get; private set; }
         internal LogicalRect BodyBounds => DangoHostFrameBinding.Bounds(Runtime.LastFrame!, 0)
             .Translate(new LogicalVector(0, Runtime.NeutralBodyGroundOffset));
 
         internal Fixture(bool waitForReady = true)
         {
             Assert.IsTrue(Runtime.TryInitialize(), Runtime.LastError);
+            Runtime.InputCancelled += () => InputCancelledCount++;
             Driver = new(new DesktopSceneSession(), Runtime);
             Window = new() { Width = 1000, Height = 640, Content = Scene, Title = "Fictional local pointer fixture" };
             Window.Show(); Window.UpdateLayout();

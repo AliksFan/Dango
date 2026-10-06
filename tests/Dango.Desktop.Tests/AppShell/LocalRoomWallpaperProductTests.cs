@@ -100,6 +100,72 @@ public sealed class LocalRoomWallpaperProductTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
+    public void ActualWallpaperPointerRouteKeepsShiftPettingGestureAndFeedback()
+    {
+        var previousForeground = TestGetForegroundWindow();
+        Assert.IsTrue(NativeMethods.GetCursorPos(out var previousCursor));
+        var output = Path.Combine(TestRepository.Root, "artifacts", "local-room", "wallpaper-tests", Guid.NewGuid().ToString("N"));
+        using var host = new DangoApplicationHost(settingsFile: Path.Combine(output, "settings.json"),
+            nativeLibraryPath: Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName), isolatedLocalRoomReview: true);
+        try
+        {
+            Assert.IsTrue(Field<StackedDangoSceneRuntime>(host, "stackedRuntime").TryInitialize());
+            host.ShowControlCenter(); Pump(350);
+            host.EnterLocalRoom(); WaitForHandoff(host, "pointer room window");
+            Assert.AreEqual(LocalRoomPresentation.Window, host.LocalPresentation, host.LocalRoomFailure);
+            host.SwitchLocalRoomPresentation(LocalRoomPresentation.Wallpaper); WaitForHandoff(host, "pointer wallpaper");
+            Assert.AreEqual(LocalRoomPresentation.Wallpaper, host.LocalPresentation, host.LocalRoomFailure);
+            var wallpaper = Field<LocalRoomWallpaperHost>(host, "localRoomWallpaper");
+            var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
+            var driver = Field<LocalRoomSceneDriver>(host, "localRoomDriver");
+            var source = Field<HwndSource>(wallpaper, "source");
+            var target = Field<WorkerWDesktopTarget>(wallpaper, "target");
+            var screen = Field<LogicalRect>(wallpaper, "screenBounds");
+            var context = new WallpaperWheelInputContext(target, screen, Field<long>(wallpaper, "generation"), true, false);
+            var bounds = DangoHostFrameBinding.Bounds(runtime.LastFrame!, 0).Translate(new LogicalVector(0, runtime.NeutralBodyGroundOffset));
+            WallpaperWheelPoint ToPixels(LogicalPoint world)
+            {
+                var scene = wallpaper.Scene.Camera.Projection.WorldToScreen(world);
+                var device = source.CompositionTarget.TransformToDevice.Transform(new System.Windows.Point(
+                    scene.X + wallpaper.Scene.SafeInsets.Left, scene.Y + wallpaper.Scene.SafeInsets.Top));
+                return new((int)Math.Round(screen.X + device.X), (int)Math.Round(screen.Y + device.Y));
+            }
+            var down = ToPixels(bounds.Center);
+            var move = ToPixels(new(bounds.Center.X + 18, bounds.Center.Y));
+            _ = TestSetForegroundWindow(TestGetShellWindow()); Pump(75);
+            Assert.IsTrue(TestSetCursorPos(down.X, down.Y)); Pump(30);
+            var environment = NativeMethods.InspectRoomGameplayInput(context, down, false, allowShift: true);
+            _ = NativeMethods.InspectRoomWheelInputDiagnostic(context, down, false, out var routeTrace);
+            TestContext.WriteLine($"Body qualification: known={environment.IsKnown}, foreground={environment.IsDesktopForeground}, blocking={environment.HasFullscreenApplication}, background={environment.IsPointerOnDesktop}, icon={environment.IsDesktopIcon}, modifier={environment.HasModifier}, phase={routeTrace.Phase}, role={routeTrace.Pointer.Role}, ownChild={routeTrace.Pointer.OwnProcessChild}, expired={routeTrace.BudgetExpired}.");
+            Assert.IsTrue(WallpaperWheelInputPolicy.ShouldApply(context, context, down, environment),
+                "The real body point must have Shell/background eligibility before exercising the real host command route.");
+            var began = (bool)typeof(LocalRoomWallpaperHost).GetMethod("BeginPointer", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(wallpaper, [down, true])!;
+            TestContext.WriteLine($"Real host pointer route: began={began}, gestureActive={driver.IsPointerActive}, healthy={wallpaper.Scene.HasHealthyFrame}, blocked={wallpaper.Scene.InputBlocked}.");
+            Assert.IsTrue(began, "A qualified real wallpaper host Down must preserve its Shift light gesture.");
+            Assert.IsTrue(driver.IsPointerActive);
+            Assert.IsTrue(TestSetCursorPos(move.X, move.Y));
+            var moveDip = source.CompositionTarget.TransformFromDevice.Transform(new System.Windows.Point(move.X - screen.X, move.Y - screen.Y));
+            Assert.IsTrue(driver.PointerMove(moveDip, shift: true));
+            Assert.IsTrue(runtime.HasLightFeedback, "The real host gesture must reach attachment feedback.");
+            Assert.IsFalse(runtime.IsDragging);
+            var ended = (bool)typeof(LocalRoomWallpaperHost).GetMethod("CompletePointer", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(wallpaper, [move, true])!;
+            Assert.IsTrue(ended);
+            Assert.IsFalse(driver.IsPointerActive);
+            Assert.IsTrue(runtime.HasLightFeedback, "Normal release must preserve petting feedback.");
+            // This exercises native qualification and the host command path, not hardware LL input delivery.
+        }
+        finally
+        {
+            host.Dispose();
+            _ = TestSetCursorPos(previousCursor.X, previousCursor.Y);
+            if (NativeMethods.IsValidWindow(previousForeground)) _ = TestSetForegroundWindow(previousForeground);
+        }
+    }
+
+    [STATestMethod]
+    [TestCategory("NativeIntegration")]
     public void ActualNativeScanRecognizesMaximizedWorkingAreaApplication()
     {
         var previousForeground = TestGetForegroundWindow();
@@ -161,6 +227,68 @@ public sealed class LocalRoomWallpaperProductTests
                 Assert.IsTrue(TestSetForegroundWindow(previousForeground) || TestGetForegroundWindow() == previousForeground,
                     "Restore the exact foreground if maximizing our owned fixture activated it.");
         }
+    }
+
+    [STATestMethod]
+    [TestCategory("NativeIntegration")]
+    public void ActualWallpaperCentralMenuPreservesPresentationSourceAndSingleOwner()
+    {
+        var output = Path.Combine(TestRepository.Root, "artifacts", "local-room", "wallpaper-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(output);
+        using var host = new DangoApplicationHost(settingsFile: Path.Combine(output, "settings.json"),
+            nativeLibraryPath: Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName), isolatedLocalRoomReview: true);
+        var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
+        Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
+        host.ShowControlCenter(); Pump(350);
+        host.EnterLocalRoom(); WaitForHandoff(host, "menu room window");
+        host.SwitchLocalRoomPresentation(LocalRoomPresentation.Wallpaper); WaitForHandoff(host, "menu wallpaper");
+        Assert.AreEqual(LocalRoomPresentation.Wallpaper, host.LocalPresentation, host.LocalRoomFailure);
+        var wallpaper = Field<LocalRoomWallpaperHost>(host, "localRoomWallpaper");
+        var source = Field<HwndSource>(wallpaper, "source");
+        var driver = Field<LocalRoomSceneDriver>(host, "localRoomDriver");
+        var owner = runtime.FrameDriver;
+        var session = Field<DesktopSceneSession>(host, "sceneSession");
+        var snapshot = session.Snapshot;
+        var entity = runtime.EntityIds.Single();
+        var generation = Field<long>(wallpaper, "generation");
+        var handle = source.Handle;
+        typeof(DangoApplicationHost).GetMethod("ShowLocalRoomMenu", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(host, null);
+        Pump(100);
+        var menu = wallpaper.MenuWindow;
+        Assert.IsNotNull(menu);
+        Assert.IsTrue(menu.IsVisible);
+        Assert.IsTrue(wallpaper.Scene.InputBlocked);
+        Assert.IsFalse(host.LocalHandoffPending);
+        Assert.AreEqual(LocalRoomPresentation.Wallpaper, host.LocalPresentation);
+        Assert.AreSame(source, Field<HwndSource>(wallpaper, "source"));
+        Assert.AreEqual(handle, source.Handle);
+        Assert.AreEqual(generation, Field<long>(wallpaper, "generation"));
+        Assert.AreSame(snapshot, session.Snapshot);
+        Assert.AreSame(owner, runtime.FrameDriver);
+        Assert.AreEqual(entity, runtime.EntityIds.Single());
+        Assert.IsTrue(driver.OwnsRuntime);
+        // A right-click menu's late Closed must not unblock the central menu.
+        var petMenu = Field<System.Windows.Forms.ContextMenuStrip>(wallpaper, "petMenu");
+        var closedEvents = 0;
+        petMenu.Closed += (_, _) => closedEvents++;
+        typeof(System.Windows.Forms.ToolStripDropDown).GetMethod("OnClosed", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(petMenu, [new System.Windows.Forms.ToolStripDropDownClosedEventArgs(System.Windows.Forms.ToolStripDropDownCloseReason.CloseCalled)]);
+        Assert.AreEqual(1, closedEvents, "The late Closed path must actually execute.");
+        Assert.IsTrue(wallpaper.Scene.InputBlocked);
+        CaptureScene(menu.Menu, Path.Combine(output, "wallpaper-central-menu.png"));
+        wallpaper.CloseMenu();
+        Assert.IsFalse(menu.IsVisible);
+        Assert.IsFalse(wallpaper.Scene.InputBlocked);
+        Assert.AreEqual(LocalRoomPresentation.Wallpaper, host.LocalPresentation);
+        Assert.AreEqual(handle, source.Handle);
+        Assert.AreSame(owner, runtime.FrameDriver);
+        wallpaper.OpenMenu();
+        var secondMenu = wallpaper.MenuWindow;
+        Assert.IsNotNull(secondMenu);
+        host.HideLocalRoom();
+        Assert.IsFalse(secondMenu.IsVisible);
+        Assert.IsFalse(wallpaper.IsMenuOpen);
+        Assert.IsFalse(wallpaper.IsVisible);
     }
 
     [STATestMethod]
@@ -479,9 +607,9 @@ public sealed class LocalRoomWallpaperProductTests
         Dispatcher.PushFrame(frame);
     }
 
-    private static void CaptureScene(LocalRoomSceneView scene, string path)
+    private static void CaptureScene(FrameworkElement scene, string path)
     {
-        Assert.IsTrue(scene.HasHealthyFrame);
+        if (scene is LocalRoomSceneView room) Assert.IsTrue(room.HasHealthyFrame);
         Assert.IsTrue(scene.ActualWidth > 0 && scene.ActualHeight > 0);
         // Render only this room's visual tree. Never capture its desktop parent or another window.
         var bitmap = new RenderTargetBitmap((int)Math.Ceiling(scene.ActualWidth), (int)Math.Ceiling(scene.ActualHeight),

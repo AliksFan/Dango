@@ -24,9 +24,10 @@ public sealed class LocalRoomWindowMenuTests
         var returned = 0;
         rig.Window.ReturnRequested += () => returned++;
         var root = (Grid)rig.Window.Content;
+        var menu = Find<LocalRoomMenuView>(root, "RoomMenu");
         var overlay = Find<Grid>(root, "RoomMenuOverlay");
         var card = Find<Border>(root, "RoomMenuCard");
-        Assert.AreEqual(Visibility.Collapsed, overlay.Visibility);
+        Assert.AreEqual(Visibility.Collapsed, menu.Visibility);
         Assert.AreEqual(0, Descendants<System.Windows.Controls.Menu>(root).Count(), "Gameplay must not retain the top operation menu.");
         Assert.AreEqual(2, Descendants<Button>(root).Count(button => !overlay.IsAncestorOf(button)),
             "Only the minimal hide/close window controls may stay outside the Esc menu.");
@@ -34,22 +35,59 @@ public sealed class LocalRoomWindowMenuTests
         Assert.IsTrue(Press(rig.Window, rig.Window.Scene, Key.Escape).Handled);
         rig.Window.UpdateLayout();
         Assert.IsTrue(rig.Window.IsMenuOpen);
-        Assert.AreEqual(Visibility.Visible, overlay.Visibility);
+        Assert.AreEqual(Visibility.Visible, menu.Visibility);
         Assert.AreEqual(root.ActualWidth, overlay.ActualWidth, .1);
         Assert.AreEqual(root.ActualHeight, overlay.ActualHeight, .1);
         var origin = card.TranslatePoint(new System.Windows.Point(), root);
-        Assert.AreEqual(root.ActualWidth / 2, origin.X + card.ActualWidth / 2, .1);
-        Assert.AreEqual(root.ActualHeight / 2, origin.Y + card.ActualHeight / 2, .1);
+        // Layout rounding centres the card to the nearest device pixel (also at 150% DPI).
+        var dpi = VisualTreeHelper.GetDpi(card);
+        Assert.AreEqual(root.ActualWidth / 2, origin.X + card.ActualWidth / 2, .5 / dpi.DpiScaleX + .001);
+        Assert.AreEqual(root.ActualHeight / 2, origin.Y + card.ActualHeight / 2, .5 / dpi.DpiScaleY + .001);
         Assert.IsTrue(card.ActualHeight < root.ActualHeight, "The card must fit the accepted minimum window height.");
         Assert.IsTrue(overlay.Background is SolidColorBrush { Color.A: > 0 and < 255 }, "The room must remain visible through the full-window shade.");
-        Assert.IsTrue(Find<Button>(root, "RoomContinueButton").IsKeyboardFocused);
+        Assert.IsTrue(menu.IsKeyboardFocused, "Opening must focus the menu container, not its return action.");
+        Assert.IsFalse(Descendants<Button>(menu).Any(button => button.IsKeyboardFocused));
         Assert.AreEqual(0, returned, "Esc opens the room menu; only its explicit door action returns to porch.");
 
-        Assert.IsTrue(Press(rig.Window, Find<Button>(root, "RoomContinueButton"), Key.Escape).Handled);
+        Assert.IsTrue(Press(rig.Window, Find<Button>(root, "RoomReturnButton"), Key.Escape).Handled);
         Assert.IsFalse(rig.Window.IsMenuOpen, "Esc must also work while a menu button owns focus.");
         Assert.IsFalse(rig.Window.Scene.InputBlocked);
         Assert.IsTrue(rig.Window.Scene.IsKeyboardFocused);
         Assert.AreEqual(0, returned);
+    }
+
+    [STATestMethod]
+    public void MenuShowsControlsInsteadOfContinueAndCameraPresetActions()
+    {
+        using var rig = new WindowRig();
+        rig.Window.OpenMenu();
+        var menu = Find<LocalRoomMenuView>((Grid)rig.Window.Content, "RoomMenu");
+        var names = Descendants<Button>(menu).Select(button => button.Name).ToArray();
+        CollectionAssert.AreEquivalent(new[]
+        {
+            "RoomReturnButton", "RoomControlCenterButton", "RoomWindowButton", "RoomWallpaperButton", "RoomRecoverButton",
+        }, names, "The menu contains only the five real room actions, with no continue or camera preset buttons.");
+        var instructions = Find<System.Windows.Controls.TextBlock>(menu, "RoomInstructions").Text;
+        foreach (var control in new[] { "A / D", "S", "空格", "滚轮", "Shift + 左键横移", "Esc" })
+            StringAssert.Contains(instructions, control);
+    }
+
+    [STATestMethod]
+    public void InitialMenuFocusDoesNotTriggerAnActionOnEnterOrSpace()
+    {
+        using var rig = new WindowRig();
+        var actions = 0;
+        rig.Window.ReturnRequested += () => actions++;
+        rig.Window.ControlCenterRequested += () => actions++;
+        rig.Window.RecoverRequested += () => actions++;
+        rig.Window.PresentationRequested += _ => actions++;
+        rig.Window.OpenMenu();
+        var menu = Find<LocalRoomMenuView>((Grid)rig.Window.Content, "RoomMenu");
+        Assert.IsTrue(menu.IsKeyboardFocused);
+        Press(rig.Window, menu, Key.Enter);
+        Press(rig.Window, menu, Key.Space);
+        Assert.AreEqual(0, actions, "A gameplay key held while opening must not activate the first room action.");
+        Assert.IsTrue(rig.Window.IsMenuOpen);
     }
 
     [STATestMethod]
@@ -71,16 +109,16 @@ public sealed class LocalRoomWindowMenuTests
         Assert.AreEqual(0, Field<RoomWheelAccumulator>(scene, "wheel").Remainder);
         Assert.IsFalse(rig.Window.WheelEligible);
         foreach (var key in new[] { Key.A, Key.D, Key.S })
-            Assert.IsTrue(Press(rig.Window, Find<Button>((Grid)rig.Window.Content, "RoomContinueButton"), key).Handled);
+            Assert.IsTrue(Press(rig.Window, Find<LocalRoomMenuView>((Grid)rig.Window.Content, "RoomMenu"), key).Handled);
         scene.ApplyWheel(-120);
         Assert.AreEqual(scale, scene.Camera.Scale, 1e-9);
         var wheel = new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, -120)
         { RoutedEvent = Mouse.PreviewMouseWheelEvent };
-        Find<Button>((Grid)rig.Window.Content, "RoomContinueButton").RaiseEvent(wheel);
+        Find<Button>((Grid)rig.Window.Content, "RoomReturnButton").RaiseEvent(wheel);
         Assert.IsTrue(wheel.Handled, "Wheel over any menu control must end at the overlay.");
         Assert.AreEqual(scale, scene.Camera.Scale, 1e-9);
 
-        Press(rig.Window, Find<Button>((Grid)rig.Window.Content, "RoomContinueButton"), Key.Escape);
+        Press(rig.Window, Find<Button>((Grid)rig.Window.Content, "RoomReturnButton"), Key.Escape);
         Assert.IsTrue(scene.IsHitTestVisible);
         scene.ApplyWheel(-60);
         Assert.AreEqual(scale, scene.Camera.Scale, 1e-9, "The old half-step must not survive opening the menu.");
@@ -101,8 +139,6 @@ public sealed class LocalRoomWindowMenuTests
         rig.Window.ControlCenterRequested += () => controlCenter++;
         rig.Window.PresentationRequested += presentations.Add;
 
-        Choose(rig.Window, "RoomContinueButton");
-        Assert.AreEqual(0, returned);
         Choose(rig.Window, "RoomReturnButton");
         Assert.AreEqual(1, returned);
         Choose(rig.Window, "RoomRecoverButton");
@@ -112,20 +148,10 @@ public sealed class LocalRoomWindowMenuTests
         Choose(rig.Window, "RoomWindowButton");
         Choose(rig.Window, "RoomWallpaperButton");
         CollectionAssert.AreEqual(new[] { LocalRoomPresentation.Window, LocalRoomPresentation.Wallpaper }, presentations);
-        foreach (var (name, preset) in new[]
-        {
-            ("RoomNearViewButton", RoomViewPreset.Near),
-            ("RoomWholeViewButton", RoomViewPreset.Whole),
-            ("RoomStandardViewButton", RoomViewPreset.Standard),
-        })
-        {
-            Choose(rig.Window, name);
-            Assert.AreEqual(preset, rig.Window.Scene.Camera.Preset);
-        }
     }
 
     [STATestMethod]
-    public void OpeningMenuReleasesSceneCaptureAndClearsInputBeforeItsButtonsOwnFocus()
+    public void OpeningMenuReleasesSceneCaptureAndClearsInputBeforeTheMenuOwnsFocus()
     {
         using var rig = new WindowRig();
         Assert.IsTrue(rig.Window.Scene.CaptureMouse());
@@ -135,7 +161,7 @@ public sealed class LocalRoomWindowMenuTests
         Assert.IsTrue(rig.Window.IsMenuOpen);
         Assert.IsNull(Mouse.Captured, "The gameplay capture must not intercept the central menu.");
         Assert.AreEqual(DirectionalControlIntent.None, Field<DirectionalControlIntent>(rig.Driver, "intent"));
-        Assert.IsTrue(Find<Button>((Grid)rig.Window.Content, "RoomContinueButton").IsKeyboardFocused);
+        Assert.IsTrue(Find<LocalRoomMenuView>((Grid)rig.Window.Content, "RoomMenu").IsKeyboardFocused);
     }
 
     [STATestMethod]
@@ -157,6 +183,7 @@ public sealed class LocalRoomWindowMenuTests
     {
         using var rig = new WindowRig();
         rig.Window.OpenMenu();
+        rig.Window.UpdateLayout();
         var action = Find<Button>((Grid)rig.Window.Content, "RoomRecoverButton");
         Assert.IsTrue(action.Focus());
         // The healthy-frame completion path calls this same focus operation.
@@ -209,9 +236,9 @@ public sealed class LocalRoomWindowMenuTests
 
     private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
     {
-        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        // Collapsed shared controls still expose their declared content before a template is measured.
+        foreach (var child in LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>())
         {
-            var child = VisualTreeHelper.GetChild(root, index);
             if (child is T match) yield return match;
             foreach (var descendant in Descendants<T>(child)) yield return descendant;
         }

@@ -35,7 +35,7 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     {
         this.session = session;
         this.runtime = runtime;
-        pointer = new(runtime);
+        pointer = new(runtime, allowPhysicalDrag: false);
         runtime.InputCancelled += OnRuntimeInputCancelled;
         scheduler = new(runtime, Prepare, CreateInput, Apply);
     }
@@ -164,11 +164,12 @@ internal sealed class LocalRoomSceneDriver : IDisposable
                 if (runtime.LastFrame is null)
                 { runtime.SetDirectionalControl(DirectionalControlIntent.None); return true; }
                 var bounds = session.Controller!.Snapshot.Dango.VisualBounds;
-                if (!runtime.TryGetHorizontalPlacement(bounds.Center, 24, Surface.Right - 24, out var safe))
+                if (!runtime.TryGetHorizontalPlacement(bounds.Center, LocalRoomSceneView.SideBoundaryInset,
+                        Surface.Right - LocalRoomSceneView.SideBoundaryInset, out var safe))
                 { ReportFailure("房间放置不可用，请返回门廊重试。"); return false; }
                 session.Controller.MoveTo(new(safe.X - bounds.Width / 2, bounds.Y));
                 if (!runtime.RehostSelectedEntityAt(session.Controller.Snapshot.Dango.VisualBounds.Center)) return false;
-                runtime.SetHorizontalBounds(24, Surface.Right - 24);
+                runtime.SetHorizontalBounds(LocalRoomSceneView.SideBoundaryInset, Surface.Right - LocalRoomSceneView.SideBoundaryInset);
                 alignmentPending = false;
             }
             runtime.SetDirectionalControl(view.InputBlocked ? DirectionalControlIntent.None : intent);

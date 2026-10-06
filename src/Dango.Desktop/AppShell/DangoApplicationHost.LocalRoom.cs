@@ -44,6 +44,8 @@ internal sealed partial class DangoApplicationHost
         localRoomWallpaper.ReturnRequested += ReturnToPorch;
         localRoomWallpaper.WindowRequested += () => SwitchLocalRoomPresentation(LocalRoomPresentation.Window);
         localRoomWallpaper.MenuRequested += ShowLocalRoomMenu;
+        localRoomWallpaper.ControlCenterRequested += ShowControlCenter;
+        localRoomWallpaper.RecoverRequested += RecoverLocalRoom;
         localRoomDriver.HealthyFrameReady += attempt => CompleteLocalHandoff(attempt, roomHandoff.Target);
         localRoomDriver.Failed += FailLocalHandoff;
         localRoomWallpaper.LostDesktop += () =>
@@ -281,8 +283,7 @@ internal sealed partial class DangoApplicationHost
         }
         else if (roomHandoff.Current == LocalRoomPresentation.Wallpaper)
         {
-            openRoomMenuAfterHandoff = true;
-            SwitchLocalRoomPresentation(LocalRoomPresentation.Window);
+            localRoomWallpaper!.OpenMenu();
         }
     }
 

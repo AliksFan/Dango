@@ -6,15 +6,12 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Shell;
 using Dango.Desktop.DesktopHost.Win32;
-using Border = System.Windows.Controls.Border;
 using Button = System.Windows.Controls.Button;
 using Grid = System.Windows.Controls.Grid;
 using StackPanel = System.Windows.Controls.StackPanel;
-using TextBlock = System.Windows.Controls.TextBlock;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using MouseEventArgs = System.Windows.Input.MouseEventArgs;
 using Brushes = System.Windows.Media.Brushes;
-using Color = System.Windows.Media.Color;
 using HorizontalAlignment = System.Windows.HorizontalAlignment;
 using Orientation = System.Windows.Controls.Orientation;
 
@@ -23,17 +20,14 @@ namespace Dango.Desktop.AppShell.Rooms;
 internal sealed class LocalRoomWindow : Window
 {
     private readonly LocalRoomSceneDriver driver;
-    private readonly TextBlock viewLabel = new() { Margin = new Thickness(0, 6, 0, 14), FontSize = 12, Foreground = Brushes.DimGray };
-    private readonly Grid menuOverlay = new()
+    private readonly LocalRoomMenuView menu = new()
     {
-        Name = "RoomMenuOverlay",
-        Background = new SolidColorBrush(Color.FromArgb(150, 34, 30, 26)),
+        Name = "RoomMenu",
         Visibility = Visibility.Collapsed,
     };
-    private readonly Button continueButton;
     private bool allowClose;
     internal LocalRoomSceneView Scene { get; } = new();
-    internal bool IsMenuOpen => menuOverlay.Visibility == Visibility.Visible;
+    internal bool IsMenuOpen => menu.Visibility == Visibility.Visible;
     internal event Action? ReturnRequested;
     internal event Action? HideRequested;
     internal event Action? RecoverRequested;
@@ -57,37 +51,13 @@ internal sealed class LocalRoomWindow : Window
         caption.Children.Add(windowControls);
         root.Children.Add(caption);
 
-        var menuContent = new StackPanel();
-        menuContent.Children.Add(new TextBlock { Text = "房间菜单", FontSize = 22, FontWeight = FontWeights.SemiBold });
-        menuContent.Children.Add(viewLabel);
-        continueButton = CreateMenuButton("RoomContinueButton", "继续游戏", () => { });
-        menuContent.Children.Add(continueButton);
-        menuContent.Children.Add(CreateActionRow(
-            CreateMenuButton("RoomReturnButton", "回门廊", () => ReturnRequested?.Invoke()),
-            CreateMenuButton("RoomControlCenterButton", "控制中心", () => ControlCenterRequested?.Invoke())));
-        menuContent.Children.Add(CreateSectionLabel("显示方式"));
-        menuContent.Children.Add(CreateActionRow(
-            CreateMenuButton("RoomWindowButton", "窗口", () => PresentationRequested?.Invoke(LocalRoomPresentation.Window)),
-            CreateMenuButton("RoomWallpaperButton", "壁纸", () => PresentationRequested?.Invoke(LocalRoomPresentation.Wallpaper))));
-        menuContent.Children.Add(CreateMenuButton("RoomRecoverButton", "恢复团子", () => RecoverRequested?.Invoke()));
-        menuContent.Children.Add(CreateSectionLabel("视角"));
-        menuContent.Children.Add(CreateActionRow(
-            CreateMenuButton("RoomStandardViewButton", "标准", () => Scene.SelectView(RoomViewPreset.Standard)),
-            CreateMenuButton("RoomNearViewButton", "近景", () => Scene.SelectView(RoomViewPreset.Near)),
-            CreateMenuButton("RoomWholeViewButton", "全景", () => Scene.SelectView(RoomViewPreset.Whole))));
-        menuContent.Children.Add(new TextBlock { Text = "Esc 收起菜单", FontSize = 12, Foreground = Brushes.DimGray, Margin = new Thickness(0, 4, 0, 0) });
-        var card = new Border
-        {
-            Name = "RoomMenuCard", Width = 388, Padding = new Thickness(22, 18, 22, 18),
-            CornerRadius = new CornerRadius(14), Background = Brushes.WhiteSmoke,
-            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-            Child = menuContent,
-        };
-        menuOverlay.Children.Add(card);
-        WindowChrome.SetIsHitTestVisibleInChrome(menuOverlay, true);
-        KeyboardNavigation.SetTabNavigation(menuOverlay, KeyboardNavigationMode.Cycle);
-        menuOverlay.PreviewMouseWheel += (_, e) => { Scene.ClearWheel(); e.Handled = true; };
-        root.Children.Add(menuOverlay);
+        menu.ReturnRequested += () => RunMenuAction(() => ReturnRequested?.Invoke());
+        menu.ControlCenterRequested += () => RunMenuAction(() => ControlCenterRequested?.Invoke());
+        menu.PresentationRequested += presentation => RunMenuAction(() => PresentationRequested?.Invoke(presentation));
+        menu.RecoverRequested += () => RunMenuAction(() => RecoverRequested?.Invoke());
+        WindowChrome.SetIsHitTestVisibleInChrome(menu, true);
+        menu.AddHandler(Mouse.PreviewMouseWheelEvent, new MouseWheelEventHandler((_, e) => { Scene.ClearWheel(); e.Handled = true; }), true);
+        root.Children.Add(menu);
         Content = root;
         Scene.ViewChanged += RefreshLabel;
         Scene.SizeChanged += (_, _) => RefreshLabel();
@@ -121,7 +91,7 @@ internal sealed class LocalRoomWindow : Window
         Activate();
         if (IsMenuOpen)
         {
-            if (!menuOverlay.IsKeyboardFocusWithin) continueButton.Focus();
+            if (!menu.IsKeyboardFocusWithin) menu.Focus();
         }
         else Scene.Focus();
     }
@@ -212,8 +182,8 @@ internal sealed class LocalRoomWindow : Window
         Scene.ClearWheel();
         Scene.InputBlocked = open;
         Scene.IsHitTestVisible = !open;
-        menuOverlay.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
-        if (open) continueButton.Focus();
+        menu.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        if (open) menu.Focus();
         else if (IsVisible && IsActive) Scene.Focus();
     }
 
@@ -225,8 +195,8 @@ internal sealed class LocalRoomWindow : Window
     }
     private void RefreshLabel()
     {
-        viewLabel.Text = $"普通房 · 本地单人   视距 {Scene.Camera.ZoomPercent:0}%" + (Scene.IsHeightLimited ? " · 受窗口高度限制" : "");
-        Scene.ToolTip = "A / D 移动 · S 轻压 · 空格跳跃 · 滚轮调视距 · Esc 菜单";
+        menu.RefreshStatus(Scene);
+        Scene.ToolTip = "A / D 移动 · S 轻压 · 空格跳跃 · 滚轮调视距 · Shift + 左键横移抚摸 · Esc 菜单";
     }
 
     private Button CreateWindowControl(string name, string label, string hint)
@@ -242,25 +212,9 @@ internal sealed class LocalRoomWindow : Window
         return button;
     }
 
-    private Button CreateMenuButton(string name, string label, Action action)
+    private void RunMenuAction(Action action)
     {
-        var button = new Button { Name = name, Content = label, Height = 32, Margin = new Thickness(0, 0, 0, 8), Padding = new Thickness(8, 0, 8, 0) };
-        button.Click += (_, _) => { SetMenuOpen(false); action(); };
-        return button;
+        SetMenuOpen(false);
+        action();
     }
-
-    private static Grid CreateActionRow(params Button[] buttons)
-    {
-        var row = new Grid();
-        for (var i = 0; i < buttons.Length; i++)
-        {
-            row.ColumnDefinitions.Add(new ColumnDefinition());
-            Grid.SetColumn(buttons[i], i);
-            buttons[i].Margin = new Thickness(i == 0 ? 0 : 4, 0, i == buttons.Length - 1 ? 0 : 4, 8);
-            row.Children.Add(buttons[i]);
-        }
-        return row;
-    }
-
-    private static TextBlock CreateSectionLabel(string label) => new() { Text = label, FontSize = 12, Foreground = Brushes.DimGray, Margin = new Thickness(0, 0, 0, 5) };
 }
