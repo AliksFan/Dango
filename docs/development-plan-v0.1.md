@@ -1,5 +1,7 @@
 # Dango 分阶段开发计划 v0.1
 
+> 2026-10-06 捏脸独立 main 整合：用户明确“只合捏脸，先拆分依赖并重新验证”；已从 main 基线剥离普通房依赖，捏脸／首页以 `5f86237` 快进合入本地 main。受影响回归 370/370、零跳过，构建与空白格式门禁通过；详见[独立整合记录](verification/2026-10-06-face-only-local-main-integration.md)。普通房 F4、帽子／换装内容、完整 F5／Windows／多人验收仍独立；没有推送、安装或部署。下方原完整候选状态只保留历史范围。
+
 > 2026-10-06 原完整候选历史状态：F0–F4 已实现，F5 核心门禁及 150% 横向／纵向实窗通过；用户确认 `codex/appearance-face-design@da6b8b2` 自身捏脸观感，并要求归档此前对话设计。合同见[首页与自身外观编辑](planning/2026-10-06-home-and-appearance-design.md)，历史证据见[实现验证](verification/2026-10-05-face-implementation.md)和[人工确认](verification/2026-10-05-home-icons-and-ground-shadow.md#2026-10-06用户人工观感确认与设计归档)；当时受影响回归 104/104、零跳过。用户随后选择只合捏脸，普通房 F4 不进入此次交付；拆分结果见[独立整合记录](verification/2026-10-06-face-only-local-main-integration.md)。100%／125% 系统缩放及其它显示器、完整 F5 专项、整个 Windows／Phase 1／多人阶段仍未关闭；帽子候选和换装内容独立。以下带日期状态保留各自历史范围。
 
 > 2026-10-05 E1 本地整合：用户通过门廊初版与收紧门距修订，并明确要求先合并和提交。已将 `codex/room-porch-e1@03d9f59` 快进合入本地 `main`，仅纳入已确认的场景／本地导航及其可选物理能力；详见[整合记录](verification/2026-10-05-porch-local-main-integration.md)。两项前台鼠标未验证、全量历史／夹具差异和发布模块 hash 门禁保留，不宣布整个 Phase 1／Phase 2A、正式房间或完整发布通过。未推送、更新日常安装或部署；用户选择下一步先做普通房、独立窗口、本地单人，详细设计与验收计划待确认，不将此排期调整当成正式准入或多人实施。
