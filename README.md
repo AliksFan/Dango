@@ -2,6 +2,8 @@
 
 `Dango` 是一个多人联机桌面宠物项目的开发代号。
 
+2026-10-07 普通房窗口：用户通过现有窗口体验，已按授权将 `codex/local-room-implementation@4bbd2bb` 快进合入本地 main，包含两层初始场景、玩法／抚摸、滚轮视距、三种镜头模式和纵向中线修订、Esc 菜单及首页往返。沿用最终受影响测试69/69和隔离 Release 构建证据，15项真实前台右键自动门禁仍未验证；详见[验收与整合记录](docs/verification/2026-10-06-window-camera-modes.md#2026-10-07-用户人工通过与本地-main-整合)。壁纸代码和入口保留，壁纸层继续搁置、未验收，待桌宠房间充分测试后再回来排查。未推送、更新日常安装或部署；完整 Windows／正式房间／多人阶段仍开放。下方状态保留各自历史范围。
+
 2026-10-06 捏脸独立本地整合：按用户选择剥离普通房依赖，已将验证后的捏脸／首页成果快进合入本地 main。Release 构建 0 警告／0 错误，受影响测试 370/370、零跳过，普通房代码与历史未带入；具体范围、失败修复及原人工验收边界见[整合记录](docs/verification/2026-10-06-face-only-local-main-integration.md)。原候选现场和受保护 DLL 保留，未推送、更新日常安装或部署；完整 Windows／多人阶段与其它 DPI 专项仍开放。
 
 2026-10-06 原候选人工确认（合并前快照）：身体／眼睛 RGB、四个眼睛滑块与整套显式保存，以及首页三侧按键入口、镜像面板、贴地阴影和纵向保存位置获用户观感确认。此前对话设计已归档为[首页与自身外观设计](docs/planning/2026-10-06-home-and-appearance-design.md)，历史证据见[捏脸实现](docs/verification/2026-10-05-face-implementation.md)和[原布局验收](docs/verification/2026-10-05-home-icons-and-ground-shadow.md)。用户随后选择只合捏脸，拆分结果见[独立整合记录](docs/verification/2026-10-06-face-only-local-main-integration.md)。实际 100%／125% 缩放及其它显示器未验证，不代表整个 Windows 或多人阶段完成。
