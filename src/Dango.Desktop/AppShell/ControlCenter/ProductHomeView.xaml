@@ -14,6 +14,15 @@
         <SolidColorBrush x:Key="HomeSoft" Color="#F3EFE8" />
         <SolidColorBrush x:Key="HomeAccent" Color="#885E3E" />
         <SolidColorBrush x:Key="HomeSelected" Color="#EFE3D4" />
+        <Style x:Key="ShortcutKeycap" TargetType="Border">
+            <Setter Property="Width" Value="22" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
         <Style TargetType="Button">
             <Setter Property="Foreground" Value="{DynamicResource HomeInk}" />
             <Setter Property="Background" Value="Transparent" />
@@ -42,6 +51,13 @@
                                 <MultiTrigger.Conditions>
                                     <Condition Property="IsMouseOver" Value="True" />
                                     <Condition Property="Tag" Value="Selected" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HomeSelected}" />
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                    <Condition Property="Tag" Value="Primary" />
                                 </MultiTrigger.Conditions>
                                 <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HomeSelected}" />
                             </MultiTrigger>
@@ -88,6 +104,19 @@
             <Setter Property="Padding" Value="8,4" />
             <Setter Property="MinHeight" Value="30" />
             <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style x:Key="FaceIconButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="5" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="ToolTipService.InitialShowDelay" Value="250" />
+            <Style.Triggers>
+                <Trigger Property="Tag" Value="Selected">
+                    <Setter Property="BorderBrush" Value="{DynamicResource HomeAccent}" />
+                </Trigger>
+            </Style.Triggers>
         </Style>
         <Style x:Key="Launcher" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="MinWidth" Value="72" />
@@ -150,7 +179,16 @@
         <Grid x:Name="TopNavigation" Margin="22,8">
             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-            <TextBlock x:Name="Brand" Text="Dango" FontSize="18" VerticalAlignment="Center" Margin="0,0,20,0" />
+            <TextBlock x:Name="Brand" Text="Dango" FontSize="18" Height="28" VerticalAlignment="Center" Margin="0,0,20,0" />
+            <Viewbox x:Name="FaceBrandIcon" Width="28" Height="28" HorizontalAlignment="Left" VerticalAlignment="Center"
+                     Visibility="Collapsed" IsHitTestVisible="False" ToolTip="捏脸" AutomationProperties.Name="捏脸">
+                <Canvas Width="24" Height="24">
+                    <Path Data="M3,16 C3,10 7,7 12,7 C17,7 21,10 21,16 C21,20 17,21 12,21 C7,21 3,20 3,16 Z M12,7 L12,3 M12,5 Q7,5 7,2 Q11,2 12,5 M12,5 Q17,5 17,2 Q13,2 12,5"
+                          Stroke="{DynamicResource HomeInk}" StrokeThickness="1.6" StrokeLineJoin="Round" />
+                    <Ellipse Width="2.5" Height="3" Canvas.Left="7.5" Canvas.Top="13" Fill="{DynamicResource HomeInk}" />
+                    <Ellipse Width="2.5" Height="3" Canvas.Left="14" Canvas.Top="13" Fill="{DynamicResource HomeInk}" />
+                </Canvas>
+            </Viewbox>
             <StackPanel x:Name="MainNavigation" Grid.Column="1" Orientation="Horizontal">
                 <Button x:Name="HomeNavigation" Content="我的团子" Style="{StaticResource NavButton}"
                         BorderBrush="{DynamicResource HomeAccent}" Foreground="{DynamicResource HomeInk}"
@@ -189,7 +227,16 @@
                 <StackPanel x:Name="Presence" Grid.RowSpan="2" Grid.ColumnSpan="3" Width="270" Margin="0,100,0,0" HorizontalAlignment="Center" VerticalAlignment="Top">
                     <StackPanel.RenderTransform><TranslateTransform x:Name="PresenceTranslation" /></StackPanel.RenderTransform>
                     <Grid x:Name="PetVisualArea" Height="180">
-                    <Viewbox x:Name="PetPreview" Width="240" Height="180" HorizontalAlignment="Center" VerticalAlignment="Center" Stretch="Fill" RenderTransformOrigin="0.5,0.5"
+                    <Ellipse x:Name="PetShadow" Width="148" Height="18" HorizontalAlignment="Center" VerticalAlignment="Top"
+                             Margin="0,180,0,0" Opacity="0.17" IsHitTestVisible="False" Focusable="False" RenderTransformOrigin="0.5,0.5">
+                        <Ellipse.Fill><RadialGradientBrush RadiusX="0.5" RadiusY="0.5">
+                            <GradientStop Color="#443D34" Offset="0" />
+                            <GradientStop Color="#80443D34" Offset="0.55" />
+                            <GradientStop Color="#00443D34" Offset="1" />
+                        </RadialGradientBrush></Ellipse.Fill>
+                        <Ellipse.RenderTransform><ScaleTransform x:Name="PetShadowScale" /></Ellipse.RenderTransform>
+                    </Ellipse>
+                    <Viewbox x:Name="PetPreview" Width="240" Height="180" HorizontalAlignment="Center" VerticalAlignment="Top" Stretch="Fill" RenderTransformOrigin="0.5,0.5"
                              ToolTip="未绑定实时场景的界面预览" AutomationProperties.Name="团子实时预览">
                         <Viewbox.RenderTransform><ScaleTransform x:Name="PetScale" ScaleX="1" ScaleY="1" /></Viewbox.RenderTransform>
                         <Canvas x:Name="LiveSceneCanvas" Width="160" Height="120" ClipToBounds="False">
@@ -200,16 +247,50 @@
                     <TextBlock x:Name="LiveSceneStatusText" Text="界面预览 · 无实时场景" FontSize="12" TextAlignment="Center"
                                Foreground="{DynamicResource HomeMuted}" VerticalAlignment="Center" IsHitTestVisible="False" />
                     </Grid>
-                    <StackPanel x:Name="Launchers" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,24,0,0">
-                        <Button x:Name="FaceButton" Content="捏脸" Style="{StaticResource Launcher}" Click="OnFaceClick" ToolTip="D · 捏脸" AutomationProperties.Name="捏脸" />
-                        <Button x:Name="WardrobeButton" Content="换装" Style="{StaticResource Launcher}" Margin="12,0,0,0" Click="OnWardrobeClick" ToolTip="A · 换装" AutomationProperties.Name="换装" />
-                    </StackPanel>
                 </StackPanel>
+                <Canvas x:Name="Launchers" Grid.RowSpan="2" Grid.ColumnSpan="3" VerticalAlignment="Top">
+                        <Button x:Name="EnterRoomButton" Style="{StaticResource Launcher}"
+                                Click="OnEnterRoomClick" ToolTip="W · 进入门廊，前往房间" AutomationProperties.Name="W · 进入门廊，前往房间">
+                            <StackPanel Orientation="Horizontal">
+                                <Border Style="{StaticResource ShortcutKeycap}">
+                                    <TextBlock Text="W" FontSize="12" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <Viewbox Width="20" Height="20"><Canvas Width="24" Height="24" IsHitTestVisible="False">
+                                    <Path Data="M5,21 L5,3 L19,3 L19,21 M3,21 L21,21 M8,21 L8,6 L16,4 L16,21 Z M13,13 L14,13"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                </Canvas></Viewbox>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="FaceButton" Style="{StaticResource Launcher}" Click="OnFaceClick" ToolTip="D · 捏脸" AutomationProperties.Name="D · 捏脸">
+                            <StackPanel Orientation="Horizontal">
+                                <Border Style="{StaticResource ShortcutKeycap}">
+                                    <TextBlock Text="D" FontSize="12" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <Viewbox Width="20" Height="20"><Canvas Width="24" Height="24" IsHitTestVisible="False">
+                                    <Path Data="M3,16 C3,10 7,7 12,7 C17,7 21,10 21,16 C21,20 17,21 12,21 C7,21 3,20 3,16 Z M12,7 L12,3 M12,5 Q7,5 7,2 Q11,2 12,5 M12,5 Q17,5 17,2 Q13,2 12,5"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" />
+                                    <Ellipse Width="2.5" Height="3" Canvas.Left="7.5" Canvas.Top="13" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                    <Ellipse Width="2.5" Height="3" Canvas.Left="14" Canvas.Top="13" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                </Canvas></Viewbox>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="WardrobeButton" Style="{StaticResource Launcher}" Click="OnWardrobeClick" ToolTip="A · 换装" AutomationProperties.Name="A · 换装">
+                            <StackPanel Orientation="Horizontal">
+                                <Border Style="{StaticResource ShortcutKeycap}">
+                                    <TextBlock Text="A" FontSize="12" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <Viewbox Width="20" Height="20"><Canvas Width="24" Height="24" IsHitTestVisible="False">
+                                    <Path Data="M8,4 L3,7 L1,12 L6,14 L7,11 L7,21 L17,21 L17,11 L18,14 L23,12 L21,7 L16,4 Q12,9 8,4 Z"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.6" StrokeLineJoin="Round" />
+                                </Canvas></Viewbox>
+                            </StackPanel>
+                        </Button>
+                </Canvas>
                 <Grid x:Name="EditorPanel" Grid.Column="2" Opacity="0" Visibility="Hidden" IsEnabled="False" IsHitTestVisible="False"
                       Margin="4,10,4,10" MinHeight="310" VerticalAlignment="Top" KeyboardNavigation.TabNavigation="Continue" AutomationProperties.Name="外观预览选项">
                     <Grid.RenderTransform><TranslateTransform x:Name="PanelTranslation" X="46" /></Grid.RenderTransform>
-                    <Grid.RowDefinitions><RowDefinition Height="36" /><RowDefinition Height="*" /><RowDefinition Height="40" /></Grid.RowDefinitions>
-                    <Grid>
+                    <Grid.RowDefinitions><RowDefinition x:Name="EditorHeadingRow" Height="36" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <Grid x:Name="EditorHeading">
                         <TextBlock x:Name="EditorTitle" Text="捏脸" FontSize="15" VerticalAlignment="Center" />
                         <Button x:Name="CloseEditorButton" Content="×" FontSize="20" Width="36" MinHeight="36" Height="36"
                                 HorizontalAlignment="Right" BorderBrush="Transparent" Padding="0" Click="OnCloseClick"
@@ -220,27 +301,42 @@
                                   CanContentScroll="False" Focusable="False">
                       <Grid>
                         <StackPanel x:Name="FaceOptions">
-                            <WrapPanel Margin="0,0,0,12">
-                                <TextBlock Text="颜色" Margin="0,0,12,0" />
-                                <TextBlock x:Name="AppearancePreviewNotice" Text="仅预览 · 不保存" FontSize="11"
-                                           Foreground="{DynamicResource HomeMuted}" VerticalAlignment="Center" />
-                            </WrapPanel>
-                            <WrapPanel x:Name="Colors" Margin="0,0,0,24">
-                                <Button x:Name="CreamButton" Style="{StaticResource ColorButton}" Tag="#F5D5A5" Click="OnColorClick" ToolTip="奶油" AutomationProperties.Name="奶油">
-                                    <Grid Width="30" Height="30"><Ellipse Fill="#F5D5A5" /><TextBlock x:Name="CreamCheck" Text="✓" Foreground="#44382B" HorizontalAlignment="Center" VerticalAlignment="Center" /></Grid>
+                            <StackPanel x:Name="AppearanceColorsPanel">
+                                <TextBlock Text="身体" Margin="0,0,0,8" />
+                                <Button x:Name="BodyColorPickerButton" Click="OnBodyColorPickerClick" HorizontalContentAlignment="Stretch" Margin="0,0,0,12">
+                                    <StackPanel Orientation="Horizontal"><Border x:Name="BodyColorSwatch" Width="24" Height="24" BorderBrush="#807568" BorderThickness="1" Margin="0,0,10,0" /><TextBlock x:Name="BodyColorHex" VerticalAlignment="Center" /></StackPanel>
                                 </Button>
-                                <Button x:Name="PeachButton" Style="{StaticResource ColorButton}" Tag="#F2B6A8" Click="OnColorClick" ToolTip="蜜桃" AutomationProperties.Name="蜜桃">
-                                    <Grid Width="30" Height="30"><Ellipse Fill="#F2B6A8" /><TextBlock x:Name="PeachCheck" Text="✓" Foreground="#44382B" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Hidden" /></Grid>
+                                <WrapPanel x:Name="Colors" Margin="0,0,0,22">
+                                    <Button x:Name="CreamButton" Style="{StaticResource ColorButton}" Tag="#FFE8C2" Click="OnColorClick" ToolTip="奶油" AutomationProperties.Name="奶油">
+                                        <Grid Width="30" Height="30"><Ellipse Fill="#FFE8C2" /><TextBlock x:Name="CreamCheck" Text="✓" Foreground="#44382B" HorizontalAlignment="Center" VerticalAlignment="Center" /></Grid>
+                                    </Button>
+                                    <Button x:Name="PeachButton" Style="{StaticResource ColorButton}" Tag="#F2B6A8" Click="OnColorClick" ToolTip="蜜桃" AutomationProperties.Name="蜜桃">
+                                        <Grid Width="30" Height="30"><Ellipse Fill="#F2B6A8" /><TextBlock x:Name="PeachCheck" Text="✓" Foreground="#44382B" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Hidden" /></Grid>
+                                    </Button>
+                                    <Button x:Name="GreenButton" Style="{StaticResource ColorButton}" Tag="#C8D6AF" Click="OnColorClick" ToolTip="抹茶" AutomationProperties.Name="抹茶">
+                                        <Grid Width="30" Height="30"><Ellipse Fill="#C8D6AF" /><TextBlock x:Name="GreenCheck" Text="✓" Foreground="#44382B" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Hidden" /></Grid>
+                                    </Button>
+                                </WrapPanel>
+                                <TextBlock Text="眼睛" Margin="0,0,0,8" />
+                                <Button x:Name="EyeColorPickerButton" Click="OnEyeColorPickerClick" HorizontalContentAlignment="Stretch" Margin="0,0,0,8">
+                                    <StackPanel Orientation="Horizontal"><Border x:Name="EyeColorSwatch" Width="24" Height="24" BorderBrush="#807568" BorderThickness="1" Margin="0,0,10,0" /><TextBlock x:Name="EyeColorHex" VerticalAlignment="Center" /></StackPanel>
                                 </Button>
-                                <Button x:Name="GreenButton" Style="{StaticResource ColorButton}" Tag="#C8D6AF" Click="OnColorClick" ToolTip="抹茶" AutomationProperties.Name="抹茶">
-                                    <Grid Width="30" Height="30"><Ellipse Fill="#C8D6AF" /><TextBlock x:Name="GreenCheck" Text="✓" Foreground="#44382B" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Hidden" /></Grid>
-                                </Button>
-                            </WrapPanel>
-                            <TextBlock Text="眼型" Margin="0,0,0,12" />
-                            <Button x:Name="EyePresetButton" Content="默认" IsEnabled="False" HorizontalAlignment="Left" Margin="0,0,0,24" ToolTip="眼型选择 · 未开发" AutomationProperties.Name="默认眼型，未开发" />
-                            <Expander x:Name="MoreOptions" Header="更多" FontSize="12" Foreground="{DynamicResource HomeMuted}">
-                                <WrapPanel Margin="0,10,0,0"><TextBlock Text="体型 / 柔软度" Margin="0,0,8,0" /><TextBlock Text="未开发" /></WrapPanel>
-                            </Expander>
+                                <TextBlock Text="点击色块选择 RGB" FontSize="11" Foreground="{DynamicResource HomeMuted}" />
+                            </StackPanel>
+                            <StackPanel x:Name="AppearanceEyesPanel" Visibility="Collapsed">
+                                <TextBlock x:Name="EyeSizeValue" Text="大小 · 100%" />
+                                <Slider x:Name="EyeSizeSlider" Minimum="70" Maximum="140" Value="100" TickFrequency="1" SmallChange="1" LargeChange="10" IsSnapToTickEnabled="True" ValueChanged="OnEyeSliderChanged" Margin="0,6,0,2" AutomationProperties.Name="眼睛大小" />
+                                <Grid Margin="0,0,0,8"><TextBlock Text="小" FontSize="11" /><TextBlock Text="大" FontSize="11" HorizontalAlignment="Right" /></Grid>
+                                <TextBlock x:Name="EyeOvalValue" Text="椭圆度 · 圆形" />
+                                <Slider x:Name="EyeOvalSlider" Minimum="-100" Maximum="100" Value="0" TickFrequency="1" SmallChange="1" LargeChange="10" IsSnapToTickEnabled="True" ValueChanged="OnEyeSliderChanged" Margin="0,6,0,2" AutomationProperties.Name="眼睛椭圆度" />
+                                <Grid Margin="0,0,0,8"><TextBlock Text="横椭圆" FontSize="11" /><TextBlock Text="圆形" FontSize="11" HorizontalAlignment="Center" /><TextBlock Text="竖椭圆" FontSize="11" HorizontalAlignment="Right" /></Grid>
+                                <TextBlock x:Name="EyeHeightValue" Text="高度 · 默认" />
+                                <Slider x:Name="EyeHeightSlider" Minimum="32" Maximum="66" Value="51" TickFrequency="1" SmallChange="1" LargeChange="5" IsSnapToTickEnabled="True" ValueChanged="OnEyeSliderChanged" Margin="0,6,0,2" AutomationProperties.Name="眼睛高度" />
+                                <Grid Margin="0,0,0,8"><TextBlock Text="高" FontSize="11" /><TextBlock Text="低" FontSize="11" HorizontalAlignment="Right" /></Grid>
+                                <TextBlock x:Name="EyeSpacingValue" Text="眼距 · 默认" />
+                                <Slider x:Name="EyeSpacingSlider" Minimum="12" Maximum="34" Value="24.5" TickFrequency="0.5" SmallChange="0.5" LargeChange="2" IsSnapToTickEnabled="True" ValueChanged="OnEyeSliderChanged" Margin="0,6,0,2" AutomationProperties.Name="眼距" />
+                                <Grid><TextBlock Text="近" FontSize="11" /><TextBlock Text="远" FontSize="11" HorizontalAlignment="Right" /></Grid>
+                            </StackPanel>
                         </StackPanel>
                         <StackPanel x:Name="WardrobeOptions" Visibility="Collapsed">
                             <WrapPanel Margin="0,0,0,24">
@@ -254,8 +350,97 @@
                         </StackPanel>
                       </Grid>
                     </ScrollViewer>
-                    <Button x:Name="ApplyButton" Grid.Row="2" Content="应用" IsEnabled="False" MinWidth="90"
-                            HorizontalAlignment="Right" ToolTip="应用与保存 · 未开发" AutomationProperties.Name="应用与保存，未开发" />
+                </Grid>
+                <Grid x:Name="FaceEditorTools" Grid.Column="2" Grid.RowSpan="2" Visibility="Hidden" Opacity="0"
+                      IsEnabled="False" IsHitTestVisible="False" Margin="4,8,4,8" VerticalAlignment="Center"
+                      KeyboardNavigation.TabNavigation="Continue" AutomationProperties.Name="捏脸预览与保存">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition x:Name="FacePreviewRow" Height="*" />
+                        <RowDefinition x:Name="FaceParameterSpacerRow" Height="0" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid x:Name="FaceEditorHeader" MinHeight="30">
+                        <TextBlock x:Name="AppearancePreviewNotice" Text="拖动即时预览 · 应用后保存" FontSize="11" TextWrapping="Wrap"
+                                   TextAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource HomeMuted}" Margin="30,0,30,0" />
+                        <Button x:Name="FaceCloseEditorButton" Content="×" FontSize="20" Width="30" MinHeight="30" Height="30"
+                                HorizontalAlignment="Right" BorderBrush="Transparent" Padding="0" Click="OnCloseClick"
+                                ToolTip="收起捏脸" AutomationProperties.Name="收起捏脸" />
+                    </Grid>
+                    <Grid x:Name="FaceEditorPreviewRegion" Grid.Row="1" HorizontalAlignment="Center">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel x:Name="FaceEditorTabs" VerticalAlignment="Top" Margin="0,6,6,0">
+                            <Button x:Name="AppearanceColorsTab" Style="{StaticResource FaceIconButton}" Click="OnAppearanceTabClick" Margin="0,0,0,8"
+                                    ToolTip="颜色 · 身体与眼睛 RGB" AutomationProperties.Name="捏脸：颜色">
+                                <Viewbox Width="20" Height="20"><Canvas Width="24" Height="24" IsHitTestVisible="False">
+                                    <Path Data="M12,3 C6,3 3,7 3,12 C3,17 7,21 12,21 L14,21 C16,21 17,19 16,17 C15,15 17,14 19,14 C22,14 22,11 21,8 C19,5 16,3 12,3 Z"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeLineJoin="Round" />
+                                    <Ellipse Width="2.5" Height="2.5" Canvas.Left="6" Canvas.Top="10" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                    <Ellipse Width="2.5" Height="2.5" Canvas.Left="10" Canvas.Top="6" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                    <Ellipse Width="2.5" Height="2.5" Canvas.Left="15" Canvas.Top="7" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                </Canvas></Viewbox>
+                            </Button>
+                            <Button x:Name="AppearanceEyesTab" Style="{StaticResource FaceIconButton}" Click="OnAppearanceTabClick"
+                                    ToolTip="眼睛 · 大小、椭圆度、高度、眼距" AutomationProperties.Name="捏脸：眼睛">
+                                <Viewbox Width="20" Height="20"><Canvas Width="24" Height="24" IsHitTestVisible="False">
+                                    <Path Data="M2,12 C7,4 17,4 22,12 C17,20 7,20 2,12 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeLineJoin="Round" />
+                                    <Ellipse Width="6" Height="6" Canvas.Left="9" Canvas.Top="9" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" />
+                                </Canvas></Viewbox>
+                            </Button>
+                        </StackPanel>
+                        <Grid x:Name="FacePreviewSlot" Grid.Column="1" IsHitTestVisible="False" SizeChanged="OnFacePreviewSlotSizeChanged" />
+                        <StackPanel x:Name="FaceEditorPreviewActions" Grid.Column="2" VerticalAlignment="Top" Margin="6,6,0,0">
+                            <Button x:Name="PreviewBlinkButton" Style="{StaticResource FaceIconButton}" Click="OnAppearanceBlinkClick" Margin="0,0,0,8"
+                                    ToolTip="眨一下 · 临时预览" AutomationProperties.Name="眨一下">
+                                <Viewbox Width="20" Height="20"><Canvas Width="24" Height="24" IsHitTestVisible="False">
+                                    <Path Data="M3,9 Q12,20 21,9 M6,12 L4,15 M12,15 L12,18 M18,12 L20,15"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                                </Canvas></Viewbox>
+                            </Button>
+                            <Button x:Name="PreviewSleepButton" Style="{StaticResource FaceIconButton}" Click="OnAppearanceSleepClick"
+                                    ToolTip="预览睡眠" AutomationProperties.Name="预览睡眠">
+                                <Viewbox Width="20" Height="20"><Grid Width="24" Height="24" IsHitTestVisible="False">
+                                    <Path x:Name="SleepPreviewIcon" Data="M14,2 A10,10 0 1 0 22,14 A9,9 0 0 1 14,2 Z"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeLineJoin="Round" />
+                                    <Canvas x:Name="WakePreviewIcon" Width="24" Height="24" Visibility="Collapsed">
+                                        <Ellipse Width="8" Height="8" Canvas.Left="8" Canvas.Top="8" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" />
+                                        <Path Data="M12,2 L12,4 M12,20 L12,22 M2,12 L4,12 M20,12 L22,12 M5,5 L6.5,6.5 M17.5,17.5 L19,19 M5,19 L6.5,17.5 M17.5,6.5 L19,5"
+                                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                    </Canvas>
+                                </Grid></Viewbox>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                    <StackPanel x:Name="FaceEditorSaveActions" Grid.Row="3">
+                        <TextBlock x:Name="AppearanceStatus" TextWrapping="Wrap" FontSize="11" Margin="0,0,0,8" Foreground="{DynamicResource HomeMuted}"
+                                   AutomationProperties.LiveSetting="Polite" />
+                        <Button x:Name="RecoverAppearanceButton" Content="备份原文件并应用" Click="OnRecoverAppearanceClick" Visibility="Collapsed"
+                                MinHeight="32" Padding="8,4" HorizontalAlignment="Stretch" Margin="0,0,0,8" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="DefaultAppearanceButton" Style="{StaticResource FaceIconButton}" Click="OnDefaultAppearanceClick" Margin="0,0,8,0"
+                                ToolTip="恢复默认 · 先预览，应用后保存" AutomationProperties.Name="恢复默认外观">
+                            <Viewbox Width="20" Height="20"><Canvas Width="24" Height="24" IsHitTestVisible="False">
+                                <Path Data="M4,9 A9,9 0 1 1 3,15 M4,3 L4,9 L10,9"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                            </Canvas></Viewbox>
+                        </Button>
+                        <Button x:Name="CancelAppearanceButton" Style="{StaticResource FaceIconButton}" Click="OnCancelAppearanceClick" Margin="0,0,8,0"
+                                ToolTip="取消 · 放弃本次修改" AutomationProperties.Name="取消外观修改">
+                            <Viewbox Width="20" Height="20"><Canvas Width="24" Height="24" IsHitTestVisible="False">
+                                <Path Data="M6,6 L18,18 M18,6 L6,18"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                            </Canvas></Viewbox>
+                        </Button>
+                        <Button x:Name="ApplyButton" Style="{StaticResource FaceIconButton}" Tag="Primary" IsEnabled="False"
+                                Background="{DynamicResource HomeSelected}" BorderBrush="{DynamicResource HomeAccent}"
+                                Click="OnApplyAppearanceClick" ToolTip="应用 · 保存整套外观" AutomationProperties.Name="应用并保存外观">
+                            <Viewbox Width="20" Height="20"><Canvas Width="24" Height="24" IsHitTestVisible="False">
+                                <Path Data="M4,12 L9,17 L20,6"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                            </Canvas></Viewbox>
+                        </Button>
+                        </StackPanel>
+                    </StackPanel>
                 </Grid>
                 <Grid x:Name="PorchContent" Grid.Column="0" Grid.ColumnSpan="3" Grid.RowSpan="2"
                       VerticalAlignment="Stretch" Visibility="Hidden" Opacity="0" IsHitTestVisible="False"
@@ -390,7 +575,6 @@
         <StackPanel x:Name="HomeFooter" Grid.Row="3" Margin="22,4,22,9">
             <Button x:Name="NoticeButton" Visibility="Collapsed" Style="{StaticResource ToolButton}" FontSize="12"
                     Content="需要处理 · 查看" HorizontalAlignment="Left" Click="OnNoticeClick" />
-            <TextBlock x:Name="PreviewStatus" Text="A 换装 · D 捏脸 · W 进入 · S / 空格 动作" FontSize="12" Foreground="{DynamicResource HomeMuted}" />
         </StackPanel>
     </Grid>
 </UserControl>

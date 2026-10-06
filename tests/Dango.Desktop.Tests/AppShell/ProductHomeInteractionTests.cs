@@ -24,7 +24,6 @@ public sealed class ProductHomeInteractionTests
         Assert.AreEqual(Visibility.Hidden, Element<UIElement>(home, "EditorPanel").Visibility);
         Assert.IsFalse(Element<UIElement>(home, "EditorPanel").IsEnabled);
         var petBefore = Bounds(home, "PetPreview");
-        var buttonsBefore = Bounds(home, "Launchers");
         var navigationBefore = Bounds(home, "TopNavigation");
         Assert.AreEqual(width / 2d, petBefore.Left + petBefore.Width / 2, 1, "Pet starts centered.");
         Assert.AreEqual(Visibility.Collapsed, Element<UIElement>(home, "HomeNavigation").Visibility,
@@ -34,41 +33,39 @@ public sealed class ProductHomeInteractionTests
         Click(home, "FaceButton");
         Layout(home, width);
         var petAfter = Bounds(home, "PetPreview");
-        var buttonsAfter = Bounds(home, "Launchers");
         var panel = Bounds(home, "EditorPanel");
-        Assert.IsTrue(petAfter.Left > petBefore.Left + 20, "Face options on the left must shift the pet right.");
-        Assert.AreEqual(petBefore.Top, petAfter.Top, .1, "Opening must not move the pet vertically.");
-        Assert.AreEqual(buttonsBefore.Top, buttonsAfter.Top, .1);
-        Assert.AreEqual(petAfter.Left - petBefore.Left, buttonsAfter.Left - buttonsBefore.Left, .1);
+        Assert.IsTrue(petAfter.Left < petBefore.Left - 20, "Face options on the right must shift the pet left.");
+        Assert.AreEqual(Visibility.Collapsed, Element<UIElement>(home, "Launchers").Visibility,
+            "Face editing gives the preview column to its own tools.");
         Assert.AreEqual(navigationBefore, Bounds(home, "TopNavigation"));
-        Assert.IsTrue(panel.Right + 4 < Math.Min(petAfter.Left, buttonsAfter.Left),
-            "Face options must enter from the left without overlapping the pet.");
+        Assert.IsTrue(petAfter.Right + 4 < panel.Left,
+            "Face options must enter from the right without overlapping the pet.");
         Assert.IsTrue(panel.Right <= width && panel.Left > 0, "Panel stays inside the window.");
-        Assert.IsTrue(petAfter.Left >= 0 && buttonsAfter.Left >= 0);
-        Assert.IsTrue(Bounds(home, "MoreOptions").Bottom <= Bounds(home, "ApplyButton").Top, "Detail text must not overlap apply.");
+        Assert.IsTrue(petAfter.Left >= 0);
+        Assert.IsTrue(Bounds(home, "AppearancePreviewNotice").Bottom <= Bounds(home, "ApplyButton").Top, "Detail text must not overlap apply.");
         Assert.IsFalse(Element<Button>(home, "ApplyButton").IsEnabled, "No fake save.");
-        Assert.AreEqual("仅预览 · 不保存", Element<TextBlock>(home, "AppearancePreviewNotice").Text);
+        Assert.AreEqual("拖动即时预览 · 应用后保存", Element<TextBlock>(home, "AppearancePreviewNotice").Text);
         Assert.AreEqual(Visibility.Visible, Element<TextBlock>(home, "AppearancePreviewNotice").Visibility);
         SaveImage(home, width, "face");
 
-        Element<Expander>(home, "MoreOptions").IsExpanded = true;
+        Click(home, "AppearanceEyesTab");
         Layout(home, width);
-        Assert.AreEqual(petAfter, Bounds(home, "PetPreview"), "Expanding detail must not shift the pet vertically.");
-        Assert.IsTrue(Bounds(home, "OptionsBody").Bottom <= Bounds(home, "ApplyButton").Top);
-        Assert.IsTrue(Bounds(home, "MoreOptions").Bottom <= Bounds(home, "OptionsBody").Bottom + 1,
-            "Expanded detail must remain above the footer.");
-        SaveImage(home, width, "more");
-        Element<Expander>(home, "MoreOptions").IsExpanded = false;
+        Assert.AreEqual(petAfter, Bounds(home, "PetPreview"), "Switching appearance tabs must not shift the pet vertically.");
+        Assert.IsTrue(Rect.Intersect(Bounds(home, "OptionsBody"), Bounds(home, "FaceEditorTools")).IsEmpty,
+            "Parameters and fixed tools use separate columns.");
+        SaveImage(home, width, "eyes");
+        Click(home, "AppearanceColorsTab");
 
         Click(home, "PeachButton");
-        Click(home, "WardrobeButton");
+        home.ShowEditor(HomeEditor.Wardrobe);
         Layout(home, width);
         Assert.AreEqual(HomeEditor.Wardrobe, home.SelectedEditor);
         var wardrobePet = Bounds(home, "PetPreview");
-        var wardrobeButtons = Bounds(home, "Launchers");
         var wardrobePanel = Bounds(home, "EditorPanel");
-        Assert.IsTrue(wardrobePet.Left < petBefore.Left - 20, "Wardrobe on the right must shift the pet left.");
-        Assert.IsTrue(Math.Max(wardrobePet.Right, wardrobeButtons.Right) + 4 < wardrobePanel.Left,
+        Assert.AreEqual(Visibility.Collapsed, Element<UIElement>(home, "Launchers").Visibility,
+            "Wardrobe editing must give the preview area its full space.");
+        Assert.IsTrue(wardrobePet.Left > petBefore.Left + 20, "Wardrobe on the left must shift the pet right.");
+        Assert.IsTrue(wardrobePanel.Right + 4 < wardrobePet.Left,
             "Wardrobe options must mirror the face composition.");
         Assert.AreEqual(petBefore.Top, wardrobePet.Top, .1);
         Assert.IsFalse(Element<Button>(home, "CreateButton").IsEnabled);
@@ -78,8 +75,8 @@ public sealed class ProductHomeInteractionTests
         Assert.AreEqual(petBefore, Bounds(home, "PetPreview"));
         Assert.IsFalse(Element<UIElement>(home, "EditorPanel").IsHitTestVisible);
         Click(home, "FaceButton");
-        Assert.AreEqual(Color.FromRgb(242, 182, 168), home.PreviewColor, "Close/reopen preserves only the in-memory preview.");
-        Assert.AreEqual(Color.FromRgb(245, 213, 165), new ProductHomeView().PreviewColor, "A new instance must not claim persistence.");
+        Assert.AreEqual(Color.FromRgb(255, 232, 194), home.PreviewColor, "Leaving the editor cancels the whole draft.");
+        Assert.AreEqual(Color.FromRgb(255, 232, 194), new ProductHomeView().PreviewColor, "A new instance must not claim persistence.");
     }
 
     [STATestMethod]
@@ -102,10 +99,10 @@ public sealed class ProductHomeInteractionTests
             if (SystemParameters.ClientAreaAnimation)
             {
                 var moving = Bounds(home, "PetPreview");
-                Assert.IsTrue(moving.Left > closed.Left + 1 && moving.Left < open.Left - 1,
+                Assert.IsTrue(moving.Left < closed.Left - 1 && moving.Left > open.Left + 1,
                     "With system animation enabled, the 80ms frame must be between start and end, not a static jump.");
             }
-            Click(home, "CloseEditorButton");
+            Click(home, "FaceCloseEditorButton");
             Assert.IsFalse(Element<UIElement>(home, "EditorPanel").IsEnabled, "Closing immediately removes keyboard access.");
             Click(home, "WardrobeButton");
             Pump(520);
@@ -113,7 +110,7 @@ public sealed class ProductHomeInteractionTests
             Assert.AreEqual(HomeEditor.Wardrobe, home.SelectedEditor);
             Assert.AreEqual(Visibility.Visible, Element<UIElement>(home, "EditorPanel").Visibility, "Old completion must not hide a reopened panel.");
             Assert.AreEqual(1, Element<UIElement>(home, "EditorPanel").Opacity, .001);
-            Assert.IsTrue(Bounds(home, "PetPreview").Left < closed.Left - 20);
+            Assert.IsTrue(Bounds(home, "PetPreview").Left > closed.Left + 20);
             Element<Button>(home, "CloseEditorButton").Focus();
             var key = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(window)!, 0, Key.Escape)
             { RoutedEvent = Keyboard.PreviewKeyDownEvent };
@@ -134,25 +131,53 @@ public sealed class ProductHomeInteractionTests
     }
 
     [STATestMethod]
-    public void FacePanelExitsOnTheLeftAndLauncherActivationReturnsToGameplayFocus()
+    [DataRow(HomeEditor.Face, 2, 1, "FaceButton", "FaceCloseEditorButton")]
+    [DataRow(HomeEditor.Wardrobe, 0, -1, "WardrobeButton", "CloseEditorButton")]
+    public void EditorPanelsExitOnTheirEntrySideAndLauncherActivationReturnsToGameplayFocus(
+        HomeEditor editor, int column, int entryDirection, string launcher, string closeButton)
     {
         var home = new ProductHomeView();
         var window = new Window { Content = home, Width = 1024, Height = 640, Left = -10000, Top = -10000, ShowInTaskbar = false };
         try
         {
             window.Show();
-            Element<Button>(home, "FaceButton").Focus();
-            Click(home, "FaceButton");
+            Pump(60); // Let the initial size and layout events settle before measuring an editor transition.
+            Element<Button>(home, launcher).Focus();
+            Click(home, launcher);
+            Assert.AreEqual(editor, home.SelectedEditor);
             Assert.IsTrue(Element<FrameworkElement>(home, "Stage").IsKeyboardFocused,
                 "After opening a panel, Space should act on the Dango instead of clicking the launcher again.");
-            Assert.AreEqual(0, Grid.GetColumn(Element<UIElement>(home, "EditorPanel")));
+            Assert.AreEqual(column, Grid.GetColumn(Element<UIElement>(home, "EditorPanel")));
+            var translation = Element<TranslateTransform>(home, "PanelTranslation");
+            if (SystemParameters.ClientAreaAnimation)
+            {
+                Pump(20); // Sample after WPF has rendered the first animation frame, not its zero-valued base target.
+                var startingOffset = translation.X;
+                Assert.IsTrue(startingOffset * entryDirection > 0,
+                    $"{editor} must enter from its own side of the window.");
+                Pump(80);
+                Assert.IsTrue(translation.X * entryDirection > 0 && Math.Abs(translation.X) < Math.Abs(startingOffset),
+                    $"{editor} must animate from its entry side toward its resting position.");
+            }
+            Pump(520);
+            Assert.AreEqual(0, translation.X, .001, "An open editor must rest at its assigned column without an extra offset.");
 
-            Click(home, "CloseEditorButton");
-            Assert.AreEqual(0, Grid.GetColumn(Element<UIElement>(home, "EditorPanel")),
-                "An exiting face panel must not teleport to the opposite side before fading out.");
+            Click(home, closeButton);
+            Assert.AreEqual(column, Grid.GetColumn(Element<UIElement>(home, "EditorPanel")),
+                "An exiting panel must not teleport to the opposite side before fading out.");
             Assert.IsTrue(Element<FrameworkElement>(home, "Stage").IsKeyboardFocused);
+            if (SystemParameters.ClientAreaAnimation)
+            {
+                Pump(80);
+                Assert.IsTrue(translation.X * entryDirection > 0,
+                    $"{editor} must exit toward the same side it entered from.");
+                Assert.AreEqual(column, Grid.GetColumn(Element<UIElement>(home, "EditorPanel")),
+                    "The closing animation must retain its original column until it finishes.");
+            }
             Pump(520);
             Assert.AreEqual(Visibility.Hidden, Element<UIElement>(home, "EditorPanel").Visibility);
+            Assert.IsTrue(translation.X * entryDirection > 0,
+                $"The hidden {editor} panel must finish at its own off-screen-side offset.");
         }
         finally { window.Close(); }
     }
@@ -187,6 +212,37 @@ public sealed class ProductHomeInteractionTests
             Assert.AreEqual(Color.FromRgb(242, 182, 168), home.PreviewColor);
             Assert.IsTrue(Element<FrameworkElement>(home, "Stage").IsKeyboardFocused,
                 "After choosing a color, Space should jump instead of clicking the swatch again.");
+        }
+        finally { window.Close(); }
+    }
+
+    [STATestMethod]
+    public void EscapeInFocusedSettingsDiagnosticsDoesNotNavigateHome()
+    {
+        var home = new ProductHomeView { ReduceMotion = true };
+        var window = new Window { Content = home, Width = 1024, Height = 640, Left = -10000, Top = -10000, ShowInTaskbar = false };
+        try
+        {
+            window.Show();
+            home.SetDiagnosticsText("fictional diagnostic text for keyboard selection");
+            home.ShowSettingsPage(showDiagnostics: true);
+            Pump(100);
+            var diagnostics = Element<TextBox>(home, "SettingsDiagnosticsText");
+            diagnostics.Focus();
+            Assert.IsTrue(diagnostics.IsKeyboardFocused,
+                "This regression requires the diagnostic text box to own keyboard focus.");
+            Assert.IsTrue(home.IsSettingsOpen);
+            Assert.AreEqual(Visibility.Visible, Element<UIElement>(home, "SettingsPage").Visibility);
+
+            var escape = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(window)!, 0, Key.Escape)
+            { RoutedEvent = Keyboard.PreviewKeyDownEvent };
+            home.RaiseEvent(escape);
+
+            Assert.IsFalse(escape.Handled,
+                "The home must leave Escape to the focused diagnostic text box instead of intercepting it as navigation.");
+            Assert.IsTrue(home.IsSettingsOpen, "Escape in diagnostic text must preserve the current settings page.");
+            Assert.AreEqual(Visibility.Visible, Element<UIElement>(home, "SettingsPage").Visibility);
+            Assert.IsTrue(diagnostics.IsKeyboardFocused, "Escape must not transfer diagnostic focus to the Dango stage.");
         }
         finally { window.Close(); }
     }

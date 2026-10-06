@@ -1,0 +1,147 @@
+<style>
+#dango-face-design { color-scheme: light dark; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; font-size: 14px; line-height: 1.5; --fd-bg: light-dark(#FDFCF9,#282622); --fd-ink: light-dark(#443D34,#EFEAE2); --fd-muted: light-dark(#807568,#C0B6A8); --fd-line: light-dark(#E9E4DA,#514A41); --fd-soft: light-dark(#F3EFE8,#37322C); --fd-selected: light-dark(#EFE3D4,#534330); --fd-accent: light-dark(#885E3E,#E2BD96); color: var(--fd-ink); }
+#dango-face-design * { box-sizing: border-box; }
+#dango-face-design .fd-window { background: var(--fd-bg); border: 1px solid var(--fd-line); border-radius: 12px; overflow: hidden; }
+#dango-face-design .fd-chrome { display: flex; align-items: center; gap: 18px; padding: 15px 24px; padding-right: 110px; border-bottom: 1px solid var(--fd-line); }
+#dango-face-design .fd-brand { font-size: 18px; font-weight: 500; }
+#dango-face-design .fd-muted { color: var(--fd-muted); font-size: 12px; }
+#dango-face-design .fd-content { display: grid; grid-template-columns: minmax(0,1fr) var(--fd-editor-width,280px); gap: 32px; padding: 28px 36px; }
+#dango-face-design .fd-stage { min-width: 0; display: flex; flex-direction: column; align-items: center; }
+#dango-face-design .fd-stage-heading { align-self: flex-start; font-size: 16px; }
+#dango-face-design .fd-scene { min-height: 290px; width: 100%; display: flex; align-items: flex-end; justify-content: center; padding: 28px 8px; }
+#dango-face-design .fd-dango { position: relative; width: var(--fd-body-width,240px); max-width: 100%; aspect-ratio: 100 / 67; flex-shrink: 1; background: var(--fd-body,#FFE8C2); border-radius: 48% 48% 40% 40% / 64% 64% 33% 33%; }
+#dango-face-design .fd-face { position: absolute; inset: 0; }
+#dango-face-design .fd-eye { position: absolute; top: var(--fd-eye-center-y,51%); transform: translate(-50%,-50%); width: calc(7.5% * var(--fd-eye-size,1) * var(--fd-eye-width,1)); height: calc(11.19402985% * var(--fd-eye-size,1) * var(--fd-eye-height,1)); background: var(--fd-eye,#2B201E); border-radius: 50%; }
+#dango-face-design .fd-eye:first-child { left: calc(50% - 50% * var(--fd-eye-spacing,.245)); }
+#dango-face-design .fd-eye:last-child { left: calc(50% + 50% * var(--fd-eye-spacing,.245)); }
+#dango-face-design .fd-dango[data-expression="closed"] .fd-eye { background: transparent; border-bottom: 3px solid var(--fd-eye,#2B201E); border-radius: 0 0 50% 50%; height: 7px; }
+#dango-face-design .fd-ground { width: 82%; height: 1px; background: var(--fd-line); }
+#dango-face-design .fd-compare { display: flex; gap: 8px; margin-top: 20px; flex-wrap: wrap; justify-content: center; }
+#dango-face-design button { font: inherit; font-weight: 400; color: var(--fd-ink); background: transparent; border: 1px solid var(--fd-line); border-radius: 7px; padding: 8px 12px; min-height: 38px; }
+#dango-face-design button:hover { background: var(--fd-soft); }
+#dango-face-design button[aria-pressed="true"] { background: var(--fd-selected); border-color: var(--fd-accent); }
+#dango-face-design button:disabled { opacity: .55; }
+#dango-face-design .fd-tabs { display: flex; gap: 18px; border-bottom: 1px solid var(--fd-line); margin-bottom: 20px; }
+#dango-face-design .fd-tab { border: 0; border-radius: 0; border-bottom: 2px solid transparent; padding: 8px 4px; }
+#dango-face-design .fd-tab[aria-selected="true"] { border-bottom-color: var(--fd-accent); color: var(--fd-accent); }
+#dango-face-design .fd-field { margin-bottom: 24px; }
+#dango-face-design .fd-field-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+#dango-face-design .fd-hex { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--fd-muted); }
+#dango-face-design .fd-color-line { display: flex; align-items: center; gap: 12px; }
+#dango-face-design input[type="color"] { width: 50px; height: 40px; padding: 3px; border: 1px solid var(--fd-line); background: var(--fd-bg); border-radius: 7px; }
+#dango-face-design .fd-quick { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+#dango-face-design .fd-swatch { min-width: 38px; padding: 5px; }
+#dango-face-design .fd-dot { width: 24px; height: 24px; border-radius: 50%; display: block; background: var(--swatch); }
+#dango-face-design .fd-range { display: block; width: 100%; min-width: 0; margin: 0; height: 28px; accent-color: var(--fd-accent); }
+#dango-face-design .fd-range-ends { display: flex; justify-content: space-between; gap: 8px; color: var(--fd-muted); font-size: 12px; }
+#dango-face-design .fd-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; padding: 18px 24px; border-top: 1px solid var(--fd-line); align-items: center; }
+#dango-face-design .fd-status { margin-right: auto; font-size: 12px; color: var(--fd-muted); }
+#dango-face-design .fd-primary { background: var(--fd-accent); border-color: var(--fd-accent); color: var(--fd-bg); min-width: 78px; }
+#dango-face-design .fd-primary:hover { background: var(--fd-accent); }
+#dango-face-design [hidden] { display: none; }
+@media (max-width: 620px) { #dango-face-design .fd-content { grid-template-columns: 1fr; gap: 28px; padding: 20px; } #dango-face-design .fd-scene { min-height: 215px; padding-bottom: 20px; } #dango-face-design .fd-chrome { flex-wrap: wrap; padding-left: 20px; } #dango-face-design .fd-actions { padding: 16px 20px; } #dango-face-design .fd-status { width: 100%; } }
+@media (pointer: coarse) { #dango-face-design button { min-height: 44px; } #dango-face-design input[type="color"] { height: 44px; } #dango-face-design .fd-range { height: 44px; } }
+</style>
+<div id="dango-face-design">
+  <section class="fd-window" aria-label="团子自身捏脸设计预览">
+    <header class="fd-chrome"><span class="fd-brand">Dango</span><span class="fd-muted">捏脸 · 设计预览</span></header>
+    <div class="fd-content">
+      <section class="fd-stage" aria-label="团子长相预览">
+        <div class="fd-stage-heading">我的团子</div>
+        <div class="fd-scene"><div class="fd-dango" role="img" aria-label="奶油色圆眼团子"><div class="fd-face"><span class="fd-eye"></span><span class="fd-eye"></span></div></div></div>
+        <div class="fd-ground"></div>
+        <div class="fd-compare"><button type="button" class="cursor-interaction" data-action="blink">眨眼</button><button type="button" class="cursor-interaction" data-action="sleep">睡眠 / 醒来</button></div>
+      </section>
+      <section class="fd-editor" aria-label="团子自身编辑">
+        <div class="fd-tabs" role="tablist" aria-label="捏脸部位"><button type="button" class="fd-tab cursor-interaction" role="tab" id="fd-color-tab" aria-controls="fd-color-panel" aria-selected="true" data-tab="color">颜色</button><button type="button" class="fd-tab cursor-interaction" role="tab" id="fd-eyes-tab" aria-controls="fd-eyes-panel" aria-selected="false" data-tab="eyes">眼睛</button></div>
+        <div id="fd-color-panel" role="tabpanel" aria-labelledby="fd-color-tab">
+          <div class="fd-field"><div class="fd-field-head"><label for="fd-body-color">身体颜色</label><output class="fd-hex" data-value="body"></output></div><div class="fd-color-line"><input id="fd-body-color" class="cursor-interaction" type="color" value="#ffe8c2"><span class="fd-muted">打开调色盘</span></div><div class="fd-quick"><button type="button" class="fd-swatch cursor-interaction" aria-label="身体奶油色 #FFE8C2" data-body-color="#FFE8C2"><span class="fd-dot" style="--swatch:#FFE8C2"></span></button><button type="button" class="fd-swatch cursor-interaction" aria-label="身体浅蓝色 #C9E2FF" data-body-color="#C9E2FF"><span class="fd-dot" style="--swatch:#C9E2FF"></span></button><button type="button" class="fd-swatch cursor-interaction" aria-label="身体浅紫色 #DDCCF8" data-body-color="#DDCCF8"><span class="fd-dot" style="--swatch:#DDCCF8"></span></button></div></div>
+          <div class="fd-field"><div class="fd-field-head"><label for="fd-eye-color">眼睛颜色</label><output class="fd-hex" data-value="eye"></output></div><div class="fd-color-line"><input id="fd-eye-color" class="cursor-interaction" type="color" value="#2b201e"><span class="fd-muted">打开调色盘</span></div></div>
+        </div>
+        <div id="fd-eyes-panel" role="tabpanel" aria-labelledby="fd-eyes-tab" hidden>
+          <div class="fd-field"><div class="fd-field-head"><label for="fd-eye-size">大小</label><output class="fd-hex" for="fd-eye-size" data-value="size"></output></div><input id="fd-eye-size" class="fd-range" type="range" min="70" max="140" step="1" value="100"><div class="fd-range-ends" aria-hidden="true"><span>小</span><span>大</span></div></div>
+          <div class="fd-field"><div class="fd-field-head"><label for="fd-eye-ellipticity">椭圆度</label><output class="fd-hex" for="fd-eye-ellipticity" data-value="ellipticity"></output></div><input id="fd-eye-ellipticity" class="fd-range" type="range" min="-100" max="100" step="1" value="0"><div class="fd-range-ends" aria-hidden="true"><span>横椭圆</span><span>圆形</span><span>竖椭圆</span></div></div>
+          <div class="fd-field"><div class="fd-field-head"><label for="fd-eye-height">高度</label><output class="fd-hex" for="fd-eye-height" data-value="height"></output></div><input id="fd-eye-height" class="fd-range" type="range" min="32" max="66" step="1" value="51"><div class="fd-range-ends" aria-hidden="true"><span>高</span><span>低</span></div></div>
+          <div class="fd-field"><div class="fd-field-head"><label for="fd-eye-spacing">眼距</label><output class="fd-hex" for="fd-eye-spacing" data-value="spacing"></output></div><input id="fd-eye-spacing" class="fd-range" type="range" min="12" max="34" step="0.5" value="24.5"><div class="fd-range-ends" aria-hidden="true"><span>近</span><span>远</span></div></div>
+        </div>
+      </section>
+    </div>
+    <footer class="fd-actions"><output class="fd-status" aria-live="polite">草稿与默认一致</output><button type="button" class="cursor-interaction" data-action="default">恢复默认</button><button type="button" class="cursor-interaction" data-action="cancel" disabled>取消</button><button type="button" class="fd-primary cursor-interaction" data-action="apply" disabled>应用</button></footer>
+  </section>
+</div>
+<script>
+(() => {
+  const root = document.getElementById('dango-face-design');
+  const defaults = {body:'#FFE8C2',eye:'#2B201E',size:100,ellipticity:0,height:51,spacing:24.5};
+  const ranges = {size:[70,140],ellipticity:[-100,100],height:[32,66],spacing:[12,34]};
+  const legacySizes = {small:85,standard:100,large:115,'小':85,'标准':100,'大':115};
+  const legacyShapes = {round:0,tall:40,wide:-40,'圆眼':0,'纵椭圆':40,'横椭圆':-40};
+  const copy = value => ({...value});
+  function config(value, legacy=false) {
+    const result=copy(defaults);
+    if(!value || typeof value!=='object')return result;
+    for(const key of ['body','eye'])if(typeof value[key]==='string' && /^#[0-9A-F]{6}$/i.test(value[key]))result[key]=value[key].toUpperCase();
+    for(const [key,[min,max]] of Object.entries(ranges))if(Number.isFinite(value[key]) && value[key]>=min && value[key]<=max)result[key]=value[key];
+    if(legacy){result.size=legacySizes[value.size ?? value.eyeSize] ?? defaults.size;result.ellipticity=legacyShapes[value.shape ?? value.eyeShape] ?? defaults.ellipticity;}
+    return result;
+  }
+  function snapshotConfig(snapshot) {
+    const kind=snapshot?.modelContent?.kind;
+    if(!['dango-face-design-v1','dango-face-design-v2'].includes(kind))return null;
+    const legacy=kind==='dango-face-design-v1', saved=snapshot.privateContent, publicDraft=snapshot.modelContent;
+    const nextDraft=config(saved?.draft ?? (legacy?publicDraft:{...publicDraft,size:publicDraft.eyeSize,ellipticity:publicDraft.eyeEllipticity,height:publicDraft.eyeHeight,spacing:publicDraft.eyeSpacing}),legacy);
+    return {draft:nextDraft,applied:saved?.applied?config(saved.applied,legacy):(publicDraft.unapplied===false?copy(nextDraft):copy(defaults)),tab:saved?.tab==='color'?'color':'eyes'};
+  }
+  const initial=snapshotConfig(window.openai?.widgetState) ?? {draft:{...defaults,body:'#DA8D10',eye:'#000000',size:85,ellipticity:40},applied:copy(defaults),tab:'eyes'};
+  let applied=initial.applied,draft=initial.draft,tab=initial.tab;
+  let expression = 'open', timeout = null, message = '';
+  const design = {editorWidth:280,bodyWidth:240,saveResult:'success'};
+  const dango = root.querySelector('.fd-dango');
+  const status = root.querySelector('.fd-status');
+  const equal = (a,b) => Object.keys(defaults).every(key=>a[key] === b[key]);
+  function stopExpression() { clearTimeout(timeout); expression = 'open'; }
+  function render() {
+    root.style.setProperty('--fd-editor-width',design.editorWidth+'px'); root.style.setProperty('--fd-body-width',design.bodyWidth+'px');
+    root.style.setProperty('--fd-body',draft.body); root.style.setProperty('--fd-eye',draft.eye); root.style.setProperty('--fd-eye-size',draft.size/100);
+    root.style.setProperty('--fd-eye-width',draft.ellipticity>0?1-draft.ellipticity/200:1); root.style.setProperty('--fd-eye-height',draft.ellipticity<0?1+draft.ellipticity/200:1);
+    root.style.setProperty('--fd-eye-center-y',draft.height+'%');root.style.setProperty('--fd-eye-spacing',draft.spacing/100);
+    dango.dataset.expression = expression === 'open' ? 'open' : 'closed';
+    root.querySelector('[data-action="sleep"]').textContent=expression==='sleep'?'醒来':'睡眠';
+    const ellipticityText=draft.ellipticity===0?'圆形':`${draft.ellipticity<0?'横':'竖'}椭圆 ${Math.abs(draft.ellipticity)}`;
+    const heightText=draft.height===51?'默认位置':`${draft.height<51?'上移':'下移'} ${Math.abs(draft.height-51)}%`;
+    dango.setAttribute('aria-label',`身体 ${draft.body}，眼睛 ${draft.eye}，大小 ${draft.size}%，${ellipticityText}，${heightText}，眼距 ${draft.spacing}%，${expression==='open'?'睁眼':'闭眼'}`);
+    root.querySelector('#fd-body-color').value=draft.body; root.querySelector('#fd-eye-color').value=draft.eye;
+    root.querySelector('[data-value="body"]').textContent=draft.body; root.querySelector('[data-value="eye"]').textContent=draft.eye;
+    root.querySelectorAll('[data-tab]').forEach(button=>button.setAttribute('aria-selected',String(button.dataset.tab===tab)));
+    root.querySelector('#fd-color-panel').hidden=tab!=='color'; root.querySelector('#fd-eyes-panel').hidden=tab!=='eyes';
+    for(const key of Object.keys(ranges)){
+      const input=root.querySelector('#fd-eye-'+key);input.value=draft[key];
+      const text=key==='size'?draft.size+'%':key==='ellipticity'?ellipticityText:key==='height'?heightText:draft.spacing+'%';
+      root.querySelector(`[data-value="${key}"]`).textContent=text;input.setAttribute('aria-valuetext',text);
+    }
+    root.querySelectorAll('[data-body-color]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.bodyColor===draft.body)));
+    const dirty=!equal(draft,applied); root.querySelector('[data-action="apply"]').disabled=!dirty; root.querySelector('[data-action="cancel"]').disabled=!dirty;
+    status.textContent=message || (dirty?'草稿 · 未应用':'与本页已应用外观一致');
+  }
+  function remember() {
+    const host=window.openai;
+    if(host?.setWidgetState) host.setWidgetState({modelContent:{kind:'dango-face-design-v2',body:draft.body,eye:draft.eye,eyeSize:draft.size,eyeEllipticity:draft.ellipticity,eyeHeight:draft.height,eyeSpacing:draft.spacing,unapplied:!equal(draft,applied)},privateContent:{draft:copy(draft),applied:copy(applied),tab}}).catch(()=>{});
+  }
+  function change(mutator) { message=''; mutator(); render(); remember(); }
+  root.addEventListener('input',event=>{if(event.target.id==='fd-body-color')change(()=>draft.body=event.target.value.toUpperCase());if(event.target.id==='fd-eye-color')change(()=>draft.eye=event.target.value.toUpperCase());for(const key of Object.keys(ranges))if(event.target.id==='fd-eye-'+key)change(()=>draft[key]=Number(event.target.value));});
+  root.addEventListener('click',event=>{
+    const button=event.target.closest('button'); if(!button || !root.contains(button))return;
+    if(button.dataset.tab)change(()=>tab=button.dataset.tab);
+    if(button.dataset.bodyColor)change(()=>draft.body=button.dataset.bodyColor);
+    if(button.dataset.action==='default')change(()=>{stopExpression();draft=copy(defaults);});
+    if(button.dataset.action==='cancel')change(()=>{stopExpression();draft=copy(applied);message='已取消草稿';});
+    if(button.dataset.action==='apply')change(()=>{if(design.saveResult==='failure'){message='本次未应用，可重试或取消';return;}applied=copy(draft);message='本页已应用';});
+    if(button.dataset.action==='blink'){stopExpression();expression='blink';render();timeout=setTimeout(()=>{expression='open';render();},window.matchMedia('(prefers-reduced-motion: reduce)').matches?450:180);}
+    if(button.dataset.action==='sleep'){const wasSleeping=expression==='sleep';stopExpression();if(!wasSleeping)expression='sleep';render();if(!wasSleeping)timeout=setTimeout(()=>{expression='open';render();},1500);}
+  });
+  root.addEventListener('keydown',event=>{ const button=event.target.closest('[role="tab"]'); if(button && ['ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();change(()=>tab=tab==='color'?'eyes':'color');root.querySelector(`[data-tab="${tab}"]`).focus();}});
+  window.addEventListener('openai:set_globals',event=>{const saved=snapshotConfig(event.detail?.globals?.widgetState);if(!saved)return;applied=saved.applied;draft=saved.draft;tab=saved.tab;message='';stopExpression();render();});
+  render();
+  if(globalThis.Tweak){const tweak=new Tweak({container:root,onChange:render});tweak.addSlider(design,'editorWidth',{label:'编辑区宽度',min:240,max:310,step:10,unit:'px'});tweak.addSlider(design,'bodyWidth',{label:'预览占比',min:210,max:270,step:10,unit:'px'});tweak.addSelect(design,'saveResult',{label:'应用结果',options:[{label:'成功',value:'success'},{label:'失败',value:'failure'}]});}
+})();
+</script>

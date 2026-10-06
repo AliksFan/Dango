@@ -51,13 +51,38 @@ public sealed class StackedDangoSceneRuntime : IDisposable
     public HatAppearance CurrentHatAppearance => DangoHatPresets.GetAppearance(CurrentHatPresetId);
     public HatAppearance DisplayHatAppearance => CurrentHatAppearance;
     public double DisplayHatSize => AttachmentsEnabled ? 1.35 : 1;
+    public DangoAppearanceConfiguration EffectiveAppearance { get; private set; } = DangoAppearanceConfiguration.Default;
     public Brush? BodyPreviewFill { get; private set; }
+    public Brush? EyePreviewFill { get; private set; }
+    public DangoEntityId? AppearanceEntity => scene?.EntityIds.FirstOrDefault();
+
+    public void SetAppearance(DangoAppearanceConfiguration configuration)
+    {
+        VerifyAccess();
+        ArgumentNullException.ThrowIfNull(configuration);
+        EffectiveAppearance = configuration;
+        BodyPreviewFill = AppearanceBrush(configuration.BodyColor);
+        EyePreviewFill = AppearanceBrush(configuration.EyeColor);
+        SynchronizeAppearance();
+    }
+
+    private static Brush AppearanceBrush(OpaqueSrgbColor color)
+    {
+        var brush = new SolidColorBrush(Color.FromRgb(color.R, color.G, color.B));
+        brush.Freeze();
+        return brush;
+    }
+
+    private void SynchronizeAppearance()
+    {
+        if (attachments is null || scene is null) return;
+        attachments.Synchronize(scene.EntityIds);
+        if (scene.EntityIds.Count > 0) attachments.SetEyeLayout(scene.EntityIds[0], EffectiveAppearance.EyeLayout);
+    }
     public void SetBodyPreviewColor(Color color)
     {
         VerifyAccess();
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        BodyPreviewFill = brush;
+        SetAppearance(new(new(color.R, color.G, color.B), EffectiveAppearance.EyeColor, EffectiveAppearance.EyeLayout));
     }
     public string? AttachmentError => attachments?.LastError;
     public event Action? HatPresetChanged;
@@ -287,8 +312,10 @@ public sealed class StackedDangoSceneRuntime : IDisposable
                 // The calibration world has been released before the live world is created.
                 attachments = new(baseline);
                 attachments.SetPaused(!running);
+                SynchronizeAppearance();
             }
             EnsureScene(new(0, 0, 160, 120));
+            SynchronizeAppearance();
             LastError = null;
             InitializationState = SceneInitializationState.Ready;
             return true;
@@ -470,7 +497,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         if (!scene.Remove(removed)) return false;
         colorSlots.Remove(removed);
         pendingSpawns.Remove(removed);
-        attachments?.Synchronize(scene.EntityIds);
+        SynchronizeAppearance();
         LastFrame = null;
         return true;
     }
@@ -550,6 +577,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         scene?.Reset();
         pendingSpawns.Clear();
         attachments?.Reset();
+        SynchronizeAppearance();
         QuietIdle.Reset();
         Doze.Reset();
         Gait.Reset();
@@ -613,7 +641,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
             if (frame.Physics.Succeeded) BeforeLightFeedbackStep();
             if (frame.Physics.Succeeded && attachments is not null && LightInteractionsEnabled)
             {
-                attachments.Synchronize(scene.EntityIds);
+                SynchronizeAppearance();
                 var dozeEligible = WanderEligible();
                 var wasDozing = Doze.Active;
                 if (frame.Physics.Bodies.Count == 1)
@@ -748,6 +776,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         colorSlots.Add(scene.SelectedEntity, 0);
         hostOrigin = bounds.Center;
         scene.SetPaused(!running);
+        SynchronizeAppearance();
     }
 
     private StackedPhysicsPresentationFrame CreateUnavailable(PhysicsPresentationInput primary) => new(

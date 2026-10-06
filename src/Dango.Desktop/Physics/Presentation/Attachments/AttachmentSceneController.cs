@@ -14,6 +14,7 @@ public sealed class AttachmentSceneController(PhysicsPresentationFrame baseline)
     }
     private readonly AttachmentCommandRouter router = new(true);
     private readonly Dictionary<DangoEntityId, Entry> entries = [];
+    private readonly Dictionary<DangoEntityId, EyeLayoutParameters> eyeLayouts = [];
     private bool paused;
     private long step;
     internal long FaultRevision { get; private set; }
@@ -32,7 +33,9 @@ public sealed class AttachmentSceneController(PhysicsPresentationFrame baseline)
             var token = router.RegisterPreview(target);
             var quietToken = router.RegisterAction(target);
             router.SetPaused(paused);
-            entries.Add(id, new(target, token, quietToken, new(router, target, baseline) { Paused = paused }));
+            var motion = new AttachmentMotionController(router, target, baseline) { Paused = paused };
+            if (eyeLayouts.TryGetValue(id, out var layout)) motion.SetEyeLayout(layout);
+            entries.Add(id, new(target, token, quietToken, motion));
         }
     }
 
@@ -47,6 +50,15 @@ public sealed class AttachmentSceneController(PhysicsPresentationFrame baseline)
         var ids = entries.Keys.ToArray();
         foreach (var entry in entries.Values) router.Remove(entry.Target);
         entries.Clear(); step = 0; Synchronize(ids);
+    }
+
+    /// <summary>Stores an entity's base request separately from the animation command channels.</summary>
+    public void SetEyeLayout(DangoEntityId entity, EyeLayoutParameters parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        if (entity.Value <= 0) throw new ArgumentOutOfRangeException(nameof(entity));
+        eyeLayouts[entity] = parameters;
+        if (entries.TryGetValue(entity, out var entry)) entry.Motion.SetEyeLayout(parameters);
     }
 
     public AttachmentRequestResult Submit(DangoEntityId id, AttachmentIntent intent)
@@ -92,5 +104,5 @@ public sealed class AttachmentSceneController(PhysicsPresentationFrame baseline)
         return result;
     }
 
-    public void Dispose() { router.Dispose(); entries.Clear(); }
+    public void Dispose() { router.Dispose(); entries.Clear(); eyeLayouts.Clear(); }
 }

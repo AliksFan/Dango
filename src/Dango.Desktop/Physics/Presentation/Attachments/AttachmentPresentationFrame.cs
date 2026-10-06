@@ -18,7 +18,7 @@ public static class EyeOutline
 {
     public const int Samples = 128;
     // Artwork renders the same polygon vertices. Only the exact neutral ellipse differs:
-    // radius <= 0.0375, 128 chords: r * (1 - cos(pi / 128)) < 0.000012.
+    // radius <= 0.0525 (140%), 128 chords: r * (1 - cos(pi / 128)) < 0.000016.
     public const double ChordError = 0.0001;
     public static IReadOnlyList<AttachmentPoint> Create(EyePresentationFrame eye)
     {

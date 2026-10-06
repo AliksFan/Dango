@@ -38,6 +38,17 @@ public partial class DeformableDangoVisual : System.Windows.Controls.UserControl
 
     public DangoContourFailure LastContourFailure { get; private set; }
 
+    internal double? RenderedBodyBottom
+    {
+        get
+        {
+            if (Visibility != Visibility.Visible || BodyPath.Visibility != Visibility.Visible ||
+                BodyPath.Data is null || BodyPath.Data.Bounds.IsEmpty) return null;
+            var bottom = GaitBodyLayer.RenderTransform.TransformBounds(BodyPath.Data.Bounds).Bottom;
+            return double.IsFinite(bottom) ? bottom : null;
+        }
+    }
+
     // The default WPF template can hit the union of transformed descendant bounds,
     // even when those drawing layers ignore input. Keep the existing root rectangle
     // as the sole input surface; this does not clip the hat or move the drag threshold.
@@ -54,6 +65,21 @@ public partial class DeformableDangoVisual : System.Windows.Controls.UserControl
             ArgumentNullException.ThrowIfNull(value);
             BodyPath.Fill = value;
             FallbackBodyPath.Fill = value;
+        }
+    }
+
+    private System.Windows.Media.Brush eyeFill = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x2B, 0x20, 0x1E));
+    public System.Windows.Media.Brush EyeFill
+    {
+        get => eyeFill;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            eyeFill = value;
+            ((System.Windows.Shapes.Shape)oldLeftEye).Fill = value;
+            ((System.Windows.Shapes.Shape)oldRightEye).Fill = value;
+            foreach (var shape in LeftEyeLayer.Children.OfType<System.Windows.Shapes.Shape>().Concat(RightEyeLayer.Children.OfType<System.Windows.Shapes.Shape>()))
+                shape.Fill = value;
         }
     }
 
@@ -149,14 +175,14 @@ public partial class DeformableDangoVisual : System.Windows.Controls.UserControl
         }
     }
 
-    private static void DrawEye(System.Windows.Controls.Canvas layer, Dango.Desktop.Physics.Presentation.Attachments.EyePresentationFrame eye)
+    private void DrawEye(System.Windows.Controls.Canvas layer, Dango.Desktop.Physics.Presentation.Attachments.EyePresentationFrame eye)
     {
         layer.RenderTransform = Transform.Identity;
         layer.Children.Clear();
         layer.Children.Add(new System.Windows.Shapes.Path
         {
             Data = AttachmentGeometryFactory.CreateEye(eye),
-            Fill = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x2B, 0x20, 0x1E)),
+            Fill = EyeFill,
             IsHitTestVisible = false,
         });
     }

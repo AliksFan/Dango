@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -87,7 +87,7 @@ internal sealed class DesktopDangoSceneOverlayWindow : Window
         foreach (var body in bodies) body.ShowDebugGeometry = value;
     }
 
-    public void ApplyFrame(StackedPhysicsPresentationFrame value, HatAppearance appearance = HatAppearance.Sprout, double hatSize = 1)
+    public void ApplyFrame(StackedPhysicsPresentationFrame value, HatAppearance appearance = HatAppearance.Sprout, double hatSize = 1, System.Windows.Media.Brush? bodyFill = null, System.Windows.Media.Brush? eyeFill = null, DangoEntityId? appearanceEntity = null)
     {
         frame = value;
         if (value.Bodies.Count == 0) return;
@@ -98,7 +98,7 @@ internal sealed class DesktopDangoSceneOverlayWindow : Window
         var height = Math.Max(1, bounds.Max(b => b.Bottom) - top);
         Width = width; Height = height;
         for (var i = 0; i < 3; i++)
-            DangoHostFrameBinding.Apply(bodies[i], hats[i], value, i, new(-left, -top), appearance, hatSize);
+            DangoHostFrameBinding.Apply(bodies[i], hats[i], value, i, new(-left, -top), appearance, hatSize, bodyFill, eyeFill, appearanceEntity);
         var screen = sceneToScreen(new(left, top));
         var screenEnd = sceneToScreen(new(left + width, top + height));
         if (handle != 0)

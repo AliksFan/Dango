@@ -149,6 +149,8 @@ public sealed class ProductControlCenterLayoutTests
             home.Measure(size);
             home.Arrange(new Rect(size));
             home.UpdateLayout();
+            Assert.AreEqual(Visibility.Collapsed, ((UIElement)home.FindName("Launchers")).Visibility,
+                $"{editor} editing must hide the home launchers so they do not occupy editor space.");
             var stage = Bounds(home, (FrameworkElement)home.FindName("Stage"));
             var panel = Bounds(home, (FrameworkElement)home.FindName("EditorPanel"));
             Assert.IsTrue(panel.Left >= stage.Left - 1 && panel.Right <= stage.Right + 1 &&
@@ -156,9 +158,15 @@ public sealed class ProductControlCenterLayoutTests
                 $"{editor} panel must stay inside the scrollable stage at {width}×{height}; panel {panel}, stage {stage}.");
             var options = Assert.IsInstanceOfType<ScrollViewer>(home.FindName("OptionsBody"),
                 "Editor options need their own scroll viewport when the display is short.");
-            var apply = Bounds(home, (FrameworkElement)home.FindName("ApplyButton"));
-            Assert.IsTrue(apply.Top >= panel.Top && apply.Bottom <= panel.Bottom + 1,
-                "The fixed editor action must remain in its panel while options scroll.");
+            var actionNames = editor == HomeEditor.Face
+                ? new[] { "DefaultAppearanceButton", "CancelAppearanceButton", "ApplyButton" }
+                : new[] { "CloseEditorButton" };
+            var actionBounds = actionNames.ToDictionary(name => name,
+                name => Bounds(home, (FrameworkElement)home.FindName(name)));
+            foreach (var (name, action) in actionBounds)
+                Assert.IsTrue(action.Top >= stage.Top && action.Bottom <= stage.Bottom + 1 &&
+                              action.Left >= stage.Left - 1 && action.Right <= stage.Right + 1,
+                    $"The fixed {name} must remain inside its stage while options scroll; action {action}, stage {stage}.");
             if (editor == HomeEditor.Face)
             {
                 var faceOptions = (StackPanel)home.FindName("FaceOptions");
@@ -170,8 +178,9 @@ public sealed class ProductControlCenterLayoutTests
                 options.ScrollToBottom();
                 home.UpdateLayout();
                 Assert.IsTrue(options.VerticalOffset > 0, "The editor must actually scroll to its lower controls.");
-                Assert.IsTrue(Bounds(home, (FrameworkElement)home.FindName("ApplyButton")).Bottom <= panel.Bottom + 1,
-                    "Scrolling options must not displace the fixed action row.");
+                foreach (var (name, before) in actionBounds)
+                    Assert.AreEqual(before, Bounds(home, (FrameworkElement)home.FindName(name)),
+                        $"Scrolling options must not displace the fixed {name}.");
                 faceOptions.Children.Remove(overflowProbe);
             }
         }
@@ -202,8 +211,9 @@ public sealed class ProductControlCenterLayoutTests
         home.UpdateLayout();
         Assert.IsTrue(Bounds(home, (FrameworkElement)home.FindName("Launchers")).Bottom <=
                       Bounds(home, content).Bottom + 1, "Both home actions must remain reachable by scrolling.");
+        var normalPreviewSize = Bounds(home, (FrameworkElement)home.FindName("PetPreview")).Size;
 
-        foreach (var (editor, column) in new[] { (HomeEditor.Face, 0), (HomeEditor.Wardrobe, 2) })
+        foreach (var (editor, column) in new[] { (HomeEditor.Face, 2), (HomeEditor.Wardrobe, 0) })
         {
             home.ShowEditor(editor);
             home.UpdateLayout();
@@ -211,9 +221,13 @@ public sealed class ProductControlCenterLayoutTests
             Assert.AreEqual(1, Grid.GetColumnSpan(panel),
                 "The landscape preset must not turn into the portrait editor solely because DIP width is small.");
             Assert.AreEqual(column, Grid.GetColumn(panel));
+            if (editor == HomeEditor.Face)
+                Assert.AreEqual(normalPreviewSize, Bounds(home, (FrameworkElement)home.FindName("PetPreview")).Size,
+                    "The 200% landscape viewport must preserve the normal Dango preview and scroll its content.");
             content.ScrollToBottom();
             home.UpdateLayout();
-            Assert.IsTrue(Bounds(home, (FrameworkElement)home.FindName("ApplyButton")).Bottom <=
+            var fixedAction = editor == HomeEditor.Face ? "ApplyButton" : "CloseEditorButton";
+            Assert.IsTrue(Bounds(home, (FrameworkElement)home.FindName(fixedAction)).Bottom <=
                           Bounds(home, content).Bottom + 1, "The editor action must remain reachable by scrolling.");
         }
     }
