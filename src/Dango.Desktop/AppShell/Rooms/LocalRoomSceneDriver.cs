@@ -18,6 +18,10 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     private readonly StackedDangoSceneRuntime runtime;
     private readonly HostFrameScheduler scheduler;
     private readonly LightInteractionSession pointer;
+    private readonly RoomPositionInterpolator positions = new();
+    private HostFrameDiagnostics presentationSnapshot;
+    private long? previousPresentationTicks;
+    private bool hasPositionSample;
     private LocalRoomSceneView? view;
     private DirectionalControlIntent intent;
     private bool alignmentPending;
@@ -31,13 +35,15 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     internal bool OwnsRuntime => scheduler.OwnsRuntime;
     internal bool IsPointerActive => pointer.IsActive;
     internal void ResetEntryPosition() => resumeX = LocalRoomSceneView.WorldWidth / 2;
-    internal LocalRoomSceneDriver(DesktopSceneSession session, StackedDangoSceneRuntime runtime)
+    internal LocalRoomSceneDriver(DesktopSceneSession session, StackedDangoSceneRuntime runtime,
+        IHostFrameSource? frameSource = null, Func<long>? timestamp = null, long frequency = 0)
     {
         this.session = session;
         this.runtime = runtime;
         pointer = new(runtime, allowPhysicalDrag: false);
         runtime.InputCancelled += OnRuntimeInputCancelled;
-        scheduler = new(runtime, Prepare, CreateInput, Apply);
+        scheduler = new(runtime, Prepare, CreateInput, Apply, frameSource, timestamp, frequency);
+        scheduler.CallbackCompleted += Present;
     }
 
     internal void Start(LocalRoomSceneView target, long attempt, bool enterWorld)
@@ -63,6 +69,10 @@ internal sealed class LocalRoomSceneDriver : IDisposable
         runtime.AttachQuietIdleHost(this, true);
         runtime.UpdateWanderScreenWidth(this, Surface.Width);
         scheduler.Start();
+        presentationSnapshot = scheduler.Snapshot;
+        positions.Clear();
+        previousPresentationTicks = null;
+        hasPositionSample = false;
     }
 
     internal void Stop()
@@ -71,6 +81,10 @@ internal sealed class LocalRoomSceneDriver : IDisposable
         ClearInput();
         if (view is not null) view.InputInvalidated -= CancelPointer;
         scheduler.Stop();
+        positions.Clear();
+        hasPositionSample = false;
+        previousPresentationTicks = null;
+        view?.ResetPresentationMotion(invalidateInput: true);
         if (confirmation is not null) CompositionTarget.Rendering -= confirmation;
         confirmation = null;
         ++generation;
@@ -125,7 +139,7 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     {
         world = default;
         if (view is null || !double.IsFinite(sceneDip.X) || !double.IsFinite(sceneDip.Y)) return false;
-        var displayedWorld = view.ScreenToWorld(sceneDip);
+        var displayedWorld = view.ScreenToPetWorld(sceneDip);
         world = new(displayedWorld.X, displayedWorld.Y - runtime.NeutralBodyGroundOffset);
         return double.IsFinite(world.X) && double.IsFinite(world.Y);
     }
@@ -215,9 +229,48 @@ internal sealed class LocalRoomSceneDriver : IDisposable
         view!.Dispatcher.BeginInvoke(() => { if (attempt == generation) Failed?.Invoke(attempt, message); });
     }
 
+    private void Present(object? sender, EventArgs args)
+    {
+        var now = scheduler.Snapshot;
+        var before = presentationSnapshot;
+        presentationSnapshot = now;
+        if (view is not { WindowCameraEnabled: true }) return;
+        // CallbackCompleted also runs for duplicated WPF RenderingTime and failed preparation.
+        if (now.DuplicateCallbacks != before.DuplicateCallbacks) return;
+        if (!scheduler.OwnsRuntime || !scheduler.IsRunning || !view.IsVisible || !view.HasHealthyFrame ||
+            runtime.LastError is not null || view.NativePetCenter is not { } center)
+        {
+            positions.Clear();
+            hasPositionSample = false;
+            previousPresentationTicks = null;
+            view.ResetPresentationMotion(invalidateInput: true);
+            return;
+        }
+        var simulationTicks = now.SuccessfulSteps * HostFrameClock.FixedStep.Ticks;
+        var clockTicks = simulationTicks + now.RemainderTicks;
+        var discontinuity = now.Overloads != before.Overloads || now.LongPauses != before.LongPauses ||
+            now.ClockResets != before.ClockResets || now.Faults != before.Faults ||
+            now.RefreshFrames != before.RefreshFrames ||
+            previousPresentationTicks is { } previous && clockTicks < previous;
+        if (!hasPositionSample || discontinuity)
+        {
+            positions.Reset(center, simulationTicks);
+            hasPositionSample = true;
+            previousPresentationTicks = null;
+            view.ResetPresentationMotion(invalidateInput: discontinuity);
+        }
+        else if (now.AppliedFrames != before.AppliedFrames)
+            positions.Add(center, simulationTicks);
+        var elapsedMs = previousPresentationTicks is { } last ?
+            Math.Clamp((clockTicks - last) / (double)TimeSpan.TicksPerMillisecond, 0, 100) : 0;
+        previousPresentationTicks = clockTicks;
+        view.Present(positions.At(clockTicks - HostFrameClock.FixedStep.Ticks), elapsedMs);
+    }
+
     public void Dispose()
     {
         Stop();
+        scheduler.CallbackCompleted -= Present;
         runtime.InputCancelled -= OnRuntimeInputCancelled;
     }
 }

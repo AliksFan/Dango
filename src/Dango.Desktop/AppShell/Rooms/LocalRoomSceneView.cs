@@ -35,9 +35,14 @@ internal sealed class LocalRoomSceneView : Grid
     private double projectedGround = double.NaN;
     private string? unavailableMessage;
     private LogicalRect? bodyWorldBounds;
+    private LogicalRect? visibleWorldBounds;
+    private LogicalVector presentationOffset;
     private Thickness safeInsets;
     private bool inputBlocked;
     internal RoomViewController Camera { get; } = new(WorldWidth, WorldHeight);
+    internal bool WindowCameraEnabled { get; private set; }
+    internal LogicalPoint? NativePetCenter { get; private set; }
+    internal LogicalVector PresentationOffset => presentationOffset;
     internal Thickness SafeInsets
     {
         get => safeInsets;
@@ -98,7 +103,47 @@ internal sealed class LocalRoomSceneView : Grid
         InvalidateInputFrame();
         unavailableMessage = null;
         previousFrame = 0;
+        presentationOffset = default;
+        Camera.ResetMotion();
         ClearWheel();
+    }
+
+    internal void EnableWindowCamera()
+    {
+        WindowCameraEnabled = true;
+        Camera.EnableWindowCamera();
+    }
+
+    internal void SelectCameraMode(RoomCameraMode mode)
+    {
+        InputInvalidated?.Invoke();
+        ClearWheel();
+        Camera.SelectCameraMode(mode);
+        UpdateProjection(0);
+        ViewChanged?.Invoke();
+    }
+
+    internal bool PanCamera(double deltaX, double deltaY = 0)
+    {
+        if (!WindowCameraEnabled || !HasHealthyFrame || InputBlocked || !Camera.PanByScreenDelta(deltaX, deltaY)) return false;
+        UpdateProjection(0);
+        return true;
+    }
+
+    // Called once after each unique render callback, including callbacks without a physics step.
+    internal void Present(LogicalPoint displayedCenter, double elapsedMs)
+    {
+        if (!WindowCameraEnabled || !HasHealthyFrame || NativePetCenter is not { } native) return;
+        presentationOffset = new(displayedCenter.X - native.X, displayedCenter.Y - native.Y);
+        UpdateProjection(elapsedMs);
+    }
+
+    internal void ResetPresentationMotion(bool invalidateInput = false)
+    {
+        if (invalidateInput) InputInvalidated?.Invoke();
+        presentationOffset = default;
+        Camera.ResetMotion();
+        UpdateProjection(0);
     }
 
     internal bool ApplyFrame(StackedPhysicsPresentationFrame frame, StackedDangoSceneRuntime runtime)
@@ -111,7 +156,8 @@ internal sealed class LocalRoomSceneView : Grid
             return false;
         }
         groundY = floor;
-        petX = runtime.CurrentSelectedCenter?.X ?? DangoHostFrameBinding.Bounds(frame, 0).Center.X;
+        NativePetCenter = runtime.CurrentSelectedCenter ?? DangoHostFrameBinding.Bounds(frame, 0).Center;
+        petX = NativePetCenter.Value.X;
         if (runtime.NeutralBodyVisibleWidth is { } neutral) Camera.CalibrateStandardScale(neutral);
         var bodyGroundAlignment = new LogicalVector(0, runtime.NeutralBodyGroundOffset);
         DangoHostFrameBinding.Apply(body, hat, frame, 0, bodyGroundAlignment, appearance: runtime.DisplayHatAppearance,
@@ -124,14 +170,15 @@ internal sealed class LocalRoomSceneView : Grid
         }
         bodyWorldBounds = DangoHostFrameBinding.Bounds(frame, 0).Translate(bodyGroundAlignment);
         var now = Environment.TickCount64;
-        UpdateProjection(previousFrame == 0 ? 0 : now - previousFrame);
+        UpdateProjection(WindowCameraEnabled || previousFrame == 0 ? 0 : now - previousFrame,
+            advanceCamera: !WindowCameraEnabled);
         previousFrame = now;
         if (WanderVisibleBounds.Get(frame.Bodies[0], DangoHostFrameBinding.Bounds(frame, 0), runtime.DisplayHatSize) is { } visible)
         {
-            visible = visible.Translate(bodyGroundAlignment);
-            var topLeft = Projection.WorldToScreen(new(visible.X, visible.Y));
-            PetScreenBounds = new(topLeft.X, topLeft.Y, visible.Width * Camera.Scale, visible.Height * Camera.Scale);
+            visibleWorldBounds = visible.Translate(bodyGroundAlignment);
         }
+        else visibleWorldBounds = null;
+        UpdatePetScreenBounds();
         wheel.Expire(now);
         InvalidateVisual();
         HasHealthyFrame = true;
@@ -162,8 +209,13 @@ internal sealed class LocalRoomSceneView : Grid
 
     internal void ClearWheel() => wheel.Clear();
     internal LogicalPoint ScreenToWorld(Point sceneDip) => Projection.ScreenToWorld(new(sceneDip.X, sceneDip.Y));
+    internal LogicalPoint ScreenToPetWorld(Point sceneDip)
+    {
+        var world = ScreenToWorld(sceneDip);
+        return new(world.X - presentationOffset.X, world.Y - presentationOffset.Y);
+    }
     internal bool IsPetHit(Point sceneDip) => HasHealthyFrame && !InputBlocked && bodyWorldBounds is { } bounds &&
-        double.IsFinite(sceneDip.X) && double.IsFinite(sceneDip.Y) && bounds.Contains(ScreenToWorld(sceneDip));
+        double.IsFinite(sceneDip.X) && double.IsFinite(sceneDip.Y) && bounds.Contains(ScreenToPetWorld(sceneDip));
 
     internal void ShowUnavailable(string message)
     {
@@ -179,10 +231,14 @@ internal sealed class LocalRoomSceneView : Grid
         InputInvalidated?.Invoke();
         HasHealthyFrame = false;
         bodyWorldBounds = null;
+        visibleWorldBounds = null;
+        NativePetCenter = null;
+        presentationOffset = default;
+        Camera.ResetMotion();
         PetScreenBounds = null;
     }
 
-    private void UpdateProjection(double elapsedMs)
+    private void UpdateProjection(double elapsedMs, bool advanceCamera = true)
     {
         if (ActualWidth <= 0 || ActualHeight <= 0) return;
         var width = ActualWidth - SafeInsets.Left - SafeInsets.Right;
@@ -195,10 +251,26 @@ internal sealed class LocalRoomSceneView : Grid
             projectedHeight = height;
             projectedGround = groundY;
         }
-        Camera.Update(petX, elapsedMs, !SystemParameters.ClientAreaAnimation);
+        if (advanceCamera)
+        {
+            if (WindowCameraEnabled && NativePetCenter is { } native)
+                Camera.Update(new LogicalPoint(native.X + presentationOffset.X, native.Y + presentationOffset.Y),
+                    elapsedMs, !SystemParameters.ClientAreaAnimation);
+            else Camera.Update(petX, elapsedMs, !SystemParameters.ClientAreaAnimation);
+        }
         var p = Projection;
-        entityLayer.RenderTransform = new MatrixTransform(p.Scale, 0, 0, p.Scale, p.OffsetX, p.OffsetY);
+        entityLayer.RenderTransform = new MatrixTransform(p.Scale, 0, 0, p.Scale,
+            p.OffsetX + presentationOffset.X * p.Scale, p.OffsetY + presentationOffset.Y * p.Scale);
+        UpdatePetScreenBounds();
         InvalidateVisual();
+    }
+
+    private void UpdatePetScreenBounds()
+    {
+        if (visibleWorldBounds is not { } visible) { PetScreenBounds = null; return; }
+        visible = visible.Translate(presentationOffset);
+        var topLeft = Projection.WorldToScreen(new(visible.X, visible.Y));
+        PetScreenBounds = new(topLeft.X, topLeft.Y, visible.Width * Camera.Scale, visible.Height * Camera.Scale);
     }
 
     protected override void OnRender(DrawingContext dc)

@@ -57,10 +57,27 @@
         <Border x:Name="RoomMenuCard" Width="400" Margin="16" Padding="22,18"
                 HorizontalAlignment="Center" VerticalAlignment="Center" CornerRadius="14"
                 Background="{StaticResource RoomMenuPaper}" BorderBrush="{StaticResource RoomMenuLine}" BorderThickness="1">
+            <ScrollViewer x:Name="RoomMenuScroll" VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled" CanContentScroll="False"
+                          Focusable="False" IsTabStop="False">
             <StackPanel>
                 <TextBlock Text="房间菜单" FontSize="22" FontWeight="SemiBold" />
                 <TextBlock x:Name="RoomStatusLabel" Text="普通房 · 本地单人"
                            Foreground="{StaticResource RoomMenuMuted}" FontSize="12" Margin="0,5,0,12" />
+                <Grid x:Name="RoomCameraSettings" Visibility="Collapsed" Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                    <TextBlock Text="镜头" VerticalAlignment="Center" Margin="0,0,12,0"
+                               Foreground="{StaticResource RoomMenuMuted}" />
+                    <ComboBox x:Name="RoomCameraModeSelector" Grid.Column="1" MinHeight="32"
+                              SelectedIndex="0" SelectionChanged="OnCameraModeSelectionChanged"
+                              Foreground="{StaticResource RoomMenuInk}" Background="{StaticResource RoomMenuPaper}"
+                              BorderBrush="{StaticResource RoomMenuLine}" Padding="8,4"
+                              AutomationProperties.Name="镜头模式">
+                        <ComboBoxItem Content="跟随" />
+                        <ComboBoxItem Content="不积极跟随" />
+                        <ComboBoxItem Content="不跟随" />
+                    </ComboBox>
+                </Grid>
                 <TextBlock Text="按键与操作" FontSize="12" Foreground="{StaticResource RoomMenuMuted}" Margin="0,0,0,5" />
                 <Border Background="{StaticResource RoomMenuSoft}" CornerRadius="7" Padding="12,8" Margin="0,0,0,12">
                     <TextBlock x:Name="RoomInstructions" LineHeight="20" TextWrapping="Wrap"
@@ -79,6 +96,7 @@
                 </Grid>
                 <Button x:Name="RoomRecoverButton" Content="恢复团子" Click="OnRecover" />
             </StackPanel>
+            </ScrollViewer>
         </Border>
     </Grid>
 </UserControl>

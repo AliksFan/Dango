@@ -14,6 +14,7 @@ using MouseEventArgs = System.Windows.Input.MouseEventArgs;
 using Brushes = System.Windows.Media.Brushes;
 using HorizontalAlignment = System.Windows.HorizontalAlignment;
 using Orientation = System.Windows.Controls.Orientation;
+using Point = System.Windows.Point;
 
 namespace Dango.Desktop.AppShell.Rooms;
 
@@ -24,10 +25,14 @@ internal sealed class LocalRoomWindow : Window
     {
         Name = "RoomMenu",
         Visibility = Visibility.Collapsed,
+        ShowCameraSettings = true,
     };
     private bool allowClose;
+    private bool cameraPanActive;
+    private Point lastCameraPanPoint;
     internal LocalRoomSceneView Scene { get; } = new();
     internal bool IsMenuOpen => menu.Visibility == Visibility.Visible;
+    internal bool IsCameraPanActive => cameraPanActive;
     internal event Action? ReturnRequested;
     internal event Action? HideRequested;
     internal event Action? RecoverRequested;
@@ -36,6 +41,7 @@ internal sealed class LocalRoomWindow : Window
     internal LocalRoomWindow(LocalRoomSceneDriver driver)
     {
         this.driver = driver;
+        Scene.EnableWindowCamera();
         Title = "Dango · 普通房（本地单人）";
         Width = 960; Height = 600; MinWidth = 640; MinHeight = 420;
         WindowStyle = WindowStyle.None;
@@ -55,19 +61,28 @@ internal sealed class LocalRoomWindow : Window
         menu.ControlCenterRequested += () => RunMenuAction(() => ControlCenterRequested?.Invoke());
         menu.PresentationRequested += presentation => RunMenuAction(() => PresentationRequested?.Invoke(presentation));
         menu.RecoverRequested += () => RunMenuAction(() => RecoverRequested?.Invoke());
+        menu.CameraModeRequested += mode => Scene.SelectCameraMode(mode);
         WindowChrome.SetIsHitTestVisibleInChrome(menu, true);
-        menu.AddHandler(Mouse.PreviewMouseWheelEvent, new MouseWheelEventHandler((_, e) => { Scene.ClearWheel(); e.Handled = true; }), true);
+        menu.AddHandler(Mouse.PreviewMouseWheelEvent, new MouseWheelEventHandler((_, e) =>
+        { Scene.ClearWheel(); if (!menu.IsCameraDropDownOpen) e.Handled = true; }), true);
         root.Children.Add(menu);
         Content = root;
         Scene.ViewChanged += RefreshLabel;
         Scene.SizeChanged += (_, _) => RefreshLabel();
         Deactivated += (_, _) => { driver.ClearInput(); ReleaseScenePointerCapture(); };
-        LostKeyboardFocus += (_, _) => { if (!Scene.IsKeyboardFocusWithin) driver.ClearInput(); };
+        LostKeyboardFocus += (_, _) => { if (!Scene.IsKeyboardFocusWithin) { CancelCameraPan(); driver.ClearInput(); } };
         Scene.MouseWheel += OnSceneWheel;
         Scene.MouseLeftButtonDown += OnScenePointerDown;
         Scene.MouseMove += OnScenePointerMove;
         Scene.MouseLeftButtonUp += OnScenePointerUp;
-        Scene.LostMouseCapture += (_, _) => { if (driver.IsPointerActive) driver.ClearInput(); };
+        Scene.MouseRightButtonDown += OnSceneCameraPanDown;
+        Scene.MouseRightButtonUp += OnSceneCameraPanUp;
+        Scene.InputInvalidated += CancelCameraPan;
+        Scene.LostMouseCapture += (_, _) =>
+        {
+            if (cameraPanActive) CancelCameraPan();
+            if (driver.IsPointerActive) driver.ClearInput();
+        };
         driver.PointerCancelled += ReleaseScenePointerCapture;
         Scene.KeyDown += OnSceneKeyDown;
         Scene.KeyUp += (_, e) => { if (IsActive && Scene.IsKeyboardFocusWithin && !Scene.InputBlocked) e.Handled = driver.Key(e.Key, false, false); };
@@ -77,7 +92,8 @@ internal sealed class LocalRoomWindow : Window
             if (!IsVisible) { driver.ClearInput(); ReleaseScenePointerCapture(); SetMenuOpen(false); }
         };
         Closing += OnClosing;
-        Closed += (_, _) => driver.PointerCancelled -= ReleaseScenePointerCapture;
+        Closed += (_, _) =>
+        { driver.PointerCancelled -= ReleaseScenePointerCapture; Scene.InputInvalidated -= CancelCameraPan; };
         SourceInitialized += (_, _) => HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(WindowMessage);
         StateChanged += (_, _) => { if (WindowState == WindowState.Minimized) HideRequested?.Invoke(); };
         RefreshLabel();
@@ -85,7 +101,7 @@ internal sealed class LocalRoomWindow : Window
 
     internal void PrepareForExit() => allowClose = true;
     private nint WindowMessage(nint hwnd, int message, nint w, nint l, ref bool handled)
-    { if (message == 0x02E0) driver.ClearInput(); return 0; }
+    { if (message == 0x02E0) { CancelCameraPan(); driver.ClearInput(); } return 0; }
     internal void FocusScene()
     {
         Activate();
@@ -119,6 +135,7 @@ internal sealed class LocalRoomWindow : Window
 
     private void OnScenePointerDown(object sender, MouseButtonEventArgs e)
     {
+        if (cameraPanActive) { CancelCameraPan(); e.Handled = true; return; }
         Scene.Focus();
         if (!PointerEligible || !TryGetPointerShift(out var shift)) { driver.ClearInput(); return; }
         if (!driver.PointerDown(e.GetPosition(Scene), shift)) return;
@@ -128,6 +145,11 @@ internal sealed class LocalRoomWindow : Window
 
     private void OnScenePointerMove(object sender, MouseEventArgs e)
     {
+        if (cameraPanActive)
+        {
+            e.Handled = MoveCameraPan(e.GetPosition(Scene), e.RightButton == MouseButtonState.Pressed, Keyboard.Modifiers);
+            return;
+        }
         if (!driver.IsPointerActive) return;
         if (e.LeftButton != MouseButtonState.Pressed || !PointerEligible || !TryGetPointerShift(out var shift))
         { driver.ClearInput(); return; }
@@ -149,8 +171,70 @@ internal sealed class LocalRoomWindow : Window
 
     private void ReleaseScenePointerCapture()
     {
+        cameraPanActive = false;
         if (Mouse.Captured == Scene) Scene.ReleaseMouseCapture();
     }
+
+    private void OnSceneCameraPanDown(object sender, MouseButtonEventArgs e)
+    {
+        if (!Scene.InputBlocked) Scene.Focus();
+        e.Handled = TryBeginCameraPan(e.GetPosition(Scene), Keyboard.Modifiers, e.LeftButton == MouseButtonState.Pressed);
+    }
+
+    private void OnSceneCameraPanUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!cameraPanActive) return;
+        MoveCameraPan(e.GetPosition(Scene), true, Keyboard.Modifiers);
+        EndCameraPan();
+        e.Handled = true;
+    }
+
+    internal bool TryBeginCameraPan(Point sceneDip, ModifierKeys modifiers, bool leftPressed)
+    {
+        if (cameraPanActive || leftPressed || driver.IsPointerActive || !CameraPanEligible(modifiers) ||
+            !IsCameraPanStartPoint(sceneDip) || Mouse.Captured is { } captured && captured != Scene) return false;
+        if (!Scene.CaptureMouse()) return false;
+        if (!CameraPanEligible(modifiers) || driver.IsPointerActive || Mouse.Captured != Scene)
+        {
+            if (Mouse.Captured == Scene) Scene.ReleaseMouseCapture();
+            return false;
+        }
+        lastCameraPanPoint = sceneDip;
+        cameraPanActive = true;
+        return true;
+    }
+
+    internal bool MoveCameraPan(Point sceneDip, bool rightPressed, ModifierKeys modifiers)
+    {
+        if (!cameraPanActive) return false;
+        if (!rightPressed || !CameraPanEligible(modifiers) || Mouse.Captured != Scene ||
+            !double.IsFinite(sceneDip.X) || !double.IsFinite(sceneDip.Y))
+        { CancelCameraPan(); return false; }
+        var delta = sceneDip - lastCameraPanPoint;
+        lastCameraPanPoint = sceneDip;
+        Scene.PanCamera(delta.X, delta.Y);
+        return true;
+    }
+
+    internal bool EndCameraPan()
+    {
+        if (!cameraPanActive) return false;
+        CancelCameraPan(); // Normal completion does not clear directional controls.
+        return true;
+    }
+
+    private void CancelCameraPan()
+    {
+        if (!cameraPanActive) return;
+        cameraPanActive = false;
+        if (Mouse.Captured == Scene) Scene.ReleaseMouseCapture();
+    }
+
+    private bool CameraPanEligible(ModifierKeys modifiers) => PointerEligible && driver.OwnsRuntime &&
+        Scene.Camera.CameraMode == RoomCameraMode.Manual && modifiers is ModifierKeys.None or ModifierKeys.Shift;
+
+    private bool IsCameraPanStartPoint(Point point) => double.IsFinite(point.X) && double.IsFinite(point.Y) &&
+        point.X >= 7 && point.X < Scene.ActualWidth - 7 && point.Y >= 36 && point.Y < Scene.ActualHeight - 7;
 
     private static bool TryGetPointerShift(out bool shift)
     {
@@ -164,7 +248,7 @@ internal sealed class LocalRoomWindow : Window
         if (!IsActive || !IsKeyboardFocusWithin || Keyboard.Modifiers != ModifierKeys.None) return;
         if (e.Key == Key.Escape)
         {
-            if (!e.IsRepeat) SetMenuOpen(!IsMenuOpen);
+            if (!e.IsRepeat && !(IsMenuOpen && menu.CloseCameraDropDown())) SetMenuOpen(!IsMenuOpen);
             e.Handled = true;
         }
         else if (IsMenuOpen && e.Key is Key.A or Key.D or Key.S)
@@ -197,6 +281,7 @@ internal sealed class LocalRoomWindow : Window
     {
         menu.RefreshStatus(Scene);
         Scene.ToolTip = "A / D 移动 · S 轻压 · 空格跳跃 · 滚轮调视距 · Shift + 左键横移抚摸 · Esc 菜单";
+        if (Scene.Camera.CameraMode == RoomCameraMode.Manual) Scene.ToolTip += " · 右键拖动视角";
     }
 
     private Button CreateWindowControl(string name, string label, string hint)

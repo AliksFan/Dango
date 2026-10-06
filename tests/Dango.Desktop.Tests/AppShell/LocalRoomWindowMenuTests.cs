@@ -29,13 +29,19 @@ public sealed class LocalRoomWindowMenuTests
         var card = Find<Border>(root, "RoomMenuCard");
         Assert.AreEqual(Visibility.Collapsed, menu.Visibility);
         Assert.AreEqual(0, Descendants<System.Windows.Controls.Menu>(root).Count(), "Gameplay must not retain the top operation menu.");
-        Assert.AreEqual(2, Descendants<Button>(root).Count(button => !overlay.IsAncestorOf(button)),
+        // A collapsed ScrollViewer has declared logical content before its visual template exists.
+        // Classify that state by the logical tree; verify the realized overlay after opening below.
+        var menuButtons = Descendants<Button>(menu).ToHashSet();
+        CollectionAssert.AreEquivalent(new[] { "RoomHideButton", "RoomCloseButton" },
+            Descendants<Button>(root).Where(button => !menuButtons.Contains(button)).Select(button => button.Name).ToArray(),
             "Only the minimal hide/close window controls may stay outside the Esc menu.");
 
         Assert.IsTrue(Press(rig.Window, rig.Window.Scene, Key.Escape).Handled);
         rig.Window.UpdateLayout();
         Assert.IsTrue(rig.Window.IsMenuOpen);
         Assert.AreEqual(Visibility.Visible, menu.Visibility);
+        Assert.IsTrue(menuButtons.All(button => overlay.IsAncestorOf(button)),
+            "Every room action must be inside the realized Esc overlay.");
         Assert.AreEqual(root.ActualWidth, overlay.ActualWidth, .1);
         Assert.AreEqual(root.ActualHeight, overlay.ActualHeight, .1);
         var origin = card.TranslatePoint(new System.Windows.Point(), root);

@@ -3,6 +3,7 @@ using Dango.Core.Coordinates;
 namespace Dango.Desktop.AppShell.Rooms;
 
 internal enum RoomViewPreset { Standard, Near, Whole, Custom }
+internal enum RoomCameraMode { Follow, EdgeFollow, Manual }
 
 internal readonly record struct RoomProjection(double Scale, double OffsetX, double OffsetY)
 {
@@ -40,9 +41,17 @@ internal sealed class RoomViewController
     private double safeWorldHeight = 200;
     private double requestedPercent = 100;
     private double petWorldX;
+    private double petWorldY;
+    private double referencePetY;
+    private bool hasVerticalReference;
     private bool hasViewport;
     private bool hasPet;
     private bool calibrated;
+    private bool windowCameraEnabled;
+    private double cameraVelocity;
+    private double cameraTarget;
+    private double cameraVelocityY;
+    private double cameraTargetY;
 
     internal RoomViewController(double worldWidth = 2160, double worldHeight = 360, double standardScale = 1.4)
     {
@@ -61,9 +70,53 @@ internal sealed class RoomViewController
     internal double StandardScale { get; private set; }
     internal double Scale { get; private set; }
     internal double CameraX { get; private set; }
+    // World-space viewport top. The ground reference supplies the initial composition.
+    internal double CameraY { get; private set; }
+    internal RoomCameraMode CameraMode { get; private set; } = RoomCameraMode.Follow;
     internal RoomViewPreset Preset { get; private set; } = RoomViewPreset.Standard;
     internal double ZoomPercent => Scale / StandardScale * 100;
     internal RoomProjection Projection { get; private set; }
+
+    // Other hosts retain their accepted legacy camera unless explicitly opted in.
+    internal void EnableWindowCamera()
+    {
+        if (windowCameraEnabled) return;
+        windowCameraEnabled = true;
+        ResetMotion();
+    }
+
+    internal void SelectCameraMode(RoomCameraMode mode)
+    {
+        if (mode is not (RoomCameraMode.Follow or RoomCameraMode.EdgeFollow or RoomCameraMode.Manual))
+            throw new ArgumentOutOfRangeException(nameof(mode));
+        if (CameraMode == mode) return;
+        CameraMode = mode;
+        ResetMotion();
+    }
+
+    internal void ResetMotion()
+    {
+        cameraVelocity = 0;
+        cameraTarget = CameraX;
+        cameraVelocityY = 0;
+        cameraTargetY = CameraY;
+    }
+
+    internal bool PanByScreenDelta(double deltaX, double deltaY = 0)
+    {
+        RequireFinite(deltaX, nameof(deltaX));
+        RequireFinite(deltaY, nameof(deltaY));
+        if (!windowCameraEnabled || CameraMode != RoomCameraMode.Manual || !hasViewport || (deltaX == 0 && deltaY == 0))
+            return false;
+        var nextX = WholeWorldVisible ? 0 : Math.Clamp(CameraX - deltaX / Scale, 0, WorldWidth - width / Scale);
+        var nextY = ClampCameraY(CameraY - deltaY / Scale);
+        if (nextX == CameraX && nextY == CameraY) return false;
+        CameraX = nextX;
+        CameraY = nextY;
+        ResetMotion();
+        ApplyProjection();
+        return true;
+    }
 
     internal void Resize(double width, double height, double groundWorldY, double safeWorldHeight = 200)
     {
@@ -74,12 +127,13 @@ internal sealed class RoomViewController
         RequirePositive(safeWorldHeight, nameof(safeWorldHeight));
         if (hasViewport && this.width == width && this.height == height &&
             this.groundWorldY == groundWorldY && this.safeWorldHeight == safeWorldHeight) return;
+        var retainedCenter = windowCameraEnabled && hasViewport ? ViewportCenter : (LogicalPoint?)null;
         this.width = width;
         this.height = height;
         this.groundWorldY = groundWorldY;
         this.safeWorldHeight = safeWorldHeight;
         hasViewport = true;
-        Recalculate();
+        Recalculate(retainedCenter);
     }
 
     // The caller supplies one healthy, neutral visible contour width, not the 160-DIP frame box.
@@ -121,14 +175,40 @@ internal sealed class RoomViewController
         return true;
     }
 
-    internal RoomProjection Update(double petWorldX, double elapsedMs, bool reduceMotion = false)
+    // Existing X-only callers supply no elevation trajectory and keep their Y view.
+    internal RoomProjection Update(double petWorldX, double elapsedMs, bool reduceMotion = false) =>
+        UpdateCore(new(petWorldX, hasVerticalReference ? referencePetY : 0), elapsedMs, reduceMotion, advanceVertical: false);
+
+    internal RoomProjection Update(LogicalPoint petWorldCenter, double elapsedMs, bool reduceMotion = false) =>
+        UpdateCore(petWorldCenter, elapsedMs, reduceMotion, advanceVertical: true);
+
+    private RoomProjection UpdateCore(LogicalPoint petWorldCenter, double elapsedMs, bool reduceMotion, bool advanceVertical)
     {
-        RequireFinite(petWorldX, nameof(petWorldX));
+        RequireFinite(petWorldCenter.X, nameof(petWorldCenter));
+        RequireFinite(petWorldCenter.Y, nameof(petWorldCenter));
         RequireFinite(elapsedMs, nameof(elapsedMs));
-        this.petWorldX = Math.Clamp(petWorldX, 0, WorldWidth);
+        petWorldX = Math.Clamp(petWorldCenter.X, 0, WorldWidth);
+        petWorldY = petWorldCenter.Y;
         var firstPet = !hasPet;
+        if (!hasViewport)
+        {
+            if (!windowCameraEnabled) hasPet = true;
+            return Projection;
+        }
         hasPet = true;
-        if (!hasViewport) return Projection;
+        if (windowCameraEnabled)
+        {
+            if (advanceVertical && !hasVerticalReference)
+            {
+                referencePetY = petWorldY;
+                hasVerticalReference = true;
+                cameraVelocityY = 0;
+                cameraTargetY = CameraY;
+            }
+            UpdateWindowCamera(firstPet, elapsedMs, reduceMotion, advanceVertical);
+            ApplyProjection();
+            return Projection;
+        }
         if (WholeWorldVisible)
             CameraX = 0;
         else if (firstPet)
@@ -151,13 +231,116 @@ internal sealed class RoomViewController
         return Projection;
     }
 
+    private void UpdateWindowCamera(bool firstPet, double elapsedMs, bool reduceMotion, bool advanceVertical)
+    {
+        if (firstPet)
+        {
+            CenterCamera();
+            ResetMotion();
+            return;
+        }
+        if (WholeWorldVisible)
+        {
+            CameraX = cameraTarget = cameraVelocity = 0;
+        }
+        if (!advanceVertical)
+        {
+            cameraVelocityY = 0;
+            cameraTargetY = CameraY;
+        }
+        if (CameraMode == RoomCameraMode.Manual) return;
+        var visibleWidth = width / Scale;
+        var maximum = Math.Max(0, WorldWidth - visibleWidth);
+        var target = cameraTarget;
+        if (CameraMode == RoomCameraMode.Follow)
+            target = petWorldX - visibleWidth / 2;
+        else if (petWorldX < CameraX + visibleWidth * .2)
+            target = petWorldX - visibleWidth * .2;
+        else if (petWorldX > CameraX + visibleWidth * .8)
+            target = petWorldX - visibleWidth * .8;
+        target = Math.Clamp(target, 0, maximum);
+        var targetY = cameraTargetY;
+        if (advanceVertical)
+        {
+            if (CameraMode == RoomCameraMode.Follow)
+                targetY = DefaultGroundAnchorTop + petWorldY - referencePetY;
+            else if (petWorldY < CameraY + height / Scale * .2)
+                targetY = petWorldY - height / Scale * .2;
+            else if (petWorldY > CameraY + height / Scale * .8)
+                targetY = petWorldY - height / Scale * .8;
+            targetY = ClampCameraY(targetY);
+        }
+        if (reduceMotion)
+        {
+            CameraX = target;
+            if (advanceVertical) CameraY = targetY;
+            ResetMotion();
+            return;
+        }
+
+        var horizontal = AdvanceDampedAxis(CameraX, cameraVelocity, cameraTarget, target, elapsedMs);
+        CameraX = Math.Clamp(horizontal.Position, 0, maximum);
+        cameraVelocity = CameraX == horizontal.Position ? horizontal.Velocity : 0;
+        cameraTarget = target;
+        if (advanceVertical)
+        {
+            var vertical = AdvanceDampedAxis(CameraY, cameraVelocityY, cameraTargetY, targetY, elapsedMs);
+            CameraY = ClampCameraY(vertical.Position);
+            cameraVelocityY = CameraY == vertical.Position ? vertical.Velocity : 0;
+            cameraTargetY = targetY;
+        }
+    }
+
+    private static (double Position, double Velocity) AdvanceDampedAxis(
+        double position, double velocity, double previousTarget, double target, double elapsedMs)
+    {
+        // Exact critically damped integration for the linear segment between
+        // successive presentation targets. Retaining velocity avoids replacing it
+        // when the target moves or reverses; linear integration avoids frame-rate
+        // dependence from treating each new target as a full-duration step.
+        var seconds = Math.Clamp(elapsedMs, 0, 100) / 1000;
+        if (seconds > 0)
+        {
+            var omega = 1000 / FollowMilliseconds;
+            var h = omega * seconds;
+            var decay = Math.Exp(-h);
+            double response, ramp;
+            if (h < .01)
+            {
+                // Stable series avoid subtracting nearly equal values for short
+                // presentation intervals, including the first interval on resume.
+                response = h * h * (.5 + h * (-1d / 3 + h * (1d / 8 + h * (-1d / 30 + h / 144))));
+                ramp = h * h * (1d / 6 + h * (-1d / 12 + h * (1d / 40 + h * (-1d / 180 + h / 1008))));
+            }
+            else
+            {
+                response = 1 - (1 + h) * decay;
+                ramp = 1 - 2 / h + (1 + 2 / h) * decay;
+            }
+            var error = previousTarget - position;
+            var targetDelta = target - previousTarget;
+            var next = position + error * response + velocity * seconds * decay + targetDelta * ramp;
+            velocity = decay * (velocity * (1 - h) + omega * error * h) +
+                targetDelta * omega * (response / h);
+            return (next, velocity);
+        }
+        return (position, velocity);
+    }
+
     private double AvailableHeight => height - GroundInset - TopInset;
     private double MaximumScale => Math.Min(StandardScale * 1.3, AvailableHeight / safeWorldHeight);
     private double WholeScale => Math.Min(StandardScale,
         Math.Min(width / WorldWidth, AvailableHeight / Math.Max(WorldHeight, safeWorldHeight)));
     private bool WholeWorldVisible => width / Scale >= WorldWidth;
+    private LogicalPoint ViewportCenter => new(
+        (width / 2 - Projection.OffsetX) / Scale, (height / 2 - Projection.OffsetY) / Scale);
+    private double DefaultGroundAnchorTop => groundWorldY - (height - GroundInset) / Scale;
+    // A finite presentation margin includes the existing wall above/below the
+    // ground framing and scales naturally with a future taller room.
+    private double ClampCameraY(double top) =>
+        Math.Clamp(top, DefaultGroundAnchorTop - WorldHeight, DefaultGroundAnchorTop + WorldHeight);
 
-    private void Recalculate()
+    private void Recalculate(LogicalPoint? retainedCenter = null)
     {
         if (!hasViewport)
         {
@@ -165,18 +348,28 @@ internal sealed class RoomViewController
             Projection = new(Scale, 0, 0);
             return;
         }
+        var center = retainedCenter ?? ViewportCenter;
         Scale = Preset == RoomViewPreset.Whole ? WholeScale :
             Math.Clamp(StandardScale * requestedPercent / 100, WholeScale, MaximumScale);
-        CenterCamera();
+        if (windowCameraEnabled && hasPet)
+        {
+            CameraX = WholeWorldVisible ? 0 : Math.Clamp(center.X - width / Scale / 2, 0, WorldWidth - width / Scale);
+            CameraY = ClampCameraY(center.Y - height / Scale / 2);
+            ResetMotion();
+        }
+        else CenterCamera();
         ApplyProjection();
     }
 
-    private void CenterCamera() => CameraX = WholeWorldVisible ? 0 :
-        Math.Clamp(petWorldX - width / Scale / 2, 0, WorldWidth - width / Scale);
+    private void CenterCamera()
+    {
+        CameraX = WholeWorldVisible ? 0 : Math.Clamp(petWorldX - width / Scale / 2, 0, WorldWidth - width / Scale);
+        CameraY = DefaultGroundAnchorTop;
+    }
 
     private void ApplyProjection() => Projection = new(Scale,
         WholeWorldVisible ? (width - WorldWidth * Scale) / 2 : -CameraX * Scale,
-        height - GroundInset - groundWorldY * Scale);
+        windowCameraEnabled ? -CameraY * Scale : height - GroundInset - groundWorldY * Scale);
 
     private static void RequirePositive(double value, string name)
     {
