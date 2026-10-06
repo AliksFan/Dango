@@ -81,20 +81,34 @@ public sealed class RoomCameraPresentationTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
-    public void VerticalJumpUsesTheSamePresentationCenterForCameraAndHit()
+    public void NativeJumpCrossesTheMidlineBeforeFollowingAndKeepsThePaintedBodyInsideTheViewport()
     {
         using var rig = new Rig();
         var initial = rig.Scene.Camera.Projection.OffsetY;
+        var scale = rig.Scene.Camera.Scale;
+        var crossed = false;
         Assert.IsTrue(rig.Driver.Key(Key.Space, true, false));
         var excursion = 0d;
-        for (var i = 0; i < 30; i++)
+        var body = Field<DeformableDangoVisual>(rig.Scene, "body");
+        for (var i = 0; i < 100; i++)
         {
             rig.Advance(HostFrameClock.FixedStep.Ticks);
             rig.Advance(HostFrameClock.FixedStep.Ticks / 3);
+            var core = rig.Runtime.CurrentSelectedCenter!.Value;
+            var focusY = core.Y + rig.Scene.PresentationOffset.Y + rig.Runtime.NeutralBodyGroundOffset;
+            if (focusY * scale + initial < rig.Scene.ActualHeight / 2) crossed = true;
+            if (!crossed)
+                Assert.AreEqual(initial, rig.Scene.Camera.Projection.OffsetY, 1e-8,
+                    "Native jumps wholly below the midline must preserve ground composition.");
             excursion = Math.Max(excursion, Math.Abs(rig.Scene.Camera.Projection.OffsetY - initial));
+            var paintedBottom = body.TransformToAncestor(rig.Scene)
+                .Transform(new System.Windows.Point(0, body.RenderedBodyBottom!.Value)).Y;
+            Assert.IsTrue(paintedBottom <= rig.Scene.ActualHeight - 32 + 1e-8,
+                "The actual rendered path, including gait and interpolation, must keep its lower margin.");
             AssertProjectionAndHit(rig);
         }
-        Assert.IsTrue(excursion > 1, "Vertical core movement must actually drive the window camera, not remain an unused API.");
+        if (crossed) Assert.IsTrue(excursion > .01);
+        else Assert.AreEqual(0, excursion, 1e-8);
         Assert.IsFalse(rig.Runtime.IsDragging);
     }
 

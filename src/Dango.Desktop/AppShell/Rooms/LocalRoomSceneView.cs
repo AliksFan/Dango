@@ -29,6 +29,7 @@ internal sealed class LocalRoomSceneView : Grid
     private readonly RoomWheelAccumulator wheel = new();
     private double groundY = WorldHeight;
     private double petX = WorldWidth / 2;
+    private double cameraBodyAlignmentY;
     private long previousFrame;
     private double projectedWidth;
     private double projectedHeight;
@@ -160,6 +161,7 @@ internal sealed class LocalRoomSceneView : Grid
         petX = NativePetCenter.Value.X;
         if (runtime.NeutralBodyVisibleWidth is { } neutral) Camera.CalibrateStandardScale(neutral);
         var bodyGroundAlignment = new LogicalVector(0, runtime.NeutralBodyGroundOffset);
+        cameraBodyAlignmentY = bodyGroundAlignment.Y;
         DangoHostFrameBinding.Apply(body, hat, frame, 0, bodyGroundAlignment, appearance: runtime.DisplayHatAppearance,
             hatSize: runtime.DisplayHatSize, bodyFillOverride: runtime.BodyPreviewFill,
             eyeFillOverride: runtime.EyePreviewFill, appearanceEntity: runtime.AppearanceEntity);
@@ -254,9 +256,17 @@ internal sealed class LocalRoomSceneView : Grid
         if (advanceCamera)
         {
             if (WindowCameraEnabled && NativePetCenter is { } native)
-                Camera.Update(new LogicalPoint(native.X + presentationOffset.X, native.Y + presentationOffset.Y),
-                    elapsedMs, !SystemParameters.ClientAreaAnimation);
-            else Camera.Update(petX, elapsedMs, !SystemParameters.ClientAreaAnimation);
+            {
+                // Track the interpolated physical center with the fixed neutral body alignment,
+                // not the latest gait contour. The actual painted bottom is only a safety limit.
+                var follow = Camera.CameraMode == RoomCameraMode.Follow;
+                var focusY = native.Y + presentationOffset.Y + (follow ? cameraBodyAlignmentY : 0);
+                var bottom = body.RenderedBodyBottom is { } rendered ?
+                    Canvas.GetTop(body) + rendered + presentationOffset.Y + 2 : (double?)null;
+                Camera.Update(new LogicalPoint(native.X + presentationOffset.X, focusY),
+                    elapsedMs, !SystemParameters.ClientAreaAnimation, bottom);
+            }
+            else if (!WindowCameraEnabled) Camera.Update(petX, elapsedMs, !SystemParameters.ClientAreaAnimation);
         }
         var p = Projection;
         entityLayer.RenderTransform = new MatrixTransform(p.Scale, 0, 0, p.Scale,

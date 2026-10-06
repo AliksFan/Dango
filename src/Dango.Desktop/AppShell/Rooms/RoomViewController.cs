@@ -33,6 +33,7 @@ internal sealed class RoomViewController
 {
     private const double GroundInset = 64;
     private const double TopInset = 24;
+    private const double FollowBottomInset = 32;
     private const double FollowMilliseconds = 140;
     private const double NeutralBodyWidthDip = 154;
     private double width;
@@ -42,8 +43,6 @@ internal sealed class RoomViewController
     private double requestedPercent = 100;
     private double petWorldX;
     private double petWorldY;
-    private double referencePetY;
-    private bool hasVerticalReference;
     private bool hasViewport;
     private bool hasPet;
     private bool calibrated;
@@ -177,16 +176,18 @@ internal sealed class RoomViewController
 
     // Existing X-only callers supply no elevation trajectory and keep their Y view.
     internal RoomProjection Update(double petWorldX, double elapsedMs, bool reduceMotion = false) =>
-        UpdateCore(new(petWorldX, hasVerticalReference ? referencePetY : 0), elapsedMs, reduceMotion, advanceVertical: false);
+        UpdateCore(new(petWorldX, petWorldY), elapsedMs, reduceMotion, advanceVertical: false, bodyWorldBottom: null);
 
-    internal RoomProjection Update(LogicalPoint petWorldCenter, double elapsedMs, bool reduceMotion = false) =>
-        UpdateCore(petWorldCenter, elapsedMs, reduceMotion, advanceVertical: true);
+    internal RoomProjection Update(LogicalPoint focus, double elapsedMs, bool reduceMotion = false, double? bodyWorldBottom = null) =>
+        UpdateCore(focus, elapsedMs, reduceMotion, advanceVertical: true, bodyWorldBottom: bodyWorldBottom);
 
-    private RoomProjection UpdateCore(LogicalPoint petWorldCenter, double elapsedMs, bool reduceMotion, bool advanceVertical)
+    private RoomProjection UpdateCore(LogicalPoint petWorldCenter, double elapsedMs, bool reduceMotion, bool advanceVertical,
+        double? bodyWorldBottom)
     {
         RequireFinite(petWorldCenter.X, nameof(petWorldCenter));
         RequireFinite(petWorldCenter.Y, nameof(petWorldCenter));
         RequireFinite(elapsedMs, nameof(elapsedMs));
+        if (bodyWorldBottom.HasValue) RequireFinite(bodyWorldBottom.Value, nameof(bodyWorldBottom));
         petWorldX = Math.Clamp(petWorldCenter.X, 0, WorldWidth);
         petWorldY = petWorldCenter.Y;
         var firstPet = !hasPet;
@@ -198,14 +199,7 @@ internal sealed class RoomViewController
         hasPet = true;
         if (windowCameraEnabled)
         {
-            if (advanceVertical && !hasVerticalReference)
-            {
-                referencePetY = petWorldY;
-                hasVerticalReference = true;
-                cameraVelocityY = 0;
-                cameraTargetY = CameraY;
-            }
-            UpdateWindowCamera(firstPet, elapsedMs, reduceMotion, advanceVertical);
+            UpdateWindowCamera(firstPet, elapsedMs, reduceMotion, advanceVertical, bodyWorldBottom);
             ApplyProjection();
             return Projection;
         }
@@ -231,11 +225,16 @@ internal sealed class RoomViewController
         return Projection;
     }
 
-    private void UpdateWindowCamera(bool firstPet, double elapsedMs, bool reduceMotion, bool advanceVertical)
+    private void UpdateWindowCamera(bool firstPet, double elapsedMs, bool reduceMotion, bool advanceVertical,
+        double? bodyWorldBottom)
     {
+        var minimumFollowY = advanceVertical && CameraMode == RoomCameraMode.Follow && bodyWorldBottom.HasValue
+            ? ClampCameraY(bodyWorldBottom.Value - (height - FollowBottomInset) / Scale)
+            : double.NegativeInfinity;
         if (firstPet)
         {
             CenterCamera();
+            if (reduceMotion || elapsedMs > 0) CameraY = Math.Max(CameraY, minimumFollowY);
             ResetMotion();
             return;
         }
@@ -263,12 +262,14 @@ internal sealed class RoomViewController
         if (advanceVertical)
         {
             if (CameraMode == RoomCameraMode.Follow)
-                targetY = DefaultGroundAnchorTop + petWorldY - referencePetY;
+                // Keep the ground composition until the stable body focus crosses
+                // the midline, then follow that focus around the viewport center.
+                targetY = Math.Min(DefaultGroundAnchorTop, petWorldY - height / (2 * Scale));
             else if (petWorldY < CameraY + height / Scale * .2)
                 targetY = petWorldY - height / Scale * .2;
             else if (petWorldY > CameraY + height / Scale * .8)
                 targetY = petWorldY - height / Scale * .8;
-            targetY = ClampCameraY(targetY);
+            targetY = Math.Max(ClampCameraY(targetY), minimumFollowY);
         }
         if (reduceMotion)
         {
@@ -287,6 +288,13 @@ internal sealed class RoomViewController
             var vertical = AdvanceDampedAxis(CameraY, cameraVelocityY, cameraTargetY, targetY, elapsedMs);
             CameraY = ClampCameraY(vertical.Position);
             cameraVelocityY = CameraY == vertical.Position ? vertical.Velocity : 0;
+            if (elapsedMs > 0 && CameraY < minimumFollowY)
+            {
+                // Damping can lag a descending body. Keep its rendered bottom
+                // visible, and discard velocity that would push it out again.
+                CameraY = minimumFollowY;
+                cameraVelocityY = Math.Max(0, cameraVelocityY);
+            }
             cameraTargetY = targetY;
         }
     }

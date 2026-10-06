@@ -163,12 +163,16 @@ public sealed class RoomCameraMotionTests
         foreach (var rate in new[] { 60, 120, 144 })
         {
             var camera = Create();
+            const double elevatedPetY = 120;
+            camera.Update(new LogicalPoint(InitialPet, elevatedPetY), 0, true);
             var checkpoints = new List<(double X, double Y)>();
             for (var frame = 1; frame <= rate * 2; frame++)
             {
                 var seconds = frame / (double)rate;
                 var pet = seconds <= 1 ? InitialPet + 120 * seconds : InitialPet + 120 * (2 - seconds);
-                var petY = seconds <= 1 ? InitialPetY - 60 * seconds : InitialPetY - 60 * (2 - seconds);
+                // Stay above the midline so both target axes remain piecewise
+                // linear. Crossing it changes Follow Y's target policy.
+                var petY = seconds <= 1 ? elevatedPetY - 60 * seconds : elevatedPetY - 60 * (2 - seconds);
                 camera.Update(new LogicalPoint(pet, petY), 1000d / rate);
                 if (frame % (rate / 2) == 0) checkpoints.Add((camera.CameraX, camera.CameraY));
             }
@@ -235,6 +239,8 @@ public sealed class RoomCameraMotionTests
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => camera.PanByScreenDelta(double.NaN));
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => camera.PanByScreenDelta(0, double.PositiveInfinity));
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => camera.Update(new LogicalPoint(1300, double.NaN), 16));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => camera.Update(new LogicalPoint(1300, 300), 16,
+            bodyWorldBottom: double.PositiveInfinity));
         Assert.AreEqual(before, camera.Projection);
         Assert.AreEqual(RoomCameraMode.Manual, camera.CameraMode);
         camera.SelectCameraMode(RoomCameraMode.Follow);
@@ -272,22 +278,31 @@ public sealed class RoomCameraMotionTests
     }
 
     [TestMethod]
-    public void FollowTracksCoreElevationAndReturnsToTheGroundCompositionAfterLanding()
+    public void FollowWaitsBelowMidlineThenTracksHighElevationAndReturnsToGroundAfterLanding()
     {
         var camera = Create();
         var anchor = camera.CameraY;
         var initialScreenY = camera.Projection.WorldToScreen(new(InitialPet, InitialPetY)).Y;
         for (var frame = 1; frame <= 30; frame++)
-            camera.Update(new LogicalPoint(InitialPet, InitialPetY - frame * 4), 1000d / 60);
+        {
+            camera.Update(new LogicalPoint(InitialPet, InitialPetY - frame * 2), 1000d / 60);
+            Assert.AreEqual(anchor, camera.CameraY, 1e-10,
+                "A low jump below the viewport midline must keep the ground composition.");
+        }
+        camera.Update(new LogicalPoint(InitialPet, InitialPetY), 0);
+        for (var frame = 1; frame <= 30; frame++)
+            camera.Update(new LogicalPoint(InitialPet, InitialPetY - frame * 6), 1000d / 60);
         Assert.IsTrue(camera.CameraY < anchor);
-        Assert.IsTrue(camera.Projection.WorldToScreen(new(InitialPet, 180)).Y < initialScreenY,
+        Assert.IsTrue(camera.Projection.WorldToScreen(new(InitialPet, 120)).Y < 300,
             "Elevation must be allowed to lead the vertical camera while it catches up.");
-        for (var frame = 0; frame < 40; frame++) camera.Update(new LogicalPoint(InitialPet, 180), 100);
-        Assert.AreEqual(initialScreenY, camera.Projection.WorldToScreen(new(InitialPet, 180)).Y, .001);
+        for (var frame = 0; frame < 40; frame++) camera.Update(new LogicalPoint(InitialPet, 120), 100);
+        Assert.AreEqual(300, camera.Projection.WorldToScreen(new(InitialPet, 120)).Y, .001,
+            "A stopped high target must settle at the midline rather than the original near-floor height.");
         camera.Update(new LogicalPoint(InitialPet, InitialPetY), 100);
         Assert.IsTrue(camera.CameraY < anchor, "Landing must return smoothly, not reset the floor instantly.");
         for (var frame = 0; frame < 40; frame++) camera.Update(new LogicalPoint(InitialPet, InitialPetY), 100);
         Assert.AreEqual(anchor, camera.CameraY, .001);
+        Assert.AreEqual(initialScreenY, camera.Projection.WorldToScreen(new(InitialPet, InitialPetY)).Y, .001);
         Assert.AreEqual(536, camera.Projection.WorldToScreen(new(InitialPet, 360)).Y, .001);
     }
 
@@ -339,8 +354,10 @@ public sealed class RoomCameraMotionTests
     {
         var camera = Create();
         camera.SelectPreset(RoomViewPreset.Whole);
+        camera.Update(new LogicalPoint(2000, InitialPetY), 0, true);
         var beforeY = camera.CameraY;
-        camera.Update(new LogicalPoint(2000, InitialPetY - 100), 100);
+        var aboveMidline = beforeY + 600 / (2 * camera.Scale) - 100;
+        camera.Update(new LogicalPoint(2000, aboveMidline), 100);
         Assert.AreEqual(0, camera.CameraX, 1e-10);
         Assert.IsTrue(Math.Abs(beforeY - camera.CameraY) > .001);
         AssertVerticalBounds(camera, 600, 360);
@@ -375,12 +392,12 @@ public sealed class RoomCameraMotionTests
     {
         var camera = Create();
         for (var frame = 1; frame <= 30; frame++)
-            camera.Update(new LogicalPoint(InitialPet, InitialPetY - frame * 4), 1000d / 60);
+            camera.Update(new LogicalPoint(InitialPet, InitialPetY - frame * 6), 1000d / 60);
         var before = camera.CameraY;
         camera.ResetMotion();
         Assert.AreEqual(before, camera.CameraY, 1e-10);
-        camera.Update(new LogicalPoint(InitialPet, 180), 0);
-        camera.Update(new LogicalPoint(InitialPet, 180), .1);
+        camera.Update(new LogicalPoint(InitialPet, 120), 0);
+        camera.Update(new LogicalPoint(InitialPet, 120), .1);
         Assert.IsTrue(Math.Abs(camera.CameraY - before) < .001,
             "A resumed vertical camera must start from rest rather than replay pre-hide velocity.");
     }
