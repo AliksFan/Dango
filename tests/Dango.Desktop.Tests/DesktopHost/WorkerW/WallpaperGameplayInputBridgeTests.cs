@@ -34,20 +34,73 @@ public sealed class WallpaperGameplayInputBridgeTests
     }
 
     [STATestMethod]
-    [DataRow(false, true, false, true, false)]
-    [DataRow(true, false, false, true, false)]
-    [DataRow(true, true, true, true, false)]
-    [DataRow(true, true, false, false, false)]
-    [DataRow(true, true, false, true, true)]
-    public void PointerEventUnknownApplicationBlockingWindowNonDesktopAndIconCannotRecoverBeforeFlush(
-        bool known, bool foreground, bool blocking, bool background, bool icon)
+    [DataRow(false, true, true, false)]
+    [DataRow(true, false, true, false)]
+    [DataRow(true, true, false, false)]
+    [DataRow(true, true, true, true)]
+    public void PointerEventGuardUnknownApplicationNonDesktopAndModifierCannotRecoverBeforeFlush(
+        bool known, bool foreground, bool background, bool modifier)
     {
-        var platform = new FakePlatform { Environment = new(known, foreground, blocking, background, icon) };
+        var platform = new FakePlatform { EventGuard = new(known, foreground, background, modifier) };
         var sink = new Sink(); using var bridge = Create(platform, sink); bridge.Start();
-        platform.EmitMouse(0x0201); platform.Environment = new(true, true, false, true, false);
+        platform.EmitMouse(0x0201); platform.EventGuard = new(true, true, true, false);
         bridge.FlushPendingInput();
         Assert.AreEqual(0, sink.DownCount); Assert.IsTrue(sink.ClearCount > 0);
-        Assert.AreEqual(1, platform.MouseNext);
+        platform.EmitMouse(0x0200); platform.EmitMouse(0x0202); bridge.FlushPendingInput();
+        Assert.AreEqual(0, sink.MoveCount); Assert.AreEqual(0, sink.UpCount);
+        Assert.AreEqual(0, platform.FullAtEventCalls);
+        Assert.AreEqual(1, platform.GuardCalls);
+        Assert.AreEqual(3, platform.MouseNext);
+        platform.EmitMouse(0x0201); bridge.FlushPendingInput();
+        Assert.AreEqual(1, sink.DownCount, "Recovery requires a fresh guarded physical Down.");
+    }
+
+    [STATestMethod]
+    public void HookOnlyCapturesGuardAndQueuesBeforeCompleteCommandInspection()
+    {
+        var platform = new FakePlatform(); var sink = new Sink();
+        using var bridge = Create(platform, sink); bridge.Start();
+        Assert.AreEqual((nint)987, platform.EmitKey(Key.A, true));
+        Assert.AreEqual((nint)987, platform.EmitMouse(0x0201, shift: true));
+
+        Assert.AreEqual(0, platform.FullAtEventCalls, "Full enumeration and icon waits must not run inside either hook.");
+        Assert.AreEqual(2, platform.GuardCalls);
+        Assert.AreEqual(0, platform.FullCommandCalls);
+        Assert.AreEqual(0, sink.Keys.Count); Assert.AreEqual(0, sink.DownCount);
+        CollectionAssert.AreEqual(new[] { "Guard", "Guard" }, platform.QualificationOrder.ToArray());
+        Assert.IsNull(platform.GuardPoints[0]);
+        Assert.AreEqual(new WallpaperWheelPoint(-300, 300), platform.GuardPoints[1]);
+        CollectionAssert.AreEqual(new[] { false, true }, platform.GuardShiftPermissions.ToArray());
+
+        bridge.FlushPendingInput();
+        Assert.AreEqual(1, sink.Keys.Count); Assert.AreEqual(1, sink.DownCount);
+        Assert.AreEqual(2, platform.FullCommandCalls);
+        CollectionAssert.AreEqual(new[] { "Guard", "Guard", "Command", "Command" },
+            platform.QualificationOrder.ToArray());
+    }
+
+    [STATestMethod]
+    [DataRow(false, true, false, true, false, false)]
+    [DataRow(true, false, false, true, false, false)]
+    [DataRow(true, true, true, true, false, false)]
+    [DataRow(true, true, false, false, false, false)]
+    [DataRow(true, true, false, true, true, false)]
+    [DataRow(true, true, false, true, false, true)]
+    public void CompleteCommandUnknownApplicationFullscreenNonDesktopIconOrModifierRejectsQueuedStroke(
+        bool known, bool foreground, bool blocking, bool background, bool icon, bool modifier)
+    {
+        var platform = new FakePlatform(); var sink = new Sink();
+        using var bridge = Create(platform, sink); bridge.Start();
+        platform.EmitMouse(0x0201); platform.EmitMouse(0x0200); platform.EmitMouse(0x0202);
+        Assert.AreEqual(0, sink.DownCount); Assert.AreEqual(0, sink.MoveCount); Assert.AreEqual(0, sink.UpCount);
+        platform.Environment = new(known, foreground, blocking, background, icon, modifier);
+        bridge.FlushPendingInput();
+        Assert.AreEqual(0, sink.DownCount); Assert.AreEqual(0, sink.MoveCount); Assert.AreEqual(0, sink.UpCount);
+        Assert.IsTrue(sink.ClearCount > 0);
+        platform.Environment = new(true, true, false, true, false);
+        platform.EmitMouse(0x0200); platform.EmitMouse(0x0202); bridge.FlushPendingInput();
+        Assert.AreEqual(0, sink.DownCount); Assert.AreEqual(0, sink.MoveCount); Assert.AreEqual(0, sink.UpCount);
+        Assert.AreEqual(5, platform.MouseNext);
     }
 
     [STATestMethod]
@@ -269,8 +322,84 @@ public sealed class WallpaperGameplayInputBridgeTests
         Assert.AreEqual(0, sink.DownCount); Assert.AreEqual(0, sink.MoveCount); Assert.AreEqual(0, sink.UpCount);
     }
 
-    private static WallpaperGameplayInputBridge Create(FakePlatform platform, Sink sink) => new(Dispatcher.CurrentDispatcher,
-        () => Context, new(sink.Key, sink.Down, sink.Move, sink.Up, _ => sink.Hit, () => sink.MenuCount++, () => sink.ClearCount++), platform);
+    [STATestMethod]
+    public void LegalMoveDuringCommandInspectionQueuesWithoutCancellingStrokeOrRecursing()
+    {
+        var platform = new FakePlatform(); var sink = new Sink();
+        using var bridge = Create(platform, sink); bridge.Start();
+        platform.EmitMouse(0x0201, shift: true); bridge.FlushPendingInput();
+        platform.EmitMouse(0x0200, shift: true);
+        platform.OnInspect = atEvent =>
+        {
+            if (atEvent) return;
+            platform.OnInspect = null;
+            platform.EmitMouse(0x0200, shift: true, point: new(-280, 300));
+            bridge.FlushPendingInput();
+            bridge.RevalidateActiveInput();
+        };
+
+        bridge.FlushPendingInput();
+        Assert.AreEqual(1, sink.MoveCount);
+        Assert.AreEqual(0, sink.ClearCount, "A guarded event during inspection must queue, not invalidate the active stroke.");
+        Assert.AreEqual(1, platform.MaxInspectDepth);
+        bridge.FlushPendingInput();
+        Assert.AreEqual(2, sink.MoveCount);
+        platform.EmitMouse(0x0202); bridge.FlushPendingInput();
+        Assert.AreEqual(1, sink.UpCount); Assert.AreEqual(0, sink.ClearCount);
+    }
+
+    [STATestMethod]
+    [DataRow(false, true)]
+    [DataRow(true, false)]
+    public void ReentrantUnknownOrNonDesktopForegroundGuardInvalidatesTheCurrentCommandAndCannotRecover(
+        bool known, bool foreground)
+    {
+        var platform = new FakePlatform(); var sink = new Sink();
+        using var bridge = Create(platform, sink); bridge.Start();
+        platform.EmitMouse(0x0201, shift: true); bridge.FlushPendingInput();
+        platform.EmitMouse(0x0200, shift: true);
+        platform.OnInspect = atEvent =>
+        {
+            if (atEvent) return;
+            platform.OnInspect = null;
+            platform.EventGuard = new(known, foreground, true, false);
+            platform.EmitMouse(0x0200, shift: true);
+            platform.EventGuard = new(true, true, true, false);
+        };
+
+        bridge.FlushPendingInput();
+        Assert.AreEqual(0, sink.MoveCount); Assert.IsTrue(sink.ClearCount > 0);
+        platform.EmitMouse(0x0200, shift: true); platform.EmitMouse(0x0202); bridge.FlushPendingInput();
+        Assert.AreEqual(0, sink.MoveCount); Assert.AreEqual(0, sink.UpCount);
+        platform.EmitMouse(0x0201, shift: true); bridge.FlushPendingInput();
+        Assert.AreEqual(2, sink.DownCount, "Only a fresh guarded physical Down can start another stroke.");
+    }
+
+    [STATestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void EventGuardCannotQueueInputAcrossChangedPresentationOrBridgeRestart(bool restart)
+    {
+        var current = Context;
+        var platform = new FakePlatform(); var sink = new Sink();
+        using var bridge = Create(platform, sink, () => current); bridge.Start();
+        platform.OnGuard = () =>
+        {
+            platform.OnGuard = null;
+            if (restart) { bridge.Stop(); bridge.Start(); }
+            else current = current with { Generation = current.Generation + 1 };
+        };
+
+        platform.EmitMouse(0x0201); bridge.FlushPendingInput();
+        Assert.AreEqual(0, sink.DownCount);
+        platform.EmitMouse(0x0200); platform.EmitMouse(0x0202); bridge.FlushPendingInput();
+        Assert.AreEqual(0, sink.MoveCount); Assert.AreEqual(0, sink.UpCount);
+    }
+
+    private static WallpaperGameplayInputBridge Create(FakePlatform platform, Sink sink,
+        Func<WallpaperWheelInputContext?>? contextProvider = null) => new(Dispatcher.CurrentDispatcher,
+        contextProvider ?? (() => Context), new(sink.Key, sink.Down, sink.Move, sink.Up, _ => sink.Hit,
+            () => sink.MenuCount++, () => sink.ClearCount++), platform);
 
     private sealed class Sink
     {
@@ -294,10 +423,17 @@ public sealed class WallpaperGameplayInputBridgeTests
         private WallpaperGameplayKeyData keyData;
         private WallpaperGameplayMouseData mouseData;
         internal int KeyNext, MouseNext, GlobalQueries, PointerQueries, KeyboardInstallations, MouseInstallations;
+        internal int FullAtEventCalls, FullCommandCalls, GuardCalls, MaxInspectDepth;
+        private int inspectDepth;
         internal bool PointerAllowsShift, ReleaseAllowed = true;
         internal Key HeldAtStart = Key.None;
+        internal WallpaperGameplayEventGuard EventGuard = new(true, true, true, false);
         internal WallpaperWheelInputEnvironment Environment = new(true, true, false, true, false);
         internal Action<bool>? OnInspect;
+        internal Action? OnGuard;
+        internal List<string> QualificationOrder { get; } = [];
+        internal List<WallpaperWheelPoint?> GuardPoints { get; } = [];
+        internal List<bool> GuardShiftPermissions { get; } = [];
         public nint InstallKeyboard(NativeMethods.LowLevelKeyboardProcedure callback) { keyboard = callback; KeyboardInstallations++; return 101; }
         public nint InstallMouse(NativeMethods.LowLevelMouseProcedure callback) { mouse = callback; MouseInstallations++; return 102; }
         public bool UninstallKeyboard(nint hook) => ReleaseAllowed;
@@ -307,8 +443,21 @@ public sealed class WallpaperGameplayInputBridgeTests
         public WallpaperGameplayKeyData ReadKeyboard(nint data) => keyData;
         public WallpaperGameplayMouseData ReadMouse(nint data) => mouseData;
         public bool IsKeyPressed(int virtualKey) => HeldAtStart != Key.None && KeyInterop.VirtualKeyFromKey(HeldAtStart) == virtualKey;
+        public WallpaperGameplayEventGuard InspectEventGuard(WallpaperWheelInputContext context, WallpaperWheelPoint? point, bool allowShift)
+        {
+            GuardCalls++; QualificationOrder.Add("Guard"); GuardPoints.Add(point); GuardShiftPermissions.Add(allowShift);
+            OnGuard?.Invoke();
+            return EventGuard;
+        }
         public WallpaperWheelInputEnvironment Inspect(WallpaperWheelInputContext context, WallpaperWheelPoint? point, bool atEvent, bool allowShift)
-        { if (point is null) GlobalQueries++; else { PointerQueries++; PointerAllowsShift = allowShift; } OnInspect?.Invoke(atEvent); return Environment; }
+        {
+            if (point is null) GlobalQueries++; else { PointerQueries++; PointerAllowsShift = allowShift; }
+            if (atEvent) FullAtEventCalls++; else FullCommandCalls++;
+            QualificationOrder.Add(atEvent ? "FullEvent" : "Command");
+            inspectDepth++; MaxInspectDepth = Math.Max(MaxInspectDepth, inspectDepth);
+            try { OnInspect?.Invoke(atEvent); return Environment; }
+            finally { inspectDepth--; }
+        }
         internal nint EmitKey(Key key, bool down, bool modifier = false, uint flags = 0)
         { keyData = new(KeyInterop.VirtualKeyFromKey(key), flags, modifier); return keyboard!(0, down ? 0x0100 : 0x0101, 0); }
         internal nint EmitMouse(int message, bool shift = false, bool forbiddenModifier = false, uint flags = 0, WallpaperWheelPoint? point = null)

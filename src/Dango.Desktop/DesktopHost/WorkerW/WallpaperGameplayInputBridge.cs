@@ -7,6 +7,7 @@ namespace Dango.Desktop.DesktopHost.WorkerW;
 
 internal readonly record struct WallpaperGameplayKeyData(int VirtualKey, uint Flags, bool HasModifier);
 internal readonly record struct WallpaperGameplayMouseData(WallpaperWheelPoint Point, uint Flags, bool Shift, bool HasForbiddenModifier);
+internal readonly record struct WallpaperGameplayEventGuard(bool Known, bool DesktopForeground, bool PointerOnDesktop, bool Modifier);
 internal sealed record WallpaperGameplayInputActions(Func<Key, bool, bool, bool> Key,
     Func<WallpaperWheelPoint, bool, bool> PointerDown, Func<WallpaperWheelPoint, bool, bool> PointerMove,
     Func<WallpaperWheelPoint, bool, bool> PointerUp, Func<WallpaperWheelPoint, bool> IsPetHit,
@@ -23,6 +24,7 @@ internal interface IWallpaperGameplayInputPlatform
     WallpaperGameplayKeyData ReadKeyboard(nint data);
     WallpaperGameplayMouseData ReadMouse(nint data);
     bool IsKeyPressed(int virtualKey);
+    WallpaperGameplayEventGuard InspectEventGuard(WallpaperWheelInputContext context, WallpaperWheelPoint? point, bool allowShift);
     WallpaperWheelInputEnvironment Inspect(WallpaperWheelInputContext context, WallpaperWheelPoint? point, bool atEvent, bool allowShift);
 }
 
@@ -153,7 +155,7 @@ internal sealed class WallpaperGameplayInputBridge : IDisposable
                         if (!suppressed)
                         {
                             var captured = context();
-                            if (input.HasModifier || !Qualify(captured, null, version, true)) Invalidate(version);
+                            if (input.HasModifier || !GuardEvent(captured, null, version)) Invalidate(version);
                             else if (key != Key.Escape || (down && !repeat))
                                 Queue(new(CommandKind.Key, captured!, version, pointerRevision, key, down, repeat, default, false));
                         }
@@ -177,7 +179,7 @@ internal sealed class WallpaperGameplayInputBridge : IDisposable
                 if ((input.Flags & 0x01) == 0 && IsCurrent(version) && (message == 0x0201 || pointerArmed))
                 {
                     var captured = context();
-                    if (input.HasForbiddenModifier || !Qualify(captured, input.Point, version, true)) Invalidate(version);
+                    if (input.HasForbiddenModifier || !GuardEvent(captured, input.Point, version)) Invalidate(version);
                     else if (message == 0x0201)
                     {
                         if (!pointerArmed && actions.IsPetHit(input.Point))
@@ -198,6 +200,17 @@ internal sealed class WallpaperGameplayInputBridge : IDisposable
         }
         catch { Invalidate(version); }
         return platform.NextMouse(hook, code, message, data);
+    }
+
+    private bool GuardEvent(WallpaperWheelInputContext? captured, WallpaperWheelPoint? point, long version)
+    {
+        if (!IsCurrent(version) || !WallpaperWheelInputPolicy.IsContextEligible(captured)) return false;
+        if (point is { } p && !WallpaperWheelInputPolicy.ContainsDevicePoint(captured!.ScreenBounds, p)) return false;
+        if (!WallpaperWheelInputPolicy.IsSamePresentation(captured!, context())) return false;
+        var guard = platform.InspectEventGuard(captured!, point, allowShift: point is not null);
+        return IsCurrent(version) && WallpaperWheelInputPolicy.IsSamePresentation(captured!, context()) &&
+            guard.Known && guard.DesktopForeground && !guard.Modifier &&
+            (point is null || guard.PointerOnDesktop);
     }
 
     private bool Qualify(WallpaperWheelInputContext? captured, WallpaperWheelPoint? point, long version, bool atEvent)
@@ -295,6 +308,7 @@ internal sealed class WallpaperGameplayInputBridge : IDisposable
     internal void RevalidateActiveInput()
     {
         dispatcher.VerifyAccess();
+        if (inspecting) return;
         var captured = context();
         var version = revision;
         if ((activeKeys.Count != 0 && !Qualify(captured, null, version, false)) ||
@@ -329,6 +343,12 @@ internal sealed class NativeWallpaperGameplayInputPlatform : IWallpaperGameplayI
     }
     public WallpaperGameplayMouseData ReadMouse(nint data) => NativeMethods.ReadRoomGameplayMouseInput(data);
     public bool IsKeyPressed(int virtualKey) => NativeMethods.IsInputKeyPressed(virtualKey);
+    public WallpaperGameplayEventGuard InspectEventGuard(WallpaperWheelInputContext context, WallpaperWheelPoint? point, bool allowShift)
+    {
+        var guard = NativeMethods.InspectRoomGameplayEventGuard(context, point, allowShift, out var trace);
+        LastInspectionTrace = trace with { ElapsedMilliseconds = 0 };
+        return guard;
+    }
     public WallpaperWheelInputEnvironment Inspect(WallpaperWheelInputContext context, WallpaperWheelPoint? point, bool atEvent, bool allowShift)
     {
         var environment = NativeMethods.InspectRoomGameplayInput(context, point, atEvent, allowShift, out var trace);

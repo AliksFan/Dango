@@ -66,6 +66,8 @@ public sealed class LocalRoomWallpaperPettingManualTests
                 }
                 Pump(25);
             }
+            // Keep the real scene visible briefly after success so its feedback can reach desktop composition.
+            if (observation.Succeeded) Pump(1500);
         }
         finally
         {
@@ -138,6 +140,7 @@ public sealed class LocalRoomWallpaperPettingManualTests
         private bool currentShiftAttempt, currentAttemptPetted, currentAttemptNormalUp, currentAttemptEyeFrame;
         private bool keyboardCallbackObserved, mouseCallbackObserved, downCallbackObserved, rawDownObserved, injectedDownObserved, injectedShiftDownObserved;
         private bool listenerStoppedDuringObservation;
+        private double maximumMouseCallbackMilliseconds, maximumEventGuardMilliseconds;
         private bool downObserved, shiftDownObserved, downReachedAction, downAccepted;
         private bool shiftMoveReachedAction, shiftMoveProducedFeedback, upAccepted, hitObserved, missObserved;
         private bool shiftBodyHitObserved, shiftBodyMissObserved;
@@ -150,6 +153,8 @@ public sealed class LocalRoomWallpaperPettingManualTests
         private readonly Qualifications eventQualifications = new();
         private readonly Qualifications commandQualifications = new();
         private readonly Qualifications shiftDownQualifications = new();
+        private readonly EventGuardQualifications eventGuards = new();
+        private readonly EventGuardQualifications shiftDownGuards = new();
         private readonly HashSet<RoomInputInspectionPhase> shiftDownPhases = [];
         private readonly HashSet<RoomPointerRole> shiftDownPointerRoles = [];
         private readonly HashSet<RoomInputInspectionPhase> shiftPointerPhases = [];
@@ -383,8 +388,13 @@ public sealed class LocalRoomWallpaperPettingManualTests
                 currentShift = false;
                 mouseCallbackObserved |= code >= 0;
                 downCallbackObserved |= code >= 0 && currentMouseMessage == 0x0201;
+                var started = Stopwatch.GetTimestamp();
                 try { return callback(code, message, data); }
-                finally { currentMouseMessage = previousMessage; currentShift = previousShift; }
+                finally
+                {
+                    maximumMouseCallbackMilliseconds = Math.Max(maximumMouseCallbackMilliseconds, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+                    currentMouseMessage = previousMessage; currentShift = previousShift;
+                }
             };
             return originalPlatform.InstallMouse(observedMouseCallback);
         }
@@ -420,10 +430,26 @@ public sealed class LocalRoomWallpaperPettingManualTests
             return input;
         }
         public bool IsKeyPressed(int virtualKey) => originalPlatform.IsKeyPressed(virtualKey);
+        public WallpaperGameplayEventGuard InspectEventGuard(WallpaperWheelInputContext context, WallpaperWheelPoint? point, bool allowShift)
+        {
+            var started = Stopwatch.GetTimestamp();
+            try
+            {
+                var guard = originalPlatform.InspectEventGuard(context, point, allowShift);
+                if (point is not null)
+                {
+                    eventGuards.Observe(guard);
+                    if (currentMouseMessage == 0x0201 && currentShift) shiftDownGuards.Observe(guard);
+                }
+                return guard;
+            }
+            finally { maximumEventGuardMilliseconds = Math.Max(maximumEventGuardMilliseconds, Stopwatch.GetElapsedTime(started).TotalMilliseconds); }
+        }
         public WallpaperWheelInputEnvironment Inspect(WallpaperWheelInputContext context, WallpaperWheelPoint? point, bool atEvent, bool allowShift)
         {
+            var belongsToShiftAttempt = currentShift || currentShiftAttempt;
             var environment = originalPlatform.Inspect(context, point, atEvent, allowShift);
-            if (point is not null && currentShift && originalPlatform is NativeWallpaperGameplayInputPlatform native)
+            if (point is not null && belongsToShiftAttempt && originalPlatform is NativeWallpaperGameplayInputPlatform native)
             {
                 var trace = native.LastInspectionTrace;
                 shiftPointerPhases.Add(trace.Phase); shiftPointerRoles.Add(trace.Pointer.Role);
@@ -441,7 +467,8 @@ public sealed class LocalRoomWallpaperPettingManualTests
         }
 
         internal string Summary() =>
-            $"KeyboardCallbackObserved={keyboardCallbackObserved}, MouseCallbackObserved={mouseCallbackObserved}, DownCallbackObserved={downCallbackObserved}, RawDownObserved={rawDownObserved}, InjectedDownObserved={injectedDownObserved}, InjectedShiftDownObserved={injectedShiftDownObserved}, ListenerStoppedDuringObservation={listenerStoppedDuringObservation}. " +
+            $"KeyboardCallbackObserved={keyboardCallbackObserved}, MouseCallbackObserved={mouseCallbackObserved}, DownCallbackObserved={downCallbackObserved}, RawDownObserved={rawDownObserved}, InjectedDownObserved={injectedDownObserved}, InjectedShiftDownObserved={injectedShiftDownObserved}, ListenerStoppedDuringObservation={listenerStoppedDuringObservation}, MaximumMouseCallbackMs={maximumMouseCallbackMilliseconds:F3}, MaximumEventGuardMs={maximumEventGuardMilliseconds:F3}. " +
+            eventGuards.Summary("Event") + " " + shiftDownGuards.Summary("ShiftDown") + " " +
             $"Physical pointer summary: LowLevelDownObserved={downObserved}, ShiftDownObserved={shiftDownObserved}, CommandDownReached={downReachedAction}, DownAccepted={downAccepted}, PublishedFrameObserved={publishedFrameObserved}, DownStartedFullyOpen={downStartedFullyOpen}, DownStartedWithoutFeedback={downStartedWithoutFeedback}, CleanShiftStartObserved={cleanShiftStartObserved}, ShiftMoveReachedAction={shiftMoveReachedAction}, ShiftMoveProducedRealFeedback={shiftMoveProducedFeedback}, UpAccepted={upAccepted}, NormalUpObserved={normalUpObserved}, SameEntityFrameObserved={sameEntityFrameObserved}, SameAttachmentGenerationFrameObserved={sameAttachmentGenerationFrameObserved}, LaterThanDownFrameObserved={laterThanDownFrameObserved}, LaterThanFeedbackMoveFrameObserved={laterThanFeedbackMoveFrameObserved}, SoftEyesFrameObserved={softEyesFrameObserved}, LeftEyeBelowThresholdFrameObserved={leftEyeBelowThresholdFrameObserved}, SameStrokeEyeFrameObserved={sameStrokeEyeFrameObserved}, SameStrokeSucceeded={Succeeded}, PendingAttemptInvalidated={pendingAttemptInvalidated}, FeedbackExpiredBeforeUp={feedbackExpiredBeforeUp}, UpPreservedActiveFeedback={upPreservedActiveFeedback}, UpClearedActiveFeedback={upClearedActiveFeedback}, BodyHitObserved={hitObserved}, BodyMissObserved={missObserved}, ShiftBodyHitObserved={shiftBodyHitObserved}, ShiftBodyMissObserved={shiftBodyMissObserved}, StartNotAcceptedObserved={notAcceptedObserved}, CaptureRejectedObserved={captureRejectedObserved}, CaptureAcceptedObserved={captureAcceptedObserved}, ForbiddenModifierObserved={forbiddenModifierObserved}, ShiftSceneHealthyObserved={shiftSceneHealthy}, ShiftSceneBlockedObserved={shiftSceneBlocked}, ShiftContextReadyObserved={shiftContextReady}, ShiftDownPhases={string.Join(',', shiftDownPhases.Order())}, ShiftDownPointerRoles={string.Join(',', shiftDownPointerRoles.Order())}, ShiftPointerPhases={string.Join(',', shiftPointerPhases.Order())}, ShiftPointerRoles={string.Join(',', shiftPointerRoles.Order())}, ShiftBudgetExpired={shiftBudgetExpired}, ShiftInspectionException={shiftInspectionException}. {eventQualifications.Summary("Event")} {commandQualifications.Summary("Command")} {shiftDownQualifications.Summary("ShiftDown")}";
 
         internal void ObserveListenerStatus() => listenerStoppedDuringObservation |= !bridge.IsListening;
@@ -449,6 +476,19 @@ public sealed class LocalRoomWallpaperPettingManualTests
         private static FieldInfo RequiredField(string name) => typeof(WallpaperGameplayInputBridge)
             .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
             ?? throw new AssertFailedException("Required native observation field is unavailable: " + name);
+    }
+
+    private sealed class EventGuardQualifications
+    {
+        private bool observed, known, unknown, foreground, nonForeground, background, nonBackground, modifier;
+        internal void Observe(WallpaperGameplayEventGuard guard)
+        {
+            observed = true; known |= guard.Known; unknown |= !guard.Known;
+            foreground |= guard.DesktopForeground; nonForeground |= !guard.DesktopForeground;
+            background |= guard.PointerOnDesktop; nonBackground |= !guard.PointerOnDesktop; modifier |= guard.Modifier;
+        }
+        internal string Summary(string phase) =>
+            $"{phase}Guards: Observed={observed}, KnownObserved={known}, UnknownObserved={unknown}, ShellForegroundObserved={foreground}, NonShellForegroundObserved={nonForeground}, BackgroundObserved={background}, NonBackgroundObserved={nonBackground}, ModifierRejectedObserved={modifier}.";
     }
 
     private sealed class Qualifications

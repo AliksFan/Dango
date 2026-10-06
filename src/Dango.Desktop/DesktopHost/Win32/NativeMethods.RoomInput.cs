@@ -74,6 +74,74 @@ internal static partial class NativeMethods
         WallpaperWheelPoint? point, bool atEvent, bool allowShift) =>
         InspectRoomGameplayInput(context, point, atEvent, allowShift, out _);
 
+    internal static WallpaperGameplayEventGuard InspectRoomGameplayEventGuard(WallpaperWheelInputContext context,
+        WallpaperWheelPoint? inputPoint, bool allowShift, out RoomInputInspectionTrace trace)
+    {
+        var started = Stopwatch.GetTimestamp();
+        var deadlineTimestamp = started + Stopwatch.Frequency * 20 / 1000;
+        var phase = RoomInputInspectionPhase.Context;
+        var exception = false;
+        var pointerTrace = default(RoomPointerInspectionTrace);
+        try
+        {
+            // This is admission to the Dispatcher queue, not complete gameplay eligibility.
+            // No window enumeration or Explorer icon query may run on this hook path.
+            if (!HasRoomInspectionTime(deadlineTimestamp)) return default;
+            if (HasSystemKeyboardModifier() || (!allowShift && IsKeyDown(0x10))) return new(true, false, false, true);
+            phase = RoomInputInspectionPhase.ShellTarget;
+            if (!WallpaperWheelInputPolicy.IsContextEligible(context) || !IsValidDesktopTarget(context.Target) ||
+                !TryGetRoomWindowIdentity(context.Target.ShellViewHandle, out var shellClass, out var shellProcess) ||
+                shellClass != "SHELLDLL_DefView" || !HasRoomInspectionTime(deadlineTimestamp)) return default;
+            var shellRoot = GetRoomWindowAncestor(context.Target.ShellViewHandle, 2);
+            phase = RoomInputInspectionPhase.Foreground;
+            if (!IsValidWindow(shellRoot) ||
+                !TryIsRoomDesktopForeground(context.Target, shellRoot, shellProcess, out var desktopForeground) ||
+                !HasRoomInspectionTime(deadlineTimestamp)) return default;
+            if (!desktopForeground) return new(true, false, false, false);
+
+            var pointerAllowed = true;
+            if (inputPoint is { } point)
+            {
+                phase = RoomInputInspectionPhase.Cursor;
+                if (!HasRoomInspectionTime(deadlineTimestamp) || !GetCursorPos(out var cursor)) return default;
+                var currentPoint = new WallpaperWheelPoint(cursor.X, cursor.Y);
+                if (!WallpaperWheelInputPolicy.ContainsDevicePoint(context.ScreenBounds, point) ||
+                    !WallpaperWheelInputPolicy.ContainsDevicePoint(context.ScreenBounds, currentPoint))
+                    return new(true, true, false, false);
+                phase = RoomInputInspectionPhase.Pointer;
+                if (!HasRoomInspectionTime(deadlineTimestamp) ||
+                    !TryIsRoomDesktopPoint(context.Target, shellRoot, shellProcess, point,
+                        out pointerAllowed, out pointerTrace)) return default;
+                if (currentPoint != point)
+                {
+                    phase = RoomInputInspectionPhase.CurrentPointer;
+                    if (!HasRoomInspectionTime(deadlineTimestamp) ||
+                        !TryIsRoomDesktopPoint(context.Target, shellRoot, shellProcess, currentPoint,
+                            out var currentAllowed, out pointerTrace)) return default;
+                    pointerAllowed &= currentAllowed;
+                }
+            }
+
+            phase = RoomInputInspectionPhase.RefreshForeground;
+            if (!HasRoomInspectionTime(deadlineTimestamp) ||
+                !TryIsRoomDesktopForeground(context.Target, shellRoot, shellProcess, out desktopForeground)) return default;
+            var modified = HasSystemKeyboardModifier() || (!allowShift && IsKeyDown(0x10));
+            phase = RoomInputInspectionPhase.Completed;
+            return HasRoomInspectionTime(deadlineTimestamp)
+                ? new(true, desktopForeground, pointerAllowed, modified) : default;
+        }
+        catch
+        {
+            exception = true;
+            return default;
+        }
+        finally
+        {
+            trace = new(phase, !HasRoomInspectionTime(deadlineTimestamp), exception,
+                (Stopwatch.GetTimestamp() - started) * 1000d / Stopwatch.Frequency, pointerTrace);
+        }
+    }
+
     internal static WallpaperWheelInputEnvironment InspectRoomGameplayInput(WallpaperWheelInputContext context,
         WallpaperWheelPoint? point, bool atEvent, bool allowShift, out RoomInputInspectionTrace trace)
     {
