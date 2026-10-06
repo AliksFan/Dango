@@ -114,7 +114,8 @@ internal sealed class LocalRoomSceneView : Grid
         if (runtime.NeutralBodyVisibleWidth is { } neutral) Camera.CalibrateStandardScale(neutral);
         var bodyGroundAlignment = new LogicalVector(0, runtime.NeutralBodyGroundOffset);
         DangoHostFrameBinding.Apply(body, hat, frame, 0, bodyGroundAlignment, appearance: runtime.DisplayHatAppearance,
-            hatSize: runtime.DisplayHatSize, bodyFillOverride: runtime.BodyPreviewFill);
+            hatSize: runtime.DisplayHatSize, bodyFillOverride: runtime.BodyPreviewFill,
+            eyeFillOverride: runtime.EyePreviewFill, appearanceEntity: runtime.AppearanceEntity);
         if (body.LastContourFailure != DangoContourFailure.None)
         {
             InvalidateInputFrame();

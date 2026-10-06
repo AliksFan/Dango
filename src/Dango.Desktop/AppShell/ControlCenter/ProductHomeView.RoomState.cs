@@ -21,10 +21,14 @@ public partial class ProductHomeView
     {
         RoomAwayNotice.Visibility = IsDangoAway ? Visibility.Visible : Visibility.Collapsed;
         Presence.Visibility = IsDangoAway ? Visibility.Collapsed : Visibility.Visible;
-        Launchers.Visibility = IsDangoAway ? Visibility.Collapsed : Visibility.Visible;
+        Launchers.Visibility = IsDangoAway || IsEditing ? Visibility.Collapsed : Visibility.Visible;
+        Launchers.IsEnabled = Launchers.IsHitTestVisible = !IsDangoAway && !IsInPorch && !IsEditing;
         if (IsDangoAway)
         {
-            EditorPanel.Visibility = PorchContent.Visibility = Visibility.Collapsed;
+            EditorPanel.Visibility = FaceEditorTools.Visibility = PorchContent.Visibility = Visibility.Collapsed;
+            FaceEditorTools.IsEnabled = FaceEditorTools.IsHitTestVisible = false;
+            EnterRoomButton.Visibility = Visibility.Collapsed;
+            EnterRoomButton.IsEnabled = false;
             LiveDangoVisual.Visibility = LiveDangoHat.Visibility = Visibility.Collapsed;
             HomeFooter.Visibility = Visibility.Collapsed;
         }

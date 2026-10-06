@@ -126,11 +126,11 @@ public sealed class UnifiedLiveHomeTests
             Assert.IsTrue(Press(home, window, Key.D).Handled);
             Assert.IsTrue(home.IsEditing);
             Assert.AreEqual(HomeEditor.Face, home.SelectedEditor);
-            Assert.AreEqual(0, Grid.GetColumn(Element<UIElement>(home, "EditorPanel")));
+            Assert.AreEqual(2, Grid.GetColumn(Element<UIElement>(home, "EditorPanel")));
 
             Assert.IsTrue(Press(home, window, Key.A).Handled);
             Assert.AreEqual(HomeEditor.Wardrobe, home.SelectedEditor);
-            Assert.AreEqual(2, Grid.GetColumn(Element<UIElement>(home, "EditorPanel")));
+            Assert.AreEqual(0, Grid.GetColumn(Element<UIElement>(home, "EditorPanel")));
 
             Assert.IsTrue(Press(home, window, Key.A).Handled);
             Assert.IsFalse(home.IsEditing, "Pressing the active shortcut closes its panel.");

@@ -22,8 +22,10 @@ internal sealed partial class DangoApplicationHost : IDisposable
     private readonly VerificationDefinition verificationDefinition;
     private readonly ApplicationSettingsSession settings;
     private readonly string settingsPath;
+    private readonly AppearanceSettingsSession appearance;
     private readonly bool eyeHatReview;
     private readonly bool porchReview;
+    private readonly bool faceReview;
     private readonly ApplicationUiMode uiMode;
     private readonly DispatcherTimer geometrySaveTimer = new() { Interval = TimeSpan.FromMilliseconds(300) };
     private ControlCenterWindow? controlCenterWindow;
@@ -36,12 +38,15 @@ internal sealed partial class DangoApplicationHost : IDisposable
 
     public DangoApplicationHost(bool isolatedPhysicsReview = false, bool isolatedEyeHatReview = false,
         string? settingsFile = null, string? nativeLibraryPath = null, ControlCenterWindowSettingsStore? settingsStore = null,
-        bool isolatedUnifiedHomeReview = false, bool isolatedPorchReview = false, bool isolatedLocalRoomReview = false)
+        bool isolatedUnifiedHomeReview = false, bool isolatedPorchReview = false, bool isolatedLocalRoomReview = false,
+        bool isolatedFaceReview = false)
     {
         if ((isolatedPhysicsReview ? 1 : 0) + (isolatedEyeHatReview ? 1 : 0) +
-            (isolatedUnifiedHomeReview ? 1 : 0) + (isolatedPorchReview ? 1 : 0) + (isolatedLocalRoomReview ? 1 : 0) > 1)
+            (isolatedUnifiedHomeReview ? 1 : 0) + (isolatedPorchReview ? 1 : 0) +
+            (isolatedLocalRoomReview ? 1 : 0) + (isolatedFaceReview ? 1 : 0) > 1)
             throw new ArgumentException("Choose one isolated review mode.");
         porchReview = isolatedPorchReview;
+        faceReview = isolatedFaceReview;
         eyeHatReview = isolatedEyeHatReview;
         uiMode = isolatedPhysicsReview || isolatedEyeHatReview ? ApplicationUiMode.DeveloperReview : ApplicationUiMode.Product;
         sceneSession = new DesktopSceneSession();
@@ -55,6 +60,8 @@ internal sealed partial class DangoApplicationHost : IDisposable
         verificationDefinition = isolatedEyeHatReview ? VerificationDefinition.CreateEyeHatHosts() : VerificationDefinition.CreatePhysicsModuleHosts();
         settingsPath = settingsFile ?? (isolatedLocalRoomReview
             ? Path.Combine(AppContext.BaseDirectory, "local-room-review-state", "settings.json")
+            : isolatedFaceReview
+            ? Path.Combine(AppContext.BaseDirectory, "face-review-state", "settings.json")
             : isolatedPorchReview
             ? Path.Combine(AppContext.BaseDirectory, "porch-scene-review-state", "settings.json")
             : isolatedUnifiedHomeReview
@@ -66,6 +73,8 @@ internal sealed partial class DangoApplicationHost : IDisposable
                 : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Dango", "settings.json"));
         var firstReviewRun = uiMode == ApplicationUiMode.DeveloperReview && !File.Exists(settingsPath);
         settings = new ApplicationSettingsSession(settingsPath, settingsStore);
+        appearance = new AppearanceSettingsSession(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(settingsPath))!, "appearance.json"));
+        stackedRuntime.SetAppearance(appearance.SavedAppearance);
         var initial = settings.Current;
         sceneWindow.RestorePlacement(initial.SceneWindow);
         desktopHost.ApplyLayeringSettings(initial.DesktopLayeringExperiment);
@@ -89,7 +98,7 @@ internal sealed partial class DangoApplicationHost : IDisposable
         started = true;
         // Establish recovery entry points before touching the native module.
         trayIcon = new DangoTrayIcon(commandController, ShowControlCenter, ShowDiagnostics, RequestExit,
-            uiMode == ApplicationUiMode.Product && !porchReview ? CreateLocalRoomTrayActions() : null);
+            uiMode == ApplicationUiMode.Product && !porchReview && !faceReview ? CreateLocalRoomTrayActions() : null);
         var initialized = stackedRuntime.TryInitialize();
         if (uiMode == ApplicationUiMode.Product)
         {
@@ -160,6 +169,7 @@ internal sealed partial class DangoApplicationHost : IDisposable
         if (disposed) return;
         geometrySaveTimer.Stop();
         if (!exitSettingsHandled) SaveSettings();
+        controlCenterWindow?.ProductHome.CancelAppearancePreview();
         disposed = true;
         DisposeLocalRoom();
         trayIcon?.Dispose();
@@ -188,9 +198,10 @@ internal sealed partial class DangoApplicationHost : IDisposable
             settings, () => SaveSettings(), ScheduleSave);
         if (uiMode == ApplicationUiMode.Product)
         {
+            controlCenterWindow.ProductHome.BindAppearance(appearance);
             controlCenterWindow.ProductHome.BindLiveScene(sceneSession, stackedRuntime);
             controlCenterWindow.ProductHome.SetPorchReviewMode(porchReview);
-            if (!porchReview) BindLocalRoom(controlCenterWindow);
+            if (!porchReview && !faceReview) BindLocalRoom(controlCenterWindow);
             if (porchReview) controlCenterWindow.Title = "Dango · 门廊 E1 场景预览";
         }
         controlCenterWindow.OverviewPresented += () =>

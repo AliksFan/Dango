@@ -104,7 +104,8 @@ public sealed class PorchSceneView : Grid
         if (resetCamera) { camera.Reset(PetWorldX, ViewportWorldWidth); resetCamera = false; }
         else camera.Update(PetWorldX, ViewportWorldWidth, elapsedMs, reduceMotion);
         DangoHostFrameBinding.Apply(body, hat, frame, 0, appearance: runtime.DisplayHatAppearance,
-            hatSize: runtime.DisplayHatSize, bodyFillOverride: runtime.BodyPreviewFill);
+            hatSize: runtime.DisplayHatSize, bodyFillOverride: runtime.BodyPreviewFill,
+            eyeFillOverride: runtime.EyePreviewFill, appearanceEntity: runtime.AppearanceEntity);
         UpdateProjection();
         InvalidateVisual();
     }

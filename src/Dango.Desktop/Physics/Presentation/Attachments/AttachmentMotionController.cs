@@ -20,7 +20,14 @@ public sealed class AttachmentMotionController(AttachmentCommandRouter router, A
     private SpringState tilt;
     private double? previousBodyY;
     private readonly HatMotionController? hat = router.HatMotionEnabled ? new(hatBaseline) : null;
+    private EyeLayoutParameters eyeLayout = EyeLayoutParameters.Default;
     public AttachmentPresentationFrame? Current { get; private set; }
+    /// <summary>Updates only the base request; the existing step owner composes it on the next successful frame.</summary>
+    public void SetEyeLayout(EyeLayoutParameters parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        eyeLayout = parameters;
+    }
     public bool Paused { get => clock.Paused; set { if (clock.Paused != value) { hat?.ResetSignals(); previousBodyY = null; } clock.Paused = value; } }
     public AttachmentPresentationFrame? Update(PhysicsPresentationFrame body, long stepIndex, double seconds, DangoFacingDirection facing = DangoFacingDirection.Center, HatBodySample? bodyMotion = null, bool hatBodyFollowEnabled = true)
     {
@@ -69,7 +76,7 @@ public sealed class AttachmentMotionController(AttachmentCommandRouter router, A
             AdvanceEye(right, AttachmentChannel.RightGaze, AttachmentChannel.RightEyePose, slice);
         }
         EyeMotionSample Sample(EyeState eye) => new(new(eye.X.Position, eye.Y.Position), eye.Open.Position * eye.Envelope.Position, eye.Shape, eye.Soft.Position);
-        var layout = FaceLayoutSolver.Solve(shape, Sample(left), Sample(right), -tilt.Position, horizontalRange: 7);
+        var layout = FaceLayoutSolver.Solve(shape, Sample(left), Sample(right), -tilt.Position, eyeLayout, horizontalRange: 7);
         if (layout.GazeScale < 1)
         {
             foreach (var eye in new[] { left, right })

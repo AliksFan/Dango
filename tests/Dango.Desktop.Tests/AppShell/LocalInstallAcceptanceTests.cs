@@ -39,6 +39,7 @@ public sealed class LocalInstallAcceptanceTests
     [TestMethod]
     [DataRow("settings.json")]
     [DataRow("settings.window-preset.json")]
+    [DataRow("appearance.json")]
     public void AcceptanceRejectsSettingsReparsePointsBeforeReadingThem(string fileName)
     {
         var root = NewRoot();
@@ -60,6 +61,17 @@ public sealed class LocalInstallAcceptanceTests
         Assert.ThrowsExactly<InvalidDataException>(() => App.ResolveLocalInstallAcceptanceSettingsFile(
             ["--local-install-acceptance-settings", root]));
         Assert.AreEqual(0, Directory.GetFileSystemEntries(fictionalTarget).Length);
+    }
+
+    [TestMethod]
+    public void AcceptanceRejectsAppearanceDirectoryBeforeAnySettingsLoad()
+    {
+        var root = NewRoot();
+        File.WriteAllText(Path.Combine(root, ".dango-local-install-acceptance.json"),
+            """{"application":"Dango","acceptanceFormat":1,"fictional":true}""");
+        Directory.CreateDirectory(Path.Combine(root, "appearance.json"));
+        Assert.ThrowsExactly<InvalidDataException>(() => App.ResolveLocalInstallAcceptanceSettingsFile(
+            ["--local-install-acceptance-settings", root]));
     }
 
     [STATestMethod]

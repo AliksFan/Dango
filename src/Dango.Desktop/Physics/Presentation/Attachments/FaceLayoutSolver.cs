@@ -4,6 +4,99 @@ namespace Dango.Desktop.Physics.Presentation.Attachments;
 
 public static class FaceLayoutSolver
 {
+    /// <summary>Saved base layout composed with the existing transient eye motion.</summary>
+    public static FaceLayout Solve(AttachmentShapeGeometry shape, EyeMotionSample left, EyeMotionSample right,
+        double angle, EyeLayoutParameters parameters, double horizontalRange = 5)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        // Keep the complete old search order and fallback path, including callers
+        // that explicitly loaded all four default controls from appearance.json.
+        if (parameters.IsDefault) return Solve(shape, left, right, angle, horizontalRange);
+        Validate(left); Validate(right);
+        if (!double.IsFinite(horizontalRange) || horizontalRange is <= 0 or > 7) throw new ArgumentOutOfRangeException(nameof(horizontalRange));
+        if (!double.IsFinite(angle) || Math.Abs(angle) > Math.PI / 18 + 1e-10) throw new ArgumentOutOfRangeException(nameof(angle));
+
+        var legacyY = Math.Clamp(1d / 160, shape.Bottom + .35 * shape.Height, shape.Bottom + .65 * shape.Height);
+        var requestedY = legacyY - (parameters.HeightControlPercent - 51) / 100 * shape.Height;
+        var requestedDistance = 38d / 160 + (parameters.SpacingControlPercent - 24.5) / 100 * shape.Width;
+        var diameter = 12d / 160 * parameters.SizePercent / 100;
+        var shortAxis = 1 - Math.Abs(parameters.OvalPercent) / 200;
+        var width = diameter * (parameters.OvalPercent > 0 ? shortAxis : 1);
+        var height = diameter * (parameters.OvalPercent < 0 ? shortAxis : 1);
+        // A distorted contour may make a derived request impossible. Preserve the
+        // controls and solve for a positive presentation distance instead.
+        var distance = double.IsFinite(requestedDistance) && requestedDistance > 0 ? requestedDistance : width + 2d / 160 + 2 * EyeOutline.ChordError;
+        // The requested height is first and is never clamped to the old 35–65%
+        // strip. Alternatives are only attempted when the true outline is unsafe.
+        var heights = new[] { requestedY, requestedY + .03 * shape.Height, requestedY - .03 * shape.Height,
+            requestedY + .06 * shape.Height, requestedY - .06 * shape.Height,
+            requestedY + .12 * shape.Height, requestedY - .12 * shape.Height, legacyY };
+        var centers = heights.Distinct().Select(y => (y, interval: shape.CenterInterval(y)))
+            .Where(value => value.interval.HasValue)
+            .Select(value => new AttachmentPoint((value.interval!.Value.Left + value.interval.Value.Right) / 2, value.y)).ToArray();
+        if (centers.Length == 0) centers = [new((shape.Left + shape.Right) / 2, legacyY)];
+
+        FaceLayout Candidate(AttachmentPoint center, double gaze, double spacing, double size, bool closed = false)
+        {
+            EyePresentationFrame Eye(EyeMotionSample input, int side)
+            {
+                var local = new AttachmentPoint(side * distance / 2 * spacing + input.Gaze.X * horizontalRange / 160 * gaze,
+                    input.Gaze.Y * 4d / 160 * gaze);
+                var point = center + new AttachmentPoint(local.X * Math.Cos(angle) - local.Y * Math.Sin(angle),
+                    local.X * Math.Sin(angle) + local.Y * Math.Cos(angle));
+                return new(point, width * size, height * size, angle, closed ? 0 : input.Openness,
+                    closed ? EyeShape.NaturalClosed : input.Shape, input.Strength, true, side > 0);
+            }
+            return new(Eye(left, -1), Eye(right, 1), gaze, spacing, size, "Normal");
+        }
+
+        FaceLayout? Try(double gaze, double spacing, double size, bool closed = false)
+        {
+            foreach (var center in centers)
+            {
+                var candidate = Candidate(center, gaze, spacing, size, closed);
+                if (IsJointlySafe(shape, candidate)) return candidate;
+            }
+            return null;
+        }
+
+        var normal = Try(1, 1, 1);
+        if (normal is not null) return normal;
+        FaceLayout? Search(double minimum, Func<double, FaceLayout?> build, string reason)
+        {
+            var best = build(minimum);
+            if (best is null) return null;
+            var low = minimum; var high = 1d;
+            for (var i = 0; i < 12; i++)
+            {
+                var mid = (low + high) / 2; var candidate = build(mid);
+                if (candidate is null) high = mid; else { low = mid; best = candidate; }
+            }
+            return best with { Safety = reason };
+        }
+        var reduced = Search(0, gaze => Try(gaze, 1, 1), "GazeReduced") ??
+            Search(.8, spacing => Try(0, spacing, 1), "SpacingReduced") ??
+            Search(.7, size => Try(0, .8, size), "SizeReduced") ??
+            Search(.35, size => Try(0, .6, size), "SizeReduced");
+        if (reduced is not null) return reduced;
+        var closed = Try(0, .6, .35, true);
+        if (closed is not null) return closed with { Safety = "ClosedFallback" };
+        var fallback = Candidate(centers[0], 0, .6, .35, true);
+        // A per-eye containment result cannot establish the joint clearance.
+        // Never emit two individually contained but overlapping fallback eyes.
+        return fallback with { Left = fallback.Left with { Visible = false }, Right = fallback.Right with { Visible = false }, Safety = "EyeHidden" };
+    }
+
+    private static bool IsJointlySafe(AttachmentShapeGeometry shape, FaceLayout face)
+    {
+        var left = EyeOutline.Create(face.Left);
+        if (!IsSafe(shape, left)) return false;
+        var right = EyeOutline.Create(face.Right);
+        // Exact open ellipses use curved WPF geometry, whereas the safety outline
+        // uses chords. Reserve both outline errors in the final pair clearance.
+        return IsSafe(shape, right) && right.Min(point => point.X) - left.Max(point => point.X) >= 2d / 160 + 2 * EyeOutline.ChordError;
+    }
+
     public static FaceLayout Solve(AttachmentShapeGeometry shape, EyeMotionSample left, EyeMotionSample right, double angle, double horizontalRange = 5)
     {
         Validate(left); Validate(right);
