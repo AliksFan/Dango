@@ -243,7 +243,12 @@
                             <GradientStop Color="#80443D34" Offset="0.55" />
                             <GradientStop Color="#00443D34" Offset="1" />
                         </RadialGradientBrush></Ellipse.Fill>
-                        <Ellipse.RenderTransform><ScaleTransform x:Name="PetShadowScale" /></Ellipse.RenderTransform>
+                        <Ellipse.RenderTransform>
+                            <TransformGroup>
+                                <ScaleTransform x:Name="PetShadowScale" />
+                                <TranslateTransform x:Name="PetShadowTranslation" />
+                            </TransformGroup>
+                        </Ellipse.RenderTransform>
                     </Ellipse>
                     <Viewbox x:Name="PetPreview" Width="240" Height="180" HorizontalAlignment="Center" VerticalAlignment="Top" Stretch="Fill" RenderTransformOrigin="0.5,0.5"
                              ToolTip="未绑定实时场景的界面预览" AutomationProperties.Name="团子实时预览">
@@ -457,7 +462,11 @@
                                 HorizontalAlignment="Right" BorderBrush="Transparent" Padding="0" Click="OnCloseClick"
                                 ToolTip="收起换装" AutomationProperties.Name="收起换装" />
                     </Grid>
-                    <Grid x:Name="AccessoryPreviewSlot" Grid.Row="1" HorizontalAlignment="Center" IsHitTestVisible="False" />
+                    <Grid x:Name="AccessoryEditorPreviewRegion" Grid.Row="1" HorizontalAlignment="Center">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="38" /><ColumnDefinition Width="*" /><ColumnDefinition Width="38" /></Grid.ColumnDefinitions>
+                        <ContentControl x:Name="AccessorySectionTabsSlot" VerticalAlignment="Top" Margin="0,6,6,0" />
+                        <Grid x:Name="AccessoryPreviewSlot" Grid.Column="1" HorizontalAlignment="Center" IsHitTestVisible="False" />
+                    </Grid>
                     <ContentControl x:Name="AccessorySaveActionsSlot" Grid.Row="2" SizeChanged="OnAccessorySaveActionsSizeChanged" />
                 </Grid>
                 <Grid x:Name="PorchContent" Grid.Column="0" Grid.ColumnSpan="3" Grid.RowSpan="2"

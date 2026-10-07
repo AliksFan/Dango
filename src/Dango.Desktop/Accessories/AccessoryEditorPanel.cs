@@ -5,27 +5,41 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Controls.Primitives;
+using System.Windows.Threading;
 using Button = System.Windows.Controls.Button;
 using CheckBox = System.Windows.Controls.CheckBox;
 using ComboBox = System.Windows.Controls.ComboBox;
 using Control = System.Windows.Controls.Control;
 using HorizontalAlignment = System.Windows.HorizontalAlignment;
 using ListBox = System.Windows.Controls.ListBox;
+using Image = System.Windows.Controls.Image;
 using Point = System.Windows.Point;
 using TextBox = System.Windows.Controls.TextBox;
 
 namespace Dango.Desktop.Accessories;
 
+internal enum AccessoryEditorSection { Library, Placement, Connection, Rotation }
+
 /// <summary>Local wardrobe draft UI; host navigation owns the outer cancellation boundary.</summary>
 internal sealed class AccessoryEditorPanel : StackPanel
 {
     private AccessorySettingsSession? session;
-    private readonly ListBox list = new() { Height = 100, MinWidth = 0, Margin = new Thickness(0, 6, 0, 6) };
+    private readonly ListBox list = new() { Height = 240, MinWidth = 0, Padding = new Thickness(0), Margin = new Thickness(0, 6, 0, 6) };
+    private readonly StackPanel library = new();
     private readonly TextBox name = new() { MinWidth = 0, Padding = new Thickness(4, 3, 4, 3), Margin = new Thickness(0, 4, 0, 8) };
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11, Margin = new Thickness(0, 0, 0, 8) };
     private readonly StackPanel editor = new();
     private readonly Dictionary<string, Slider> sliders = [];
     private readonly Dictionary<string, TextBox> valueTexts = [];
+    private readonly Dictionary<AccessoryEditorSection, StackPanel> sections = [];
+    private readonly Dictionary<AccessoryEditorSection, Button> sectionButtons = [];
+    private readonly Dictionary<string, LibraryCard> libraryCards = [];
+    private readonly Dictionary<string, BitmapSource?> thumbnails = [];
+    private readonly LinkedList<string> thumbnailRecency = new();
+    private readonly HashSet<Image> thumbnailOwners = [];
+    private ScrollViewer? outerScroll;
+    private bool thumbnailUpdateQueued;
     private readonly CheckBox equipped = new() { Content = "佩戴", Margin = new Thickness(0, 4, 0, 4) };
     private readonly CheckBox lockRotation = new() { Content = "锁定朝向", Margin = new Thickness(0, 4, 0, 4) };
     private readonly CheckBox limitSwing = new() { Content = "限制摆角", Margin = new Thickness(0, 4, 0, 4) };
@@ -43,6 +57,15 @@ internal sealed class AccessoryEditorPanel : StackPanel
     internal AccessoryItem? SelectedItem => session?.DraftConfiguration.Items.FirstOrDefault(item => item.Id == selectedId);
     internal string StatusMessage => status.Text;
     internal FrameworkElement SaveActions { get; }
+    internal FrameworkElement SectionTabs { get; }
+    internal AccessoryEditorSection SelectedSection { get; private set; } = AccessoryEditorSection.Library;
+    internal event Action? SectionChanged;
+    internal Func<string?>? ImagePicker { get; set; }
+    internal const int MaximumThumbnailCache = 32;
+    internal const int ThumbnailEdge = 48;
+    internal int ThumbnailCacheCount => thumbnails.Count;
+    internal int ThumbnailDecodeCount { get; private set; }
+    internal int VisibleThumbnailCount => thumbnailOwners.Count;
     internal string PreviewNotice => previewNotice;
     internal event Action? PresentationChanged;
     internal event Action<AccessoryConfiguration>? PreviewChanged;
@@ -54,29 +77,58 @@ internal sealed class AccessoryEditorPanel : StackPanel
     internal AccessoryEditorPanel()
     {
         AccessoryEditorTheme.Install(this);
-        Loaded += (_, _) => AccessoryEditorTheme.AdoptParent(this);
-        Children.Add(new TextBlock { Text = "配饰库" });
+        Loaded += (_, _) =>
+        {
+            AccessoryEditorTheme.AdoptParent(this);
+            outerScroll = Ancestors(this).OfType<ScrollViewer>().FirstOrDefault();
+            if (outerScroll is not null) outerScroll.ScrollChanged += OnLibraryScrollChanged;
+            QueueThumbnailUpdate();
+        };
+        Unloaded += (_, _) =>
+        {
+            if (outerScroll is not null) outerScroll.ScrollChanged -= OnLibraryScrollChanged;
+            outerScroll = null;
+            ClearVisibleThumbnails();
+        };
+        var tabs = new StackPanel();
+        AccessoryEditorTheme.Install(tabs);
+        tabs.Loaded += (_, _) => AccessoryEditorTheme.AdoptParent(tabs);
+        SectionTabs = tabs;
+        AddSectionTab(tabs, AccessoryEditorSection.Library, "配饰库", "M3,3 L10,3 L10,10 L3,10 Z M14,3 L21,3 L21,10 L14,10 Z M3,14 L10,14 L10,21 L3,21 Z M14,14 L21,14 L21,21 L14,21 Z");
+        AddSectionTab(tabs, AccessoryEditorSection.Placement, "图像与位置", "M4,4 L20,4 L20,20 L4,20 Z M4,16 L10,10 L15,15 L18,12 L20,14 M8,7 L8,8");
+        AddSectionTab(tabs, AccessoryEditorSection.Connection, "柔性与连接", "M4,5 C17,3 5,21 20,19 M5,8 L3,5 L6,3 M18,16 L21,19 L18,21");
+        AddSectionTab(tabs, AccessoryEditorSection.Rotation, "旋转与重力", "M5,8 A8,8 0 1 1 4,15 M5,3 L5,8 L10,8 M12,8 L12,16 M9,13 L12,16 L15,13");
+        library.Children.Add(new TextBlock { Text = "配饰库" });
         AutomationProperties.SetName(list, "配饰库，勾选标记表示已佩戴");
         list.SetResourceReference(Control.BackgroundProperty, "HomeSoft");
         list.SetResourceReference(Control.BorderBrushProperty, "HomeLine");
         ScrollViewer.SetHorizontalScrollBarVisibility(list, ScrollBarVisibility.Disabled);
-        Children.Add(list);
+        ScrollViewer.SetVerticalScrollBarVisibility(list, ScrollBarVisibility.Auto);
+        ScrollViewer.SetCanContentScroll(list, false);
+        var cells = new FrameworkElementFactory(typeof(UniformGrid)); cells.SetValue(UniformGrid.ColumnsProperty, 4);
+        cells.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Top);
+        list.ItemsPanel = new ItemsPanelTemplate(cells);
+        list.SizeChanged += (_, _) => QueueThumbnailUpdate();
+        list.IsVisibleChanged += (_, _) => QueueThumbnailUpdate();
+        list.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(OnLibraryScrollChanged));
+        library.Children.Add(list);
         list.SelectionChanged += (_, _) =>
         {
             if (refreshing) return;
             if ((list.SelectedItem as ListBoxItem)?.Tag is string nextId) SelectItem(nextId);
         };
         var libraryActions = new WrapPanel();
-        libraryActions.Children.Add(ActionButton("导入 PNG", Import));
+        libraryActions.Children.Add(ActionButton("创建新配饰", Import, "创建新配饰 · 先选择透明 PNG，再编辑图片与连接支点；应用后保存。"));
         libraryActions.Children.Add(ActionButton("复制", () =>
         {
             if (session is null || session.IsWriteProtected || !CommitPendingInputs() || SelectedItem is not { } item) return;
             Execute(() => { selectedId = session.Duplicate(item.Id).Id; Changed(discardInput: true); });
         }));
-        Children.Add(libraryActions); Children.Add(editor);
-        var placement = AddGroup("图像与位置", true);
-        var connection = AddGroup("柔性与连接", false);
-        var rotation = AddGroup("旋转与重力", false);
+        library.Children.Add(libraryActions); Children.Add(library); Children.Add(editor);
+        sections[AccessoryEditorSection.Library] = library;
+        var placement = AddGroup(AccessoryEditorSection.Placement, "图像与位置");
+        var connection = AddGroup(AccessoryEditorSection.Connection, "柔性与连接");
+        var rotation = AddGroup(AccessoryEditorSection.Rotation, "旋转与重力");
         placement.Children.Add(new TextBlock { Text = "名称" });
         name.SetResourceReference(Control.BackgroundProperty, "HomeSoft");
         name.SetResourceReference(Control.BorderBrushProperty, "HomeLine");
@@ -141,17 +193,24 @@ internal sealed class AccessoryEditorPanel : StackPanel
         apply = AccessoryEditorTheme.IconButton("应用", AccessoryEditorTheme.ApplyIcon, "应用 · 将整套配饰与导入图片保存到本机。", ApplyDraft, primary: true);
         actions.Children.Add(apply); footer.Children.Add(actions);
         SaveActions = footer; Children.Add(footer);
+        UpdateSections();
         Refresh();
     }
 
     internal void Bind(AccessorySettingsSession value)
     {
         ArgumentNullException.ThrowIfNull(value);
+        ClearVisibleThumbnails();
+        thumbnails.Clear(); thumbnailRecency.Clear();
+        foreach (var card in libraryCards.Values) card.ImageUnavailable = false;
         session = value; previewError = null; selectedId = value.DraftConfiguration.Items.FirstOrDefault()?.Id;
+        SelectedSection = AccessoryEditorSection.Library; UpdateSections();
         Refresh(discardInput: true);
     }
 
     internal void Refresh() => Refresh(discardInput: false);
+
+    internal void DiscardInputsAndRefresh() => Refresh(discardInput: true);
 
     private void Refresh(bool discardInput)
     {
@@ -161,18 +220,26 @@ internal sealed class AccessoryEditorPanel : StackPanel
             .ToDictionary(pair => pair.Key, pair => pair.Value.Text);
         generation++;
         refreshing = true;
-        list.Items.Clear();
-        foreach (var item in session?.DraftConfiguration.Items ?? [])
+        var items = session?.DraftConfiguration.Items ?? [];
+        if (!list.Items.Cast<ListBoxItem>().Select(row => (string)row.Tag).SequenceEqual(items.Select(item => item.Id)))
         {
-            var row = new ListBoxItem
+            ClearVisibleThumbnails(); list.Items.Clear(); libraryCards.Clear();
+            foreach (var item in items)
             {
-                Content = new TextBlock { Text = $"{(item.IsEquipped ? "✓ " : "")}{item.Name}", TextTrimming = TextTrimming.CharacterEllipsis },
-                Tag = item.Id,
-                HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            };
-            row.SetResourceReference(FrameworkElement.StyleProperty, "AccessoryLibraryItem");
-            list.Items.Add(row);
-            if (item.Id == selectedId) list.SelectedItem = row;
+                var card = CreateLibraryCard(item);
+                libraryCards[item.Id] = card; list.Items.Add(card.Row);
+            }
+        }
+        foreach (var item in items)
+        {
+            var card = libraryCards[item.Id];
+            if (card.AssetId != item.AssetId)
+            {
+                card.AssetId = item.AssetId; card.ImageUnavailable = false;
+                card.Thumbnail.Source = null; thumbnailOwners.Remove(card.Thumbnail);
+            }
+            RefreshLibraryCard(card, item);
+            if (item.Id == selectedId) list.SelectedItem = card.Row;
         }
         if (list.SelectedItem is null && list.Items.Count > 0)
         {
@@ -189,6 +256,7 @@ internal sealed class AccessoryEditorPanel : StackPanel
         }
         operationError = null;
         UpdateStatus();
+        QueueThumbnailUpdate();
     }
 
     /// <summary>Saving and visible preview are separate results; only the host can clear its drawing error.</summary>
@@ -216,8 +284,9 @@ internal sealed class AccessoryEditorPanel : StackPanel
     {
         refreshing = true;
         var item = SelectedItem;
-        editor.IsEnabled = item is not null && session?.IsWriteProtected != true;
-        reset.IsEnabled = editor.IsEnabled;
+        var editable = item is not null && session?.IsWriteProtected != true;
+        editor.IsEnabled = editable;
+        reset.IsEnabled = editable;
         if (item is not null)
         {
             name.Text = item.Name; equipped.IsChecked = item.IsEquipped;
@@ -228,12 +297,19 @@ internal sealed class AccessoryEditorPanel : StackPanel
             sliders["softness"].Value = item.Softness; sliders["connection"].Value = item.ConnectionStrength;
             sliders["damping"].Value = item.RotationDamping; sliders["return"].Value = item.ReturnStrength;
             sliders["swing"].Value = item.MaxSwingDegrees; sliders["gravity"].Value = item.GravityInfluence;
-            sliders["return"].IsEnabled = sliders["damping"].IsEnabled = limitSwing.IsEnabled = !item.LockRotation;
-            sliders["swing"].IsEnabled = !item.LockRotation && item.LimitSwing;
+            limitSwing.IsEnabled = editable && !item.LockRotation;
             foreach (var (key, slider) in sliders)
             {
+                // IsEnabled getters include ancestor coercion; store only this control's own rule.
+                var numberEditable = editable && (key switch
+                {
+                    "return" or "damping" => !item.LockRotation,
+                    "swing" => !item.LockRotation && item.LimitSwing,
+                    _ => true,
+                });
+                slider.IsEnabled = numberEditable;
                 valueTexts[key].Text = slider.Value.ToString("0.###", CultureInfo.CurrentCulture);
-                valueTexts[key].IsEnabled = slider.IsEnabled;
+                valueTexts[key].IsEnabled = numberEditable;
             }
         }
         refreshing = false;
@@ -250,6 +326,31 @@ internal sealed class AccessoryEditorPanel : StackPanel
             return;
         }
         selectedId = id; Refresh(discardInput: true);
+    }
+
+    internal bool SelectSection(AccessoryEditorSection section)
+    {
+        if (!Enum.IsDefined(section)) throw new ArgumentOutOfRangeException(nameof(section));
+        if (section == SelectedSection) return true;
+        if (!CommitPendingInputs()) return false;
+        SelectedSection = section;
+        UpdateSections();
+        SectionChanged?.Invoke();
+        return true;
+    }
+
+    private void UpdateSections()
+    {
+        foreach (var (section, body) in sections)
+            body.Visibility = section == SelectedSection ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var (section, button) in sectionButtons)
+        {
+            var selected = section == SelectedSection;
+            button.Tag = selected ? "Selected" : null;
+            button.SetResourceReference(Control.ForegroundProperty, selected ? "HomePrimaryInk" : "HomeInk");
+            AutomationProperties.SetItemStatus(button, selected ? "已选" : "未选");
+        }
+        QueueThumbnailUpdate();
     }
 
     internal void SetBodyAnchor(Point normalized)
@@ -351,16 +452,28 @@ internal sealed class AccessoryEditorPanel : StackPanel
     private void Import()
     {
         if (session is null || session.IsWriteProtected || !CommitPendingInputs()) return;
-        var picker = new Microsoft.Win32.OpenFileDialog
-        {
-            Title = "导入透明 PNG 配饰",
-            Filter = "透明 PNG (*.png)|*.png|所有文件 (*.*)|*.*",
-            DefaultExt = ".png",
-            CheckFileExists = true,
-        };
         var importGeneration = generation;
-        if (picker.ShowDialog(Window.GetWindow(this)) != true || generation != importGeneration || !IsEnabled) return;
-        Execute(() => { selectedId = session.ImportPng(picker.FileName).Id; Changed(discardInput: true); EditSelectedImage(); });
+        string? path;
+        if (ImagePicker is not null) path = ImagePicker();
+        else
+        {
+            var picker = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "创建新配饰 · 选择透明 PNG",
+                Filter = "透明 PNG (*.png)|*.png|所有文件 (*.*)|*.*",
+                DefaultExt = ".png",
+                CheckFileExists = true,
+            };
+            path = picker.ShowDialog(Window.GetWindow(this)) == true ? picker.FileName : null;
+        }
+        if (path is null || generation != importGeneration || !IsEnabled) return;
+        Execute(() =>
+        {
+            selectedId = session.ImportPng(path).Id;
+            Changed(discardInput: true);
+            SelectSection(AccessoryEditorSection.Placement);
+            EditSelectedImage();
+        });
     }
 
     internal void MoveSelected(int direction)
@@ -433,21 +546,186 @@ internal sealed class AccessoryEditorPanel : StackPanel
         return button;
     }
 
-    private StackPanel AddGroup(string name, bool expanded)
+    private void AddSectionTab(StackPanel tabs, AccessoryEditorSection section, string name, string path)
+    {
+        var button = AccessoryEditorTheme.IconButton("配饰：" + name, path, name, () => SelectSection(section));
+        button.Margin = new Thickness(0, 0, 0, 8);
+        sectionButtons[section] = button; tabs.Children.Add(button);
+    }
+
+    private StackPanel AddGroup(AccessoryEditorSection section, string name)
     {
         var body = new StackPanel { Margin = new Thickness(0, 6, 0, 6) };
-        var group = new Expander
-        {
-            Header = new TextBlock { Text = name, FontSize = 12, FontWeight = FontWeights.SemiBold },
-            Content = body,
-            IsExpanded = expanded,
-            FontSize = 14,
-            Margin = new Thickness(0, 8, 0, 0),
-        };
-        group.SetResourceReference(Control.ForegroundProperty, "HomeInk");
-        AutomationProperties.SetName(group, "配饰参数：" + name);
-        editor.Children.Add(group);
+        body.Children.Add(new TextBlock { Text = name, FontSize = 12, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 6) });
+        AutomationProperties.SetName(body, "配饰参数：" + name);
+        sections[section] = body; editor.Children.Add(body);
         return body;
+    }
+
+    private sealed record LibraryCard(ListBoxItem Row, Image Thumbnail, TextBlock Equipped, Border Warning)
+    {
+        public string? AssetId { get; set; }
+        public bool ImageUnavailable { get; set; }
+    }
+
+    private static void RefreshLibraryCard(LibraryCard card, AccessoryItem item)
+    {
+        card.Row.ToolTip = card.ImageUnavailable ? $"{item.Name} · 图片不可用" : item.Name;
+        AutomationProperties.SetName(card.Row, $"{(item.IsEquipped ? "✓ " : "")}{item.Name}");
+        var wearing = item.IsEquipped ? "已佩戴" : "未佩戴";
+        AutomationProperties.SetItemStatus(card.Row, card.ImageUnavailable ? $"{wearing} · 图片不可用" : wearing);
+        card.Equipped.Visibility = item.IsEquipped ? Visibility.Visible : Visibility.Collapsed;
+        card.Warning.Visibility = card.ImageUnavailable ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private LibraryCard CreateLibraryCard(AccessoryItem item)
+    {
+        var image = new Image
+        {
+            Stretch = Stretch.Uniform,
+            MaxWidth = ThumbnailEdge,
+            MaxHeight = ThumbnailEdge,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(2),
+            IsHitTestVisible = false
+        };
+        var badge = new TextBlock
+        {
+            Text = "✓",
+            FontSize = 11,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Top,
+            IsHitTestVisible = false
+        };
+        badge.SetResourceReference(TextBlock.ForegroundProperty, "HomeInk");
+        var warningText = new TextBlock
+        {
+            Text = "!",
+            FontSize = 12,
+            FontWeight = FontWeights.Bold,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        warningText.SetResourceReference(TextBlock.ForegroundProperty, "HomeInk");
+        var warning = new Border
+        {
+            Child = warningText,
+            Width = 16,
+            Height = 16,
+            CornerRadius = new CornerRadius(8),
+            BorderThickness = new Thickness(1),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            IsHitTestVisible = false,
+            Visibility = Visibility.Collapsed
+        };
+        warning.SetResourceReference(Border.BackgroundProperty, "HomeSoft");
+        warning.SetResourceReference(Border.BorderBrushProperty, "HomeInk");
+        AutomationProperties.SetName(warning, "图片不可用");
+        var content = new Grid { Height = 56, MinWidth = 0 };
+        content.Children.Add(image); content.Children.Add(badge); content.Children.Add(warning);
+        var row = new ListBoxItem
+        {
+            Content = content,
+            Tag = item.Id,
+            MinWidth = 0,
+            Padding = new Thickness(2),
+            Margin = new Thickness(1),
+            HorizontalContentAlignment = HorizontalAlignment.Stretch
+        };
+        row.SetResourceReference(FrameworkElement.StyleProperty, "AccessoryLibraryItem");
+        image.Loaded += (_, _) => QueueThumbnailUpdate();
+        return new(row, image, badge, warning) { AssetId = item.AssetId };
+    }
+
+    private static IEnumerable<DependencyObject> Ancestors(DependencyObject target)
+    {
+        for (var parent = VisualTreeHelper.GetParent(target); parent is not null; parent = VisualTreeHelper.GetParent(parent))
+            yield return parent;
+    }
+
+    private void OnLibraryScrollChanged(object sender, ScrollChangedEventArgs e) => QueueThumbnailUpdate();
+
+    private void QueueThumbnailUpdate()
+    {
+        if (thumbnailUpdateQueued) return;
+        thumbnailUpdateQueued = true;
+        Dispatcher.BeginInvoke(() =>
+        {
+            thumbnailUpdateQueued = false;
+            UpdateVisibleThumbnails();
+        }, DispatcherPriority.Background);
+    }
+
+    private void UpdateVisibleThumbnails()
+    {
+        if (session is null) return;
+        if (SelectedSection != AccessoryEditorSection.Library || !IsLoaded || !library.IsVisible)
+        {
+            ClearVisibleThumbnails();
+            return;
+        }
+        foreach (var item in session.DraftConfiguration.Items)
+        {
+            if (!libraryCards.TryGetValue(item.Id, out var card)) continue;
+            if (!card.Row.IsVisible || !IsThumbnailVisible(card.Row))
+            {
+                card.Thumbnail.Source = null;
+                thumbnailOwners.Remove(card.Thumbnail);
+                continue;
+            }
+            if (!thumbnails.TryGetValue(item.AssetId, out var thumbnail))
+            {
+                var source = session.TryGetImage(item.AssetId) ?? BuiltinAccessoryImages.Get(item.AssetId);
+                thumbnail = source is null ? null : CreateThumbnail(source);
+                thumbnails[item.AssetId] = thumbnail;
+                ThumbnailDecodeCount++;
+            }
+            thumbnailRecency.Remove(item.AssetId); thumbnailRecency.AddLast(item.AssetId);
+            while (thumbnails.Count > MaximumThumbnailCache)
+            {
+                var oldest = thumbnailRecency.First!;
+                thumbnails.Remove(oldest.Value); thumbnailRecency.RemoveFirst();
+            }
+            card.Thumbnail.Source = thumbnail;
+            card.ImageUnavailable = thumbnail is null;
+            RefreshLibraryCard(card, item);
+            if (thumbnail is not null) thumbnailOwners.Add(card.Thumbnail);
+            else thumbnailOwners.Remove(card.Thumbnail);
+        }
+        UpdateStatus();
+    }
+
+    private void ClearVisibleThumbnails()
+    {
+        foreach (var image in thumbnailOwners) image.Source = null;
+        thumbnailOwners.Clear();
+    }
+
+    private static bool IsThumbnailVisible(FrameworkElement card)
+    {
+        // An empty Image has no intrinsic size. Its card is laid out before the bitmap exists.
+        if (card.ActualWidth <= 0 || card.ActualHeight <= 0) return false;
+        var bounds = new Rect(0, 0, card.ActualWidth, card.ActualHeight);
+        foreach (var viewport in Ancestors(card).OfType<ScrollViewer>())
+        {
+            var relative = card.TransformToAncestor(viewport).TransformBounds(bounds);
+            if (!relative.IntersectsWith(new Rect(0, 0, viewport.ActualWidth, viewport.ActualHeight))) return false;
+        }
+        return true;
+    }
+
+    private static BitmapSource CreateThumbnail(BitmapSource source)
+    {
+        var scale = (double)ThumbnailEdge / Math.Max(source.PixelWidth, source.PixelHeight);
+        var width = Math.Max(1, (int)Math.Round(source.PixelWidth * scale));
+        var height = Math.Max(1, (int)Math.Round(source.PixelHeight * scale));
+        var drawing = new DrawingVisual();
+        using (var context = drawing.RenderOpen()) context.DrawImage(source, new Rect(0, 0, width, height));
+        var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(drawing); bitmap.Freeze();
+        return bitmap;
     }
 
     private void AddNumber(StackPanel parent, string label, string visibleLabel, string key, double min, double max, Action<double> update)

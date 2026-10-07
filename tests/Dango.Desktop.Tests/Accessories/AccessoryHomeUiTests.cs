@@ -16,6 +16,13 @@ namespace Dango.Desktop.Tests.Accessories;
 public sealed class AccessoryHomeUiTests
 {
     private static readonly string[] SaveActions = ["复位当前配饰", "取消", "应用"];
+    private static readonly (AccessoryEditorSection Section, string Name)[] SectionActions =
+    [
+        (AccessoryEditorSection.Library, "配饰：配饰库"),
+        (AccessoryEditorSection.Placement, "配饰：图像与位置"),
+        (AccessoryEditorSection.Connection, "配饰：柔性与连接"),
+        (AccessoryEditorSection.Rotation, "配饰：旋转与重力"),
+    ];
 
     [STATestMethod]
     [DataRow(1024, 640)]
@@ -66,6 +73,7 @@ public sealed class AccessoryHomeUiTests
         Assert.IsTrue(fixture.Accessories.IsDirty, "This gate must exercise a pending save, not only disabled buttons.");
         AssertFixedTools(home);
         AssertIconRow(home);
+        AssertLeftSectionTabs(home);
         foreach (var action in SaveActions) AssertReachable(home, SaveButton(home, action), action);
         AssertReachable(home, Element<Button>(home, "AccessoryCloseEditorButton"), "wardrobe close");
         StringAssert.Contains(Element<TextBlock>(home, "AccessoryPreviewNotice").Text, "应用后保存");
@@ -89,7 +97,9 @@ public sealed class AccessoryHomeUiTests
     }
 
     [STATestMethod]
-    [DataRow(1024, 640)]
+    // The single placement section fits at 1024 x 640; use the product's
+    // supported minimum wide-window height to exercise real scrolling.
+    [DataRow(1024, 560)]
     [DataRow(640, 420)]
     [DataRow(480, 800)]
     public void ScrollingParametersCannotMoveOrHideThePreviewFooter(int width, int height)
@@ -99,6 +109,7 @@ public sealed class AccessoryHomeUiTests
         var size = new Size(width, height);
         Layout(home, size);
         home.ShowEditor(HomeEditor.Wardrobe);
+        Assert.IsTrue(Panel(home).SelectSection(AccessoryEditorSection.Placement));
         Panel(home).SetBodyAnchor(new Point(.31, .47));
         Layout(home, size);
         var scroll = Element<ScrollViewer>(home, "OptionsBody");
@@ -118,6 +129,7 @@ public sealed class AccessoryHomeUiTests
             Assert.AreEqual(fixedBounds[name], Bounds(home, name), name + " must not scroll with the parameter body.");
         AssertFixedTools(home);
         AssertIconRow(home);
+        AssertLeftSectionTabs(home);
         foreach (var action in SaveActions) AssertReachable(home, SaveButton(home, action), action + " after parameter scrolling");
         AssertReachable(home, Element<Button>(home, "AccessoryCloseEditorButton"), "wardrobe close after scrolling");
         Assert.AreEqual(draft, fixture.Accessories.DraftConfiguration);
@@ -186,7 +198,7 @@ public sealed class AccessoryHomeUiTests
     }
 
     [STATestMethod]
-    [DataRow(1024, 640)]
+    [DataRow(1024, 560)]
     [DataRow(640, 420)]
     [DataRow(480, 800)]
     public void TheReachableFooterActuallyAppliesAndReloadsAfterParameterScrolling(int width, int height)
@@ -197,13 +209,17 @@ public sealed class AccessoryHomeUiTests
         var size = new Size(width, height);
         Layout(home, size);
         home.ShowEditor(HomeEditor.Wardrobe);
+        Assert.IsTrue(Panel(home).SelectSection(AccessoryEditorSection.Placement));
         Layout(home, size);
         Assert.IsFalse(SaveButton(home, "应用").IsEnabled, "A clean current-format library must not advertise a pending save.");
         Panel(home).SetBodyAnchor(new Point(.73, .16));
         var editedId = Panel(home).SelectedItem!.Id;
         Layout(home, size);
-        Element<ScrollViewer>(home, "OptionsBody").ScrollToBottom();
+        var scroll = Element<ScrollViewer>(home, "OptionsBody");
+        Assert.IsTrue(scroll.ScrollableHeight > 0, "Applying after scrolling must exercise actual placement overflow.");
+        scroll.ScrollToBottom();
         Layout(home, size);
+        Assert.IsTrue(scroll.VerticalOffset > 0, "Apply must remain reachable after actual parameter scrolling.");
         AssertReachable(home, SaveButton(home, "应用"), "apply after scrolling");
         SaveButton(home, "应用").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Layout(home, size);
@@ -217,6 +233,82 @@ public sealed class AccessoryHomeUiTests
         Assert.AreEqual(fixture.Accessories.SavedConfiguration, reloaded);
         Assert.IsFalse(File.Exists(fixture.AppearancePath), "Accessory application must not write a face draft.");
         Capture(home, $"wardrobe-applied-{width}x{height}");
+    }
+
+    [STATestMethod]
+    [DataRow(1024, 640)]
+    [DataRow(640, 420)]
+    [DataRow(480, 800)]
+    public void LibraryHasFourActualImageCardsPerRowAndLeftTabsPreserveTheDraft(int width, int height)
+    {
+        using var fixture = CreateFixture();
+        PopulateLibrary(fixture);
+        var home = fixture.Home;
+        var size = new Size(width, height);
+        Layout(home, size);
+        home.ShowEditor(HomeEditor.Wardrobe);
+        Layout(home, size);
+        Assert.AreEqual(AccessoryEditorSection.Library, Panel(home).SelectedSection, "The wardrobe must initially show the image library.");
+        AssertFourColumnLibrary(home);
+        AssertLeftSectionTabs(home);
+
+        Panel(home).SetBodyAnchor(new Point(.29, .63));
+        var selectedId = Panel(home).SelectedItem!.Id;
+        var draft = fixture.Accessories.DraftConfiguration;
+        foreach (var (section, name) in SectionActions.Reverse())
+        {
+            SectionButton(home, name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Layout(home, size);
+            Assert.AreEqual(section, Panel(home).SelectedSection, name + " must select its actual section.");
+            Assert.AreEqual(selectedId, Panel(home).SelectedItem!.Id, "Section navigation must retain the selected accessory.");
+            Assert.AreEqual(draft, fixture.Accessories.DraftConfiguration, "Section navigation must not reset or commit parameters.");
+            Assert.AreEqual("已选", AutomationProperties.GetItemStatus(SectionButton(home, name)));
+            Assert.HasCount(1, SectionActions.Where(action => AutomationProperties.GetItemStatus(SectionButton(home, action.Name)) == "已选").ToArray(),
+                "Exactly one section must expose the selected state.");
+            AssertLeftSectionTabs(home);
+        }
+        AssertFourColumnLibrary(home);
+        Assert.IsFalse(File.Exists(fixture.Manifest), "The gallery and section tabs must not save the draft.");
+        Capture(home, $"wardrobe-library-{width}x{height}");
+    }
+
+    [STATestMethod]
+    [DataRow("three-columns")]
+    [DataRow("right-side-tabs")]
+    [DataRow("oversized-tab")]
+    public void LibraryAndSectionLayoutGatesRejectBrokenCompositions(string mutation)
+    {
+        using var fixture = CreateFixture();
+        PopulateLibrary(fixture);
+        var home = fixture.Home;
+        var size = new Size(1024, 640);
+        Layout(home, size);
+        home.ShowEditor(HomeEditor.Wardrobe);
+        Layout(home, size);
+        AssertFourColumnLibrary(home);
+        AssertLeftSectionTabs(home);
+
+        switch (mutation)
+        {
+            case "three-columns":
+                var cells = new FrameworkElementFactory(typeof(System.Windows.Controls.Primitives.UniformGrid));
+                cells.SetValue(System.Windows.Controls.Primitives.UniformGrid.ColumnsProperty, 3);
+                Library(home).ItemsPanel = new ItemsPanelTemplate(cells);
+                Layout(home, size);
+                Assert.ThrowsExactly<AssertFailedException>(() => AssertFourColumnLibrary(home));
+                break;
+            case "right-side-tabs":
+                Grid.SetColumn(Element<ContentControl>(home, "AccessorySectionTabsSlot"), 2);
+                Layout(home, size);
+                Assert.ThrowsExactly<AssertFailedException>(() => AssertLeftSectionTabs(home));
+                break;
+            case "oversized-tab":
+                SectionButton(home, "配饰：图像与位置").Width = 56;
+                Layout(home, size);
+                Assert.ThrowsExactly<AssertFailedException>(() => AssertLeftSectionTabs(home));
+                break;
+            default: Assert.Fail("Unknown broken library composition."); break;
+        }
     }
 
     [STATestMethod]
@@ -352,6 +444,82 @@ public sealed class AccessoryHomeUiTests
         Assert.AreEqual(Bounds(home, footer).Right, Bounds(home, row[^1]).Right, 1,
             "Apply must align to the right edge of the fixed footer.");
         Assert.AreEqual("Primary", row[^1].Tag);
+    }
+
+    private static void PopulateLibrary(HomeFixture fixture)
+    {
+        var original = fixture.Accessories.DraftConfiguration.Items[0].Id;
+        while (fixture.Accessories.DraftConfiguration.Items.Count < 8) fixture.Accessories.Duplicate(original);
+        fixture.Accessories.Stage(new(fixture.Accessories.DraftConfiguration.Items.Select((item, index) =>
+            item with { Name = $"虚构图库配饰 {index + 1}" })));
+        // This is external fixture initialization, not a user editing refresh:
+        // discard the previously bound name buffer when adopting the staged data.
+        Panel(fixture.Home).DiscardInputsAndRefresh();
+    }
+
+    private static ListBox Library(ProductHomeView home) => Descendants<ListBox>(Panel(home)).Single();
+
+    private static void AssertFourColumnLibrary(ProductHomeView home)
+    {
+        var list = Library(home);
+        var cards = list.Items.Cast<ListBoxItem>().ToArray();
+        Assert.IsTrue(cards.Length > 4, "The grid gate needs more than one row of real library entries.");
+        Assert.AreEqual(AccessoryEditorSection.Library, Panel(home).SelectedSection);
+        var first = Bounds(home, cards[0]);
+        for (var index = 0; index < cards.Length; index++)
+        {
+            var card = cards[index];
+            var bounds = Bounds(home, card);
+            Assert.AreEqual(first.Top + (index / 4) * (Bounds(home, cards[4]).Top - first.Top), bounds.Top, 1,
+                "Library images must wrap after exactly four cards.");
+            Assert.AreEqual(Bounds(home, cards[index % 4]).Left, bounds.Left, 1, "Rows must share the same four image columns.");
+            AssertInside(Bounds(home, list), bounds, "visible gallery card " + index);
+            var image = Descendants<Image>(card).Single();
+            var thumbnail = Assert.IsInstanceOfType<BitmapSource>(image.Source,
+                "Every visible library card must show its actual image, rather than a text placeholder.");
+            Assert.IsTrue(thumbnail.PixelWidth > 0 && thumbnail.PixelHeight > 0 &&
+                Math.Max(thumbnail.PixelWidth, thumbnail.PixelHeight) <= AccessoryEditorPanel.ThumbnailEdge,
+                "Gallery images must use bounded thumbnails of the real asset.");
+            AssertInside(bounds, Bounds(home, image), "image within gallery card " + index);
+            Assert.IsFalse(card.Content is string, "Library rows must contain image cards.");
+            StringAssert.Contains(AutomationProperties.GetName(card), $"虚构图库配饰 {index + 1}",
+                "Image cards must retain their accessory name for automation and accessibility.");
+        }
+        Assert.IsTrue(Bounds(home, cards[4]).Top >= first.Bottom - .5, "The fifth image must occupy a later row.");
+        for (var index = 0; index < 3; index++)
+            Assert.IsTrue(Bounds(home, cards[index + 1]).Left >= Bounds(home, cards[index]).Right - .5,
+                "The first four image cards must appear side by side without overlap.");
+    }
+
+    private static Button SectionButton(ProductHomeView home, string name) =>
+        Descendants<Button>(Element<ContentControl>(home, "AccessorySectionTabsSlot"))
+            .Single(button => AutomationProperties.GetName(button) == name);
+
+    private static void AssertLeftSectionTabs(ProductHomeView home)
+    {
+        var slot = Element<ContentControl>(home, "AccessorySectionTabsSlot");
+        Assert.AreSame(Panel(home).SectionTabs, slot.Content, "The preview must host the panel's real section controls.");
+        Assert.IsFalse(Element<ScrollViewer>(home, "OptionsBody").IsAncestorOf(slot), "Section tabs must remain outside parameter scrolling.");
+        var buttons = SectionActions.Select(action => SectionButton(home, action.Name)).ToArray();
+        Assert.HasCount(4, Descendants<Button>(slot).ToArray());
+        var preview = Bounds(home, "PetPreview");
+        var first = Bounds(home, buttons[0]);
+        for (var index = 0; index < buttons.Length; index++)
+        {
+            var bounds = Bounds(home, buttons[index]);
+            var name = AutomationProperties.GetName(buttons[index]);
+            Assert.AreEqual(32, bounds.Width, .01, name + " must use the face editor's 32-DIP target.");
+            Assert.AreEqual(32, bounds.Height, .01);
+            Assert.AreEqual(first.Left, bounds.Left, .5, "Section icons must form one vertical column.");
+            Assert.IsTrue(bounds.Right + 3 <= preview.Left, name + " must remain left of the Dango preview.");
+            if (index > 0) Assert.AreEqual(8, bounds.Top - Bounds(home, buttons[index - 1]).Bottom, 1,
+                "Section tabs must retain the face editor's 8-DIP gaps.");
+            var path = Descendants<System.Windows.Shapes.Path>(buttons[index]).Single();
+            Assert.IsNotNull(path.Data); Assert.IsNotNull(path.Stroke);
+            Assert.IsTrue(path.StrokeThickness > 0);
+            Assert.IsTrue(path.Fill is null || Equals(path.Fill, Brushes.Transparent), "Section icons must use line artwork.");
+            AssertReachable(home, buttons[index], name);
+        }
     }
 
     private static void AssertPreviewGeometry(Rect baseline, Rect actual, string editor)

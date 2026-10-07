@@ -66,6 +66,7 @@ public sealed class AccessoryProcessRestartTests
             var firstWindow = WaitForMainWindow(first, log);
             Invoke(WaitForControl(first, firstWindow, "A · 换装", ControlType.Button, log), log, "open-wardrobe-first");
             SelectLibraryItem(first, firstWindow, imported.Name, log);
+            OpenPlacementSection(first, firstWindow, log, "open-placement-first");
             var initialRange = GetRange(WaitForControl(first, firstWindow, "身体附着 X", ControlType.Slider, log));
             Assert.AreEqual(.27, initialRange.Current.Value, 1e-9);
             log.Write("first-process-restored-source-independent", new { first.Process.Id, bodyAnchorX = initialRange.Current.Value });
@@ -110,6 +111,7 @@ public sealed class AccessoryProcessRestartTests
             var secondWindow = WaitForMainWindow(second, log);
             Invoke(WaitForControl(second, secondWindow, "A · 换装", ControlType.Button, log), log, "open-wardrobe-second");
             SelectLibraryItem(second, secondWindow, imported.Name, log);
+            OpenPlacementSection(second, secondWindow, log, "open-placement-second");
             var restored = GetRange(WaitForControl(second, secondWindow, "身体附着 X", ControlType.Slider, log)).Current.Value;
             Assert.AreEqual(changedAnchor, restored, 1e-9);
             Assert.IsFalse(File.Exists(source));
@@ -287,6 +289,13 @@ public sealed class AccessoryProcessRestartTests
         Assert.IsTrue(row!.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var pattern), "The real library row must expose SelectionItemPattern.");
         ((SelectionItemPattern)pattern).Select();
         log.Write("uia-library-selected", new { child.Process.Id, rowName = row.Current.Name });
+    }
+
+    private static void OpenPlacementSection(ReviewProcess child, AutomationElement window, VerificationLog log, string action)
+    {
+        var button = WaitForControl(child, window, "配饰：图像与位置", ControlType.Button, log);
+        Invoke(button, log, action);
+        WaitUntil(child, () => button.Current.ItemStatus == "已选", "actual placement section selected", log);
     }
 
     private static RangeValuePattern GetRange(AutomationElement element)

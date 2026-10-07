@@ -41,7 +41,7 @@ public partial class ProductHomeView
         liveSurfacePlacementPending = true;
         liveSurfaceFailure = null;
         liveSurfacePhysicsError = null;
-        liveSurfaceNeedsAlignment = IsInPorch || porchPhysicsConfigured;
+        liveSurfaceNeedsAlignment = IsInPorch || porchPhysicsConfigured || IsAccessoryPreview || accessoryPhysicsConfigured;
         PorchScene.ResetProjection(porchResumeX);
         if (!OwnsLiveFrameDriver)
         {
@@ -80,7 +80,7 @@ public partial class ProductHomeView
             // must not release a separate missing-native-capability failure.
             liveSurfaceRuntimeFault = false;
             liveSurfaceFailure = null;
-            liveSurfaceNeedsAlignment = IsInPorch || porchPhysicsConfigured;
+            liveSurfaceNeedsAlignment = IsInPorch || porchPhysicsConfigured || IsAccessoryPreview || accessoryPhysicsConfigured;
         }
         if (!liveSurfaceNeedsAlignment) return liveSurfaceFailure is null;
         try
@@ -99,6 +99,7 @@ public partial class ProductHomeView
                 porchResumeX = center.X;
                 PorchScene.ResetProjection(center.X);
             }
+            if (accessoryPhysicsConfigured) BoundRuntime.SetUnboundedHorizontalPreview(false);
             if (!BoundRuntime!.RehostSelectedEntityAt(center)) return true; // No first native frame yet; keep input clear.
             if (IsInPorch)
             {
@@ -110,6 +111,8 @@ public partial class ProductHomeView
                 BoundRuntime.ClearHorizontalBounds();
                 porchPhysicsConfigured = false;
             }
+            BoundRuntime.SetUnboundedHorizontalPreview(IsAccessoryPreview);
+            accessoryPhysicsConfigured = IsAccessoryPreview;
             liveSurfaceNeedsAlignment = false;
             return true;
         }
@@ -117,7 +120,7 @@ public partial class ProductHomeView
         {
             liveSurfacePhysicsError = error;
             liveSurfaceNeedsAlignment = false;
-            return ShowLiveSurfaceUnavailable("门廊物理模块不可用 · 请返回设置重试");
+            return ShowLiveSurfaceUnavailable(IsAccessoryPreview ? "配饰预览物理模块不可用 · 请返回设置重试" : "门廊物理模块不可用 · 请返回设置重试");
         }
     }
 
@@ -125,6 +128,8 @@ public partial class ProductHomeView
     {
         liveSurfaceFailure = message;
         LiveDangoVisual.Visibility = LiveDangoHat.Visibility = Visibility.Collapsed;
+        Dango.Desktop.Accessories.AccessoryHostBinding.Hide(LiveDangoVisual);
+        PetShadow.Visibility = Visibility.Collapsed;
         LiveSceneStatusText.Text = message;
         LiveSceneStatusText.Visibility = Visibility.Visible;
         PorchScene.ShowUnavailable(message);

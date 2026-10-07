@@ -27,6 +27,7 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
     private LogicalPoint? hostOrigin;
     private LogicalRect? viewport;
     private (double Left, double Right)? localHorizontalBounds;
+    private bool unboundedHorizontalPreview;
     private bool layoutPending;
     private DirectionalControlIntent directionalIntent;
     private bool running;
@@ -434,6 +435,18 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
     }
 
     internal double? LocalGroundY => scene?.GroundY;
+    internal bool UnboundedHorizontalPreview => unboundedHorizontalPreview;
+    internal int HorizontalRebaseCount => scene?.HorizontalRebaseCount ?? 0;
+
+    internal void SetUnboundedHorizontalPreview(bool enabled)
+    {
+        VerifyAccess();
+        EnsureHealthy();
+        (scene ?? throw new InvalidOperationException("请等待本地场景首帧后切换编辑预览。")).SetUnboundedHorizontalPreview(enabled);
+        unboundedHorizontalPreview = enabled;
+        if (enabled) localHorizontalBounds = null;
+        layoutPending = true;
+    }
     internal LogicalPoint? CurrentSelectedCenter => scene?.LastFrame?.Bodies
         .FirstOrDefault(body => body.EntityId == scene.SelectedEntity)?.Bounds.Center;
 
@@ -634,7 +647,7 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
                 // A bounded local world is viewed through a camera. Fitting it
                 // into the current screen would move the floor and side walls.
                 // Keep the accepted automatic fitting path for unbounded hosts.
-                var translation = localHorizontalBounds is null
+                var translation = localHorizontalBounds is null && !unboundedHorizontalPreview
                     ? DangoHostLayout.FitTranslation(view, frame.Bodies.Select(body => body.Bounds).ToArray()) : default;
                 if (translation != default)
                 {
@@ -651,6 +664,16 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
                 LastError = $"物理故障已锁存：{frame.Physics.ErrorCode}；请显式重置或退出。";
                 ClearPhysicalInput();
             }
+            // Read-only motion consumers need continuous positions across the
+            // native rolling origin. Keep LastPhysicsFrame as the actual local
+            // native snapshot, and do not advance any consumer twice.
+            var motionFrame = unboundedHorizontalPreview ? frame with
+            {
+                Physics = frame.Physics with
+                {
+                    Bodies = frame.Physics.Bodies.Select(body => body with { CoreX = (float)scene.ContinuousCoreX(body) }).ToArray(),
+                },
+            } : frame;
             if (frame.Physics.Succeeded) BeforeLightFeedbackStep();
             if (frame.Physics.Succeeded && attachments is not null && LightInteractionsEnabled)
             {
@@ -660,7 +683,7 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
                 if (frame.Physics.Bodies.Count == 1)
                 {
                     var body = frame.Physics.Bodies[0];
-                    Doze.Advance(new(body.IsGrounded, body.CoreX, body.CoreY), fixedStep.TotalSeconds,
+                    Doze.Advance(new(body.IsGrounded, scene.ContinuousCoreX(body), body.CoreY), fixedStep.TotalSeconds,
                         dozeEligible, Wander.Active || QuietIdle.HasActive,
                         intent => attachments.SubmitQuietIdle(body.EntityId, intent).Accepted);
                 }
@@ -670,11 +693,11 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
                     Wander.Cancel();
                     QuietIdle.CancelAll(attachments);
                 }
-                QuietIdle.BeforeStep(frame, fixedStep.TotalSeconds, attachments, id =>
+                QuietIdle.BeforeStep(motionFrame, fixedStep.TotalSeconds, attachments, id =>
                     quietIdleHostEnabled && (!Doze.Due || QuietIdle.HasActive) && !Doze.Active && !Wander.Active && !IsDragging && !HasDirectionalInput && LightInteractionError is null &&
                     !lightPresses.ContainsKey(id) && !lightFeedback.ContainsKey(id));
             }
-            var attachmentFrames = attachments?.Advance(frame, fixedStep.TotalSeconds, scene.SelectedEntity,
+            var attachmentFrames = attachments?.Advance(motionFrame, fixedStep.TotalSeconds, scene.SelectedEntity,
                 directionalIntent.Left == directionalIntent.Right ?
                     (autonomousHorizontal < 0 ? DangoFacingDirection.Left : autonomousHorizontal > 0 ? DangoFacingDirection.Right : DangoFacingDirection.Center) :
                 directionalIntent.Left ? DangoFacingDirection.Left : DangoFacingDirection.Right);
@@ -732,14 +755,20 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
             var direction = manual ? (directionalIntent.Left ? -1 : 1) :
                 Wander.Driving ? Math.Sign(autonomousHorizontal) : 0;
             var pressed = lightPresses.Count > 0 || lightFeedback.Count > 0;
-            var strain = Gait.Advance(new(body.CoreX * 80d, body.CoreY * 60d,
+            var strain = Gait.Advance(new(scene!.ContinuousCoreX(body) * 80d, body.CoreY * 60d,
                 body.IsGrounded, shape.Width * 160, shape.Height * 160, body.SignedArea,
-                direction, quietIdleHostEnabled && LayoutWarning is null && QuietIdleError is null &&
+                direction, (quietIdleHostEnabled || unboundedHorizontalPreview) && LayoutWarning is null && QuietIdleError is null &&
                     LightInteractionError is null && !Doze.Active && !pressed,
                 IsDragging || directionalIntent.Jump || directionalIntent.Squash || !body.IsGrounded,
                 pressed, !manual), seconds);
+            var bodyBounds = DangoHostFrameBinding.Bounds(LastFrame, 0);
+            // The preview camera moves through world coordinates. A fixed
+            // desktop viewport must not suppress gait after walking past its
+            // original edge; the host camera owns screen clipping in this mode.
+            var gaitViewport = unboundedHorizontalPreview
+                ? view.Translate(new(bodyBounds.Center.X - view.Center.X, bodyBounds.Center.Y - view.Center.Y)) : view;
             var descriptor = GaitGeometry.Create(presentation, body.EntityId,
-                DangoHostFrameBinding.Bounds(LastFrame, 0), view, strain, !manual && Wander.Active, DisplayHatSize);
+                bodyBounds, gaitViewport, strain, !manual && Wander.Active, DisplayHatSize);
             Gait.AcceptDisplayed((descriptor?.ScaleY ?? 1) - 1);
             LastFrame = LastFrame with { Gait = descriptor };
         }
@@ -760,7 +789,7 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
         { Wander.Cancel(); return; }
         var body = physical.Physics.Bodies[0];
         var wasActive = Wander.Active;
-        Wander.Advance(new(body.CoreX, body.CoreY, body.IsGrounded,
+        Wander.Advance(new(scene.ContinuousCoreX(body), body.CoreY, body.IsGrounded,
             visible.X - view.X - 16, view.Right - visible.Right - 16, wanderScreenWidth!.Value), seconds, true, QuietIdle.HasActive || Doze.Due || Doze.Active);
         if (!wasActive && Wander.Active)
         {
@@ -789,6 +818,7 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
     {
         if (scene is not null) return;
         scene = new DesktopPhysicsScene(nativeLibraryPath, bounds);
+        if (unboundedHorizontalPreview) scene.SetUnboundedHorizontalPreview(true);
         colorSlots.Add(scene.SelectedEntity, 0);
         hostOrigin = bounds.Center;
         scene.SetPaused(!running);

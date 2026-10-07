@@ -10,6 +10,7 @@ using System.Windows.Threading;
 using Dango.Core.Animation;
 using Dango.Core.Coordinates;
 using Dango.Desktop.AppShell.ControlCenter;
+using Dango.Desktop.AppShell.Rooms;
 using Dango.Desktop.DesktopHost;
 using Dango.Desktop.Physics.Presentation;
 using Dango.Desktop.Rendering.Visuals;
@@ -183,6 +184,27 @@ public sealed class HomeJumpShadowTests
         var apexOpacity = groundedOpacity;
         var wasAirborne = false;
         var airborneFrames = 0;
+        var wardrobeCamera = mode == nameof(HomeEditor.Wardrobe)
+            ? (RoomViewController)typeof(ProductHomeView).GetField("accessoryCamera", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(home)!
+            : null;
+        var worldFloor = runtime.LocalGroundY!.Value;
+        var groundedCameraTop = wardrobeCamera?.CameraY;
+        var previewCanvas = Element<FrameworkElement>(home, "LiveSceneCanvas");
+        var visualArea = Element<FrameworkElement>(home, "PetVisualArea");
+        var canvasToVisualArea = previewCanvas.TransformToAncestor(visualArea);
+        var canvasOrigin = canvasToVisualArea.Transform(new Point());
+        var canvasUnitY = canvasToVisualArea.Transform(new Point(0, 1));
+        var previewScaleY = canvasUnitY.Y - canvasOrigin.Y;
+        Assert.IsTrue(double.IsFinite(previewScaleY) && previewScaleY > 0,
+            "The viewport gate requires the actual positive WPF canvas-to-preview Y scale.");
+        var viewportWorldHeight = (visualArea.ActualHeight - canvasOrigin.Y) / previewScaleY;
+        var groundedMidline = wardrobeCamera is null ? 0 : wardrobeCamera.CameraY + viewportWorldHeight / (2 * wardrobeCamera.Scale);
+        var groundedFloorProjection = wardrobeCamera?.Projection.WorldToScreen(new(0, worldFloor)).Y;
+        var lowJumpFrames = 0;
+        var highJumpFrames = 0;
+        var visibleHighJumpFrames = 0;
+        var maximumFloorProjection = groundedFloorProjection;
+        var previousCoreY = groundedCoreY;
 
         Element<FrameworkElement>(home, "Stage").Focus();
         Assert.IsTrue(Key(home, fixture.Window, System.Windows.Input.Key.Space, true).Handled,
@@ -202,12 +224,58 @@ public sealed class HomeJumpShadowTests
                 apexScale = scale.ScaleX;
                 apexOpacity = shadow.Opacity;
             }
-            Assert.AreEqual(Visibility.Visible, shadow.Visibility, $"{mode}, native frame {i}: shadow disappeared.");
-            var currentGround = ShadowCenter(home);
-            Assert.AreEqual(ground.Y, currentGround.Y, .5,
-                $"{mode}, native frame {i}: a jumping body must not lift its ground shadow.");
-            Assert.AreEqual(ground.X, currentGround.X, .5,
-                $"{mode}, native frame {i}: the anchored body must keep the shadow horizontal position.");
+            if (wardrobeCamera is null)
+            {
+                Assert.AreEqual(Visibility.Visible, shadow.Visibility, $"{mode}, native frame {i}: shadow disappeared.");
+                var currentGround = ShadowCenter(home);
+                Assert.AreEqual(ground.Y, currentGround.Y, .5,
+                    $"{mode}, native frame {i}: a jumping body must not lift its ground shadow.");
+                Assert.AreEqual(ground.X, currentGround.X, .5,
+                    $"{mode}, native frame {i}: the anchored body must keep the shadow horizontal position.");
+            }
+            else
+            {
+                Assert.AreEqual(worldFloor, runtime.LocalGroundY!.Value, 1e-9,
+                    $"Wardrobe, native frame {i}: jumping must not move the actual world floor.");
+                var center = runtime.CurrentSelectedCenter!.Value;
+                var floorProjection = wardrobeCamera.Projection.WorldToScreen(new(center.X, worldFloor));
+                maximumFloorProjection = Math.Max(maximumFloorProjection!.Value, floorProjection.Y);
+                var floorVisible = floorProjection.Y >= 0 && floorProjection.Y <= viewportWorldHeight + 1;
+                Assert.AreEqual(floorVisible ? Visibility.Visible : Visibility.Collapsed, shadow.Visibility,
+                    $"Wardrobe, native frame {i}: a shadow must be shown only where the real world floor projects into the viewport.");
+                if (floorVisible)
+                {
+                    var projectedGround = previewCanvas.TransformToAncestor(home).Transform(new Point(floorProjection.X, floorProjection.Y));
+                    var currentGround = ShadowCenter(home);
+                    Assert.AreEqual(projectedGround.Y, currentGround.Y, .5,
+                        $"Wardrobe, native frame {i}: the ground shadow must use the world-floor projection, not follow the jumping body.");
+                    Assert.AreEqual(projectedGround.X, currentGround.X, .5,
+                        $"Wardrobe, native frame {i}: the shadow must use the same horizontal camera projection as the body.");
+                }
+                var focusY = center.Y + runtime.NeutralBodyGroundOffset;
+                if (physical.CoreY > groundedCoreY + .002 && physical.CoreY > previousCoreY && focusY >= groundedMidline)
+                {
+                    lowJumpFrames++;
+                    Assert.AreEqual(groundedCameraTop!.Value, wardrobeCamera.CameraY, 1e-6,
+                        $"Wardrobe, native frame {i}: the rising body below the midline must retain ground framing.");
+                }
+                if (!physical.IsGrounded && focusY < groundedMidline - 1e-6)
+                {
+                    highJumpFrames++;
+                    visibleHighJumpFrames += floorVisible ? 1 : 0;
+                    Assert.IsTrue(wardrobeCamera.CameraY < groundedCameraTop!.Value,
+                        $"Wardrobe, native frame {i}: crossing the midline must move the camera upward.");
+                    Assert.IsTrue(floorProjection.Y > groundedFloorProjection!.Value,
+                        $"Wardrobe, native frame {i}: following a high jump must move the fixed world floor down on screen.");
+                    Assert.AreEqual(viewportWorldHeight / 2,
+                        wardrobeCamera.Projection.WorldToScreen(new(center.X, focusY)).Y, 1e-6,
+                        $"Wardrobe, native frame {i}: a high body must remain at the follow-camera midline.");
+                }
+                var viewportBottom = visualArea.TransformToAncestor(home).TransformBounds(new Rect(visualArea.RenderSize)).Bottom;
+                Assert.IsTrue(RenderedBodyBottom(home) <= viewportBottom + 1e-6,
+                    $"Wardrobe, native frame {i}: the actual painted body bottom must stay inside the viewport.");
+            }
+            previousCoreY = physical.CoreY;
             minimumHead = Math.Min(minimumHead, RenderedHeadTop(home));
         }
 
@@ -222,6 +290,17 @@ public sealed class HomeJumpShadowTests
         Assert.AreEqual(groundedOpacity, shadow.Opacity, .005, $"{mode}: landing must restore the shadow opacity.");
         Assert.IsTrue(minimumHead >= headBoundary,
             $"{mode}: the full body/hat outline reached {minimumHead:F3} DIP, above the safe boundary {headBoundary:F3} DIP.");
+        if (wardrobeCamera is not null)
+        {
+            Assert.IsTrue(lowJumpFrames > 0, "Wardrobe: the native jump must lift the real body below the follow midline before entering high follow.");
+            Assert.IsTrue(highJumpFrames > 0, "Wardrobe: the native jump must cross the follow midline.");
+            Assert.IsTrue(visibleHighJumpFrames > 0,
+                "Wardrobe: a high native frame with a visible projected floor must prove the shadow actually moves with the world projection.");
+            Assert.AreEqual(groundedCameraTop!.Value, wardrobeCamera.CameraY, 1e-6,
+                "Wardrobe: the actual landing must restore ground framing.");
+            Assert.AreEqual(ground.Y, ShadowCenter(home).Y, .5,
+                "Wardrobe: landing must return the shadow to its original screen projection.");
+        }
         double? homeDoorBottom = null, homeDoorJumpClearance = null, wardrobeLeftGap = null, faceRightGap = null;
         if (mode == "Home")
         {
@@ -244,15 +323,18 @@ public sealed class HomeJumpShadowTests
         }
         return new(mode, groundedCoreY, maxCoreY, apexIndex, airborneFrames, minimumHead, headBoundary,
             ground.Y, groundedScale, apexScale, scale.ScaleX, groundedOpacity, apexOpacity, shadow.Opacity,
-            paintedShadowPixels, groundedBodyShadowGap, homeDoorBottom, homeDoorJumpClearance, wardrobeLeftGap, faceRightGap);
+            paintedShadowPixels, groundedBodyShadowGap, homeDoorBottom, homeDoorJumpClearance, wardrobeLeftGap, faceRightGap,
+            groundedCameraTop, wardrobeCamera is null ? null : lowJumpFrames, wardrobeCamera is null ? null : highJumpFrames,
+            wardrobeCamera is null ? null : visibleHighJumpFrames, maximumFloorProjection);
     }
 
     private sealed record JumpEvidence(string Mode, double GroundedCoreY, double ApexCoreY, int ApexFrame,
-        int AirborneFrames, double HighestBodyAndHatY, double SafeTopY, double FixedShadowGroundY,
+        int AirborneFrames, double HighestBodyAndHatY, double SafeTopY, double GroundedShadowGroundY,
         double GroundedShadowScale, double ApexShadowScale, double LandedShadowScale,
         double GroundedShadowOpacity, double ApexShadowOpacity, double LandedShadowOpacity, int PaintedShadowPixels,
         double GroundedBodyShadowGap, double? HomeDoorBottom, double? HomeDoorJumpClearance,
-        double? WardrobeLeftGap, double? FaceRightGap);
+        double? WardrobeLeftGap, double? FaceRightGap, double? GroundedCameraTop,
+        int? LowNativeJumpFrames, int? HighNativeJumpFrames, int? VisibleHighNativeJumpFrames, double? MaximumWorldFloorProjectionY);
 
     private static double AssertGroundedBodyTouchesShadow(NativeFixture fixture, string mode)
     {

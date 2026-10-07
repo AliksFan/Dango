@@ -107,6 +107,7 @@ public partial class ProductHomeView : UserControl
         RefreshAppearanceControls();
         EditorTitle.Text = editor == HomeEditor.Face ? "捏脸" : "换装";
         accessoryPanel.Refresh();
+        UpdateAccessoryPreviewMode();
         if (IsLoaded && !IsSettingsOpen) Stage.Focus();
         UpdateTransition(true);
     }
@@ -119,6 +120,7 @@ public partial class ProductHomeView : UserControl
         CancelAppearancePreview();
         if (focusStage) Stage.Focus();
         IsEditing = false;
+        UpdateAccessoryPreviewMode();
         UpdateTransition(true);
     }
 
@@ -327,6 +329,12 @@ public partial class ProductHomeView : UserControl
     }
     private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        if (IsAccessoryPreview && IsKeyboardFocusWithin && Keyboard.Modifiers == ModifierKeys.None && e.Key == Key.Escape)
+        {
+            if (!e.IsRepeat) CloseEditor();
+            e.Handled = true;
+            return;
+        }
         if (!IsKeyboardFocusWithin || Keyboard.Modifiers != ModifierKeys.None ||
             Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.ComboBox or PasswordBox)
             return;
@@ -344,6 +352,11 @@ public partial class ProductHomeView : UserControl
             else if (IsEditing) CloseEditor();
             else return;
             e.Handled = true;
+            return;
+        }
+        if (IsAccessoryPreview && !IsSettingsOpen && !IsDangoAway)
+        {
+            e.Handled = SetLiveDirectionalKey(e.Key, true, e.IsRepeat);
             return;
         }
         if (IsSettingsOpen || IsDangoAway || IsAppearanceInputFocused())
@@ -370,6 +383,11 @@ public partial class ProductHomeView : UserControl
 
     private void OnPreviewKeyUp(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        if (IsAccessoryPreview)
+        {
+            e.Handled = SetLiveDirectionalKey(e.Key, false, false);
+            return;
+        }
         if (IsSettingsOpen || IsDangoAway || IsAppearanceInputFocused()) { ClearLiveDirectionalInput(); return; }
         if (!IsInPorch && e.Key is (Key.A or Key.D)) { e.Handled = true; return; }
         e.Handled = SetLiveDirectionalKey(e.Key, false, false);
@@ -676,6 +694,7 @@ public partial class ProductHomeView : UserControl
         Grid.SetRowSpan(AccessoryEditorTools, portrait ? 1 : 2);
         AccessoryEditorTools.Margin = FaceEditorTools.Margin;
         AccessoryEditorTools.VerticalAlignment = FaceEditorTools.VerticalAlignment;
+        AccessoryEditorPreviewRegion.Width = BasePreviewWidth + 76;
         AccessoryPreviewSlot.Width = BasePreviewWidth;
         AccessorySaveActionsSlot.Width = portrait ? BasePreviewWidth : double.NaN;
         AccessorySaveActionsSlot.HorizontalAlignment = portrait ? System.Windows.HorizontalAlignment.Center : System.Windows.HorizontalAlignment.Stretch;

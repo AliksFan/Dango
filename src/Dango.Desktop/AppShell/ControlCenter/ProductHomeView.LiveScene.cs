@@ -74,6 +74,7 @@ public partial class ProductHomeView
         else { standaloneDraft = runtime.EffectiveAppearance; runtime.SetAppearance(standaloneDraft); }
         RefreshAppearanceControls();
         PetPreview.ToolTip = "同一只实时物理团子";
+        if (IsAccessoryPreview) ChangeLiveSurface();
         RefreshLiveSceneOwnership();
     }
 
@@ -137,6 +138,9 @@ public partial class ProductHomeView
         if (porchConfirmation is not null) System.Windows.Media.CompositionTarget.Rendering -= porchConfirmation;
         porchConfirmation = null;
         liveIntent = DirectionalControlIntent.None;
+        accessoryJumpW = accessoryJumpSpace = false;
+        accessoryCameraFrame = 0;
+        accessoryCamera?.ResetMotion();
         visualAnchor = null;
         shadowGroundCenterY = null;
         groundedVisualOffset = null;
@@ -152,7 +156,7 @@ public partial class ProductHomeView
         PrepareRequestedLiveSurface();
         if (!TryAlignLiveSurface()) return false;
         runtime.SetDirectionalControl(liveSurfaceNeedsAlignment ? DirectionalControlIntent.None : liveIntent);
-        runtime.UpdateQuietIdleHost(this, true);
+        runtime.UpdateQuietIdleHost(this, !IsAccessoryPreview);
         return true;
     }
 
@@ -193,6 +197,11 @@ public partial class ProductHomeView
             porchFrameHealthy = PorchScene.IsVisible && PorchScene.ActualWidth > 0 && PorchScene.ActualHeight > 0 &&
                 PorchScene.LiveBody.IsVisible && PorchScene.LiveBody.LastContourFailure == DangoContourFailure.None;
             ConfirmHealthyPorchFrame();
+            return;
+        }
+        if (IsAccessoryPreview)
+        {
+            ApplyAccessoryPreviewFrame(frame);
             return;
         }
         var bounds = DangoHostFrameBinding.Bounds(frame, 0);
@@ -269,7 +278,16 @@ public partial class ProductHomeView
     private bool SetLiveDirectionalKey(Key key, bool down, bool repeat)
     {
         if (liveScheduler?.OwnsRuntime != true) return false;
-        if (!IsInPorch && key is (Key.A or Key.D)) return false;
+        if (!IsInPorch && !IsAccessoryPreview && key is (Key.A or Key.D)) return false;
+        if (IsAccessoryPreview && key == Key.Space && Keyboard.FocusedElement is System.Windows.Controls.Button && (down || !accessoryJumpSpace))
+            return false;
+        if (IsAccessoryPreview && key is (Key.W or Key.Space))
+        {
+            if (key == Key.W) accessoryJumpW = down;
+            else accessoryJumpSpace = down;
+            liveIntent = liveIntent with { Jump = accessoryJumpW || accessoryJumpSpace };
+            return true;
+        }
         // A new Space belongs to the button, but release of our already-held
         // jump must still clear intent after focus moves within this view.
         if (key == Key.Space && Keyboard.FocusedElement is System.Windows.Controls.Button && (down || !liveIntent.Jump)) return false;
@@ -288,6 +306,7 @@ public partial class ProductHomeView
     private void ClearLiveDirectionalInput()
     {
         liveIntent = DirectionalControlIntent.None;
+        accessoryJumpW = accessoryJumpSpace = false;
         if (OwnsLiveFrameDriver) BoundRuntime!.SetDirectionalControl(liveIntent);
     }
 
@@ -295,6 +314,7 @@ public partial class ProductHomeView
     {
         if (!OwnsLiveFrameDriver) return;
         BoundRuntime!.UpdateWanderScreenWidth(this, IsInPorch ? PorchScene.ViewportWorldWidth : null);
+        BoundRuntime.UpdateQuietIdleHost(this, !IsAccessoryPreview);
         visualAnchor = null;
         shadowGroundCenterY = null;
         groundedVisualOffset = null;
@@ -303,6 +323,7 @@ public partial class ProductHomeView
 
     private void OnStageMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if ((ReferenceEquals(e.OriginalSource, Stage) || IsInPorch) && !IsEditing && !IsSettingsOpen) Stage.Focus();
+        if (!IsSettingsOpen && (ReferenceEquals(e.OriginalSource, Stage) || IsInPorch ||
+            IsAccessoryPreview && e.OriginalSource is DependencyObject source && Presence.IsAncestorOf(source))) Stage.Focus();
     }
 }
