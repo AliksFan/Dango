@@ -171,6 +171,7 @@ public partial class ProductHomeView
             frame.Bodies[0].FallbackReason != PhysicsPresentationFallbackReason.None)
         {
             LiveDangoVisual.Visibility = LiveDangoHat.Visibility = Visibility.Collapsed;
+            Dango.Desktop.Accessories.AccessoryHostBinding.Hide(LiveDangoVisual);
             PetShadow.Visibility = Visibility.Collapsed;
             PorchScene.ShowUnavailable();
             LiveSceneStatusText.Text = "团子暂不可用 · 请在设置中重试";
@@ -188,7 +189,7 @@ public partial class ProductHomeView
             var now = Environment.TickCount64;
             PorchScene.ApplyFrame(frame, BoundRuntime, now - lastPorchFrame, ReduceMotion || !SystemParameters.ClientAreaAnimation);
             lastPorchFrame = now;
-            LiveSceneStatusText.Visibility = Visibility.Collapsed;
+            UpdateAccessoryPresentationStatus();
             porchFrameHealthy = PorchScene.IsVisible && PorchScene.ActualWidth > 0 && PorchScene.ActualHeight > 0 &&
                 PorchScene.LiveBody.IsVisible && PorchScene.LiveBody.LastContourFailure == DangoContourFailure.None;
             ConfirmHealthyPorchFrame();
@@ -212,7 +213,8 @@ public partial class ProductHomeView
             new LogicalVector(-bounds.X + dx, -bounds.Y + dy),
             appearance: BoundRuntime.DisplayHatAppearance,
             hatSize: BoundRuntime.DisplayHatSize,
-            bodyFillOverride: BoundRuntime.BodyPreviewFill, eyeFillOverride: BoundRuntime.EyePreviewFill, appearanceEntity: BoundRuntime.AppearanceEntity);
+            bodyFillOverride: BoundRuntime.BodyPreviewFill, eyeFillOverride: BoundRuntime.EyePreviewFill, appearanceEntity: BoundRuntime.AppearanceEntity,
+            runtime: BoundRuntime);
         if (grounded && LiveDangoVisual.RenderedBodyBottom is { } bodyBottom && PetPreview.Width > 0)
         {
             // Align the rendered contour, rather than its larger preview box,
@@ -223,6 +225,7 @@ public partial class ProductHomeView
         }
         System.Windows.Controls.Canvas.SetTop(LiveDangoVisual, dy + (groundedVisualOffset ?? 0));
         System.Windows.Controls.Canvas.SetTop(LiveDangoHat, dy + (groundedVisualOffset ?? 0));
+        Dango.Desktop.Accessories.AccessoryHostBinding.Position(LiveDangoVisual, dx, dy + (groundedVisualOffset ?? 0));
         var lift = shadowGroundCenterY is { } floor
             ? Math.Clamp((floor - bounds.Center.Y) * .4 / 42, 0, 1) : 0;
         PetShadowScale.ScaleX = 1 - .32 * lift;
@@ -230,7 +233,7 @@ public partial class ProductHomeView
         PetShadow.Opacity = .17 - .09 * lift;
         PetShadow.Visibility = shadowGroundCenterY.HasValue && LiveDangoVisual.LastContourFailure == DangoContourFailure.None
             ? Visibility.Visible : Visibility.Collapsed;
-        LiveSceneStatusText.Visibility = Visibility.Collapsed;
+        UpdateAccessoryPresentationStatus();
     }
 
     private void ConfirmHealthyPorchFrame()

@@ -3,6 +3,7 @@ using System.Windows.Media;
 using Dango.Core.Coordinates;
 using Dango.Desktop.Physics.Presentation;
 using Dango.Physics;
+using Dango.Desktop.Accessories;
 using Canvas = System.Windows.Controls.Canvas;
 using Color = System.Windows.Media.Color;
 
@@ -28,12 +29,13 @@ internal static class DangoHostFrameBinding
 
     public static void Apply(DeformableDangoVisual body, DangoHatVisual hat,
         StackedPhysicsPresentationFrame frame, int index, LogicalVector translation = default,
-        HatAppearance appearance = HatAppearance.Sprout, double hatSize = 1, System.Windows.Media.Brush? bodyFillOverride = null, System.Windows.Media.Brush? eyeFillOverride = null, DangoEntityId? appearanceEntity = null)
+        HatAppearance appearance = HatAppearance.Sprout, double hatSize = 1, System.Windows.Media.Brush? bodyFillOverride = null, System.Windows.Media.Brush? eyeFillOverride = null, DangoEntityId? appearanceEntity = null,
+        StackedDangoSceneRuntime? runtime = null)
     {
         var active = index < frame.Bodies.Count;
         body.Visibility = hat.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
         body.Tag = active && index < frame.EntityIds.Count ? frame.EntityIds[index] : null;
-        if (!active) return;
+        if (!active) { AccessoryHostBinding.Hide(body); return; }
         body.Appearance = hat.Appearance = appearance;
         body.HatSize = hat.HatSize = hatSize;
         var bounds = Bounds(frame, index).Translate(translation);
@@ -47,6 +49,7 @@ internal static class DangoHostFrameBinding
             candidate.Matches(frame.Bodies[index], frame.EntityIds[index]) ? candidate : null;
         body.ApplyFrame(frame.Bodies[index], gait);
         hat.ApplyFrame(frame.Bodies[index], gait);
+        AccessoryHostBinding.Apply(body, hat, frame, index, translation, runtime);
     }
 
     private static readonly SolidColorBrush DefaultEyeFill = CreateBrush(0x2B, 0x20, 0x1E);

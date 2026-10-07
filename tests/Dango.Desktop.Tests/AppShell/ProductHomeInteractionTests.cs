@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -6,6 +7,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
+using Dango.Desktop.Accessories;
 using Dango.Desktop.Verification;
 
 namespace Dango.Desktop.Tests.AppShell;
@@ -20,6 +22,8 @@ public sealed class ProductHomeInteractionTests
     public void HomeKeepsNavigationFixedAndMirrorsFaceAndWardrobePanels(int width)
     {
         var home = new ProductHomeView { ReduceMotion = true };
+        var accessoryRoot = Path.Combine(TestRepository.Root, "artifacts", "home-interaction", "accessories", Guid.NewGuid().ToString("N"));
+        var accessorySession = new AccessorySettingsSession(accessoryRoot); home.BindAccessories(accessorySession);
         Layout(home, width);
         Assert.AreEqual(Visibility.Hidden, Element<UIElement>(home, "EditorPanel").Visibility);
         Assert.IsFalse(Element<UIElement>(home, "EditorPanel").IsEnabled);
@@ -68,7 +72,22 @@ public sealed class ProductHomeInteractionTests
         Assert.IsTrue(wardrobePanel.Right + 4 < wardrobePet.Left,
             "Wardrobe options must mirror the face composition.");
         Assert.AreEqual(petBefore.Top, wardrobePet.Top, .1);
-        Assert.IsFalse(Element<Button>(home, "CreateButton").IsEnabled);
+        var accessoryEditor = Element<StackPanel>(home, "WardrobeOptions").Children.OfType<AccessoryEditorPanel>().Single();
+        var accessoryButtons = accessoryEditor.Children.OfType<WrapPanel>().SelectMany(row => row.Children.OfType<Button>()).ToArray();
+        Assert.IsTrue(accessoryButtons.Single(button => Equals(button.Content, "导入 PNG")).IsEnabled,
+            "The approved accessory editor must expose its real PNG import action.");
+        accessoryEditor.SetBodyAnchor(new Point(.25, .4));
+        var editedAccessoryId = accessoryEditor.SelectedItem!.Id;
+        Assert.IsTrue(accessorySession.IsDirty);
+        Assert.IsFalse(File.Exists(AccessorySettingsStore.GetManifestPath(accessoryRoot)), "Editing must only preview before applying.");
+        Descendants<Button>(Element<ContentControl>(home, "AccessorySaveActionsSlot"))
+            .Single(button => AutomationProperties.GetName(button) == "应用")
+            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.IsFalse(accessorySession.IsDirty);
+        var reloadedAccessories = new AccessorySettingsSession(accessoryRoot).SavedConfiguration.Items;
+        Assert.HasCount(3, reloadedAccessories, "Applying one edit must preserve all three existing built-in library entries.");
+        Assert.AreEqual(.25, reloadedAccessories.Single(item => item.Id == editedAccessoryId).BodyAnchorX);
+        Assert.AreEqual(.4, reloadedAccessories.Single(item => item.Id == editedAccessoryId).BodyAnchorY);
         SaveImage(home, width, "wardrobe");
         Click(home, "CloseEditorButton");
         Layout(home, width);
@@ -283,6 +302,12 @@ public sealed class ProductHomeInteractionTests
 
     private static T Element<T>(FrameworkElement root, string name) where T : class =>
         root.FindName(name) as T ?? throw new AssertFailedException($"Missing {name}");
+    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        if (root is T match) yield return match;
+        foreach (var child in LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>())
+            foreach (var nested in Descendants<T>(child)) yield return nested;
+    }
     private static void Click(FrameworkElement root, string name) => Element<Button>(root, name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
     private static Rect Bounds(FrameworkElement root, string name)
     {

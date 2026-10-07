@@ -8,7 +8,9 @@
              FontFamily="Segoe UI, Microsoft YaHei" UseLayoutRounding="True"
              PreviewKeyDown="OnPreviewKeyDown" PreviewKeyUp="OnPreviewKeyUp" SizeChanged="OnHomeSizeChanged">
     <UserControl.Resources>
+        <SolidColorBrush x:Key="HomeBackground" Color="#FDFCF9" />
         <SolidColorBrush x:Key="HomeInk" Color="#443D34" />
+        <SolidColorBrush x:Key="HomePrimaryInk" Color="#443D34" />
         <SolidColorBrush x:Key="HomeMuted" Color="#807568" />
         <SolidColorBrush x:Key="HomeLine" Color="#E9E4DA" />
         <SolidColorBrush x:Key="HomeSoft" Color="#F3EFE8" />
@@ -189,6 +191,13 @@
                     <Ellipse Width="2.5" Height="3" Canvas.Left="14" Canvas.Top="13" Fill="{DynamicResource HomeInk}" />
                 </Canvas>
             </Viewbox>
+            <Viewbox x:Name="AccessoryBrandIcon" Width="28" Height="28" HorizontalAlignment="Left" VerticalAlignment="Center"
+                     Visibility="Collapsed" IsHitTestVisible="False" ToolTip="换装" AutomationProperties.Name="换装">
+                <Canvas Width="24" Height="24">
+                    <Path Data="M8,4 L3,7 L1,12 L6,14 L7,11 L7,21 L17,21 L17,11 L18,14 L23,12 L21,7 L16,4 Q12,9 8,4 Z"
+                          Stroke="{DynamicResource HomeInk}" StrokeThickness="1.6" StrokeLineJoin="Round" />
+                </Canvas>
+            </Viewbox>
             <StackPanel x:Name="MainNavigation" Grid.Column="1" Orientation="Horizontal">
                 <Button x:Name="HomeNavigation" Content="我的团子" Style="{StaticResource NavButton}"
                         BorderBrush="{DynamicResource HomeAccent}" Foreground="{DynamicResource HomeInk}"
@@ -338,16 +347,7 @@
                                 <Grid><TextBlock Text="近" FontSize="11" /><TextBlock Text="远" FontSize="11" HorizontalAlignment="Right" /></Grid>
                             </StackPanel>
                         </StackPanel>
-                        <StackPanel x:Name="WardrobeOptions" Visibility="Collapsed">
-                            <WrapPanel Margin="0,0,0,24">
-                                <Button Content="帽子" IsEnabled="False" Margin="0,0,8,4" ToolTip="帽子选择 · 未开发" />
-                                <Button Content="皮肤" IsEnabled="False" Margin="0,0,0,4" ToolTip="皮肤选择 · 未开发" />
-                            </WrapPanel>
-                            <Button x:Name="CreateButton" IsEnabled="False" HorizontalContentAlignment="Stretch"
-                                    ToolTip="绘制、导入图片与审核 · 未开发" AutomationProperties.Name="自己制作，未开发">
-                                <WrapPanel><TextBlock Text="自己制作" Margin="0,0,8,0" /><TextBlock Text="未开发" FontSize="12" VerticalAlignment="Center" /></WrapPanel>
-                            </Button>
-                        </StackPanel>
+                        <StackPanel x:Name="WardrobeOptions" Visibility="Collapsed" />
                       </Grid>
                     </ScrollViewer>
                 </Grid>
@@ -441,6 +441,24 @@
                         </Button>
                         </StackPanel>
                     </StackPanel>
+                </Grid>
+                <Grid x:Name="AccessoryEditorTools" Grid.Column="2" Grid.RowSpan="2" Visibility="Hidden" Opacity="0"
+                      IsEnabled="False" IsHitTestVisible="False" Margin="4,8,4,8" VerticalAlignment="Center"
+                      KeyboardNavigation.TabNavigation="Continue" AutomationProperties.Name="换装预览与保存">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid MinHeight="30">
+                        <TextBlock x:Name="AccessoryPreviewNotice" Text="拖动即时预览 · 应用后保存" FontSize="11" TextWrapping="Wrap"
+                                   TextAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource HomeMuted}" Margin="30,0,30,0" />
+                        <Button x:Name="AccessoryCloseEditorButton" Content="×" FontSize="20" Width="30" MinHeight="30" Height="30"
+                                HorizontalAlignment="Right" BorderBrush="Transparent" Padding="0" Click="OnCloseClick"
+                                ToolTip="收起换装" AutomationProperties.Name="收起换装" />
+                    </Grid>
+                    <Grid x:Name="AccessoryPreviewSlot" Grid.Row="1" HorizontalAlignment="Center" IsHitTestVisible="False" />
+                    <ContentControl x:Name="AccessorySaveActionsSlot" Grid.Row="2" SizeChanged="OnAccessorySaveActionsSizeChanged" />
                 </Grid>
                 <Grid x:Name="PorchContent" Grid.Column="0" Grid.ColumnSpan="3" Grid.RowSpan="2"
                       VerticalAlignment="Stretch" Visibility="Hidden" Opacity="0" IsHitTestVisible="False"

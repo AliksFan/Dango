@@ -93,6 +93,7 @@ public sealed class PorchSceneView : Grid
         resetCamera = true;
         selectedDoor = status = null;
         body.Visibility = hat.Visibility = Visibility.Collapsed;
+        Dango.Desktop.Accessories.AccessoryHostBinding.Hide(body);
         InvalidateVisual();
     }
 
@@ -105,13 +106,14 @@ public sealed class PorchSceneView : Grid
         else camera.Update(PetWorldX, ViewportWorldWidth, elapsedMs, reduceMotion);
         DangoHostFrameBinding.Apply(body, hat, frame, 0, appearance: runtime.DisplayHatAppearance,
             hatSize: runtime.DisplayHatSize, bodyFillOverride: runtime.BodyPreviewFill,
-            eyeFillOverride: runtime.EyePreviewFill, appearanceEntity: runtime.AppearanceEntity);
+            eyeFillOverride: runtime.EyePreviewFill, appearanceEntity: runtime.AppearanceEntity, runtime: runtime);
         UpdateProjection();
         InvalidateVisual();
     }
 
     internal void ShowUnavailable(string? message = null)
     {
+        Dango.Desktop.Accessories.AccessoryHostBinding.Hide(body);
         body.Visibility = hat.Visibility = Visibility.Collapsed;
         unavailable = true;
         status = message ?? "团子暂不可用 · 请返回设置重试";

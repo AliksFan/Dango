@@ -34,6 +34,7 @@ public partial class ProductHomeView
 
     internal void CancelAppearancePreview()
     {
+        CancelAccessoryPreview();
         appearanceGeneration++;
         ClearAppearanceComparison();
         appearanceSession?.CancelPreview();
@@ -204,6 +205,6 @@ public partial class ProductHomeView
     {
         if (Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.ComboBox or PasswordBox) return true;
         return Keyboard.FocusedElement is DependencyObject focused &&
-            (focused is Slider || IsEditing && (EditorPanel.IsAncestorOf(focused) || FaceEditorTools.IsAncestorOf(focused)));
+            (focused is Slider || IsEditing && (EditorPanel.IsAncestorOf(focused) || FaceEditorTools.IsAncestorOf(focused) || AccessoryEditorTools.IsAncestorOf(focused)));
     }
 }

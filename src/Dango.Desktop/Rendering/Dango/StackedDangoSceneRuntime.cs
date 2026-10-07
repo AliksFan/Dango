@@ -14,7 +14,7 @@ namespace Dango.Desktop.Rendering.Visuals;
 
 public enum SceneInitializationState { NotStarted, Ready, Unavailable }
 
-public sealed class StackedDangoSceneRuntime : IDisposable
+public sealed partial class StackedDangoSceneRuntime : IDisposable
 {
     public const int MinimumDangoCount = 1;
     public const int MaximumDangoCount = 3;
@@ -392,6 +392,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         running = true;
         scene?.SetPaused(false);
         attachments?.SetPaused(false);
+        accessoryScene?.Resume();
     }
 
     public void Stop()
@@ -402,6 +403,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         ClearPhysicalInput();
         scene?.SetPaused(true);
         attachments?.SetPaused(true);
+        accessoryScene?.Pause();
         quietIdleHost = null;
         wanderScreenWidth = null;
         quietIdleHostEnabled = false;
@@ -467,6 +469,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         if (scene?.LastFrame is null) return false;
         ClearPhysicalInput();
         if (!scene.RehostSelectedEntityAt(actualCenter)) return false;
+        accessoryScene?.Pause(); accessoryScene?.Resume();
         localHorizontalBounds = null;
         hostOrigin = actualCenter;
         layoutPending = true;
@@ -588,6 +591,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         QuietIdle.Reset();
         Doze.Reset();
         Gait.Reset();
+        accessoryScene?.Reset();
         LightInteractionError = null;
         LastFrame = null;
         LastError = null;
@@ -611,6 +615,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
             {
                 ClearPhysicalInput();
                 scene!.Rehost(center);
+                accessoryScene?.Pause(); accessoryScene?.Resume();
                 if (localHorizontalBounds is { } limits) scene.SetHorizontalBounds(limits.Left, limits.Right);
                 hostOrigin = center;
                 layoutPending = true;
@@ -636,6 +641,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
                     ClearPhysicalInput();
                     var currentOrigin = scene.ToHost(new(0, 0));
                     scene.Rehost(new(currentOrigin.X + translation.X, currentOrigin.Y + translation.Y));
+                    accessoryScene?.Pause(); accessoryScene?.Resume();
                     frame = scene.LastFrame!;
                 }
                 layoutPending = false;
@@ -694,6 +700,7 @@ public sealed class StackedDangoSceneRuntime : IDisposable
             if (frame.Physics.Succeeded) AdvanceWander(fixedStep.TotalSeconds);
             if (frame.Physics.Succeeded) UpdateGait(frame, autonomousHorizontal, fixedStep.TotalSeconds);
             else LastFrame = LastFrame with { Gait = previousGait };
+            if (frame.Physics.Succeeded) accessoryScene?.Advance(LastFrame, fixedStep.TotalSeconds);
             return LastFrame;
         }
         catch (DangoPhysicsException exception)
@@ -773,6 +780,8 @@ public sealed class StackedDangoSceneRuntime : IDisposable
         disposed = true;
         InputCancelled = null;
         HatPresetChanged = null;
+        AccessoryPreviewChanged = null;
+        accessoryScene?.Reset();
         GC.SuppressFinalize(this);
     }
 

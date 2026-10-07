@@ -21,6 +21,7 @@ public partial class App : System.Windows.Application
         ValidateIsolatedReviewSelection(e.Args);
         var acceptanceSettingsFile = ResolveLocalInstallAcceptanceSettingsFile(e.Args);
         var faceReviewSettingsFile = ResolveFaceReviewSettingsFile(e.Args);
+        var accessoryReviewSettingsFile = ResolveAccessoryReviewSettingsFile(e.Args);
 
         var homeUiReview = e.Args.Contains("--home-ui-review", StringComparer.Ordinal);
         var settingsUiReview = e.Args.Contains("--settings-ui-review", StringComparer.Ordinal);
@@ -80,8 +81,9 @@ public partial class App : System.Windows.Application
         var porchReview = e.Args.Contains("--porch-scene-review", StringComparer.Ordinal);
         var localRoomReview = e.Args.Contains("--local-room-review", StringComparer.Ordinal);
         var faceReview = e.Args.Contains("--face-review", StringComparer.Ordinal);
+        var accessoryReview = e.Args.Contains("--accessory-review", StringComparer.Ordinal);
         if ((physicsReview ? 1 : 0) + (eyeHatReview ? 1 : 0) + (unifiedHomeReview ? 1 : 0) +
-            (porchReview ? 1 : 0) + (localRoomReview ? 1 : 0) + (faceReview ? 1 : 0) > 1)
+            (porchReview ? 1 : 0) + (localRoomReview ? 1 : 0) + (faceReview ? 1 : 0) + (accessoryReview ? 1 : 0) > 1)
             throw new ArgumentException("Choose one isolated review mode.");
         var instanceName = ResolveSingleInstanceName(e.Args);
         singleInstanceCoordinator = SingleInstanceCoordinator.TryBecomePrimary(
@@ -98,10 +100,10 @@ public partial class App : System.Windows.Application
 
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         applicationHost = new DangoApplicationHost(physicsReview, eyeHatReview,
-            settingsFile: faceReviewSettingsFile ?? acceptanceSettingsFile,
+            settingsFile: accessoryReviewSettingsFile ?? faceReviewSettingsFile ?? acceptanceSettingsFile,
             isolatedUnifiedHomeReview: unifiedHomeReview,
             isolatedPorchReview: porchReview,
-            isolatedLocalRoomReview: localRoomReview,
+            isolatedLocalRoomReview: localRoomReview || accessoryReview,
             isolatedFaceReview: faceReview);
         applicationHost.Start();
         if (physicsReview || eyeHatReview) applicationHost.ShowControlCenter();
@@ -124,6 +126,16 @@ public partial class App : System.Windows.Application
         if (args.Length != 3 || args[0] != mode || args[1] != flag || string.IsNullOrWhiteSpace(args[2]))
             throw new ArgumentException("Face review requires only its explicit owned settings directory.");
         return ResolveOwnedIsolatedSettingsFile(args[2], ".dango-face-review.json", "faceReviewFormat");
+    }
+
+    internal static string? ResolveAccessoryReviewSettingsFile(string[] args)
+    {
+        const string mode = "--accessory-review";
+        const string flag = "--accessory-review-settings";
+        if (!args.Contains(mode, StringComparer.Ordinal) && !args.Contains(flag, StringComparer.Ordinal)) return null;
+        if (args.Length != 3 || args[0] != mode || args[1] != flag || string.IsNullOrWhiteSpace(args[2]))
+            throw new ArgumentException("Accessory review requires only its explicit owned settings directory.");
+        return ResolveOwnedIsolatedSettingsFile(args[2], ".dango-accessory-review.json", "accessoryReviewFormat");
     }
 
     private static string ResolveOwnedIsolatedSettingsFile(string directory, string ownerFile, string formatProperty)
@@ -154,27 +166,39 @@ public partial class App : System.Windows.Application
         var settingsPath = Path.Combine(root, "settings.json");
         var presetPath = ControlCenterWindowSettingsStore.GetPresetPath(settingsPath);
         var appearancePath = Path.Combine(root, "appearance.json");
+        var accessoryPath = Path.Combine(root, "accessories.json");
+        var accessoryAssetsPath = Path.Combine(root, "accessory-assets");
         // Enumerate entries rather than testing File.Exists: dangling links and
         // directory links at every settings filename must also fail before load.
         foreach (var entry in Directory.EnumerateFileSystemEntries(root))
+        {
             if (entry.Equals(settingsPath, StringComparison.OrdinalIgnoreCase) ||
                 entry.Equals(presetPath, StringComparison.OrdinalIgnoreCase) ||
-                entry.Equals(appearancePath, StringComparison.OrdinalIgnoreCase))
+                entry.Equals(appearancePath, StringComparison.OrdinalIgnoreCase) ||
+                entry.Equals(accessoryPath, StringComparison.OrdinalIgnoreCase))
                 if ((File.GetAttributes(entry) & (FileAttributes.ReparsePoint | FileAttributes.Directory)) != 0)
                     throw new InvalidDataException("Acceptance settings files cannot be directories or reparse points.");
+            if (entry.Equals(accessoryAssetsPath, StringComparison.OrdinalIgnoreCase))
+            {
+                var attributes = File.GetAttributes(entry);
+                if ((attributes & FileAttributes.ReparsePoint) != 0 || (attributes & FileAttributes.Directory) == 0)
+                    throw new InvalidDataException("Acceptance accessory assets must use an ordinary owned directory.");
+            }
+        }
         return settingsPath;
     }
 
     internal static void ValidateIsolatedReviewSelection(string[] args)
     {
         string[] flags = ["--home-ui-review", "--settings-ui-review", "--physics-host-review",
-            "--eye-hat-review", "--unified-live-home-review", "--porch-scene-review", "--local-room-review", "--face-review"];
+            "--eye-hat-review", "--unified-live-home-review", "--porch-scene-review", "--local-room-review", "--face-review", "--accessory-review"];
         if (flags.Count(flag => args.Contains(flag, StringComparer.Ordinal)) > 1)
             throw new ArgumentException("Choose one isolated review mode.");
     }
 
     internal static string ResolveSingleInstanceName(string[] args) =>
-        args.Contains("--face-review", StringComparer.Ordinal) ? SingleInstanceName + ".FaceReview"
+        args.Contains("--accessory-review", StringComparer.Ordinal) ? SingleInstanceName + ".AccessoryReview"
+        : args.Contains("--face-review", StringComparer.Ordinal) ? SingleInstanceName + ".FaceReview"
         : args.Contains("--local-room-review", StringComparer.Ordinal) ? SingleInstanceName + ".LocalRoomReview"
         : args.Contains("--eye-hat-review", StringComparer.Ordinal) ? SingleInstanceName + ".EyeHatReview"
         : args.Contains("--physics-host-review", StringComparer.Ordinal) ? SingleInstanceName + ".PhysicsHostReview"

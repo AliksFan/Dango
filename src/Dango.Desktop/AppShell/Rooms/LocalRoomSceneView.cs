@@ -164,7 +164,7 @@ internal sealed class LocalRoomSceneView : Grid
         cameraBodyAlignmentY = bodyGroundAlignment.Y;
         DangoHostFrameBinding.Apply(body, hat, frame, 0, bodyGroundAlignment, appearance: runtime.DisplayHatAppearance,
             hatSize: runtime.DisplayHatSize, bodyFillOverride: runtime.BodyPreviewFill,
-            eyeFillOverride: runtime.EyePreviewFill, appearanceEntity: runtime.AppearanceEntity);
+            eyeFillOverride: runtime.EyePreviewFill, appearanceEntity: runtime.AppearanceEntity, runtime: runtime);
         if (body.LastContourFailure != DangoContourFailure.None)
         {
             InvalidateInputFrame();
@@ -175,7 +175,10 @@ internal sealed class LocalRoomSceneView : Grid
         UpdateProjection(WindowCameraEnabled || previousFrame == 0 ? 0 : now - previousFrame,
             advanceCamera: !WindowCameraEnabled);
         previousFrame = now;
-        if (WanderVisibleBounds.Get(frame.Bodies[0], DangoHostFrameBinding.Bounds(frame, 0), runtime.DisplayHatSize) is { } visible)
+        var displayedBounds = runtime.AccessoriesEnabled
+            ? Dango.Desktop.Accessories.AccessoryHostBinding.DisplayBounds(frame, 0, runtime)
+            : WanderVisibleBounds.Get(frame.Bodies[0], DangoHostFrameBinding.Bounds(frame, 0), runtime.DisplayHatSize);
+        if (displayedBounds is { } visible)
         {
             visibleWorldBounds = visible.Translate(bodyGroundAlignment);
         }
@@ -230,6 +233,7 @@ internal sealed class LocalRoomSceneView : Grid
 
     private void InvalidateInputFrame()
     {
+        Dango.Desktop.Accessories.AccessoryHostBinding.Hide(body);
         InputInvalidated?.Invoke();
         HasHealthyFrame = false;
         bodyWorldBounds = null;
@@ -352,8 +356,10 @@ internal sealed class LocalRoomSceneView : Grid
         }
         var brush = new DrawingBrush(tile)
         {
-            TileMode = TileMode.Tile, ViewportUnits = BrushMappingMode.Absolute,
-            Viewport = new Rect(0, 0, 16, 16), Stretch = Stretch.Fill,
+            TileMode = TileMode.Tile,
+            ViewportUnits = BrushMappingMode.Absolute,
+            Viewport = new Rect(0, 0, 16, 16),
+            Stretch = Stretch.Fill,
         };
         brush.Freeze();
         return brush;
