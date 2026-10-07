@@ -42,6 +42,13 @@ internal sealed class LocalRoomSceneView : Grid
     private bool inputBlocked;
     internal RoomViewController Camera { get; } = new(WorldWidth, WorldHeight);
     internal bool WindowCameraEnabled { get; private set; }
+    internal bool DesktopPetPresentationEnabled { get; private set; }
+    internal StackedPhysicsPresentationFrame? LastAppliedFrame { get; private set; }
+    internal StackedDangoSceneRuntime? LastAppliedRuntime { get; private set; }
+    internal RoomProjection CurrentProjection => Projection;
+    private DesktopPetRoomMapping DesktopPetMapping => DesktopPetRoomMapping.Create(ActualWidth, ActualHeight, SafeInsets, groundY);
+    internal LogicalRect DesktopPetSafeWorldBounds => DesktopPetMapping.SafeWorldBounds;
+    internal LogicalRect DesktopPetWorldSurface => DesktopPetMapping.Surface;
     internal LogicalPoint? NativePetCenter { get; private set; }
     internal LogicalVector PresentationOffset => presentationOffset;
     internal Thickness SafeInsets
@@ -56,8 +63,10 @@ internal sealed class LocalRoomSceneView : Grid
             UpdateProjection(0);
         }
     }
-    private RoomProjection Projection => Camera.Projection with
-    { OffsetX = Camera.Projection.OffsetX + SafeInsets.Left, OffsetY = Camera.Projection.OffsetY + SafeInsets.Top };
+    private RoomProjection Projection => DesktopPetPresentationEnabled && ActualWidth > 0 && ActualHeight > 120
+        ? DesktopPetMapping.Projection
+        : Camera.Projection with
+        { OffsetX = Camera.Projection.OffsetX + SafeInsets.Left, OffsetY = Camera.Projection.OffsetY + SafeInsets.Top };
     internal LogicalRect? PetScreenBounds { get; private set; }
     internal bool HasHealthyFrame { get; private set; }
     internal (double Left, double Right, double CollisionY, double FloorY) EnvironmentEdges
@@ -113,6 +122,15 @@ internal sealed class LocalRoomSceneView : Grid
     {
         WindowCameraEnabled = true;
         Camera.EnableWindowCamera();
+    }
+
+    internal void EnableDesktopPetPresentation()
+    {
+        DesktopPetPresentationEnabled = true;
+        Focusable = false;
+        // Keep the validation visual, but never paint a second body into the wallpaper.
+        entityLayer.Visibility = Visibility.Collapsed;
+        UpdateProjection(0);
     }
 
     internal void SelectCameraMode(RoomCameraMode mode)
@@ -184,6 +202,8 @@ internal sealed class LocalRoomSceneView : Grid
         wheel.Expire(now);
         InvalidateVisual();
         HasHealthyFrame = true;
+        LastAppliedFrame = frame;
+        LastAppliedRuntime = runtime;
         FrameApplied?.Invoke();
         return true;
     }
@@ -199,6 +219,7 @@ internal sealed class LocalRoomSceneView : Grid
 
     internal void ApplyWheel(int nativeDelta)
     {
+        if (DesktopPetPresentationEnabled) return;
         InputInvalidated?.Invoke();
         if (!HasHealthyFrame || InputBlocked) { ClearWheel(); return; }
         var steps = wheel.Add(nativeDelta, Environment.TickCount64);
@@ -210,14 +231,45 @@ internal sealed class LocalRoomSceneView : Grid
     }
 
     internal void ClearWheel() => wheel.Clear();
+    internal LogicalPoint RoomToScene(LogicalPoint world) => Projection.WorldToScreen(world);
+    internal void SetDesktopPetPaintedWorldBounds(StackedPhysicsPresentationFrame frame, LogicalRect bounds)
+    {
+        if (!DesktopPetPresentationEnabled || !ReferenceEquals(frame, LastAppliedFrame) ||
+            bounds.Width <= 0 || bounds.Height <= 0 || !double.IsFinite(bounds.X) || !double.IsFinite(bounds.Y) ||
+            !double.IsFinite(bounds.Width) || !double.IsFinite(bounds.Height))
+            throw new InvalidOperationException("团子显示范围不属于当前桌宠房间健康帧。");
+        visibleWorldBounds = bounds;
+        UpdatePetScreenBounds();
+    }
     internal LogicalPoint ScreenToWorld(Point sceneDip) => Projection.ScreenToWorld(new(sceneDip.X, sceneDip.Y));
     internal LogicalPoint ScreenToPetWorld(Point sceneDip)
     {
         var world = ScreenToWorld(sceneDip);
         return new(world.X - presentationOffset.X, world.Y - presentationOffset.Y);
     }
-    internal bool IsPetHit(Point sceneDip) => HasHealthyFrame && !InputBlocked && bodyWorldBounds is { } bounds &&
-        double.IsFinite(sceneDip.X) && double.IsFinite(sceneDip.Y) && bounds.Contains(ScreenToPetWorld(sceneDip));
+    internal bool IsPetHit(Point sceneDip)
+    {
+        if (!HasHealthyFrame || InputBlocked || bodyWorldBounds is not { } bounds ||
+            !double.IsFinite(sceneDip.X) || !double.IsFinite(sceneDip.Y)) return false;
+        var point = ScreenToPetWorld(sceneDip);
+        if (!DesktopPetPresentationEnabled) return bounds.Contains(point);
+        if (body.FindName("BodyPath") is not System.Windows.Shapes.Path { Data: { } geometry } ||
+            body.FindName("GaitBodyLayer") is not FrameworkElement layer || layer.RenderTransform.Inverse is not { } inverse) return false;
+        return geometry.FillContains(inverse.Transform(new Point(point.X - bounds.X, point.Y - bounds.Y)));
+    }
+
+    internal LogicalPoint ClampDesktopPetPointer(LogicalPoint point, LogicalVector grabOffset)
+    {
+        if (!DesktopPetPresentationEnabled || NativePetCenter is not { } center || visibleWorldBounds is not { } visible) return point;
+        var safe = DesktopPetSafeWorldBounds;
+        var left = safe.X - (visible.X - center.X);
+        var right = safe.Right - (visible.Right - center.X);
+        var top = safe.Y - (visible.Y - center.Y);
+        var bottom = safe.Bottom - (visible.Bottom - center.Y);
+        if (right < left || bottom < top) return point;
+        return new(Math.Clamp(point.X - grabOffset.X, left, right) + grabOffset.X,
+            Math.Clamp(point.Y - grabOffset.Y, top, bottom) + grabOffset.Y);
+    }
 
     internal void ShowUnavailable(string message)
     {
@@ -232,6 +284,8 @@ internal sealed class LocalRoomSceneView : Grid
     {
         InputInvalidated?.Invoke();
         HasHealthyFrame = false;
+        LastAppliedFrame = null;
+        LastAppliedRuntime = null;
         bodyWorldBounds = null;
         visibleWorldBounds = null;
         NativePetCenter = null;
@@ -243,6 +297,12 @@ internal sealed class LocalRoomSceneView : Grid
     private void UpdateProjection(double elapsedMs, bool advanceCamera = true)
     {
         if (ActualWidth <= 0 || ActualHeight <= 0) return;
+        if (DesktopPetPresentationEnabled)
+        {
+            UpdatePetScreenBounds();
+            InvalidateVisual();
+            return;
+        }
         var width = ActualWidth - SafeInsets.Left - SafeInsets.Right;
         var height = ActualHeight - SafeInsets.Top - Math.Max(0, SafeInsets.Bottom + 16 - 64);
         if (width <= 0 || height <= 88) return;
@@ -280,7 +340,7 @@ internal sealed class LocalRoomSceneView : Grid
         if (visibleWorldBounds is not { } visible) { PetScreenBounds = null; return; }
         visible = visible.Translate(presentationOffset);
         var topLeft = Projection.WorldToScreen(new(visible.X, visible.Y));
-        PetScreenBounds = new(topLeft.X, topLeft.Y, visible.Width * Camera.Scale, visible.Height * Camera.Scale);
+        PetScreenBounds = new(topLeft.X, topLeft.Y, visible.Width * Projection.Scale, visible.Height * Projection.Scale);
     }
 
     protected override void OnRender(DrawingContext dc)
@@ -352,8 +412,10 @@ internal sealed class LocalRoomSceneView : Grid
         }
         var brush = new DrawingBrush(tile)
         {
-            TileMode = TileMode.Tile, ViewportUnits = BrushMappingMode.Absolute,
-            Viewport = new Rect(0, 0, 16, 16), Stretch = Stretch.Fill,
+            TileMode = TileMode.Tile,
+            ViewportUnits = BrushMappingMode.Absolute,
+            Viewport = new Rect(0, 0, 16, 16),
+            Stretch = Stretch.Fill,
         };
         brush.Freeze();
         return brush;

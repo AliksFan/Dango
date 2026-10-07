@@ -7,6 +7,7 @@ using Dango.Desktop.DesktopHost;
 using Dango.Desktop.DesktopHost.Interaction;
 using Dango.Desktop.Physics.Presentation;
 using Dango.Desktop.Rendering.Visuals;
+using Dango.Physics.Configuration;
 using Point = System.Windows.Point;
 
 namespace Dango.Desktop.AppShell.Rooms;
@@ -17,7 +18,12 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     private readonly DesktopSceneSession session;
     private readonly StackedDangoSceneRuntime runtime;
     private readonly HostFrameScheduler scheduler;
-    private readonly LightInteractionSession pointer;
+    private LightInteractionSession pointer;
+    private LogicalRect activeSurface = Surface;
+    private LogicalPoint lastPointerWorld;
+    private LogicalPoint lastClampedPointerWorld;
+    private LogicalVector lastDragAnchor;
+    private string lastPointerCancellation = "none";
     private readonly RoomPositionInterpolator positions = new();
     private HostFrameDiagnostics presentationSnapshot;
     private long? previousPresentationTicks;
@@ -34,6 +40,12 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     internal event Action? PointerCancelled;
     internal bool OwnsRuntime => scheduler.OwnsRuntime;
     internal bool IsPointerActive => pointer.IsActive;
+    internal string DesktopPetPointerDiagnostics => $"Pointer={pointer.IsActive}; PhysicalDrag={runtime.IsDragging}; " +
+        $"Ready={readySent}; Owner={scheduler.OwnsRuntime}; InputBlocked={view?.InputBlocked}; ViewVisible={view?.IsVisible}; " +
+        $"WorldTarget={lastPointerWorld}; ClampedTarget={lastClampedPointerWorld}; Anchor={lastDragAnchor}; " +
+        $"Center={runtime.CurrentSelectedCenter}; SnapshotBounds={session.Controller?.Snapshot.Dango.VisualBounds}; " +
+        $"SafeBounds={(view?.DesktopPetPresentationEnabled == true ? view.DesktopPetSafeWorldBounds : activeSurface)}; " +
+        $"NativeBody={runtime.LastPhysicsFrame?.Bodies.FirstOrDefault()}; Cancel={lastPointerCancellation}";
     internal void ResetEntryPosition() => resumeX = LocalRoomSceneView.WorldWidth / 2;
     internal LocalRoomSceneDriver(DesktopSceneSession session, StackedDangoSceneRuntime runtime,
         IHostFrameSource? frameSource = null, Func<long>? timestamp = null, long frequency = 0)
@@ -50,6 +62,8 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     {
         scheduler.VerifyCanStart();
         ClearInput();
+        pointer = new(runtime, allowPhysicalDrag: target.DesktopPetPresentationEnabled);
+        activeSurface = target.DesktopPetPresentationEnabled ? target.DesktopPetWorldSurface : Surface;
         if (view is not null) view.InputInvalidated -= CancelPointer;
         view = target;
         target.InputInvalidated += CancelPointer;
@@ -59,15 +73,15 @@ internal sealed class LocalRoomSceneDriver : IDisposable
         target.BeginPresentation();
         if (enterWorld)
         {
-            session.AttachSurface(Surface, Environment.TickCount64);
+            session.AttachSurface(activeSurface, Environment.TickCount64);
             var bounds = session.Controller!.Snapshot.Dango.VisualBounds;
-            session.Controller.MoveTo(new(resumeX - bounds.Width / 2, Surface.Bottom - bounds.Height));
-            runtime.SetViewport(Surface);
+            session.Controller.MoveTo(new(resumeX - bounds.Width / 2, activeSurface.Bottom - bounds.Height));
+            runtime.SetViewport(activeSurface);
             alignmentPending = true;
         }
         runtime.Start();
         runtime.AttachQuietIdleHost(this, true);
-        runtime.UpdateWanderScreenWidth(this, Surface.Width);
+        runtime.UpdateWanderScreenWidth(this, activeSurface.Width);
         scheduler.Start();
         presentationSnapshot = scheduler.Snapshot;
         positions.Clear();
@@ -104,6 +118,7 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     {
         if (!CanContinuePointer() || pointer.IsActive || !view!.IsPetHit(sceneDip) ||
             runtime.LastFrame is not { EntityIds.Count: 1 } frame || !TryPointerWorld(sceneDip, out var world)) return false;
+        lastPointerCancellation = "none";
         return pointer.TryBegin(frame.EntityIds[0], world, nowMilliseconds ?? Environment.TickCount64, shift,
             () => true, () => { }, CanContinuePointer);
     }
@@ -126,8 +141,12 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     }
 
     internal void CancelPointer()
+        => CancelPointerCore("host, capture or view cancelled");
+
+    private void CancelPointerCore(string reason)
     {
         if (!pointer.IsActive) return;
+        lastPointerCancellation = reason;
         pointer.Cancel();
         PointerCancelled?.Invoke();
     }
@@ -141,19 +160,59 @@ internal sealed class LocalRoomSceneDriver : IDisposable
         if (view is null || !double.IsFinite(sceneDip.X) || !double.IsFinite(sceneDip.Y)) return false;
         var displayedWorld = view.ScreenToPetWorld(sceneDip);
         world = new(displayedWorld.X, displayedWorld.Y - runtime.NeutralBodyGroundOffset);
+        lastPointerWorld = world;
+        if (view.DesktopPetPresentationEnabled && pointer.IsActive)
+        {
+            lastDragAnchor = DesktopPetDragAnchor();
+            world = view.ClampDesktopPetPointer(world, lastDragAnchor);
+        }
+        lastClampedPointerWorld = world;
         return double.IsFinite(world.X) && double.IsFinite(world.Y);
+    }
+
+    private LogicalVector DesktopPetDragAnchor()
+    {
+        if (runtime.LastPhysicsFrame?.Bodies.FirstOrDefault(body => body.EntityId == runtime.SelectedEntity) is not { } physical ||
+            physical.PointCount == 0) return default;
+        var node = physical.SelectedDragNode;
+        if (node < 0 || node >= physical.PointCount)
+            node = Enumerable.Range(0, physical.PointCount).MaxBy(index => physical.Contour[index * 2 + 1]);
+        var x = (double)physical.Contour[node * 2];
+        var y = (double)physical.Contour[node * 2 + 1];
+        var length = Math.Sqrt(x * x + y * y);
+        var contraction = length > DangoPhysicsDefaults.Current.NodeRadius ? 1 - DangoPhysicsDefaults.Current.NodeRadius / length : 1;
+        // Native drag pulls the highest node toward the pointer; it does not retain the initial click offset.
+        return new(x * contraction * 80, -y * contraction * 60);
+    }
+
+    // Pure snapshot for the gesture hook's constant comparisons. Reuse the exact
+    // anchor and clamp that PointerMove will apply; do not step or move the body.
+    internal bool TryCaptureDesktopPetPointerClamp(out LogicalRect clamp)
+    {
+        clamp = default;
+        if (view is not { DesktopPetPresentationEnabled: true, HasHealthyFrame: true, NativePetCenter: not null, PetScreenBounds: not null } ||
+            !scheduler.OwnsRuntime || runtime.LastPhysicsFrame is null) return false;
+        var anchor = DesktopPetDragAnchor();
+        var low = view.ClampDesktopPetPointer(new(-double.MaxValue, -double.MaxValue), anchor);
+        var high = view.ClampDesktopPetPointer(new(double.MaxValue, double.MaxValue), anchor);
+        var width = high.X - low.X;
+        var height = high.Y - low.Y;
+        if (!double.IsFinite(low.X) || !double.IsFinite(low.Y) || !double.IsFinite(width) || !double.IsFinite(height) ||
+            width < 0 || height < 0) return false;
+        clamp = new(low.X, low.Y, width, height);
+        return true;
     }
 
     private void OnRuntimeInputCancelled()
     {
         // BeginPhysicalDrag can cancel the old light target during conversion.
         // LightInteractionSession clears it first and then establishes the drag target.
-        if (pointer.IsActive) CancelPointer();
+        if (pointer.IsActive) CancelPointerCore("runtime cancelled input");
     }
 
     internal bool Key(System.Windows.Input.Key key, bool down, bool repeat)
     {
-        if (!scheduler.OwnsRuntime || view?.InputBlocked == true || !readySent) return false;
+        if (!scheduler.OwnsRuntime || view?.InputBlocked == true || view?.DesktopPetPresentationEnabled == true || !readySent) return false;
         if (down && repeat) return key is System.Windows.Input.Key.A or System.Windows.Input.Key.D or System.Windows.Input.Key.S or System.Windows.Input.Key.Space;
         intent = key switch
         {
