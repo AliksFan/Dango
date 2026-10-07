@@ -80,12 +80,12 @@ public sealed class DesktopPetRoomFrameHealthTests
     [TestCategory("NativeIntegration")]
     [DataRow(-10000d, -10000d)]
     [DataRow(10000d, 10000d)]
-    public void WindowGestureGuardClampMatchesActualDriverPointerMapping(double x, double y)
+    public void WindowGestureGuardKeepsRawContactForPettingInsteadOfUsingPhysicalDragAnchor(double x, double y)
     {
         using var rig = new DesktopPetRoomFixture();
         rig.Enter();
         var guard = AssertCurrentGuardProjection(rig);
-        Assert.IsNotNull(guard.PointerClampBounds, "The actual product must supply its existing pointer clamp.");
+        Assert.IsNull(guard.PointerClampBounds, "Petting qualification must use actual contact, not the native top-node drag target.");
         var center = rig.Runtime.CurrentSelectedCenter!.Value;
         Assert.IsTrue(rig.Driver.PointerDown(rig.ToScene(new(center.X, center.Y + rig.Runtime.NeutralBodyGroundOffset)), true));
         var rawScreen = new Point(x, y);
@@ -94,7 +94,7 @@ public sealed class DesktopPetRoomFrameHealthTests
         var actualScreen = PhysicalPointToScreen(rig, actual);
         var guarded = guard.ClampInput(rawScreen);
         Assert.AreEqual(actualScreen.X, guarded.X, .01,
-            "The hook snapshot must preserve the driver's physical anchor, clamp, projection and offsets.");
+            "Hook qualification and driver petting must preserve the raw contact through the shared projection.");
         Assert.AreEqual(actualScreen.Y, guarded.Y, .01);
         rig.Driver.CancelPointer();
     }

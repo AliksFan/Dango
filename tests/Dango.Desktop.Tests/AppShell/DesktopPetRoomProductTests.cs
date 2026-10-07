@@ -460,9 +460,7 @@ public sealed class DesktopPetRoomProductTests
     private static Rect IndependentPrimarySafePixels(Window window)
     {
         var work = (Forms.Screen.PrimaryScreen ?? throw new AssertFailedException("The test needs its primary display geometry.")).WorkingArea;
-        var dpi = VisualTreeHelper.GetDpi(window);
-        return new(work.Left + 16 * dpi.DpiScaleX, work.Top + 16 * dpi.DpiScaleY,
-            work.Width - 32 * dpi.DpiScaleX, work.Height - 32 * dpi.DpiScaleY);
+        return new(work.Left, work.Top, work.Width, work.Height);
     }
 
     private static Rect DrawnBodyAndHatPixels(Window window)

@@ -18,6 +18,44 @@ public sealed class DesktopPetRoomNativeInputTests
     [TestCategory("NativeWindowInput")]
     [DataRow(false)]
     [DataRow(true)]
+    public void FixedViewportUpdatesItsNativeRegionWithoutBlockingOldBodyOrDistantBlankSpace(bool maximized)
+    {
+        using var rig = new DesktopPetRoomFixture();
+        rig.Enter();
+        DesktopPetRoomFixture.WaitUntil(() => rig.Runtime.LastPhysicsFrame!.Bodies.Single() is
+        { IsGrounded: true, MaximumSpeed: < .05f }, rig.Runtime);
+        using var application = new OwnedForegroundApplication(maximized);
+        var initial = rig.Runtime.CurrentSelectedCenter!.Value;
+        var oldPoint = rig.ToScene(new(initial.X, initial.Y + rig.Runtime.NeutralBodyGroundOffset));
+        var oldScreen = rig.Pet.Scene.PointToScreen(oldPoint);
+        nint At(Point screen) => GetAncestor(WindowFromPoint(new((int)Math.Round(screen.X), (int)Math.Round(screen.Y))), 2);
+        Assert.AreEqual(rig.Window.Handle, At(oldScreen));
+        var work = System.Windows.Forms.Screen.PrimaryScreen!.WorkingArea;
+        var distant = new Point(work.Left + 60, work.Top + 60);
+        Assert.AreEqual(application.Handle, At(distant), "The fixed large HWND must exclude distant transparent space.");
+        var target = rig.ToScene(new(initial.X + 120, initial.Y - 180 + rig.Runtime.NeutralBodyGroundOffset));
+        SendPointer(rig, application, 0x0201, oldPoint, 1);
+        SendPointer(rig, application, 0x0200, target, 1);
+        application.WaitUntil(rig, () => rig.Runtime.CurrentSelectedCenter!.Value.Y < initial.Y - 100);
+        Assert.IsFalse(rig.Window.HitTestScenePoint(oldPoint), "The old contact must actually be outside the moved body.");
+        Assert.AreEqual(application.Handle, At(oldScreen), "The previous body's native region must not remain behind.");
+        Assert.AreEqual(application.Handle, At(distant));
+        var current = DangoHostFrameBinding.Bounds(rig.Window.LastAppliedFrame!, 0).Center;
+        var currentPoint = rig.ToScene(new(current.X, current.Y + rig.Runtime.NeutralBodyGroundOffset));
+        Assert.IsTrue(rig.Window.HitTestScenePoint(currentPoint));
+        Assert.AreEqual(rig.Window.Handle, At(rig.Pet.Scene.PointToScreen(currentPoint)),
+            "The current actual body must still have an interactive native region.");
+        SendPointer(rig, application, 0x0202, target, 0);
+        Assert.IsFalse(rig.Window.IsPointerCaptured || rig.Driver.IsPointerActive || rig.Runtime.IsDragging);
+        application.VerifyForeground();
+        Assert.AreEqual(application.Editor, Keyboard.FocusedElement);
+    }
+
+    [STATestMethod]
+    [TestCategory("NativeIntegration")]
+    [TestCategory("NativeWindowInput")]
+    [DataRow(false)]
+    [DataRow(true)]
     public void AnonymousForegroundApplicationsKeepNativeContourInteractionAndTransparentSpace(bool maximized)
     {
         using var rig = new DesktopPetRoomFixture();

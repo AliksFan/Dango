@@ -2,6 +2,8 @@
 
 日期：2026-10-07。状态：单人首阶段候选已实现，最终自动验证通过，隔离候选已打开；用户人工功能验收尚未完成。
 
+此处保留首轮历史。后续大小／边界、拖动性能和双面消失反馈见[修订验证](2026-10-07-desktop-pet-room-feedback.md)；首轮通过结论不代表修订性能通过或消失根因已解决。
+
 ## 范围与实现
 
 依据[已通过设计](../planning/2026-10-07-desktop-pet-room-layered-design.md)和[实施计划](../planning/2026-10-07-desktop-pet-room-layered-implementation-plan.md)，从 `main@8ff78e0` 在独立分支 `codex/desktop-pet-layered` 实施。此前退回候选及用户撤回修改保留原样，不沿用其通过结论。

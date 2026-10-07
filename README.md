@@ -78,6 +78,7 @@ Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](d
 - [房间机制设计](docs/planning/2026-10-02-room-mechanism-design-proposal.md)及[二维门廊、返回与无房间修订](docs/planning/2026-10-04-room-entry-and-no-room-design.md)：容量／权限机制与已通过的入口、宿主和离房规则；正式业务未实现。
 - [房间入口最小闭环实施计划](docs/planning/2026-10-04-room-entry-implementation-plan.md)：待确认的门廊 UI、真实领域前置、入房显示、回门廊和分层验收顺序；不代表编码或数据库操作已授权。
 - [本地普通房实施计划](docs/planning/2026-10-05-local-single-room-plan.md)、[产品实现验证](docs/verification/2026-10-05-local-room-product.md)及[人工评审修订](docs/verification/2026-10-05-local-room-review-revision.md)：窗口／壁纸两种呈现、Esc 中央菜单、外出控制中心与完整壁纸玩法的候选；自动结果、真实前台失败及待人工验收项分别记录，未合并 main 或更新日常安装。
+- [桌宠房间分层设计](docs/planning/2026-10-07-desktop-pet-room-layered-design.md)、[实施计划](docs/planning/2026-10-07-desktop-pet-room-layered-implementation-plan.md)及[体验修订](docs/planning/2026-10-07-desktop-pet-room-feedback-revision.md)：真实壁纸房间与独立上层团子，当前修订大小、屏幕边界与拖动故障；人工验收未完成。
 - [设置页范围与验收设计](docs/planning/2026-10-01-settings-ui.md)及[专项验证记录](docs/verification/2026-10-01-settings-ui.md)：产品首页内设置页的范围、失败型验收与独立 Product 宿主人工确认；日常安装和完整自动门禁待补。
 - [统一实时首页与固定尺寸验证记录](docs/verification/2026-10-03-unified-live-home.md)：首页真实团子、门廊交互及三档物理目标尺寸的当前证据和未完成边界。
 - [Phase 2A 最小多人同步详细设计](docs/planning/2026-09-24-minimal-multiplayer-sync-design.md)、[实施计划](docs/planning/2026-09-30-minimal-multiplayer-sync-plan.md)、[实施验证记录](docs/verification/2026-09-30-minimal-multiplayer-sync.md)及[UI 前置排期记录](docs/planning/2026-09-30-ui-before-dual-machine-note.md)：真实 SignalR 与内存权威临时房间的同机 M0–M6 小样已获人工确认；双 Windows M7、Phase 2A 整体及正式房间均未验收，日常入口未接入多人。

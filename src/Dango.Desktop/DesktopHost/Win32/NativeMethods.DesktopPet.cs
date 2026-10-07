@@ -26,7 +26,18 @@ internal static partial class NativeMethods
 
     internal static void PositionDesktopPetWindow(nint window, int left, int top, int width, int height)
     {
-        if (!SetWindowPos(window, new nint(-1), left, top, Math.Max(1, width), Math.Max(1, height), SwpNoActivate))
+        width = Math.Max(1, width);
+        height = Math.Max(1, height);
+        if (!GetWindowRect(window, out var current))
+            throw new Win32Exception(Marshal.GetLastPInvokeError(), "无法读取独立团子层位置。");
+        var samePosition = current.Left == left && current.Top == top;
+        var sameSize = current.Right - current.Left == width && current.Bottom - current.Top == height;
+        if (samePosition && sameSize && (GetWindowLongPtr(window, GwlExStyle) & 0x8) != 0) return;
+        const uint noSize = 0x0001, noMove = 0x0002;
+        var flags = SwpNoActivate;
+        if (sameSize) flags |= noSize;
+        if (samePosition) flags |= noMove;
+        if (!SetWindowPos(window, new nint(-1), left, top, width, height, flags))
             throw new Win32Exception(Marshal.GetLastPInvokeError(), "无法定位独立团子层。");
     }
 

@@ -73,6 +73,12 @@ internal sealed class LocalRoomSceneView : Grid
     {
         get
         {
+            if (DesktopPetPresentationEnabled)
+            {
+                var mapping = DesktopPetMapping;
+                var floor = mapping.Projection.WorldToScreen(new(0, groundY)).Y;
+                return (mapping.SafeSceneBounds.X, mapping.SafeSceneBounds.Right, floor, floor - VisualFloorLift);
+            }
             var left = Projection.WorldToScreen(new(SideBoundaryInset, groundY));
             var right = Projection.WorldToScreen(new(WorldWidth - SideBoundaryInset, groundY));
             return (left.X, right.X, left.Y, left.Y - VisualFloorLift);
@@ -362,11 +368,14 @@ internal sealed class LocalRoomSceneView : Grid
         if (right > left && floorY < ActualHeight)
             dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(205, 182, 149)), null,
                 new Rect(left, floorY, right - left, ActualHeight - floorY));
-        if (left > 0) dc.DrawRectangle(ExcludedArea, null, new Rect(0, 0, left, ActualHeight));
-        if (right < ActualWidth) dc.DrawRectangle(ExcludedArea, null, new Rect(right, 0, ActualWidth - right, ActualHeight));
-        var edgePen = new Pen(new SolidColorBrush(Color.FromRgb(138, 119, 95)), 1.5) { DashStyle = DashStyles.Dash };
-        foreach (var x in new[] { edges.Left, edges.Right })
-            if (x >= 0 && x <= ActualWidth) dc.DrawLine(edgePen, new Point(x, 0), new Point(x, ActualHeight));
+        if (!DesktopPetPresentationEnabled)
+        {
+            if (left > 0) dc.DrawRectangle(ExcludedArea, null, new Rect(0, 0, left, ActualHeight));
+            if (right < ActualWidth) dc.DrawRectangle(ExcludedArea, null, new Rect(right, 0, ActualWidth - right, ActualHeight));
+            var edgePen = new Pen(new SolidColorBrush(Color.FromRgb(138, 119, 95)), 1.5) { DashStyle = DashStyles.Dash };
+            foreach (var x in new[] { edges.Left, edges.Right })
+                if (x >= 0 && x <= ActualWidth) dc.DrawLine(edgePen, new Point(x, 0), new Point(x, ActualHeight));
+        }
     }
 
     private void DrawWallTexture(DrawingContext dc, double left, double right, double floorY)

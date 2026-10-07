@@ -18,15 +18,14 @@ public sealed class DesktopPetRoomHandoffTests
         const double nativeFloor = LocalRoomSceneView.WorldHeight;
         var mapping = DesktopPetRoomMapping.Create(width, height, new(leftInset, topInset, rightInset, bottomInset), nativeFloor);
         var workArea = new LogicalRect(leftInset, topInset, width - leftInset - rightInset, height - topInset - bottomInset);
-        Assert.IsTrue(mapping.SafeSceneBounds.X > workArea.X && mapping.SafeSceneBounds.Y > workArea.Y);
-        Assert.IsTrue(mapping.SafeSceneBounds.Right < workArea.Right && mapping.SafeSceneBounds.Bottom < workArea.Bottom,
-            "The playable projection must leave a visible safety margin and exclude every taskbar inset.");
-        var left = mapping.Projection.WorldToScreen(new(LocalRoomSceneView.SideBoundaryInset, nativeFloor));
-        var right = mapping.Projection.WorldToScreen(new(LocalRoomSceneView.WorldWidth - LocalRoomSceneView.SideBoundaryInset, nativeFloor));
+        Assert.AreEqual(workArea, mapping.SafeSceneBounds,
+            "The approved revision uses the usable display edges and excludes only taskbar insets.");
+        var left = mapping.Projection.WorldToScreen(new(mapping.Surface.X, nativeFloor));
+        var right = mapping.Projection.WorldToScreen(new(mapping.Surface.Right, nativeFloor));
         Assert.AreEqual(mapping.SafeSceneBounds.X, left.X, 1e-9);
         Assert.AreEqual(mapping.SafeSceneBounds.Right, right.X, 1e-9);
         Assert.AreEqual(left.Y, right.Y, 1e-9, "The two walls terminate on one physical room floor.");
-        Assert.IsTrue(left.Y > mapping.SafeSceneBounds.Y && left.Y < mapping.SafeSceneBounds.Bottom);
+        Assert.AreEqual(workArea.Bottom, left.Y, 1e-9);
         foreach (var world in new[] { new LogicalPoint(24, nativeFloor), new(1080, -180), new(2136, nativeFloor - 90) })
         {
             var projected = mapping.Projection.WorldToScreen(world);

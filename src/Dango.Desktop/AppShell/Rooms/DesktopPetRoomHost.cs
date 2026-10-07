@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Dango.Desktop.DesktopHost;
 using Dango.Desktop.DesktopHost.Win32;
 using Dango.Desktop.DesktopHost.WorkerW;
 using Dango.Desktop.Physics.Presentation;
@@ -11,6 +12,30 @@ using Point = System.Windows.Point;
 using Color = System.Windows.Media.Color;
 
 namespace Dango.Desktop.AppShell.Rooms;
+
+// A single bounded failure snapshot. No pointer coordinates, input history, window
+// titles, exception messages or external desktop content are retained here.
+internal sealed record DesktopPetRoomSurfaceFailure(
+    DateTimeOffset OccurredAtUtc,
+    string Reason,
+    int? NativeErrorCode,
+    int NativeMessage,
+    string PetFrameRejection,
+    bool WallpaperDisposed,
+    bool WallpaperRootMatches,
+    bool SceneVisible,
+    bool SceneHealthy,
+    bool RuntimeFrameCurrent,
+    bool PetVisible,
+    bool PetHealthy,
+    bool PetFrameMatches,
+    bool RuntimeOwnerPresent,
+    bool RuntimeRunning,
+    bool RuntimeHealthy,
+    bool PointerCaptured,
+    bool PointerActive,
+    bool PhysicalDragActive,
+    HostFrameDiagnostics? Scheduler);
 
 internal sealed class DesktopPetRoomHost : IDisposable
 {
@@ -26,6 +51,7 @@ internal sealed class DesktopPetRoomHost : IDisposable
     private EventHandler? confirmation;
     private StackedPhysicsPresentationFrame? awaitingRuntimeFrame;
     private readonly Forms.ContextMenuStrip menu = new();
+    private readonly IDesktopPetPointerGesturePlatform? gesturePlatform;
     private readonly DispatcherTimer shellCheck = new(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(500) };
     internal LocalRoomSceneView Scene { get; } = new();
     internal DesktopPetDangoWindow? PetWindow { get; private set; }
@@ -35,6 +61,7 @@ internal sealed class DesktopPetRoomHost : IDisposable
     internal bool IsReady { get; private set; }
     internal string LastFailureReason { get; private set; } = string.Empty;
     internal string LastFailureDetail { get; private set; } = string.Empty;
+    internal DesktopPetRoomSurfaceFailure? LastFailureSnapshot { get; private set; }
     internal string LastSurfaceFailure => $"Reason={LastFailureReason}; {LastFailureDetail}";
     internal bool IsMenuOpen => menu.Visible;
     internal event Action<long>? HealthyFrameReady;
@@ -44,8 +71,9 @@ internal sealed class DesktopPetRoomHost : IDisposable
     internal event Action? ControlCenterRequested;
     internal event Action? RecoverRequested;
 
-    internal DesktopPetRoomHost()
+    internal DesktopPetRoomHost(IDesktopPetPointerGesturePlatform? gesturePlatform = null)
     {
+        this.gesturePlatform = gesturePlatform;
         Scene.EnableDesktopPetPresentation();
         Scene.FrameApplied += ApplyPetFrame;
         Scene.InputInvalidated += ReleasePointer;
@@ -113,6 +141,7 @@ internal sealed class DesktopPetRoomHost : IDisposable
         driverReady = renderedTogether = readyReported = faultReported = false;
         awaitingRuntimeFrame = null;
         LastFailureReason = LastFailureDetail = string.Empty;
+        LastFailureSnapshot = null;
         Scene.InputBlocked = false;
         target = NativeMethods.FindWorkerW() ?? throw new InvalidOperationException("桌宠房间壁纸挂接不可用，请返回门廊重试。");
         try
@@ -135,11 +164,13 @@ internal sealed class DesktopPetRoomHost : IDisposable
             WallpaperSource.AddHook(BackgroundMessageHook);
             WallpaperSource.RootVisual = Scene;
             LayoutScene();
-            PetWindow = new(Scene, ScreenPixelsToScene, SceneToScreenPixels);
+            PetWindow = new(Scene, ScreenPixelsToScene, SceneToScreenPixels, gesturePlatform,
+                new Rect(workArea.Left, workArea.Top, workArea.Width, workArea.Height));
             if (driver is not null) PetWindow.Bind(driver);
             PetWindow.ContextRequested += OpenMenu;
             PetWindow.SurfaceInvalidated += FailSurface;
             PetWindow.Show();
+            PetWindow.PositionStableViewport();
             shellCheck.Start();
         }
         catch { Hide(); throw; }
@@ -184,7 +215,10 @@ internal sealed class DesktopPetRoomHost : IDisposable
             ScheduleJointConfirmation();
         }
         catch (Exception error) when (error is Win32Exception or InvalidOperationException or ArgumentException)
-        { FailSurface($"pet frame exception: {error.GetType().Name}" + (error is Win32Exception native ? $" ({native.NativeErrorCode})" : string.Empty)); }
+        {
+            FailSurface($"pet frame exception: {error.GetType().Name}" + (error is Win32Exception native ? $" ({native.NativeErrorCode})" : string.Empty),
+            error is Win32Exception nativeError ? nativeError.NativeErrorCode : null);
+        }
     }
 
     private void OnDriverReady(long attempt)
@@ -241,27 +275,49 @@ internal sealed class DesktopPetRoomHost : IDisposable
         menu.Show(new System.Drawing.Point((int)Math.Round(screenPoint.X), (int)Math.Round(screenPoint.Y)));
     }
 
-    private void FailSurface() => FailSurface($"pet native display message: 0x{PetWindow?.LastSurfaceInvalidationMessage:X4}");
+    private void FailSurface() => FailSurface($"pet native display message: 0x{PetWindow?.LastSurfaceInvalidationMessage:X4}",
+        nativeDisplayMessage: PetWindow?.LastSurfaceInvalidationMessage ?? 0);
 
-    private void FailSurface(string reason)
+    private void FailSurface(string reason, int? nativeErrorCode = null, int nativeDisplayMessage = 0)
     {
         if (faultReported || WallpaperSource is null) return;
         faultReported = true;
-        LastFailureReason = reason;
-        LastFailureDetail = $"WallpaperDisposed={WallpaperSource.IsDisposed}; RootMatches={!WallpaperSource.IsDisposed && ReferenceEquals(WallpaperSource.RootVisual, Scene)}; " +
-            $"SceneVisible={Scene.IsVisible}; SceneHealthy={Scene.HasHealthyFrame}; FrameCurrent={ReferenceEquals(Scene.LastAppliedFrame, Scene.LastAppliedRuntime?.LastFrame)}; " +
-            $"PetVisible={PetWindow?.IsVisible}; PetHealthy={PetWindow?.HasHealthyFrame}; PetFrameMatches={ReferenceEquals(Scene.LastAppliedFrame, PetWindow?.LastAppliedFrame)}; " +
-            $"PetReject={PetWindow?.LastFrameRejection}; PetNativeMessage=0x{PetWindow?.LastSurfaceInvalidationMessage:X4}";
+        CaptureFailure(reason, nativeErrorCode, nativeDisplayMessage);
         var attempt = Generation;
         StopInput();
         Scene.Dispatcher.BeginInvoke(() => { if (attempt == Generation) LostDesktop?.Invoke(); });
+    }
+
+    // The application host retains responsibility for its existing driver-failure
+    // shutdown. Capture only the same fixed diagnostics before that shutdown.
+    internal void RecordDriverFailure() => CaptureFailure("room driver failed", null, 0);
+
+    private void CaptureFailure(string reason, int? nativeErrorCode, int nativeDisplayMessage)
+    {
+        var source = WallpaperSource;
+        LastFailureReason = reason;
+        LastFailureDetail = $"WallpaperDisposed={source?.IsDisposed}; RootMatches={source is { IsDisposed: false } && ReferenceEquals(source.RootVisual, Scene)}; " +
+            $"SceneVisible={Scene.IsVisible}; SceneHealthy={Scene.HasHealthyFrame}; FrameCurrent={ReferenceEquals(Scene.LastAppliedFrame, Scene.LastAppliedRuntime?.LastFrame)}; " +
+            $"PetVisible={PetWindow?.IsVisible}; PetHealthy={PetWindow?.HasHealthyFrame}; PetFrameMatches={ReferenceEquals(Scene.LastAppliedFrame, PetWindow?.LastAppliedFrame)}; " +
+            $"PetReject={PetWindow?.LastFrameRejection}; PetNativeMessage=0x{PetWindow?.LastSurfaceInvalidationMessage:X4}";
+        var runtime = Scene.LastAppliedRuntime;
+        LastFailureSnapshot = new(DateTimeOffset.UtcNow, reason, nativeErrorCode,
+            nativeDisplayMessage, PetWindow?.LastFrameRejection ?? string.Empty,
+            source?.IsDisposed != false, source is { IsDisposed: false } && ReferenceEquals(source.RootVisual, Scene),
+            Scene.IsVisible, Scene.HasHealthyFrame, Scene.LastAppliedFrame is not null && ReferenceEquals(Scene.LastAppliedFrame, runtime?.LastFrame),
+            PetWindow?.IsVisible == true, PetWindow?.HasHealthyFrame == true,
+            Scene.LastAppliedFrame is not null && ReferenceEquals(Scene.LastAppliedFrame, PetWindow?.LastAppliedFrame), driver?.OwnsRuntime == true,
+            driver?.RuntimeRunning ?? (runtime?.IsRunning == true),
+            driver?.RuntimeHealthy ?? (runtime is { LastError: null, LastFrame: not null }),
+            PetWindow?.IsPointerCaptured == true, driver?.IsPointerActive == true, runtime?.IsDragging == true,
+            driver?.FrameDiagnostics);
     }
 
     private nint BackgroundMessageHook(nint window, int message, nint w, nint l, ref bool handled)
     {
         if (message == 0x0084) { handled = true; return -1; }
         if (message == 0x0021) { handled = true; return 3; }
-        if (message is 0x02E0 or 0x007E) FailSurface($"wallpaper native display message: 0x{message:X4}");
+        if (message is 0x02E0 or 0x007E) FailSurface($"wallpaper native display message: 0x{message:X4}", nativeDisplayMessage: message);
         return 0;
     }
 

@@ -4,7 +4,8 @@ using Dango.Physics;
 
 namespace Dango.Desktop.DesktopHost.Interaction;
 
-internal sealed class LightInteractionSession(StackedDangoSceneRuntime runtime, bool allowPhysicalDrag = true)
+internal sealed class LightInteractionSession(StackedDangoSceneRuntime runtime, bool allowPhysicalDrag = true,
+    Func<LogicalPoint, LogicalPoint>? constrainPhysicalTarget = null)
 {
     private readonly LightInteractionController controller = new();
     private LightInteractionTarget? target;
@@ -46,7 +47,7 @@ internal sealed class LightInteractionSession(StackedDangoSceneRuntime runtime, 
         if (dragging)
         {
             if (canContinue?.Invoke() != true) { Cancel(); return; }
-            runtime.MovePhysicalDrag(point);
+            runtime.MovePhysicalDrag(constrainPhysicalTarget?.Invoke(point) ?? point);
             return;
         }
         if (canContinue?.Invoke() != true) { Cancel(); return; }
@@ -121,7 +122,7 @@ internal sealed class LightInteractionSession(StackedDangoSceneRuntime runtime, 
         ClearState();
         release?.Invoke();
         runtime.CancelLightFeedback();
-        runtime.BeginPhysicalDrag(dragTarget.Entity, point);
+        runtime.BeginPhysicalDrag(dragTarget.Entity, constrainPhysicalTarget?.Invoke(point) ?? point);
         if (runtime.IsDragging && runtime.IsRunning && runtime.LastError is null && runtime.EntityIds.Contains(dragTarget.Entity) &&
             continueCheck?.Invoke() == true && capture?.Invoke() == true)
         {

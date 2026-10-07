@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
@@ -65,6 +66,7 @@ internal sealed partial class DangoApplicationHost
         desktopPetRoom.RecoverRequested += RecoverLocalRoom;
         desktopPetRoom.LostDesktop += () =>
         {
+            SaveDesktopPetFailureReport();
             const string message = "桌宠房间显示已失效，请从托盘恢复或返回房门重试。";
             if (roomHandoff.Pending) FailLocalHandoff(roomHandoff.Generation, message);
             else if (roomHandoff.Current == LocalRoomPresentation.DesktopPet)
@@ -74,7 +76,15 @@ internal sealed partial class DangoApplicationHost
                 trayIcon?.ShowRoomWarning(message);
             }
         };
-        localRoomDriver.Failed += FailLocalHandoff;
+        localRoomDriver.Failed += (attempt, message) =>
+        {
+            if (attempt == roomHandoff.Generation && desktopPetRoom.IsVisible)
+            {
+                desktopPetRoom.RecordDriverFailure();
+                SaveDesktopPetFailureReport();
+            }
+            FailLocalHandoff(attempt, message);
+        };
         localRoomWallpaper.LostDesktop += () =>
         {
             if (roomHandoff.Pending) FailLocalHandoff(roomHandoff.Generation, "桌面宿主已失效，可重试壁纸或用窗口打开。");
@@ -86,6 +96,25 @@ internal sealed partial class DangoApplicationHost
             }
         };
         roomHandoffTimeout.Tick += (_, _) => FailLocalHandoff(roomHandoff.Generation, "场景首帧未能就绪，可重试或返回房门。");
+    }
+
+    private void SaveDesktopPetFailureReport()
+    {
+        if (desktopPetRoom?.LastFailureSnapshot is not { } snapshot) return;
+        try
+        {
+            var folder = Path.GetDirectoryName(Path.GetFullPath(settingsPath))!;
+            Directory.CreateDirectory(folder);
+            // One bounded local report: no pointer positions, HWNDs, desktop
+            // content, user input history or exception messages are persisted.
+            File.WriteAllText(Path.Combine(folder, "desktop-pet-last-failure.json"),
+                System.Text.Json.JsonSerializer.Serialize(snapshot, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            // Diagnostic storage must not prevent the existing loss/recovery path.
+            System.Diagnostics.Trace.WriteLine($"Desktop pet failure report unavailable: {error.GetType().Name}");
+        }
     }
 
     internal void EnterLocalRoom()

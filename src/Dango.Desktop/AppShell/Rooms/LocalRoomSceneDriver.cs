@@ -39,6 +39,9 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     internal event Action<long, string>? Failed;
     internal event Action? PointerCancelled;
     internal bool OwnsRuntime => scheduler.OwnsRuntime;
+    internal HostFrameDiagnostics FrameDiagnostics => scheduler.Snapshot;
+    internal bool RuntimeRunning => runtime.IsRunning;
+    internal bool RuntimeHealthy => runtime.LastError is null && runtime.LastFrame is not null;
     internal bool IsPointerActive => pointer.IsActive;
     internal string DesktopPetPointerDiagnostics => $"Pointer={pointer.IsActive}; PhysicalDrag={runtime.IsDragging}; " +
         $"Ready={readySent}; Owner={scheduler.OwnsRuntime}; InputBlocked={view?.InputBlocked}; ViewVisible={view?.IsVisible}; " +
@@ -62,7 +65,8 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     {
         scheduler.VerifyCanStart();
         ClearInput();
-        pointer = new(runtime, allowPhysicalDrag: target.DesktopPetPresentationEnabled);
+        pointer = new(runtime, allowPhysicalDrag: target.DesktopPetPresentationEnabled,
+            constrainPhysicalTarget: target.DesktopPetPresentationEnabled ? ClampPhysicalDragTarget : null);
         activeSurface = target.DesktopPetPresentationEnabled ? target.DesktopPetWorldSurface : Surface;
         if (view is not null) view.InputInvalidated -= CancelPointer;
         view = target;
@@ -161,13 +165,17 @@ internal sealed class LocalRoomSceneDriver : IDisposable
         var displayedWorld = view.ScreenToPetWorld(sceneDip);
         world = new(displayedWorld.X, displayedWorld.Y - runtime.NeutralBodyGroundOffset);
         lastPointerWorld = world;
-        if (view.DesktopPetPresentationEnabled && pointer.IsActive)
-        {
-            lastDragAnchor = DesktopPetDragAnchor();
-            world = view.ClampDesktopPetPointer(world, lastDragAnchor);
-        }
         lastClampedPointerWorld = world;
         return double.IsFinite(world.X) && double.IsFinite(world.Y);
+    }
+
+    // Click and petting qualify against the actual contact point. Only a
+    // controller-classified physical drag targets the native top-node anchor.
+    private LogicalPoint ClampPhysicalDragTarget(LogicalPoint world)
+    {
+        lastDragAnchor = DesktopPetDragAnchor();
+        lastClampedPointerWorld = view!.ClampDesktopPetPointer(world, lastDragAnchor);
+        return lastClampedPointerWorld;
     }
 
     private LogicalVector DesktopPetDragAnchor()
@@ -237,12 +245,13 @@ internal sealed class LocalRoomSceneDriver : IDisposable
                 if (runtime.LastFrame is null)
                 { runtime.SetDirectionalControl(DirectionalControlIntent.None); return true; }
                 var bounds = session.Controller!.Snapshot.Dango.VisualBounds;
-                if (!runtime.TryGetHorizontalPlacement(bounds.Center, LocalRoomSceneView.SideBoundaryInset,
-                        Surface.Right - LocalRoomSceneView.SideBoundaryInset, out var safe))
+                var left = view.DesktopPetPresentationEnabled ? activeSurface.X : LocalRoomSceneView.SideBoundaryInset;
+                var right = view.DesktopPetPresentationEnabled ? activeSurface.Right : Surface.Right - LocalRoomSceneView.SideBoundaryInset;
+                if (!runtime.TryGetHorizontalPlacement(bounds.Center, left, right, out var safe))
                 { ReportFailure("房间放置不可用，请返回门廊重试。"); return false; }
                 session.Controller.MoveTo(new(safe.X - bounds.Width / 2, bounds.Y));
                 if (!runtime.RehostSelectedEntityAt(session.Controller.Snapshot.Dango.VisualBounds.Center)) return false;
-                runtime.SetHorizontalBounds(LocalRoomSceneView.SideBoundaryInset, Surface.Right - LocalRoomSceneView.SideBoundaryInset);
+                runtime.SetHorizontalBounds(left, right);
                 alignmentPending = false;
             }
             runtime.SetDirectionalControl(view.InputBlocked ? DirectionalControlIntent.None : intent);
