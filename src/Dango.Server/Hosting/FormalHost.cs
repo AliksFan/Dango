@@ -29,6 +29,9 @@ public static class FormalHost
         X509Certificate2 certificate, Action<IServiceCollection>? configure = null, bool enableEmailWorker = true)
     {
         if (environment.RecoveryEpoch == Guid.Empty) throw new InvalidOperationException("recovery_epoch_required");
+        if (!FormalServerOptions.TryCreate(options.DatabaseName, options.ConnectionString, options.KeyDirectory,
+            options.Endpoint.AbsoluteUri, FormalDeploymentPaths.ProtectedRoot(), out _, out var configurationError))
+            throw new InvalidOperationException(configurationError);
         FormalKeyDirectory.Protect(options.KeyDirectory);
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = [] });
         builder.Logging.ClearProviders();

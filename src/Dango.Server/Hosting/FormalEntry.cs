@@ -14,7 +14,7 @@ public static class FormalEntry
         try
         {
             if (!FormalServerOptions.TryCreate(Read("DATABASE"), Read("CONNECTION_STRING"), Read("KEYS_DIRECTORY"),
-                Read("ENDPOINT"), Directory.GetCurrentDirectory(), out var options, out var code))
+                Read("ENDPOINT"), FormalDeploymentPaths.ProtectedRoot(), out var options, out var code))
             { Console.Error.WriteLine(code); return 2; }
             if (!Guid.TryParse(Read("RECOVERY_EPOCH"), out var epoch) || epoch == Guid.Empty)
             { Console.Error.WriteLine("recovery_epoch_required"); return 2; }
