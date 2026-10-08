@@ -1,6 +1,9 @@
 namespace Dango.Server.Email;
 
-public sealed record EmailDelivery(string Recipient, string Subject, string TextBody);
+public sealed record EmailDelivery(string Recipient, string Subject, string TextBody)
+{
+    public override string ToString() => "EmailDelivery [redacted]";
+}
 public enum EmailSendStatus { Accepted, TransientFailure, PermanentFailure, NotConfigured }
 public sealed record EmailSendResult(EmailSendStatus Status, string? Code = null);
 
