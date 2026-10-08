@@ -146,9 +146,15 @@ public sealed class B1InputTests
         var epoch = Guid.NewGuid();
         var challenge = new EmailChallenge
         {
-            Id = Guid.NewGuid(), Purpose = EmailChallengePurpose.PasswordReset, UserId = Guid.NewGuid(),
-            NormalizedEmail = "FICTIONAL@EXAMPLE.INVALID", SecurityStamp = Guid.NewGuid().ToString("N"),
-            RecoveryEpoch = epoch, Generation = 3, CreatedAt = now, ExpiresAt = now.AddMinutes(30)
+            Id = Guid.NewGuid(),
+            Purpose = EmailChallengePurpose.PasswordReset,
+            UserId = Guid.NewGuid(),
+            NormalizedEmail = "FICTIONAL@EXAMPLE.INVALID",
+            SecurityStamp = Guid.NewGuid().ToString("N"),
+            RecoveryEpoch = epoch,
+            Generation = 3,
+            CreatedAt = now,
+            ExpiresAt = now.AddMinutes(30)
         };
         var proof = new EmailProof(challenge.Id, challenge.Purpose, challenge.UserId!.Value, challenge.NormalizedEmail,
             epoch, challenge.Generation, challenge.ExpiresAt, challenge.SecurityStamp);

@@ -331,10 +331,14 @@ public sealed class B1PostgresTests
     {
         var db = services.GetRequiredService<DangoDbContext>();
         Assert.AreEqual(0, await db.Users.CountAsync(u => u.NormalizedEmail == registration.Email.ToUpperInvariant()));
-        Assert.AreEqual(0, await (from pet in db.Pets join user in db.Users on pet.UserId equals user.Id
-                                  where user.NormalizedEmail == registration.Email.ToUpperInvariant() select pet).CountAsync());
-        Assert.AreEqual(0, await (from room in db.Rooms join user in db.Users on room.OwnerId equals user.Id
-                                  where user.NormalizedEmail == registration.Email.ToUpperInvariant() select room).CountAsync());
+        Assert.AreEqual(0, await (from pet in db.Pets
+                                  join user in db.Users on pet.UserId equals user.Id
+                                  where user.NormalizedEmail == registration.Email.ToUpperInvariant()
+                                  select pet).CountAsync());
+        Assert.AreEqual(0, await (from room in db.Rooms
+                                  join user in db.Users on room.OwnerId equals user.Id
+                                  where user.NormalizedEmail == registration.Email.ToUpperInvariant()
+                                  select room).CountAsync());
     });
 
     private static Task AssertCompleteGraphAsync(FormalTestFixture fixture, RegistrationAttempt registration, RegistrationResult result) => fixture.InScopeAsync(async services =>

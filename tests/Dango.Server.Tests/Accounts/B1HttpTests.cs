@@ -105,8 +105,10 @@ public sealed class B1HttpTests
             var db = services.GetRequiredService<DangoDbContext>();
             Assert.AreEqual(RegistrationState.Pending, (await db.PendingRegistrations.SingleAsync(r => r.Id == pendingId)).State);
             Assert.IsNull((await db.EmailChallenges.SingleAsync(c => c.PendingRegistrationId == pendingId)).ConsumedAt);
-            Assert.AreEqual(EmailJobState.Accepted, (await (from job in db.EmailJobs join challenge in db.EmailChallenges on job.ChallengeId equals challenge.Id
-                where challenge.PendingRegistrationId == pendingId select job).SingleAsync()).State);
+            Assert.AreEqual(EmailJobState.Accepted, (await (from job in db.EmailJobs
+                                                            join challenge in db.EmailChallenges on job.ChallengeId equals challenge.Id
+                                                            where challenge.PendingRegistrationId == pendingId
+                                                            select job).SingleAsync()).State);
         });
         using var unprotectedConfirm = await FormalTestFixture.SendAsync(client, HttpMethod.Post, "api/v1/auth/email-verifications/confirm",
             new { proof }, csrf: false);
@@ -478,8 +480,10 @@ public sealed class B1HttpTests
     private static Task PrioritizeRegistrationJobAsync(FormalTestFixture fixture, Guid id) => fixture.InScopeAsync(async services =>
     {
         var db = services.GetRequiredService<DangoDbContext>();
-        var job = await (from item in db.EmailJobs join challenge in db.EmailChallenges on item.ChallengeId equals challenge.Id
-                         where challenge.PendingRegistrationId == id select item).SingleAsync();
+        var job = await (from item in db.EmailJobs
+                         join challenge in db.EmailChallenges on item.ChallengeId equals challenge.Id
+                         where challenge.PendingRegistrationId == id
+                         select item).SingleAsync();
         job.DueAt = services.GetRequiredService<TimeProvider>().GetUtcNow().AddDays(-1);
         await db.SaveChangesAsync();
     });
@@ -487,7 +491,8 @@ public sealed class B1HttpTests
     private static Task<EmailJob> RegistrationJobAsync(FormalTestFixture fixture, Guid id) => fixture.InScopeAsync(services =>
         (from job in services.GetRequiredService<DangoDbContext>().EmailJobs.AsNoTracking()
          join challenge in services.GetRequiredService<DangoDbContext>().EmailChallenges on job.ChallengeId equals challenge.Id
-         where challenge.PendingRegistrationId == id select job).SingleAsync());
+         where challenge.PendingRegistrationId == id
+         select job).SingleAsync());
 
     private static async Task DispatchRegistrationJobAsync(FormalTestFixture fixture, Guid id, int expectedAttempts)
     {
