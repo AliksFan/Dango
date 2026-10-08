@@ -75,6 +75,7 @@ Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](d
 - [产品企划概要 v0.1](docs/product-brief-v0.1.md)：定位、用户、价值、市场参照与长期方向。
 - [产品设计基线 v0.1](docs/product-design-v0.1.md)：对象规则、房间权限、体验流程与首版边界。
 - [服务端设计基线 v0.1](docs/server-design-v0.1.md)：200 人在线容量、实时同步、部署与扩容。
+- [邮箱后端首期设计](docs/planning/2026-10-08-email-backend-design-proposal.md)、[实施计划](docs/planning/2026-10-08-email-backend-implementation-plan.md)、[ADR 0006](docs/adr/0006-email-accounts-and-persistent-room-state.md)与[B0 验证](docs/verification/2026-10-08-email-backend-foundation.md)：用户同意开始本地账号、团子与房间首期，五项质量要求已入规则；B0 真实 PostgreSQL 基础通过，正式账号、邮件及 Windows 接入后续实施。
 - [房间机制设计](docs/planning/2026-10-02-room-mechanism-design-proposal.md)及[二维门廊、返回与无房间修订](docs/planning/2026-10-04-room-entry-and-no-room-design.md)：容量／权限机制与已通过的入口、宿主和离房规则；正式业务未实现。
 - [房间入口最小闭环实施计划](docs/planning/2026-10-04-room-entry-implementation-plan.md)：待确认的门廊 UI、真实领域前置、入房显示、回门廊和分层验收顺序；不代表编码或数据库操作已授权。
 - [本地普通房实施计划](docs/planning/2026-10-05-local-single-room-plan.md)、[产品实现验证](docs/verification/2026-10-05-local-room-product.md)及[人工评审修订](docs/verification/2026-10-05-local-room-review-revision.md)：窗口／壁纸两种呈现、Esc 中央菜单、外出控制中心与完整壁纸玩法的候选；自动结果、真实前台失败及待人工验收项分别记录，未合并 main 或更新日常安装。
