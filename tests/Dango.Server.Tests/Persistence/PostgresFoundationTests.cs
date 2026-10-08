@@ -43,6 +43,10 @@ public sealed class PostgresFoundationTests
         }
         // Only after verifying database, version and physical cluster may this opt-in gate write.
         await using var context = new DangoDbContext(DangoDatabaseOptions.Create(connectionString));
+        var pending = (await context.Database.GetPendingMigrationsAsync()).ToArray();
+        if (pending.Any(m => m != "20261008074701_InitialAccountRoomFoundation")
+            && Environment.GetEnvironmentVariable("DANGO_BACKEND_B1_TEST_APPROVED") != "1")
+            Assert.Inconclusive("B1 forward migration requires its separate precise authorization.");
         await context.Database.MigrateAsync();
     }
 
@@ -51,7 +55,8 @@ public sealed class PostgresFoundationTests
     {
         await using var context = new DangoDbContext(DangoDatabaseOptions.Create(connectionString));
         var before = (await context.Database.GetAppliedMigrationsAsync()).ToArray();
-        Assert.HasCount(1, before);
+        CollectionAssert.AreEqual(context.Database.GetMigrations().ToArray(), before);
+        Assert.Contains("20261008074701_InitialAccountRoomFoundation", before);
         await context.Database.MigrateAsync();
         CollectionAssert.AreEqual(before, (await context.Database.GetAppliedMigrationsAsync()).ToArray());
         Assert.IsFalse(context.Database.HasPendingModelChanges());
