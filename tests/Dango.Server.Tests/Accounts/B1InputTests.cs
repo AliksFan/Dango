@@ -1,8 +1,15 @@
+using System.Net;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Dango.Server.Accounts;
 using Dango.Server.Persistence.Entities;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Dango.Server.Tests.Accounts;
@@ -11,6 +18,31 @@ namespace Dango.Server.Tests.Accounts;
 public sealed class B1InputTests
 {
     internal const string ValidAppearance = "{\"appearanceSchemaVersion\":3,\"bodyColorHex\":\"#FFFFFF\",\"eyeColorHex\":\"#123abc\",\"eyeSizePercent\":100,\"eyeOvalityPercent\":0,\"eyeHeightControlPercent\":51,\"eyeSpacingControlPercent\":24.5}";
+
+    [TestMethod]
+    public async Task TemporaryCertificateSupportsPinnedHttpsWithoutTrustInstallationOrDatabaseAccess()
+    {
+        using var certificate = FormalTestFixture.CreateCertificate();
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = [] });
+        builder.Logging.ClearProviders();
+        builder.WebHost.ConfigureKestrel(server => server.Listen(IPAddress.Loopback, 0, endpoint => endpoint.UseHttps(certificate)));
+        await using var app = builder.Build();
+        app.MapGet("/", () => "fictional acceptance");
+        await app.StartAsync();
+        try
+        {
+            var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
+            using var handler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = (_, supplied, _, _) => supplied is not null
+                    && CryptographicOperations.FixedTimeEquals(supplied.RawData, certificate.RawData)
+            };
+            using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
+            using var response = await client.GetAsync(address);
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode);
+        }
+        finally { await app.StopAsync(); }
+    }
 
     [TestMethod]
     public void AppearanceAcceptsSchemaThreeAndEveryInclusiveBoundary()
