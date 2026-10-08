@@ -95,6 +95,9 @@ public sealed class RegistrationService(DangoDbContext db, UserManager<DangoUser
         var invitation = await AccountLocks.InvitationAsync(db, pending.InvitationId, ct);
         CheckInvitation(invitation, pending.NormalizedEmail, now);
         var challenge = await db.EmailChallenges.SingleOrDefaultAsync(c => c.Id == data.ChallengeId, ct);
+        now = clock.GetUtcNow();
+        CheckInvitation(invitation, pending.NormalizedEmail, now);
+        if (pending.ExpiresAt <= now) throw new AccountFault("email_proof_invalid", 403);
         if (challenge is null || !ChallengeIssuer.Matches(challenge, data, environment.RecoveryEpoch, now)) throw new AccountFault("email_proof_invalid", 403);
         challenge.ConsumedAt = now;
         pending.State = RegistrationState.Verified;
@@ -156,6 +159,9 @@ public sealed class RegistrationService(DangoDbContext db, UserManager<DangoUser
         db.PetRoomStates.Add(new PetRoomState { PetId = pet.Id, RoomId = room.Id, PositionX = 0, PositionY = 0, Version = 1 });
         await db.SaveChangesAsync(ct);
         await checkpoint.ReachedAsync("after_assignment", ct);
+        now = clock.GetUtcNow();
+        if (pending.CompletionExpiresAt <= now || pending.ExpiresAt <= now || invitation!.ExpiresAt <= now)
+            throw new AccountFault("registration_expired", 410);
         invitation!.ConsumedAt = now;
         invitation.UserId = user.Id;
         pending.State = RegistrationState.Completed;
@@ -166,6 +172,9 @@ public sealed class RegistrationService(DangoDbContext db, UserManager<DangoUser
         pending.RoomId = room.Id;
         await db.SaveChangesAsync(ct);
         await checkpoint.ReachedAsync("before_commit", ct);
+        now = clock.GetUtcNow();
+        if (pending.CompletionExpiresAt <= now || pending.ExpiresAt <= now || invitation.ExpiresAt <= now)
+            throw new AccountFault("registration_expired", 410);
         await transaction.CommitAsync(ct);
         return Result(pending);
     }

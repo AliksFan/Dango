@@ -23,6 +23,18 @@ public static class FormalEntry
             {
                 // Explicit operator command only. Normal service startup never creates or migrates a database.
                 await using var db = new DangoDbContext(DangoDatabaseOptions.Create(options!.ConnectionString));
+                if (Read("EXPECTED_DATA_DIRECTORY") is { Length: > 0 } expectedDirectory)
+                {
+                    await db.Database.OpenConnectionAsync();
+                    await using var command = db.Database.GetDbConnection().CreateCommand();
+                    command.CommandText = "SELECT current_database(), current_setting('data_directory'), current_setting('server_version_num')::integer";
+                    await using var reader = await command.ExecuteReaderAsync();
+                    if (!await reader.ReadAsync() || reader.GetString(0) != options.DatabaseName
+                        || !string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(reader.GetString(1))),
+                            Path.TrimEndingDirectorySeparator(Path.GetFullPath(expectedDirectory)), StringComparison.OrdinalIgnoreCase)
+                        || reader.GetInt32(2) is < 180000 or >= 190000)
+                        throw new AccountFault("maintenance_database_target_invalid");
+                }
                 await db.Database.MigrateAsync();
                 Console.WriteLine("formal_migration_applied");
                 return 0;

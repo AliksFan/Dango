@@ -138,6 +138,7 @@ try {
         [void](Invoke-TaskProcess 'dotnet' @('src/Dango.Server/bin/Release/net10.0/Dango.Server.dll', '--formal-migrate') @{
             DANGO_DATABASE=$taskDatabaseName; DANGO_CONNECTION_STRING=$taskConnection; DANGO_KEYS_DIRECTORY=$taskB1KeyDirectory
             DANGO_ENDPOINT=('https://127.0.0.1:' + $taskState.Port); DANGO_RECOVERY_EPOCH=$taskB1Epoch.ToString('D')
+            DANGO_EXPECTED_DATA_DIRECTORY=$taskDataDirectory
         })
     }
     [void](Invoke-TaskProcess 'dotnet' @('test', 'tests/Dango.Server.Tests/Dango.Server.Tests.csproj', '-c', 'Release', '--no-build', '--no-restore', '--filter', 'TestCategory=PostgresIntegration', '--logger', 'trx;LogFileName=backend-postgres.trx', '--results-directory', $taskResultsDirectory) $taskTestEnvironment)
