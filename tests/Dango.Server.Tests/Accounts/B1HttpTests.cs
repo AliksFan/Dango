@@ -94,7 +94,7 @@ public sealed class B1HttpTests
         Assert.AreEqual("pending", started.GetProperty("state").GetString());
         Assert.IsNull(cookies.GetCookies(fixture.Endpoint)[AuthCookie]);
         await PrioritizeRegistrationJobAsync(fixture, pendingId);
-        await fixture.InScopeAsync(services => services.GetRequiredService<EmailDispatcher>().DispatchBatchAsync(CancellationToken.None));
+        await DispatchRegistrationJobAsync(fixture, pendingId, 1);
         var url = await ReadProofUrlAsync(receiver);
         var proof = QueryHelpers.ParseQuery(url.Query)["proof"].ToString();
         using var scanned = await client.GetAsync("auth/email-confirm?proof=" + Uri.EscapeDataString(proof));
@@ -273,7 +273,7 @@ public sealed class B1HttpTests
         await PrioritizeRegistrationJobAsync(fixture, registration.Id);
         for (var attempt = 1; attempt <= EmailDispatchPolicy.MaximumAttempts; attempt++)
         {
-            await fixture.InScopeAsync(services => services.GetRequiredService<EmailDispatcher>().DispatchBatchAsync(CancellationToken.None));
+            await DispatchRegistrationJobAsync(fixture, registration.Id, attempt);
             Assert.AreEqual(attempt, receiver.Attempts);
             var job = await RegistrationJobAsync(fixture, registration.Id);
             Assert.AreEqual(attempt, job.Attempts);
@@ -320,6 +320,17 @@ public sealed class B1HttpTests
         (from job in services.GetRequiredService<DangoDbContext>().EmailJobs.AsNoTracking()
          join challenge in services.GetRequiredService<DangoDbContext>().EmailChallenges on job.ChallengeId equals challenge.Id
          where challenge.PendingRegistrationId == id select job).SingleAsync());
+
+    private static async Task DispatchRegistrationJobAsync(FormalTestFixture fixture, Guid id, int expectedAttempts)
+    {
+        for (var batch = 0; batch < 32; batch++)
+        {
+            if ((await RegistrationJobAsync(fixture, id)).Attempts >= expectedAttempts) return;
+            var claimed = await fixture.InScopeAsync(services => services.GetRequiredService<EmailDispatcher>().DispatchBatchAsync(CancellationToken.None));
+            Assert.IsTrue(claimed > 0, "The due registration job was not claimed.");
+        }
+        Assert.Fail("The registration job exceeded the bounded acceptance batch budget.");
+    }
 
     private static async Task<Uri> ReadProofUrlAsync(ControlledSmtpReceiver receiver)
     {
