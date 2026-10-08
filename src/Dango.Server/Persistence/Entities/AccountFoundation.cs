@@ -5,6 +5,8 @@ namespace Dango.Server.Persistence.Entities;
 public sealed class DangoUser : IdentityUser<Guid>
 {
     public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? DisabledAt { get; set; }
+    public bool RecoveryLocked { get; set; }
 }
 
 public sealed class AccountPet

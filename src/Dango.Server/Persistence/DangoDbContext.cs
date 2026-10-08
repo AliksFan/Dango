@@ -91,6 +91,7 @@ public sealed partial class DangoDbContext(DbContextOptions<DangoDbContext> opti
             entity.HasOne<PersistentRoom>().WithMany().HasForeignKey(state => state.RoomId);
         });
 
+        ConfigureAccounts(builder);
         foreach (var entity in builder.Model.GetEntityTypes())
         {
             foreach (var property in entity.GetProperties()) property.SetColumnName(SnakeCase(property.Name));
