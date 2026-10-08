@@ -134,6 +134,8 @@ public static class FormalHost
             catch (AccountFault fault) { await ErrorAsync(context, fault.Code, fault.Status); }
             catch (Exception ex) when (ex is BadHttpRequestException or JsonException)
             { await ErrorAsync(context, "request_invalid", 400); }
+            catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException { SqlState: "23505" })
+            { await ErrorAsync(context, "write_conflict", 409); }
             catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested) { }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             { await ErrorAsync(context, "service_unavailable", 503); }
