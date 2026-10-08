@@ -96,7 +96,7 @@ public sealed class B1InputTests
         var secret = NewProof();
         var digest = AccountInput.Digest(secret);
         Assert.AreEqual(64, digest.Length);
-        Assert.AreNotEqual(secret, digest);
+        Assert.IsFalse(string.Equals(secret, digest, StringComparison.Ordinal));
         Assert.IsTrue(AccountInput.Matches(digest, secret));
         Assert.IsFalse(AccountInput.Matches(digest, NewProof()));
         Assert.IsFalse(AccountInput.Matches("malformed", secret));
