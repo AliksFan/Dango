@@ -58,7 +58,8 @@ public static partial class AccountInput
         string[] names = ["appearanceSchemaVersion", "bodyColorHex", "eyeColorHex", "eyeSizePercent", "eyeOvalityPercent", "eyeHeightControlPercent", "eyeSpacingControlPercent"];
         if (fields.Length != names.Length || fields.Select(p => p.Name).Distinct(StringComparer.Ordinal).Count() != names.Length
             || fields.Any(p => !names.Contains(p.Name, StringComparer.Ordinal))) throw new AccountFault("appearance_invalid");
-        if (!input.GetProperty("appearanceSchemaVersion").TryGetInt32(out var schema) || schema != 3) throw new AccountFault("appearance_schema_unsupported");
+        var version = input.GetProperty("appearanceSchemaVersion");
+        if (version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out var schema) || schema != 3) throw new AccountFault("appearance_schema_unsupported");
         foreach (var name in names.Skip(1).Take(2))
         {
             var color = input.GetProperty(name);
@@ -74,7 +75,7 @@ public static partial class AccountInput
         return input.GetRawText();
     }
 
-    [GeneratedRegex("^#[0-9a-fA-F]{6}$", RegexOptions.CultureInvariant)]
+    [GeneratedRegex("\\A#[0-9a-fA-F]{6}\\z", RegexOptions.CultureInvariant)]
     private static partial Regex OpaqueColor();
 }
 

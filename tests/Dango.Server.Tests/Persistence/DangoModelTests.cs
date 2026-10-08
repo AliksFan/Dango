@@ -65,7 +65,9 @@ public sealed class DangoModelTests
     {
         using var context = new DangoDbContextFactory().CreateDbContext([]);
         var migrations = context.GetService<IMigrationsAssembly>();
-        Assert.HasCount(1, migrations.Migrations);
+        Assert.HasCount(2, migrations.Migrations);
+        Assert.Contains("20261008074701_InitialAccountRoomFoundation", migrations.Migrations.Keys.ToArray());
+        Assert.IsTrue(migrations.Migrations.Keys.Any(key => key.EndsWith("_AccountLifecycle", StringComparison.Ordinal)));
         Assert.IsNotNull(migrations.ModelSnapshot);
         Assert.IsFalse(context.Database.HasPendingModelChanges());
         var sql = context.GetService<IMigrator>().GenerateScript(options: MigrationsSqlGenerationOptions.Idempotent);
