@@ -4,6 +4,7 @@ param(
     [Parameter(Mandatory)][string]$PostgresBinDirectory,
     [switch]$Initialize,
     [switch]$CreateDatabase,
+    [switch]$B1,
     [switch]$ExecuteApprovedPlan
 )
 
@@ -30,7 +31,7 @@ for ($taskAncestor = [IO.DirectoryInfo]::new($taskDataDirectory); $null -ne $tas
     if ($taskAncestor.Exists -and ($taskAncestor.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'backend_test_reparse_target_rejected' }
 }
 if (-not $ExecuteApprovedPlan) {
-    [pscustomobject]@{ RunName=$RunName; DataDirectory=$taskDataDirectory; Database=$taskDatabaseName; Initialize=[bool]$Initialize; CreateDatabase=[bool]$CreateDatabase; Writes='migration and fictional tests; no reset, deletion or restore' }
+    [pscustomobject]@{ RunName=$RunName; DataDirectory=$taskDataDirectory; Database=$taskDatabaseName; Initialize=[bool]$Initialize; CreateDatabase=[bool]$CreateDatabase; B1=[bool]$B1; Writes='explicit forward migration and fictional tests; no reset, deletion or restore' }
     return
 }
 
@@ -118,7 +119,9 @@ try {
     }
     $taskConnection = "Host=127.0.0.1;Port=$taskPort;Database=$taskDatabaseName;Username=$taskOwnerName;Password=$taskPassword;Include Error Detail=false"
     $taskResultsDirectory = Join-Path 'artifacts/backend-foundation/postgres-tests' ([DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss-fffffff'))
-    [void](Invoke-TaskProcess 'dotnet' @('test', 'tests/Dango.Server.Tests/Dango.Server.Tests.csproj', '-c', 'Release', '--no-build', '--no-restore', '--filter', 'TestCategory=PostgresIntegration', '--logger', 'trx;LogFileName=backend-postgres.trx', '--results-directory', $taskResultsDirectory) @{ DANGO_BACKEND_TEST_CONNECTION=$taskConnection; DANGO_BACKEND_TEST_DATA_DIRECTORY=$taskDataDirectory })
+    $taskTestEnvironment = @{ DANGO_BACKEND_TEST_CONNECTION=$taskConnection; DANGO_BACKEND_TEST_DATA_DIRECTORY=$taskDataDirectory }
+    if ($B1) { $taskTestEnvironment.DANGO_BACKEND_B1_TEST_APPROVED = '1' }
+    [void](Invoke-TaskProcess 'dotnet' @('test', 'tests/Dango.Server.Tests/Dango.Server.Tests.csproj', '-c', 'Release', '--no-build', '--no-restore', '--filter', 'TestCategory=PostgresIntegration', '--logger', 'trx;LogFileName=backend-postgres.trx', '--results-directory', $taskResultsDirectory) $taskTestEnvironment)
 } finally {
     if ($taskStartAttempted) {
         $taskPidFile = Join-Path $taskDataDirectory 'postmaster.pid'
