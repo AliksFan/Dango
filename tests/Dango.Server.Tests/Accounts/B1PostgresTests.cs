@@ -86,6 +86,7 @@ public sealed class B1PostgresTests
             challenge.Purpose = EmailChallengePurpose.PasswordReset;
             challenge.UserId = challenge.PendingRegistrationId;
             challenge.PendingRegistrationId = null;
+            challenge.SecurityStamp = Guid.NewGuid().ToString("N");
             return services.GetRequiredService<IEmailProofProtector>().Protect(challenge);
         });
         await FaultAsync("email_proof_invalid", () => ConfirmAsync(fixture, crossPurpose));

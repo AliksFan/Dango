@@ -49,14 +49,7 @@ internal sealed class FormalTestFixture : IAsyncDisposable
         var repository = FindRepository();
         Assert.IsTrue(FormalServerOptions.TryCreate("dango_backend_b0", target.ConnectionString, keyDirectory!,
             endpoint.AbsoluteUri, repository, out var options, out _));
-        using var rsa = RSA.Create(2048);
-        var request = new CertificateRequest("CN=Dango fictional acceptance", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        var names = new SubjectAlternativeNameBuilder();
-        names.AddIpAddress(IPAddress.Loopback);
-        request.CertificateExtensions.Add(names.Build());
-        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
-        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, false));
-        var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddHours(1));
+        var certificate = CreateCertificate();
         var app = FormalHost.Create(options!, environment ?? new AccountEnvironment(epoch), certificate, services =>
         {
             if (checkpoint is not null) services.Replace(ServiceDescriptor.Singleton(checkpoint));
@@ -184,6 +177,23 @@ internal sealed class FormalTestFixture : IAsyncDisposable
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
         listener.Stop();
         return port;
+    }
+
+    internal static X509Certificate2 CreateCertificate()
+    {
+        using var rsa = RSA.Create(2048);
+        var request = new CertificateRequest("CN=Dango fictional acceptance", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        var names = new SubjectAlternativeNameBuilder();
+        names.AddIpAddress(IPAddress.Loopback);
+        request.CertificateExtensions.Add(names.Build());
+        request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
+        request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, false));
+        using var generated = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddHours(1));
+        var privateMaterial = generated.Export(X509ContentType.Pkcs12);
+        // Windows Schannel requires a native key container. DefaultKeySet is temporary and
+        // X509Certificate2 disposal removes only this generated certificate's container.
+        try { return X509CertificateLoader.LoadPkcs12(privateMaterial, null, X509KeyStorageFlags.DefaultKeySet); }
+        finally { CryptographicOperations.ZeroMemory(privateMaterial); }
     }
 
     public async ValueTask DisposeAsync()
