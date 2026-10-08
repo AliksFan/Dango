@@ -157,6 +157,127 @@ public sealed class B1HttpTests
     }
 
     [TestMethod]
+    public async Task AuthenticationChangeRequiresRefreshingTheCsrfProof()
+    {
+        await using var fixture = await FormalTestFixture.CreateAsync(startHttp: true);
+        var account = await RegisterAsync(fixture);
+        using var client = fixture.CreateClient(out _);
+        var anonymousToken = await FormalTestFixture.CsrfAsync(client);
+        using var login = await LoginAsync(client, account.Email, account.Password);
+        Assert.AreEqual(HttpStatusCode.OK, login.StatusCode);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "api/v1/auth/logout");
+        request.Headers.Add("X-CSRF-TOKEN", anonymousToken);
+        using var stale = await client.SendAsync(request);
+        await ErrorAsync(stale, HttpStatusCode.Forbidden, "request_protection_invalid");
+        using var refreshed = await FormalTestFixture.SendAsync(client, HttpMethod.Post, "api/v1/auth/logout");
+        Assert.AreEqual(HttpStatusCode.OK, refreshed.StatusCode);
+    }
+
+    [TestMethod]
+    [DataRow(false, 8)]
+    [DataRow(true, 168)]
+    public async Task StoredSessionHasAbsoluteExpiryAndSuccessfulRequestsDoNotSlideIt(bool remembered, int hours)
+    {
+        var clock = new MutableTestClock(DateTimeOffset.UtcNow);
+        await using var fixture = await FormalTestFixture.CreateAsync(startHttp: true, clock: clock);
+        var account = await RegisterAsync(fixture);
+        using var client = fixture.CreateClient(out _);
+        using var login = await FormalTestFixture.SendAsync(client, HttpMethod.Post, "api/v1/auth/login",
+            new { email = account.Email, password = account.Password, remembered });
+        var sessionId = (await FormalTestFixture.ReadAsync<JsonElement>(login)).GetProperty("sessionId").GetGuid();
+        var original = await fixture.InScopeAsync(services => services.GetRequiredService<DangoDbContext>().AuthSessions.AsNoTracking()
+            .SingleAsync(s => s.Id == sessionId));
+        Assert.AreEqual(TimeSpan.FromHours(hours), original.ExpiresAt - original.CreatedAt);
+        Assert.AreEqual(remembered, original.Remembered);
+        clock.Advance(TimeSpan.FromHours(1));
+        using var alive = await client.GetAsync("api/v1/me");
+        Assert.AreEqual(HttpStatusCode.OK, alive.StatusCode);
+        var afterRead = await fixture.InScopeAsync(services => services.GetRequiredService<DangoDbContext>().AuthSessions.AsNoTracking()
+            .SingleAsync(s => s.Id == sessionId));
+        Assert.AreEqual(original.ExpiresAt, afterRead.ExpiresAt);
+        clock.Advance(original.ExpiresAt - clock.GetUtcNow());
+        using var expired = await client.GetAsync("api/v1/me");
+        Assert.AreEqual(HttpStatusCode.Unauthorized, expired.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task FiveWrongPasswordsPersistLockoutAndCorrectPasswordCannotBypassIt()
+    {
+        var clock = new MutableTestClock(DateTimeOffset.UtcNow);
+        await using var fixture = await FormalTestFixture.CreateAsync(startHttp: true, clock: clock);
+        var account = await RegisterAsync(fixture);
+        using var client = fixture.CreateClient(out _);
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            using var incorrect = await LoginAsync(client, account.Email, B1PostgresTests.NewPassword());
+            await ErrorAsync(incorrect, HttpStatusCode.Unauthorized, "login_failed");
+        }
+        var user = await fixture.InScopeAsync(services => services.GetRequiredService<DangoDbContext>().Users.AsNoTracking().SingleAsync(u => u.Id == account.UserId));
+        Assert.IsNotNull(user.LockoutEnd);
+        Assert.IsTrue(user.LockoutEnd > clock.GetUtcNow());
+        using var locked = await LoginAsync(client, account.Email, account.Password);
+        await ErrorAsync(locked, HttpStatusCode.Unauthorized, "login_failed");
+        clock.Advance(TimeSpan.FromMinutes(15));
+        using var unlocked = await LoginAsync(client, account.Email, account.Password);
+        Assert.AreEqual(HttpStatusCode.OK, unlocked.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task PasswordChangeRequiresCurrentPasswordAndRevokesOtherDeviceCookies()
+    {
+        await using var fixture = await FormalTestFixture.CreateAsync(startHttp: true);
+        var account = await RegisterAsync(fixture);
+        using var client = fixture.CreateClient(out _);
+        using var otherDevice = fixture.CreateClient(out _);
+        using var firstLogin = await LoginAsync(client, account.Email, account.Password);
+        using var secondLogin = await LoginAsync(otherDevice, account.Email, account.Password);
+        Assert.AreEqual(HttpStatusCode.OK, firstLogin.StatusCode);
+        Assert.AreEqual(HttpStatusCode.OK, secondLogin.StatusCode);
+        var replacement = B1PostgresTests.NewPassword();
+        using var wrongCurrent = await FormalTestFixture.SendAsync(client, HttpMethod.Post, "api/v1/auth/password/change",
+            new { currentPassword = B1PostgresTests.NewPassword(), newPassword = replacement });
+        await ErrorAsync(wrongCurrent, HttpStatusCode.BadRequest, "current_password_invalid");
+        using var change = await FormalTestFixture.SendAsync(client, HttpMethod.Post, "api/v1/auth/password/change",
+            new { currentPassword = account.Password, newPassword = replacement });
+        Assert.AreEqual(HttpStatusCode.OK, change.StatusCode);
+        using var revokedOther = await otherDevice.GetAsync("api/v1/me");
+        Assert.AreEqual(HttpStatusCode.Unauthorized, revokedOther.StatusCode);
+        using var oldPassword = await LoginAsync(client, account.Email, account.Password);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, oldPassword.StatusCode);
+        using var newPassword = await LoginAsync(client, account.Email, replacement);
+        Assert.AreEqual(HttpStatusCode.OK, newPassword.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task RecreatedFormalHostPreservesDatabaseSessionAndEmailProofKeys()
+    {
+        Account account;
+        B1PostgresTests.RegistrationAttempt pending;
+        string cookie;
+        string proof;
+        await using (var original = await FormalTestFixture.CreateAsync(startHttp: true))
+        {
+            account = await RegisterAsync(original);
+            pending = await B1PostgresTests.StartAsync(original);
+            proof = await original.RegistrationProofAsync(pending.PendingId);
+            using var client = original.CreateClient(out var cookies);
+            using var login = await LoginAsync(client, account.Email, account.Password);
+            Assert.AreEqual(HttpStatusCode.OK, login.StatusCode);
+            cookie = cookies.GetCookies(original.Endpoint)[AuthCookie]!.Value;
+        }
+        await using var restarted = await FormalTestFixture.CreateAsync(startHttp: true);
+        using var resumed = restarted.CreateClient(out _);
+        resumed.DefaultRequestHeaders.Add("Cookie", AuthCookie + "=" + cookie);
+        using var me = await resumed.GetAsync("api/v1/me");
+        Assert.AreEqual(account.UserId, (await FormalTestFixture.ReadAsync<JsonElement>(me)).GetProperty("userId").GetGuid());
+        using var confirm = await FormalTestFixture.SendAsync(resumed, HttpMethod.Post, "api/v1/auth/email-verifications/confirm", new { proof });
+        Assert.AreEqual(HttpStatusCode.OK, confirm.StatusCode);
+        await restarted.InScopeAsync(async services =>
+            Assert.AreEqual(RegistrationState.Verified, (await services.GetRequiredService<DangoDbContext>().PendingRegistrations
+                .SingleAsync(r => r.Id == pending.PendingId)).State));
+    }
+
+    [TestMethod]
     public async Task OwnSessionListAndRevokeCannotAccessAnotherAccountsSession()
     {
         await using var fixture = await FormalTestFixture.CreateAsync(startHttp: true);
@@ -288,6 +409,53 @@ public sealed class B1HttpTests
         Assert.AreEqual("smtp_attempt_limit", status.EmailStatus);
     }
 
+    [TestMethod]
+    public async Task SmtpAcceptanceInterruptedBeforeRecordingIsRetriedAfterLeaseAndProofConsumesOnce()
+    {
+        await using var receiver = new ControlledSmtpReceiver();
+        using var interrupted = new CancellationTokenSource();
+        var email = $"interrupted-{Guid.NewGuid():N}@example.invalid";
+        var clock = new MutableTestClock(DateTimeOffset.UtcNow);
+        var mailKit = new MailKitEmailSender(SmtpOptions.ForLoopbackTest(receiver.Port));
+        Guid pendingId;
+        string firstProof;
+        await using (var original = await FormalTestFixture.CreateAsync(clock: clock,
+            sender: new InterruptAfterAcceptanceSender(email, mailKit, interrupted)))
+        {
+            var invitationProof = B1InputTests.NewProof();
+            var invitation = await original.InviteAsync(email, invitationProof);
+            var registration = await original.InScopeAsync(services => services.GetRequiredService<RegistrationService>().StartAsync(
+                email, invitation, invitationProof, Guid.NewGuid(), B1InputTests.NewProof(), CancellationToken.None));
+            pendingId = registration.Id;
+            await PrioritizeRegistrationJobAsync(original, pendingId);
+            await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => original.InScopeAsync(services =>
+                services.GetRequiredService<EmailDispatcher>().DispatchBatchAsync(interrupted.Token)));
+            firstProof = QueryHelpers.ParseQuery((await ReadProofUrlAsync(receiver)).Query)["proof"].ToString();
+            var leased = await RegistrationJobAsync(original, pendingId);
+            Assert.AreEqual(EmailJobState.Leased, leased.State);
+            Assert.AreEqual(1, leased.Attempts);
+            Assert.IsNull(leased.AcceptedAt);
+        }
+        clock.Advance(EmailDispatchPolicy.LeaseDuration + TimeSpan.FromSeconds(1));
+        await using var restarted = await FormalTestFixture.CreateAsync(clock: clock, sender: new RecipientOnlySender(email, mailKit));
+        await DispatchRegistrationJobAsync(restarted, pendingId, 2);
+        var secondProof = QueryHelpers.ParseQuery((await ReadProofUrlAsync(receiver)).Query)["proof"].ToString();
+        var accepted = await RegistrationJobAsync(restarted, pendingId);
+        Assert.AreEqual(EmailJobState.Accepted, accepted.State);
+        Assert.AreEqual(2, receiver.Attempts);
+        await restarted.InScopeAsync(async services =>
+        {
+            var protector = services.GetRequiredService<IEmailProofProtector>();
+            Assert.IsTrue(protector.TryUnprotect(firstProof, out var first));
+            Assert.IsTrue(protector.TryUnprotect(secondProof, out var second));
+            Assert.AreEqual(first!.ChallengeId, second!.ChallengeId);
+            await services.GetRequiredService<RegistrationService>().ConfirmAsync(firstProof, CancellationToken.None);
+        });
+        var replay = await Assert.ThrowsExactlyAsync<AccountFault>(() => restarted.InScopeAsync(services =>
+            services.GetRequiredService<RegistrationService>().ConfirmAsync(secondProof, CancellationToken.None)));
+        Assert.AreEqual("email_proof_invalid", replay.Code);
+    }
+
     private static async Task<Account> RegisterAsync(FormalTestFixture fixture)
     {
         var registration = await B1PostgresTests.StartAsync(fixture);
@@ -372,5 +540,16 @@ public sealed class B1HttpTests
     {
         public Task<EmailSendResult> SendAsync(EmailDelivery delivery, CancellationToken ct) => delivery.Recipient == recipient
             ? inner.SendAsync(delivery, ct) : Task.FromResult(new EmailSendResult(EmailSendStatus.NotConfigured));
+    }
+    private sealed class InterruptAfterAcceptanceSender(string recipient, IEmailSender inner, CancellationTokenSource interruption) : IEmailSender
+    {
+        public async Task<EmailSendResult> SendAsync(EmailDelivery delivery, CancellationToken ct)
+        {
+            if (delivery.Recipient != recipient) return new(EmailSendStatus.NotConfigured);
+            var result = await inner.SendAsync(delivery, ct);
+            Assert.AreEqual(EmailSendStatus.Accepted, result.Status);
+            await interruption.CancelAsync();
+            throw new OperationCanceledException(ct);
+        }
     }
 }
