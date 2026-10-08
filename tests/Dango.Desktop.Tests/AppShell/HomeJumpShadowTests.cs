@@ -60,10 +60,18 @@ public sealed class HomeJumpShadowTests
             evidence.Add(ExerciseNativeJump(fixture, mode?.ToString() ?? "Home"));
         }
 
+        var normal = evidence[0].ApexCoreY - evidence[0].GroundedCoreY;
+        var low = evidence[2].ApexCoreY - evidence[2].GroundedCoreY;
+        Assert.IsTrue(low >= normal * .2 && low <= normal * .45,
+            $"Wardrobe must use a genuinely lower native jump, 20–45% of the same entity's Home rise ({low / normal:P2}).");
+        fixture.Home.CloseEditor();
+        Assert.AreEqual(1, fixture.Runtime.PreviewJumpSpeedScale);
+
         using (var output = TestEvidence.Create("home-jump-shadow", $"{width}x{height}-{hatPreset}-{Guid.NewGuid():N}.json"))
             JsonSerializer.Serialize(output, evidence, new JsonSerializerOptions { WriteIndented = true });
 
         fixture.Home.ReleaseLiveScene();
+        Assert.AreEqual(1, fixture.Runtime.PreviewJumpSpeedScale);
         Assert.AreNotEqual(Visibility.Visible, Element<Ellipse>(fixture.Home, "PetShadow").Visibility,
             "Releasing the real scene must hide its shadow with the body.");
         Assert.IsFalse(fixture.Home.OwnsLiveFrameDriver);
@@ -253,6 +261,11 @@ public sealed class HomeJumpShadowTests
                         $"Wardrobe, native frame {i}: the shadow must use the same horizontal camera projection as the body.");
                 }
                 var focusY = center.Y + runtime.NeutralBodyGroundOffset;
+                Assert.AreEqual(.5, runtime.PreviewJumpSpeedScale);
+                Assert.AreEqual(groundedCameraTop!.Value, wardrobeCamera.CameraY, 1e-6,
+                    $"Wardrobe, native frame {i}: vertical camera position must remain fixed through the entire jump.");
+                Assert.AreEqual(groundedFloorProjection!.Value, floorProjection.Y, 1e-6,
+                    $"Wardrobe, native frame {i}: vertical floor projection must remain fixed.");
                 if (physical.CoreY > groundedCoreY + .002 && physical.CoreY > previousCoreY && focusY >= groundedMidline)
                 {
                     lowJumpFrames++;
@@ -263,13 +276,6 @@ public sealed class HomeJumpShadowTests
                 {
                     highJumpFrames++;
                     visibleHighJumpFrames += floorVisible ? 1 : 0;
-                    Assert.IsTrue(wardrobeCamera.CameraY < groundedCameraTop!.Value,
-                        $"Wardrobe, native frame {i}: crossing the midline must move the camera upward.");
-                    Assert.IsTrue(floorProjection.Y > groundedFloorProjection!.Value,
-                        $"Wardrobe, native frame {i}: following a high jump must move the fixed world floor down on screen.");
-                    Assert.AreEqual(viewportWorldHeight / 2,
-                        wardrobeCamera.Projection.WorldToScreen(new(center.X, focusY)).Y, 1e-6,
-                        $"Wardrobe, native frame {i}: a high body must remain at the follow-camera midline.");
                 }
                 var viewportBottom = visualArea.TransformToAncestor(home).TransformBounds(new Rect(visualArea.RenderSize)).Bottom;
                 Assert.IsTrue(RenderedBodyBottom(home) <= viewportBottom + 1e-6,
@@ -292,10 +298,7 @@ public sealed class HomeJumpShadowTests
             $"{mode}: the full body/hat outline reached {minimumHead:F3} DIP, above the safe boundary {headBoundary:F3} DIP.");
         if (wardrobeCamera is not null)
         {
-            Assert.IsTrue(lowJumpFrames > 0, "Wardrobe: the native jump must lift the real body below the follow midline before entering high follow.");
-            Assert.IsTrue(highJumpFrames > 0, "Wardrobe: the native jump must cross the follow midline.");
-            Assert.IsTrue(visibleHighJumpFrames > 0,
-                "Wardrobe: a high native frame with a visible projected floor must prove the shadow actually moves with the world projection.");
+            Assert.IsTrue(lowJumpFrames + highJumpFrames > 0, "Wardrobe: the camera gate must include real native rising frames.");
             Assert.AreEqual(groundedCameraTop!.Value, wardrobeCamera.CameraY, 1e-6,
                 "Wardrobe: the actual landing must restore ground framing.");
             Assert.AreEqual(ground.Y, ShadowCenter(home).Y, .5,

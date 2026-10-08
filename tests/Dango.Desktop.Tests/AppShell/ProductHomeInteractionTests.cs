@@ -73,7 +73,7 @@ public sealed class ProductHomeInteractionTests
             "Wardrobe options must mirror the face composition.");
         Assert.AreEqual(petBefore.Top, wardrobePet.Top, .1);
         var accessoryEditor = Element<StackPanel>(home, "WardrobeOptions").Children.OfType<AccessoryEditorPanel>().Single();
-        var accessoryButtons = Descendants<Button>(accessoryEditor).ToArray();
+        var accessoryButtons = Descendants<Button>(Element<ContentControl>(home, "AccessoryActionToolsSlot")).ToArray();
         Assert.IsTrue(accessoryButtons.Single(button => AutomationProperties.GetName(button) == "创建新配饰").IsEnabled,
             "Creating a new accessory must expose the real transparent PNG selection action.");
         accessoryEditor.SetBodyAnchor(new Point(.25, .4));

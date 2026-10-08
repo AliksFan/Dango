@@ -28,6 +28,7 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
     private LogicalRect? viewport;
     private (double Left, double Right)? localHorizontalBounds;
     private bool unboundedHorizontalPreview;
+    private double previewJumpSpeedScale = 1;
     private bool layoutPending;
     private DirectionalControlIntent directionalIntent;
     private bool running;
@@ -437,6 +438,23 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
     internal double? LocalGroundY => scene?.GroundY;
     internal bool UnboundedHorizontalPreview => unboundedHorizontalPreview;
     internal int HorizontalRebaseCount => scene?.HorizontalRebaseCount ?? 0;
+    internal double PreviewJumpSpeedScale => previewJumpSpeedScale;
+
+    internal void SetPreviewJumpSpeedScale(double scale)
+    {
+        VerifyAccess();
+        if (!double.IsFinite(scale) || scale is < .1 or > 1)
+            throw new ArgumentOutOfRangeException(nameof(scale));
+        // Cleanup of a failed/stopped preview must still restore ordinary
+        // launches. A failed opt-in never changes the managed desired state.
+        if (scale != 1) EnsureHealthy();
+        if (scene is null)
+        {
+            if (scale != 1) throw new InvalidOperationException("请等待本地场景初始化后切换低跳编辑预览。");
+        }
+        else scene.SetPreviewJumpSpeedScale(scale);
+        previewJumpSpeedScale = scale;
+    }
 
     internal void SetUnboundedHorizontalPreview(bool enabled)
     {
@@ -818,6 +836,7 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
     {
         if (scene is not null) return;
         scene = new DesktopPhysicsScene(nativeLibraryPath, bounds);
+        if (previewJumpSpeedScale != 1) scene.SetPreviewJumpSpeedScale(previewJumpSpeedScale);
         if (unboundedHorizontalPreview) scene.SetUnboundedHorizontalPreview(true);
         colorSlots.Add(scene.SelectedEntity, 0);
         hostOrigin = bounds.Center;

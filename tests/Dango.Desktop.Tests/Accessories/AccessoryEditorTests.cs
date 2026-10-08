@@ -176,13 +176,14 @@ public sealed class AccessoryEditorTests
         var panel = new AccessoryEditorPanel(); panel.Bind(session);
         var host = new StackPanel { Resources = home.Resources };
         host.Children.Add(panel);
+        host.Children.Add(panel.ActionTools);
         panel.Children.Remove(panel.SaveActions); host.Children.Add(panel.SaveActions);
         WithWindow(host, 260, 640, () =>
         {
             var apply = Descendants(panel.SaveActions).OfType<Button>().Single(button => AutomationProperties.GetName(button) == "应用");
             Assert.AreSame(home.FindResource("FaceIconButton"), apply.Style);
-            var import = Descendants(panel).OfType<Button>().Single(button => AutomationProperties.GetName(button) == "创建新配饰");
-            Assert.AreSame(home.FindResource(typeof(Button)), import.Style);
+            var import = Descendants(panel.ActionTools).OfType<Button>().Single(button => AutomationProperties.GetName(button) == "创建新配饰");
+            Assert.AreSame(home.FindResource("FaceIconButton"), import.Style);
             home.Resources["HomeInk"] = Brushes.DarkSlateBlue;
             home.Resources["HomePrimaryInk"] = Brushes.White;
             home.Resources["HomeSelected"] = Brushes.DarkBlue;
@@ -425,13 +426,13 @@ public sealed class AccessoryEditorTests
             Assert.AreSame(input, Keyboard.FocusedElement);
             if (action == "select")
             {
-                var list = Descendants(panel).OfType<ListBox>().Single();
+                var list = Library(panel, true);
                 list.SelectedItem = list.Items.Cast<ListBoxItem>().Single(row => (string)row.Tag == "b");
             }
             else
             {
-                var button = Descendants(panel).OfType<Button>().Single(candidate =>
-                    AutomationProperties.GetName(candidate) == (action == "duplicate" ? "复制" : "图片／支点"));
+                var button = Descendants(action == "duplicate" ? panel.ActionTools : panel).OfType<Button>().Single(candidate =>
+                    AutomationProperties.GetName(candidate) == (action == "duplicate" ? "复制配饰" : "图片／支点"));
                 ((IInvokeProvider)new ButtonAutomationPeer(button).GetPattern(PatternInterface.Invoke)!).Invoke();
             }
             Pump();
@@ -496,9 +497,10 @@ public sealed class AccessoryEditorTests
             var input = Descendants(panel).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "身体附着 X 数值");
             Assert.IsTrue(input.Focus()); Pump(); input.Text = valid ? .73.ToString(CultureInfo.CurrentCulture) : "2";
             if (choice == "layer") Descendants(panel).OfType<ComboBox>().Single().SelectedIndex = 0;
+            else if (choice == "equipped") panel.ToggleWear(item.Id);
             else
             {
-                var label = choice switch { "equipped" => "佩戴", "lock" => "锁定朝向", _ => "限制摆角" };
+                var label = choice == "lock" ? "锁定朝向" : "限制摆角";
                 var control = Descendants(panel).OfType<CheckBox>().Single(candidate => (string)candidate.Content == label);
                 control.IsChecked = choice == "lock";
                 control.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
@@ -634,10 +636,10 @@ public sealed class AccessoryEditorTests
         Assert.AreEqual(0, panel.ThumbnailDecodeCount, "Constructing or refreshing an unloaded library must not decode it.");
         WithWindow(panel, 300, 640, () =>
         {
-            var list = Descendants(panel).OfType<ListBox>().Single();
-            var grid = Descendants(list).OfType<System.Windows.Controls.Primitives.UniformGrid>().Single();
+            var list = LibraryViewport(panel);
+            var grid = Descendants(Library(panel, true)).OfType<System.Windows.Controls.Primitives.UniformGrid>().Single();
             Assert.AreEqual(4, grid.Columns);
-            var rows = list.Items.Cast<ListBoxItem>().ToArray(); Assert.HasCount(48, rows);
+            var rows = LibraryCards(panel); Assert.HasCount(48, rows);
             var bounds = rows.Take(5).Select(row => row.TransformToAncestor(list).TransformBounds(new Rect(0, 0, row.ActualWidth, row.ActualHeight))).ToArray();
             for (var i = 1; i < 4; i++)
             {
@@ -666,7 +668,7 @@ public sealed class AccessoryEditorTests
                 Assert.IsTrue(Pixels(bitmap).Where((_, index) => index % 4 == 3).Any(alpha => alpha == 0), "Thumbnails must keep transparent pixels.");
             }
             var topImage = Descendants(rows[0]).OfType<System.Windows.Controls.Image>().Single();
-            var scroll = Descendants(list).OfType<ScrollViewer>().Single();
+            var scroll = list;
             scroll.ScrollToVerticalOffset(250); Pump();
             scroll.ScrollToBottom(); Pump();
             Assert.IsNull(topImage.Source, "Offscreen cards must release their displayed thumbnail references.");
@@ -688,13 +690,13 @@ public sealed class AccessoryEditorTests
         var session = new AccessorySettingsSession(NewRoot());
         session.Stage(new(Enumerable.Range(0, count).Select(index =>
             new AccessoryItem("fictional-natural-card-" + index, "Fictional natural card " + index, "builtin-sprout", 64, 64)
-            { IsEquipped = index == 0 })));
+            { IsEquipped = true })));
         var panel = new AccessoryEditorPanel { Width = 240 }; panel.Bind(session);
         WithWindow(panel, 300, 640, () =>
         {
-            var list = Descendants(panel).OfType<ListBox>().Single();
+            var list = Library(panel, true);
             var grid = Descendants(list).OfType<System.Windows.Controls.Primitives.UniformGrid>().Single();
-            Assert.AreEqual(4, grid.Columns); Assert.AreEqual(240d, list.ActualHeight, .01);
+            Assert.AreEqual(4, grid.Columns); Assert.AreEqual(240d, LibraryViewport(panel).ActualHeight, .01);
             var rows = list.Items.Cast<ListBoxItem>().ToArray(); Assert.HasCount(count, rows);
             var bounds = rows.Select(row => row.TransformToAncestor(list).TransformBounds(new Rect(0, 0, row.ActualWidth, row.ActualHeight))).ToArray();
             for (var index = 0; index < rows.Length; index++)
@@ -709,7 +711,7 @@ public sealed class AccessoryEditorTests
                 Assert.IsTrue(image.ActualWidth <= AccessoryEditorPanel.ThumbnailEdge + .01 && image.ActualHeight <= AccessoryEditorPanel.ThumbnailEdge + .01);
             }
             Assert.AreSame(rows[0], list.SelectedItem);
-            var scroll = Descendants(list).OfType<ScrollViewer>().Single();
+            var scroll = LibraryViewport(panel);
             Assert.AreEqual(0d, scroll.ScrollableHeight, .01, "A single natural-height row should leave free space in the library viewport.");
             Assert.IsTrue(grid.ActualHeight <= 70, "The items panel must not stretch its only row to the viewport height.");
         });
@@ -755,8 +757,8 @@ public sealed class AccessoryEditorTests
         {
             var session = new AccessorySettingsSession(root);
             var panel = new AccessoryEditorPanel { Width = 240 }; panel.Bind(session);
-            var list = panel.Children.OfType<StackPanel>().SelectMany(group => group.Children.OfType<ListBox>()).Single();
-            var rows = list.Items.Cast<ListBoxItem>().ToArray(); Assert.HasCount(3, rows);
+            var list = Library(panel, true);
+            var rows = saved.Items.Select(item => LibraryCards(panel).Single(row => (string)row.Tag == item.Id)).ToArray(); Assert.HasCount(3, rows);
             foreach (var row in rows)
             {
                 var warning = ((Grid)row.Content).Children.OfType<Border>().Single();
@@ -832,7 +834,7 @@ public sealed class AccessoryEditorTests
         panel.ImageEditor = (item, _) => { imageOpened = true; return outcome == "image-cancel" ? null : item with { SizePercent = 185 }; };
         WithWindow(panel, 320, 700, () =>
         {
-            var create = Descendants(panel).OfType<Button>().Single(button => AutomationProperties.GetName(button) == "创建新配饰");
+            var create = Descendants(panel.ActionTools).OfType<Button>().Single(button => AutomationProperties.GetName(button) == "创建新配饰");
             ((IInvokeProvider)new ButtonAutomationPeer(create).GetPattern(PatternInterface.Invoke)!).Invoke(); Pump();
             Assert.AreEqual(outcome != "picker-cancel", imageOpened);
             if (outcome == "picker-cancel")
@@ -966,6 +968,227 @@ public sealed class AccessoryEditorTests
         var pixels = new byte[stride * image.PixelHeight]; image.CopyPixels(pixels, stride, 0); return pixels;
     }
 
+    [STATestMethod]
+    [DataRow("double")]
+    [DataRow("menu")]
+    public void GroupedLibraryWearActionsEnforceEightAndOnlySaveOnApply(string action)
+    {
+        var root = NewRoot(); var session = new AccessorySettingsSession(root);
+        session.Stage(new(Enumerable.Range(0, 9).Select(index =>
+            new AccessoryItem("fictional-wear-" + index, "Fictional wear " + index, "builtin-sprout", 64, 64)
+            { IsEquipped = index < 8, Order = index })));
+        Assert.IsTrue(session.TrySave()); var saved = session.SavedConfiguration;
+        var bytes = File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root));
+        var panel = new AccessoryEditorPanel { Width = 240 }; panel.Bind(session);
+        WithWindow(panel, 300, 640, () =>
+        {
+            Assert.HasCount(8, Library(panel, true).Items); Assert.HasCount(1, Library(panel, false).Items);
+            Assert.IsFalse(Descendants(panel).OfType<TextBlock>().Any(text => text.Text == "配饰库"));
+            Assert.IsFalse(Descendants(panel).OfType<CheckBox>().Any(control => Equals(control.Content, "佩戴")));
+            void WearAction(string id)
+            {
+                var row = LibraryCards(panel).Single(card => (string)card.Tag == id);
+                if (action == "double")
+                {
+                    var input = new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = Control.PreviewMouseDoubleClickEvent };
+                    row.RaiseEvent(input); Assert.IsTrue(input.Handled);
+                }
+                else
+                {
+                    var menu = row.ContextMenu!; menu.IsOpen = true; Pump();
+                    var command = (System.Windows.Controls.MenuItem)menu.Items[0];
+                    Assert.AreEqual(session.DraftConfiguration.Items.Single(item => item.Id == id).IsEquipped ? "取消佩戴" : "佩戴", command.Header);
+                    command.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.MenuItem.ClickEvent)); menu.IsOpen = false;
+                }
+                Pump();
+            }
+            WearAction("fictional-wear-8");
+            Assert.AreEqual(saved, session.DraftConfiguration); StringAssert.Contains(panel.StatusMessage, "8 件");
+            WearAction("fictional-wear-0");
+            Assert.HasCount(7, Library(panel, true).Items); Assert.HasCount(2, Library(panel, false).Items);
+            WearAction("fictional-wear-8");
+            Assert.HasCount(8, Library(panel, true).Items); Assert.HasCount(1, Library(panel, false).Items);
+            Assert.IsFalse(session.DraftConfiguration.Items.Single(item => item.Id == "fictional-wear-0").IsEquipped);
+            Assert.IsTrue(session.DraftConfiguration.Items.Single(item => item.Id == "fictional-wear-8").IsEquipped);
+            CollectionAssert.AreEqual(bytes, File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root)));
+            panel.ApplyDraft(); Assert.AreEqual(session.DraftConfiguration, new AccessorySettingsSession(root).SavedConfiguration);
+        });
+    }
+
+    [STATestMethod]
+    [DataRow("equipped")]
+    [DataRow("unequipped")]
+    [DataRow("cross-layer")]
+    [DataRow("cross-group")]
+    public void ActualLibraryDropEventsRespectTheirGroupAndLayerAndSuppressTheTrailingClick(string action)
+    {
+        var root = NewRoot(); var session = new AccessorySettingsSession(root);
+        var a = new AccessoryItem("drag-a", "Fictional drag A", "builtin-sprout", 64, 64) { Layer = AccessoryLayer.Behind, Order = 0, SizePercent = 141 };
+        var b = a with { Id = "drag-b", Name = "Fictional drag B", Order = 9, Softness = 42 };
+        var front = a with { Id = "drag-front", Name = "Fictional drag front", Layer = AccessoryLayer.Front, Order = 3 };
+        var uA = a with { Id = "drag-ua", Name = "Fictional drag unworn A", IsEquipped = false, Order = 7 };
+        var uB = front with { Id = "drag-ub", Name = "Fictional drag unworn B", IsEquipped = false, Order = 8 };
+        session.Stage(new([a, uB, front, uA, b])); Assert.IsTrue(session.TrySave());
+        var saved = session.SavedConfiguration; var bytes = File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root));
+        var panel = new AccessoryEditorPanel { Width = 240 }; panel.Bind(session); panel.SelectItem(front.Id);
+        WithWindow(panel, 300, 640, () =>
+        {
+            CollectionAssert.AreEqual(new[] { a.Id, b.Id, front.Id }, Library(panel, true).Items.Cast<ListBoxItem>().Select(row => (string)row.Tag).ToArray());
+            var from = action == "unequipped" ? uB : a;
+            var to = action switch { "unequipped" => uA, "cross-layer" => front, "cross-group" => uA, _ => b };
+            var target = LibraryCards(panel).Single(row => (string)row.Tag == to.Id);
+            var allowed = action is "equipped" or "unequipped";
+            var over = CreateLibraryDragEvent(panel, from.Id, target, DragDrop.PreviewDragOverEvent);
+            target.RaiseEvent(over); Assert.IsTrue(over.Handled);
+            Assert.AreEqual(allowed ? System.Windows.DragDropEffects.Move : System.Windows.DragDropEffects.None, over.Effects);
+            var drop = CreateLibraryDragEvent(panel, from.Id, target, DragDrop.PreviewDropEvent);
+            target.RaiseEvent(drop); Pump(); Assert.IsTrue(drop.Handled);
+            Assert.AreEqual(allowed ? System.Windows.DragDropEffects.Move : System.Windows.DragDropEffects.None, drop.Effects);
+            Assert.AreEqual(front.Id, panel.SelectedItem!.Id, "Reordering must retain the previously selected accessory.");
+            var reordered = session.DraftConfiguration;
+            var source = LibraryCards(panel).Single(row => (string)row.Tag == from.Id);
+            var trailingClick = new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = Control.PreviewMouseDoubleClickEvent };
+            source.RaiseEvent(trailingClick); Assert.IsTrue(trailingClick.Handled);
+            var mouseUp = new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.PreviewMouseLeftButtonUpEvent };
+            source.RaiseEvent(mouseUp); Assert.IsTrue(mouseUp.Handled);
+            Assert.AreEqual(reordered, session.DraftConfiguration, "A drag's trailing click must not toggle wearing or select another item.");
+            Assert.AreEqual(front.Id, panel.SelectedItem!.Id);
+            if (action == "equipped")
+            {
+                CollectionAssert.AreEqual(new[] { b.Id, a.Id, front.Id }, Library(panel, true).Items.Cast<ListBoxItem>().Select(row => (string)row.Tag).ToArray());
+                Assert.AreEqual(b with { Order = 0 }, reordered.Items.Single(item => item.Id == b.Id));
+                Assert.AreEqual(a with { Order = 1 }, reordered.Items.Single(item => item.Id == a.Id));
+                CollectionAssert.AreEqual(saved.Items.Select(item => item.Id).ToArray(), reordered.Items.Select(item => item.Id).ToArray());
+            }
+            else if (action == "unequipped")
+            {
+                CollectionAssert.AreEqual(new[] { uA.Id, uB.Id }, Library(panel, false).Items.Cast<ListBoxItem>().Select(row => (string)row.Tag).ToArray());
+                CollectionAssert.AreEqual(new[] { a.Id, uA.Id, front.Id, uB.Id, b.Id }, reordered.Items.Select(item => item.Id).ToArray());
+                Assert.AreEqual(uA, reordered.Items.Single(item => item.Id == uA.Id)); Assert.AreEqual(uB, reordered.Items.Single(item => item.Id == uB.Id));
+            }
+            else Assert.AreEqual(saved, reordered, "Cross-group or cross-layer drops must not silently change wearing or layers.");
+            Assert.AreEqual(front, reordered.Items.Single(item => item.Id == front.Id));
+            CollectionAssert.AreEqual(bytes, File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root)));
+            panel.ApplyDraft(); Assert.AreEqual(reordered, new AccessorySettingsSession(root).SavedConfiguration);
+        });
+    }
+
+    [STATestMethod]
+    [DataRow(true, 1)]
+    [DataRow(true, -1)]
+    [DataRow(false, 1)]
+    [DataRow(false, -1)]
+    public void ActualOrderButtonsUseTheSameMixedLibraryCandidatesAsDragging(bool equipped, int direction)
+    {
+        var root = NewRoot(); var session = new AccessorySettingsSession(root);
+        var a = new AccessoryItem("arrow-a", "Fictional arrow A", "builtin-sprout", 64, 64) { Layer = AccessoryLayer.Behind, Order = 0 };
+        var u = a with { Id = "arrow-u", Name = "Fictional arrow unworn U", IsEquipped = false, Order = 1, SizePercent = 147 };
+        var b = a with { Id = "arrow-b", Name = "Fictional arrow B", Order = 2, Softness = 59 };
+        var v = u with { Id = "arrow-v", Name = "Fictional arrow unworn V", Layer = AccessoryLayer.Front, Order = 8 };
+        session.Stage(new([a, u, b, v])); Assert.IsTrue(session.TrySave());
+        var saved = session.SavedConfiguration; var bytes = File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root));
+        var selected = equipped ? direction == 1 ? a : b : direction == 1 ? u : v;
+        var panel = new AccessoryEditorPanel(); panel.Bind(session); panel.SelectItem(selected.Id); panel.SelectSection(AccessoryEditorSection.Placement);
+        WithWindow(panel, 320, 1000, () =>
+        {
+            var button = Descendants(panel).OfType<Button>().Single(control => AutomationProperties.GetName(control) == (direction == 1 ? "上移" : "下移"));
+            ((IInvokeProvider)new ButtonAutomationPeer(button).GetPattern(PatternInterface.Invoke)!).Invoke(); Pump();
+            Assert.AreEqual(selected.Id, panel.SelectedItem!.Id);
+            var reordered = session.DraftConfiguration;
+            if (equipped)
+            {
+                CollectionAssert.AreEqual(new[] { b.Id, a.Id }, Library(panel, true).Items.Cast<ListBoxItem>().Select(row => (string)row.Tag).ToArray());
+                Assert.AreEqual(a with { Order = 1 }, reordered.Items.Single(item => item.Id == a.Id));
+                Assert.AreEqual(b with { Order = 0 }, reordered.Items.Single(item => item.Id == b.Id));
+                Assert.AreEqual(u, reordered.Items.Single(item => item.Id == u.Id)); Assert.AreEqual(v, reordered.Items.Single(item => item.Id == v.Id));
+                CollectionAssert.AreEqual(saved.Items.Select(item => item.Id).ToArray(), reordered.Items.Select(item => item.Id).ToArray());
+            }
+            else
+            {
+                CollectionAssert.AreEqual(new[] { v.Id, u.Id }, Library(panel, false).Items.Cast<ListBoxItem>().Select(row => (string)row.Tag).ToArray());
+                CollectionAssert.AreEqual(new[] { a.Id, v.Id, b.Id, u.Id }, reordered.Items.Select(item => item.Id).ToArray());
+                foreach (var item in saved.Items) Assert.AreEqual(item, reordered.Items.Single(candidate => candidate.Id == item.Id));
+            }
+            CollectionAssert.AreEqual(bytes, File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root)));
+            panel.ApplyDraft(); Assert.AreEqual(reordered, new AccessorySettingsSession(root).SavedConfiguration);
+        });
+    }
+
+    [STATestMethod]
+    [DataRow("first-cancel")]
+    [DataRow("second-cancel")]
+    [DataRow("accept")]
+    [DataRow("write-failure")]
+    [DataRow("protected-corrupt")]
+    [DataRow("protected-future")]
+    public void DeleteToolRequiresExactlyTwoConfirmationsAndPreservesOtherDraftsAndCancelledInput(string outcome)
+    {
+        var root = NewRoot(); var session = new AccessorySettingsSession(root);
+        var a = new AccessoryItem("delete-a", "Fictional delete A", "builtin-sprout", 64, 64);
+        var b = a with { Id = "delete-b", Name = "Fictional delete B" };
+        session.Stage(new([a, b])); Assert.IsTrue(session.TrySave());
+        var saved = session.SavedConfiguration; var bytes = File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root));
+        var expectedDiskBytes = bytes;
+        session.Stage(new([a, b with { SizePercent = 142 }])); var draft = session.DraftConfiguration;
+        var panel = new AccessoryEditorPanel(); panel.Bind(session); panel.SelectSection(AccessoryEditorSection.Placement);
+        var host = new StackPanel(); host.Children.Add(panel); host.Children.Add(panel.ActionTools);
+        var sink = new Button { Content = "Fictional deletion focus sink" }; host.Children.Add(sink);
+        FileStream? locked = null;
+        try
+        {
+            WithWindow(host, 320, 1000, () =>
+            {
+                var input = Descendants(panel).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "身体附着 X 数值");
+                var name = Descendants(panel).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "配饰名称");
+                Assert.IsTrue(input.Focus()); Pump(); input.Text = "2"; name.Text = "Fictional unsaved deletion name";
+                var calls = new List<int>();
+                panel.DeleteConfirmation = (_, step) =>
+                {
+                    calls.Add(step); Assert.IsTrue(sink.Focus()); Pump();
+                    Assert.AreEqual(draft, session.DraftConfiguration, "Opening either confirmation must not commit the current text buffer.");
+                    if (outcome == "write-failure" && step == 2) locked = new(AccessorySettingsStore.GetManifestPath(root), FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                    if (outcome.StartsWith("protected-", StringComparison.Ordinal) && step == 2)
+                    {
+                        File.WriteAllText(AccessorySettingsStore.GetManifestPath(root), outcome == "protected-future" ? "{\"accessorySchemaVersion\":99,\"items\":[]}" : "{fictional corrupt manifest}");
+                        expectedDiskBytes = File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root));
+                    }
+                    return outcome != "first-cancel" && (outcome != "second-cancel" || step != 2);
+                };
+                var delete = Descendants(panel.ActionTools).OfType<Button>().Single(button => AutomationProperties.GetName(button) == "删除配饰");
+                delete.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent });
+                Assert.IsTrue(delete.Focus()); Pump();
+                Assert.AreEqual(draft, session.DraftConfiguration, "Mouse-down before the delete button gains real focus must suppress the input's blur commit.");
+                Assert.AreEqual("2", input.Text); Assert.AreEqual("Fictional unsaved deletion name", name.Text);
+                ((IInvokeProvider)new ButtonAutomationPeer(delete).GetPattern(PatternInterface.Invoke)!).Invoke(); Pump();
+                locked?.Dispose(); locked = null;
+                CollectionAssert.AreEqual(outcome == "first-cancel" ? new[] { 1 } : new[] { 1, 2 }, calls.ToArray());
+                if (outcome == "accept")
+                {
+                    Assert.AreEqual(new AccessoryConfiguration([b]), new AccessorySettingsSession(root).SavedConfiguration);
+                    Assert.AreEqual(new AccessoryConfiguration([b with { SizePercent = 142 }]), session.DraftConfiguration);
+                    Assert.AreEqual(b.Id, panel.SelectedItem!.Id);
+                }
+                else
+                {
+                    Assert.AreEqual(saved, session.SavedConfiguration); Assert.AreEqual(draft, session.DraftConfiguration);
+                    Assert.AreEqual("2", input.Text); Assert.AreEqual("Fictional unsaved deletion name", name.Text);
+                    Assert.AreEqual(a.Id, panel.SelectedItem!.Id);
+                    CollectionAssert.AreEqual(expectedDiskBytes, File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root)));
+                    if (outcome.StartsWith("protected-", StringComparison.Ordinal))
+                    {
+                        Assert.IsTrue(session.IsWriteProtected);
+                        foreach (var tool in Descendants(panel.ActionTools).OfType<Button>()) Assert.IsFalse(tool.IsEnabled, "A newly protected manifest must disable every library action.");
+                        foreach (var control in Descendants(panel).OfType<Control>().Where(control => control is TextBox or Slider or ComboBox or CheckBox))
+                            Assert.IsFalse(control.IsEnabled, "A newly protected manifest must disable every editor input while retaining its buffer.");
+                        Assert.IsFalse(Descendants(panel.SaveActions).OfType<Button>().Single(button => AutomationProperties.GetName(button) == "复位当前配饰").IsEnabled);
+                        Assert.IsFalse(Descendants(panel.SaveActions).OfType<Button>().Single(button => AutomationProperties.GetName(button) == "应用").IsEnabled);
+                    }
+                }
+            });
+        }
+        finally { locked?.Dispose(); }
+    }
+
     private static string WriteFictionalTransparentPng(string root, int color)
     {
         Directory.CreateDirectory(root);
@@ -986,6 +1209,34 @@ public sealed class AccessoryEditorTests
             foreach (var nested in Descendants(child)) yield return nested;
         }
     }
+
+    private static IEnumerable<T> LogicalDescendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        if (root is T match) yield return match;
+        foreach (var child in LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>())
+            foreach (var nested in LogicalDescendants<T>(child)) yield return nested;
+    }
+
+    private static System.Windows.DragEventArgs CreateLibraryDragEvent(AccessoryEditorPanel panel, string id, ListBoxItem target, RoutedEvent routedEvent)
+    {
+        // WPF constructs its real drag event internally; use that constructor and route through the production handlers.
+        var constructor = typeof(System.Windows.DragEventArgs).GetConstructor(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
+            binder: null, types: [typeof(System.Windows.IDataObject), typeof(System.Windows.DragDropKeyStates), typeof(System.Windows.DragDropEffects), typeof(DependencyObject), typeof(Point)], modifiers: null);
+        Assert.IsNotNull(constructor, "The target WPF runtime must expose its internal five-argument drag-event constructor.");
+        var input = (System.Windows.DragEventArgs)constructor.Invoke([panel.CreateDragData(id), System.Windows.DragDropKeyStates.LeftMouseButton,
+            System.Windows.DragDropEffects.Move, target, new Point(4, 4)]);
+        input.RoutedEvent = routedEvent;
+        return input;
+    }
+
+    private static ListBox Library(AccessoryEditorPanel panel, bool worn) => LogicalDescendants<ListBox>(panel)
+        .Single(group => AutomationProperties.GetName(group) == (worn ? "已佩戴配饰" : "未佩戴配饰"));
+
+    private static ListBoxItem[] LibraryCards(AccessoryEditorPanel panel) =>
+        new[] { Library(panel, true), Library(panel, false) }.SelectMany(group => group.Items.Cast<ListBoxItem>()).ToArray();
+
+    private static ScrollViewer LibraryViewport(AccessoryEditorPanel panel) => LogicalDescendants<ScrollViewer>(panel)
+        .Single(viewport => AutomationProperties.GetName(viewport).StartsWith("配饰库", StringComparison.Ordinal));
 
     private static void Pump()
     {

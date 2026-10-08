@@ -92,6 +92,8 @@ public sealed class DangoPhysicsWorld : IDisposable
 
     public int LastErrorCode { get; private set; }
 
+    public double PreviewJumpSpeedScale { get; private set; } = 1;
+
     public static DangoPhysicsWorld Create(
         string nativeLibraryPath,
         int capacity = DangoPhysicsDefaults.MaximumBodyCount,
@@ -185,6 +187,25 @@ public sealed class DangoPhysicsWorld : IDisposable
         LastErrorCode = 0;
     }
 
+    /// <summary>
+    /// Opt-in transient single-body editor launch speed. Default worlds do not
+    /// require this optional export, and restoring 1 is allowed after a fault.
+    /// </summary>
+    public void SetPreviewJumpSpeedScale(double scale)
+    {
+        VerifyAccess();
+        if (!double.IsFinite(scale) || scale is < .1 or > 1)
+            throw new ArgumentOutOfRangeException(nameof(scale));
+        if (scale == PreviewJumpSpeedScale) return;
+        if (scale != 1 && Count != 1)
+            throw new DangoPhysicsException(DangoPhysicsFailureKind.InvalidConfiguration,
+                "低跳编辑预览只支持当前单团子。", -410);
+        var call = api.SetPreviewJumpSpeedScale ?? throw MissingLocalExport("dango_physics_world_set_preview_jump_speed_scale");
+        var error = call(world, (float)scale);
+        if (error != 0) throw Map(error, "设置本地编辑预览跳跃速度失败。");
+        PreviewJumpSpeedScale = scale;
+    }
+
     /// <summary>Opt-in local stage geometry; absent in older ABI-1 modules.</summary>
     public void SetHorizontalBounds(double left, double right)
     {
@@ -266,15 +287,17 @@ public sealed class DangoPhysicsWorld : IDisposable
         internal readonly HorizontalBoundsDelegate? SetHorizontalBounds;
         internal readonly ResetDelegate? ClearHorizontalBounds;
         internal readonly TranslateHorizontalDelegate? TranslateHorizontal;
+        internal readonly TranslateHorizontalDelegate? SetPreviewJumpSpeedScale;
 
         private NativeApi(nint library, CreateDelegate create, AddDelegate add, RemoveDelegate remove,
             StepDelegate step, ResetDelegate reset, DestroyDelegate destroy,
             HorizontalBoundsDelegate? setHorizontalBounds, ResetDelegate? clearHorizontalBounds,
-            TranslateHorizontalDelegate? translateHorizontal)
+            TranslateHorizontalDelegate? translateHorizontal, TranslateHorizontalDelegate? setPreviewJumpSpeedScale)
         {
             this.library = library; Create = create; Add = add; Remove = remove; Step = step; Reset = reset; Destroy = destroy;
             SetHorizontalBounds = setHorizontalBounds; ClearHorizontalBounds = clearHorizontalBounds;
             TranslateHorizontal = translateHorizontal;
+            SetPreviewJumpSpeedScale = setPreviewJumpSpeedScale;
         }
 
         internal static NativeApi Load(string path)
@@ -294,7 +317,8 @@ public sealed class DangoPhysicsWorld : IDisposable
                     Get<ResetDelegate>(library, "dango_physics_world_reset"), Get<DestroyDelegate>(library, "dango_physics_world_destroy"),
                     GetOptional<HorizontalBoundsDelegate>(library, "dango_physics_world_set_horizontal_bounds"),
                     GetOptional<ResetDelegate>(library, "dango_physics_world_clear_horizontal_bounds"),
-                    GetOptional<TranslateHorizontalDelegate>(library, "dango_physics_world_translate_horizontal"));
+                    GetOptional<TranslateHorizontalDelegate>(library, "dango_physics_world_translate_horizontal"),
+                    GetOptional<TranslateHorizontalDelegate>(library, "dango_physics_world_set_preview_jump_speed_scale"));
             }
             catch
             {

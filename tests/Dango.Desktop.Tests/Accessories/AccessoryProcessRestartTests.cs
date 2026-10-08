@@ -278,7 +278,7 @@ public sealed class AccessoryProcessRestartTests
 
     private static void SelectLibraryItem(ReviewProcess child, AutomationElement window, string name, VerificationLog log)
     {
-        var list = WaitForControl(child, window, "配饰库，勾选标记表示已佩戴", ControlType.List, log);
+        var list = WaitForControl(child, window, "已佩戴配饰", ControlType.List, log);
         AutomationElement? row = null;
         WaitUntil(child, () =>
         {

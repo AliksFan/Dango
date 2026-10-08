@@ -3,7 +3,7 @@ using System.Windows.Media.Imaging;
 
 namespace Dango.Desktop.Accessories;
 
-/// <summary>Explicit whole-draft commit; canceled imports never touch the formal library.</summary>
+/// <summary>Explicit draft commits and independent deletion; canceled imports never touch the formal library.</summary>
 public sealed class AccessorySettingsSession
 {
     public const int MaximumCachedImages = 16;
@@ -132,6 +132,61 @@ public sealed class AccessorySettingsSession
             cacheWarning = $"图片缓存未刷新（{error.GetType().Name}）；配置已写入，可重试画面。";
         }
         finally { pendingAssets.Clear(); }
+        return true;
+    }
+
+    public bool TryDeleteItem(string id)
+    {
+        VerifyAccess();
+        var wasSaved = SavedConfiguration.Items.Any(item => item.Id == id);
+        if (!wasSaved && !DraftConfiguration.Items.Any(item => item.Id == id))
+        {
+            StatusMessage = "配饰未删除：要删除的配饰不存在。";
+            return false;
+        }
+        var loaded = store.Load(settingsRoot);
+        if (IsWriteProtected || loaded.State == AccessorySettingsLoadState.Protected && !loaded.IsTransientReadFailure)
+        {
+            IsWriteProtected = true;
+            StatusMessage = "配饰未删除：原清单已保护；当前版本不提供覆盖恢复。草稿仍保留。";
+            return false;
+        }
+        if (loaded.IsTransientReadFailure)
+        {
+            StatusMessage = "配饰未删除：原清单暂时无法读取。草稿仍保留，可解除文件占用后重试。";
+            return false;
+        }
+        if (IsCompatibilityMode ? loaded.State != AccessorySettingsLoadState.Missing :
+            loaded.State != AccessorySettingsLoadState.Valid || !loaded.Configuration.Equals(SavedConfiguration))
+        {
+            StatusMessage = "配饰未删除：清单已在外部更改。草稿仍保留，请重新读取后再删除。";
+            return false;
+        }
+        var nextSaved = wasSaved ? new AccessoryConfiguration(SavedConfiguration.Items.Where(item => item.Id != id)) : SavedConfiguration;
+        var nextDraft = new AccessoryConfiguration(DraftConfiguration.Items.Where(item => item.Id != id));
+        if (wasSaved)
+        {
+            try
+            {
+                // Deletion commits only the saved snapshot minus this ID, never pending images or other draft edits.
+                store.Save(settingsRoot, nextSaved);
+            }
+            catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
+            {
+                var afterFailure = store.Load(settingsRoot);
+                IsWriteProtected = afterFailure.State == AccessorySettingsLoadState.Protected && !afterFailure.IsTransientReadFailure;
+                StatusMessage = $"配饰未删除（{error.GetType().Name}）。原配置及草稿仍保留，可重试。";
+                return false;
+            }
+        }
+        // Store.Save also confirms an atomic commit when a writer throws after replacing the manifest.
+        SavedConfiguration = nextSaved;
+        DraftConfiguration = nextDraft;
+        if (wasSaved) IsCompatibilityMode = false;
+        var usedAssets = nextDraft.Items.Select(item => item.AssetId).ToHashSet(StringComparer.Ordinal);
+        foreach (var assetId in pendingAssets.Keys.Where(assetId => !usedAssets.Contains(assetId)).ToArray()) pendingAssets.Remove(assetId);
+        foreach (var assetId in imageWarnings.Keys.Where(assetId => !usedAssets.Contains(assetId)).ToArray()) imageWarnings.Remove(assetId);
+        StatusMessage = wasSaved ? "配饰已删除；其他未应用修改仍保留。" : "已删除未应用的配饰；其他草稿仍保留。";
         return true;
     }
 

@@ -113,6 +113,7 @@ public partial class ProductHomeView
             }
             BoundRuntime.SetUnboundedHorizontalPreview(IsAccessoryPreview);
             accessoryPhysicsConfigured = IsAccessoryPreview;
+            BoundRuntime.SetPreviewJumpSpeedScale(IsAccessoryPreview ? .5 : 1);
             liveSurfaceNeedsAlignment = false;
             return true;
         }

@@ -122,6 +122,7 @@ public partial class ProductHomeView
         BoundSceneSession!.AttachSurface(surface, Environment.TickCount64);
         BoundRuntime.SetViewport(surface);
         BoundRuntime.Start();
+        if (IsAccessoryPreview) liveSurfaceNeedsAlignment = liveSurfacePlacementPending = true;
         BoundRuntime.AttachQuietIdleHost(this, true);
         BoundRuntime.UpdateWanderScreenWidth(this, IsInPorch ? PorchScene.ViewportWorldWidth : null);
         visualAnchor = null;
@@ -133,12 +134,20 @@ public partial class ProductHomeView
     private void StopLiveScene()
     {
         var mayStopRuntime = liveScheduler?.OwnsRuntime == true || BoundRuntime?.FrameDriver is null;
+        if (mayStopRuntime && BoundRuntime is { PreviewJumpSpeedScale: not 1 })
+        {
+            try { BoundRuntime.SetPreviewJumpSpeedScale(1); }
+            catch (Dango.Physics.DangoPhysicsException error)
+            {
+                liveSurfacePhysicsError = error;
+                ShowLiveSurfaceUnavailable("配饰预览物理模块不可用 · 请返回设置重试");
+            }
+        }
         liveScheduler?.Stop();
         porchFrameHealthy = false;
         if (porchConfirmation is not null) System.Windows.Media.CompositionTarget.Rendering -= porchConfirmation;
         porchConfirmation = null;
         liveIntent = DirectionalControlIntent.None;
-        accessoryJumpW = accessoryJumpSpace = false;
         accessoryCameraFrame = 0;
         accessoryCamera?.ResetMotion();
         visualAnchor = null;
@@ -279,15 +288,9 @@ public partial class ProductHomeView
     {
         if (liveScheduler?.OwnsRuntime != true) return false;
         if (!IsInPorch && !IsAccessoryPreview && key is (Key.A or Key.D)) return false;
-        if (IsAccessoryPreview && key == Key.Space && Keyboard.FocusedElement is System.Windows.Controls.Button && (down || !accessoryJumpSpace))
-            return false;
-        if (IsAccessoryPreview && key is (Key.W or Key.Space))
-        {
-            if (key == Key.W) accessoryJumpW = down;
-            else accessoryJumpSpace = down;
-            liveIntent = liveIntent with { Jump = accessoryJumpW || accessoryJumpSpace };
-            return true;
-        }
+        // W is reserved inside the accessory preview; it must not navigate or
+        // change a Space jump that is already being held.
+        if (IsAccessoryPreview && key == Key.W) return true;
         // A new Space belongs to the button, but release of our already-held
         // jump must still clear intent after focus moves within this view.
         if (key == Key.Space && Keyboard.FocusedElement is System.Windows.Controls.Button && (down || !liveIntent.Jump)) return false;
@@ -306,7 +309,6 @@ public partial class ProductHomeView
     private void ClearLiveDirectionalInput()
     {
         liveIntent = DirectionalControlIntent.None;
-        accessoryJumpW = accessoryJumpSpace = false;
         if (OwnsLiveFrameDriver) BoundRuntime!.SetDirectionalControl(liveIntent);
     }
 

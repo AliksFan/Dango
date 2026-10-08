@@ -18,8 +18,6 @@ public partial class ProductHomeView
     private RoomViewController? accessoryCamera;
     private long accessoryCameraFrame;
     private bool accessoryPhysicsConfigured;
-    private bool accessoryJumpW;
-    private bool accessoryJumpSpace;
     private bool accessoryProjectionRefreshQueued;
     private bool IsAccessoryPreview => IsEditing && SelectedEditor == HomeEditor.Wardrobe;
     internal AccessorySettingsSession? BoundAccessories => accessorySession;
@@ -30,6 +28,7 @@ public partial class ProductHomeView
         accessoryPanel.Children.Remove(accessoryPanel.SaveActions);
         AccessorySaveActionsSlot.Content = accessoryPanel.SaveActions;
         AccessorySectionTabsSlot.Content = accessoryPanel.SectionTabs;
+        AccessoryActionToolsSlot.Content = accessoryPanel.ActionTools;
         accessoryPanel.SectionChanged += () => { OptionsBody.ScrollToTop(); Stage.Focus(); };
         AccessoryPreviewNotice.Text = AccessoryNotice;
         accessoryPanel.PresentationChanged += () => AccessoryPreviewNotice.Text = AccessoryNotice;
@@ -63,7 +62,7 @@ public partial class ProductHomeView
         }), true);
     }
 
-    private string AccessoryNotice => accessoryPanel.PreviewNotice + "\nA/D 移动 · S 压扁 · W/空格 跳跃 · Esc 退出";
+    private string AccessoryNotice => accessoryPanel.PreviewNotice + "\nA/D 移动 · S 压扁 · 空格 跳跃 · Esc 退出";
 
     private void OnAccessorySaveActionsSizeChanged(object sender, SizeChangedEventArgs e)
     {
@@ -160,11 +159,12 @@ public partial class ProductHomeView
         if (grounded)
             groundedVisualOffset = ground - renderedBottom - alignment - 1 / scale;
         var bodyAlignment = alignment + (groundedVisualOffset ?? 0);
-        var bottom = renderedBottom + bodyAlignment;
         var now = Environment.TickCount64;
-        var p = accessoryCamera.Update(new(center.X, center.Y + alignment),
+        // Only the horizontal trajectory drives the preview camera. Its vertical
+        // ground framing stays fixed throughout takeoff, descent and landing.
+        var p = accessoryCamera.Update(center.X,
             accessoryCameraFrame == 0 ? 0 : now - accessoryCameraFrame,
-            ReduceMotion || !SystemParameters.ClientAreaAnimation, bottom);
+            ReduceMotion || !SystemParameters.ClientAreaAnimation);
         accessoryCameraFrame = now;
         DangoHostFrameBinding.Apply(LiveDangoVisual, LiveDangoHat, frame, 0,
             new LogicalVector(p.OffsetX, p.OffsetY + bodyAlignment),

@@ -77,12 +77,15 @@ public sealed class AccessoryMotionSolver
         var softness = item.Softness / 100;
         var gravity = item.GravityInfluence / 100;
         var strength = item.ConnectionStrength / 100;
+        // Extend only the slider extremes: existing middle/default material behavior stays intact.
+        var softExtension = SmoothStep((softness - 0.6) / 0.4);
+        var looseExtension = SmoothStep((0.3 - strength) / 0.3);
         var inertialForce = new Vector(-acceleration.X, -acceleration.Y + gravity * GravityAcceleration);
 
         if (strength >= 1) connectionX = connectionY = default;
         else
         {
-            var frequency = 0.75 + strength * 4.25;
+            var frequency = 0.75 + strength * 4.25 - 0.4 * looseExtension;
             var stiffness = Math.Pow(2 * Math.PI * frequency, 2);
             var limit = length * 0.18;
             connectionX = DampedSpring.AdvanceBounded(connectionX, inertialForce.X / stiffness,
@@ -97,15 +100,18 @@ public sealed class AccessoryMotionSolver
             // The same softness controls all material points. Their spatially varying response
             // comes from distance to the one pivot, not painted per-region stiffness or extra anchors.
             var force = inertialForce / length;
-            var targetBend = force * (0.018 * softness);
-            if (targetBend.Length > 0.10) targetBend *= 0.10 / targetBend.Length;
-            var frequency = 4.5 - softness * 2;
-            bendX = DampedSpring.AdvanceBounded(bendX, targetBend.X, frequency, 0.8, seconds, -0.10, 0.10);
-            bendY = DampedSpring.AdvanceBounded(bendY, targetBend.Y, frequency, 0.8, seconds, -0.10, 0.10);
-            strainX = DampedSpring.AdvanceBounded(strainX, Math.Clamp(-Math.Abs(force.X) * 0.006 * softness, -0.08, 0.08),
-                frequency, 0.8, seconds, -0.08, 0.08);
-            strainY = DampedSpring.AdvanceBounded(strainY, Math.Clamp(force.Y * 0.009 * softness, -0.08, 0.08),
-                frequency, 0.8, seconds, -0.08, 0.08);
+            var materialGain = softness * (1 + 2 * softExtension);
+            var bendLimit = 0.10 + 0.14 * softExtension;
+            var strainLimit = 0.08 + 0.10 * softExtension;
+            var targetBend = force * (0.018 * materialGain);
+            if (targetBend.Length > bendLimit) targetBend *= bendLimit / targetBend.Length;
+            var frequency = 4.5 - softness * 2 - softExtension;
+            bendX = DampedSpring.AdvanceBounded(bendX, targetBend.X, frequency, 0.8, seconds, -bendLimit, bendLimit);
+            bendY = DampedSpring.AdvanceBounded(bendY, targetBend.Y, frequency, 0.8, seconds, -bendLimit, bendLimit);
+            strainX = DampedSpring.AdvanceBounded(strainX, Math.Clamp(-Math.Abs(force.X) * 0.006 * materialGain, -strainLimit, strainLimit),
+                frequency, 0.8, seconds, -strainLimit, strainLimit);
+            strainY = DampedSpring.AdvanceBounded(strainY, Math.Clamp(force.Y * 0.009 * materialGain, -strainLimit, strainLimit),
+                frequency, 0.8, seconds, -strainLimit, strainLimit);
         }
         AdvanceAngle(item, inertialForce, displayWidth, displayHeight, seconds);
         return Refresh(anchorPoint, displayWidth, displayHeight, item);
@@ -127,8 +133,11 @@ public sealed class AccessoryMotionSolver
         var pivot = anchorPoint + connection;
         var length = Math.Sqrt(displayWidth * displayWidth + displayHeight * displayHeight);
         var materialBend = item.Softness == 0 ? new Vector() : new Vector(bendX.Position, bendY.Position);
-        // ||J-I|| < .37 for every point and legal pivot, so the material map cannot fold.
-        if (materialBend.Length > 0.14) materialBend *= 0.14 / materialBend.Length;
+        // The rigid/strain map has minimum singular value >= .82. Radial bend adds at most
+        // 2 * .30 = .60 to the Jacobian norm for every legal pivot (including mesh-cell secants),
+        // leaving minimum singular value >= .22: continuous material and mesh cannot fold.
+        var bendMagnitudeLimit = 0.14 + 0.16 * SmoothStep((item.Softness / 100 - 0.6) / 0.4);
+        if (materialBend.Length > bendMagnitudeLimit) materialBend *= bendMagnitudeLimit / materialBend.Length;
         var sx = item.Softness == 0 ? 0 : strainX.Position;
         var sy = item.Softness == 0 ? 0 : strainY.Position;
         var vertices = new Point[materialUvs.Count];
@@ -188,6 +197,12 @@ public sealed class AccessoryMotionSolver
 
     private void ClearSignals()
     { previousAnchor = null; velocity = acceleration = new(); velocityReady = false; }
+
+    private static double SmoothStep(double value)
+    {
+        var t = Math.Clamp(value, 0, 1);
+        return t * t * (3 - 2 * t);
+    }
 
     private void PrepareMaterialMesh(double pivotX, double pivotY)
     {

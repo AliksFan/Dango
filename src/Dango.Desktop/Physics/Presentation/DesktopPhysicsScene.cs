@@ -64,7 +64,15 @@ public sealed class DesktopPhysicsScene : IDisposable
     public double GroundY => ToHost(new(0, DangoPhysicsDefaults.Current.GroundHeight)).Y;
     internal bool UnboundedHorizontalPreview => unboundedHorizontalPreview;
     internal int HorizontalRebaseCount { get; private set; }
+    internal double PreviewJumpSpeedScale => world.PreviewJumpSpeedScale;
     internal double ContinuousCoreX(DangoBodyState body) => body.CoreX + horizontalCoreOffset;
+
+    internal void SetPreviewJumpSpeedScale(double scale)
+    {
+        VerifyAccess();
+        if (scale != 1) EnsureHealthy();
+        world.SetPreviewJumpSpeedScale(scale);
+    }
 
     /// <summary>
     /// Uses a rolling local origin for the single-body editor preview. The native

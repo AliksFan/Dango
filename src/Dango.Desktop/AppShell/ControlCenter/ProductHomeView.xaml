@@ -466,6 +466,7 @@
                         <Grid.ColumnDefinitions><ColumnDefinition Width="38" /><ColumnDefinition Width="*" /><ColumnDefinition Width="38" /></Grid.ColumnDefinitions>
                         <ContentControl x:Name="AccessorySectionTabsSlot" VerticalAlignment="Top" Margin="0,6,6,0" />
                         <Grid x:Name="AccessoryPreviewSlot" Grid.Column="1" HorizontalAlignment="Center" IsHitTestVisible="False" />
+                        <ContentControl x:Name="AccessoryActionToolsSlot" Grid.Column="2" VerticalAlignment="Top" Margin="6,6,0,0" />
                     </Grid>
                     <ContentControl x:Name="AccessorySaveActionsSlot" Grid.Row="2" SizeChanged="OnAccessorySaveActionsSizeChanged" />
                 </Grid>

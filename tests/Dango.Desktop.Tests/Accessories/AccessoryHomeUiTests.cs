@@ -97,9 +97,8 @@ public sealed class AccessoryHomeUiTests
     }
 
     [STATestMethod]
-    // The single placement section fits at 1024 x 640; use the product's
-    // supported minimum wide-window height to exercise real scrolling.
-    [DataRow(1024, 560)]
+    // These owned component-harness sizes exercise actual compact/portrait overflow.
+    // The formal Window minimum is 820 x 560; 1024 x 560 naturally fits and is verified separately.
     [DataRow(640, 420)]
     [DataRow(480, 800)]
     public void ScrollingParametersCannotMoveOrHideThePreviewFooter(int width, int height)
@@ -116,7 +115,7 @@ public sealed class AccessoryHomeUiTests
         Assert.IsTrue(scroll.ScrollableHeight > 0, "This regression must exercise actual parameter overflow.");
         Assert.AreEqual(Visibility.Visible, scroll.ComputedVerticalScrollBarVisibility);
         Assert.AreEqual(0, scroll.ScrollableWidth, .01, "Parameters must fit horizontally.");
-        var fixedNames = new[] { "PetPreview", "AccessoryPreviewNotice", "AccessoryCloseEditorButton", "AccessorySaveActionsSlot" };
+        var fixedNames = new[] { "PetPreview", "AccessoryPreviewNotice", "AccessoryCloseEditorButton", "AccessorySaveActionsSlot", "AccessoryActionToolsSlot" };
         var fixedBounds = fixedNames.ToDictionary(name => name, name => Bounds(home, name));
         var draft = fixture.Accessories.DraftConfiguration;
 
@@ -198,7 +197,7 @@ public sealed class AccessoryHomeUiTests
     }
 
     [STATestMethod]
-    [DataRow(1024, 560)]
+    // Keep real scrolling in this component harness; do not claim its compact size is a formal Window size.
     [DataRow(640, 420)]
     [DataRow(480, 800)]
     public void TheReachableFooterActuallyAppliesAndReloadsAfterParameterScrolling(int width, int height)
@@ -233,6 +232,35 @@ public sealed class AccessoryHomeUiTests
         Assert.AreEqual(fixture.Accessories.SavedConfiguration, reloaded);
         Assert.IsFalse(File.Exists(fixture.AppearancePath), "Accessory application must not write a face draft.");
         Capture(home, $"wardrobe-applied-{width}x{height}");
+    }
+
+    [STATestMethod]
+    public void PlacementFitsAt1024By560AndItsFixedToolsRemainReachableAndApply()
+    {
+        using var fixture = CreateFixture();
+        var home = fixture.Home; var size = new Size(1024, 560);
+        Layout(home, size); var closed = Bounds(home, "PetPreview");
+        home.ShowEditor(HomeEditor.Wardrobe);
+        Assert.IsTrue(Panel(home).SelectSection(AccessoryEditorSection.Placement));
+        Panel(home).SetBodyAnchor(new Point(.73, .16)); Layout(home, size);
+        var scroll = Element<ScrollViewer>(home, "OptionsBody");
+        Assert.AreEqual(0d, scroll.ScrollableHeight, .01, "Removing the wardrobe actions and wear checkbox allows placement to naturally fit at this supported wide size.");
+        Assert.AreEqual(Visibility.Collapsed, scroll.ComputedVerticalScrollBarVisibility);
+        Assert.AreEqual(0d, scroll.ScrollableWidth, .01);
+        AssertPreviewGeometry(closed, Bounds(home, "PetPreview"), "wardrobe fit");
+        AssertFixedTools(home); AssertIconRow(home); AssertLeftSectionTabs(home);
+        foreach (var action in SaveActions) AssertReachable(home, SaveButton(home, action), action + " in naturally fitting placement");
+        AssertReachable(home, Element<Button>(home, "AccessoryCloseEditorButton"), "wardrobe close in naturally fitting placement");
+        var draft = fixture.Accessories.DraftConfiguration;
+        scroll.ScrollToBottom(); Layout(home, size);
+        Assert.AreEqual(0d, scroll.VerticalOffset, .01, "A fitting parameter section must not invent an overflow path.");
+        Assert.AreEqual(draft, fixture.Accessories.DraftConfiguration);
+        Assert.IsFalse(File.Exists(fixture.Manifest), "Layout and scroll attempts must not save the preview.");
+        SaveButton(home, "应用").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Layout(home, size);
+        Assert.AreEqual(draft, new AccessorySettingsSession(fixture.Root).SavedConfiguration);
+        Assert.IsFalse(fixture.Accessories.IsDirty);
+        Assert.IsFalse(File.Exists(fixture.AppearancePath));
+        Capture(home, "wardrobe-placement-fit-1024x560");
     }
 
     [STATestMethod]
@@ -444,6 +472,31 @@ public sealed class AccessoryHomeUiTests
         Assert.AreEqual(Bounds(home, footer).Right, Bounds(home, row[^1]).Right, 1,
             "Apply must align to the right edge of the fixed footer.");
         Assert.AreEqual("Primary", row[^1].Tag);
+        AssertRightActionTools(home);
+    }
+
+    private static void AssertRightActionTools(ProductHomeView home)
+    {
+        var slot = Element<ContentControl>(home, "AccessoryActionToolsSlot");
+        Assert.AreSame(Panel(home).ActionTools, slot.Content);
+        Assert.IsFalse(Element<ScrollViewer>(home, "OptionsBody").IsAncestorOf(slot), "The action column must stay outside parameter scrolling.");
+        var tools = Descendants<Button>(slot).ToArray();
+        CollectionAssert.AreEqual(new[] { "创建新配饰", "复制配饰", "删除配饰" }, tools.Select(AutomationProperties.GetName).ToArray());
+        var preview = Bounds(home, "PetPreview");
+        var first = Bounds(home, tools[0]);
+        var leftFirst = Bounds(home, SectionButton(home, "配饰：配饰库"));
+        Assert.AreEqual(leftFirst.Top, first.Top, 1, "The action column must align with the first left section icon.");
+        for (var index = 0; index < tools.Length; index++)
+        {
+            var bounds = Bounds(home, tools[index]); var name = AutomationProperties.GetName(tools[index]);
+            Assert.AreEqual(32d, bounds.Width, .01); Assert.AreEqual(32d, bounds.Height, .01);
+            Assert.AreEqual(first.Left, bounds.Left, .5);
+            Assert.IsTrue(bounds.Left >= preview.Right + 3, name + " must remain right of the Dango body.");
+            if (index > 0) Assert.AreEqual(8d, bounds.Top - Bounds(home, tools[index - 1]).Bottom, 1);
+            Assert.HasCount(1, Descendants<System.Windows.Shapes.Path>(tools[index]).ToArray());
+            Assert.IsFalse(string.IsNullOrWhiteSpace(tools[index].ToolTip?.ToString()));
+            AssertReachable(home, tools[index], name);
+        }
     }
 
     private static void PopulateLibrary(HomeFixture fixture)
@@ -457,12 +510,18 @@ public sealed class AccessoryHomeUiTests
         Panel(fixture.Home).DiscardInputsAndRefresh();
     }
 
-    private static ListBox Library(ProductHomeView home) => Descendants<ListBox>(Panel(home)).Single();
+    private static ListBox Library(ProductHomeView home, bool equipped = true) => Descendants<ListBox>(Panel(home))
+        .Single(list => AutomationProperties.GetName(list) == (equipped ? "已佩戴配饰" : "未佩戴配饰"));
 
     private static void AssertFourColumnLibrary(ProductHomeView home)
     {
         var list = Library(home);
         var cards = list.Items.Cast<ListBoxItem>().ToArray();
+        var unequipped = Library(home, false).Items.Cast<ListBoxItem>().ToArray();
+        Assert.AreEqual(8, cards.Length + unequipped.Length);
+        foreach (var card in cards) StringAssert.StartsWith(AutomationProperties.GetItemStatus(card), "已佩戴");
+        foreach (var card in unequipped) StringAssert.StartsWith(AutomationProperties.GetItemStatus(card), "未佩戴");
+        Assert.IsFalse(Descendants<TextBlock>(Panel(home)).Any(text => text.Text == "配饰库"), "The library must use section headings instead of repeating its title.");
         Assert.IsTrue(cards.Length > 4, "The grid gate needs more than one row of real library entries.");
         Assert.AreEqual(AccessoryEditorSection.Library, Panel(home).SelectedSection);
         var first = Bounds(home, cards[0]);
@@ -481,8 +540,9 @@ public sealed class AccessoryHomeUiTests
                 Math.Max(thumbnail.PixelWidth, thumbnail.PixelHeight) <= AccessoryEditorPanel.ThumbnailEdge,
                 "Gallery images must use bounded thumbnails of the real asset.");
             AssertInside(bounds, Bounds(home, image), "image within gallery card " + index);
+            Assert.IsTrue(bounds.Height <= 70, "Gallery cards must retain their natural icon-row height.");
             Assert.IsFalse(card.Content is string, "Library rows must contain image cards.");
-            StringAssert.Contains(AutomationProperties.GetName(card), $"虚构图库配饰 {index + 1}",
+            StringAssert.Contains(AutomationProperties.GetName(card), (string)card.ToolTip,
                 "Image cards must retain their accessory name for automation and accessibility.");
         }
         Assert.IsTrue(Bounds(home, cards[4]).Top >= first.Bottom - .5, "The fifth image must occupy a later row.");
