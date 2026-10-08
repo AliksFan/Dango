@@ -75,7 +75,8 @@ internal sealed class FormalTestFixture : IAsyncDisposable
         cookies = new CookieContainer();
         var handler = new HttpClientHandler
         {
-            CookieContainer = cookies, AllowAutoRedirect = false,
+            CookieContainer = cookies,
+            AllowAutoRedirect = false,
             ServerCertificateCustomValidationCallback = (_, supplied, _, _) => supplied is not null
                 && CryptographicOperations.FixedTimeEquals(supplied.RawData, certificate.RawData)
         };
@@ -144,7 +145,11 @@ internal sealed class FormalTestFixture : IAsyncDisposable
             Assert.IsFalse(part.Exists && (part.Attributes & FileAttributes.ReparsePoint) != 0);
         var builder = new NpgsqlConnectionStringBuilder(supplied)
         {
-            IncludeErrorDetail = false, LogParameters = false, Timeout = 5, CommandTimeout = 15, Timezone = "UTC"
+            IncludeErrorDetail = false,
+            LogParameters = false,
+            Timeout = 5,
+            CommandTimeout = 15,
+            Timezone = "UTC"
         };
         Assert.AreEqual("127.0.0.1", builder.Host);
         Assert.AreEqual("dango_backend_b0", builder.Database);
