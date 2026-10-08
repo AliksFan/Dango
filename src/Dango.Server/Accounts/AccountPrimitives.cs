@@ -6,6 +6,7 @@ using Dango.Server.Persistence;
 using Dango.Server.Persistence.Entities;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
+using Dango.Protocol;
 
 namespace Dango.Server.Accounts;
 
@@ -52,31 +53,9 @@ public static partial class AccountInput
 
     public static string Appearance(JsonElement input)
     {
-        if (input.ValueKind != JsonValueKind.Object || System.Text.Encoding.UTF8.GetByteCount(input.GetRawText()) > 4096)
-            throw new AccountFault("appearance_invalid");
-        var fields = input.EnumerateObject().ToArray();
-        string[] names = ["appearanceSchemaVersion", "bodyColorHex", "eyeColorHex", "eyeSizePercent", "eyeOvalityPercent", "eyeHeightControlPercent", "eyeSpacingControlPercent"];
-        if (fields.Length != names.Length || fields.Select(p => p.Name).Distinct(StringComparer.Ordinal).Count() != names.Length
-            || fields.Any(p => !names.Contains(p.Name, StringComparer.Ordinal))) throw new AccountFault("appearance_invalid");
-        var version = input.GetProperty("appearanceSchemaVersion");
-        if (version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out var schema) || schema != 3) throw new AccountFault("appearance_schema_unsupported");
-        foreach (var name in names.Skip(1).Take(2))
-        {
-            var color = input.GetProperty(name);
-            if (color.ValueKind != JsonValueKind.String || !OpaqueColor().IsMatch(color.GetString() ?? string.Empty)) throw new AccountFault("appearance_invalid");
-        }
-        (string Name, double Min, double Max)[] ranges = [("eyeSizePercent", 70, 140), ("eyeOvalityPercent", -100, 100), ("eyeHeightControlPercent", 32, 66), ("eyeSpacingControlPercent", 12, 34)];
-        foreach (var (name, min, max) in ranges)
-        {
-            var number = input.GetProperty(name);
-            if (number.ValueKind != JsonValueKind.Number || !number.TryGetDouble(out var value) || !double.IsFinite(value) || value < min || value > max)
-                throw new AccountFault("appearance_invalid");
-        }
-        return input.GetRawText();
+        try { return AppearanceContract.ValidateAndClone(input).GetRawText(); }
+        catch (AppearanceContractException fault) { throw new AccountFault(fault.Code); }
     }
-
-    [GeneratedRegex("\\A#[0-9a-fA-F]{6}\\z", RegexOptions.CultureInvariant)]
-    private static partial Regex OpaqueColor();
 }
 
 // All account writes acquire email -> subject -> invitation/challenge in that order.
