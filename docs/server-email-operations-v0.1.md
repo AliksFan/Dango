@@ -14,7 +14,7 @@ B1 候选实现，人工邮箱投递和客户端界面尚未验收。正式入�
 dotnet run --project src/Dango.Server -- --formal
 ```
 
-启动检查迁移已经应用，失败只输出稳定错误码。普通启动不会建库／迁移／种子；已批准的精确数据目标才能运行 `--formal-migrate`。不得把 runtime 连接配置直接用于未经授权的既有数据库。`GET /health/ready` 检查迁移状态。
+启动检查迁移已经应用，失败只输出稳定错误码。普通启动不会建库／迁移／种子；已批准的精确数据目标才能运行 `--formal-migrate`。不得把 runtime 连接配置直接用于未经授权的既有数据库。`GET /health/ready` 检查迁移状态。Windows Schannel 不支持服务端 EphemeralKeySet；PFX 加载使用 DefaultKeySet、不使用 PersistKeySet，临时 native key container 随本次证书 Dispose 释放。
 
 ## 发件配置
 

@@ -18,8 +18,12 @@ public sealed class InvitationService(DangoDbContext db, AccountEnvironment envi
         if (await db.Users.AnyAsync(u => u.NormalizedEmail == normalized, ct)) throw new AccountFault("invitation_not_eligible", 409);
         var invitation = new TestInvitation
         {
-            Id = Guid.NewGuid(), NormalizedEmail = normalized, SecretDigest = digest, RecoveryEpoch = environment.RecoveryEpoch,
-            CreatedAt = now, ExpiresAt = expiresAt
+            Id = Guid.NewGuid(),
+            NormalizedEmail = normalized,
+            SecretDigest = digest,
+            RecoveryEpoch = environment.RecoveryEpoch,
+            CreatedAt = now,
+            ExpiresAt = expiresAt
         };
         db.TestInvitations.Add(invitation);
         await db.SaveChangesAsync(ct);

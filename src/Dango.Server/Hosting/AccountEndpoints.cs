@@ -49,7 +49,9 @@ public static class AccountEndpoints
                 [new Claim(ClaimTypes.NameIdentifier, login.UserId.ToString("D")), new Claim(FormalHost.SessionClaim, login.SessionId.ToString("D"))], FormalHost.Scheme));
             await ctx.SignInAsync(FormalHost.Scheme, principal, new AuthenticationProperties
             {
-                IsPersistent = login.Remembered, ExpiresUtc = login.ExpiresAt, AllowRefresh = false
+                IsPersistent = login.Remembered,
+                ExpiresUtc = login.ExpiresAt,
+                AllowRefresh = false
             });
             return Results.Ok(new { login.UserId, login.SessionId, login.ExpiresAt });
         });

@@ -7,7 +7,7 @@
 
 > 2026-10-04 归属修订：依[已批准的入口与无房间设计](planning/2026-10-04-room-entry-and-no-room-design.md)，团子允许零或一个有效当前房间；公共正式下线及被迫离房不再自动回桌宠房。下述事务是设计要求，不代表正式领域已实现。
 
-> 2026-10-08 账号入口与开工：首期采用邮箱＋密码与邀请制测试，先验证邮箱再建立正式账号；微信登录后置。用户同意开始本地正式服务端的账号、团子与房间范围，并保留离线单人／本地存档。[首期设计](planning/2026-10-08-email-backend-design-proposal.md)、[认证与持久事实 ADR](adr/0006-email-accounts-and-persistent-room-state.md)及[实施计划](planning/2026-10-08-email-backend-implementation-plan.md)遵循五项质量要求。B0 已有精确授权的真实迁移／约束与同库重启验证，见[本批记录](verification/2026-10-08-email-backend-foundation.md)；正式账号服务、真实发信、备份还原、多人及部署尚未验收，精确恢复操作另行授权。
+> 2026-10-08 账号入口：首期采用邮箱＋密码、邀请制、先验证后注册，微信后置；离线单人保留。[首期设计](planning/2026-10-08-email-backend-design-proposal.md)、[ADR](adr/0006-email-accounts-and-persistent-room-state.md)及[实施计划](planning/2026-10-08-email-backend-implementation-plan.md)遵循五项质量要求。B0 基础与 B1 正式 HTTPS、账号事务、持久会话和邮件队列实现及自动门禁通过，见[B0](verification/2026-10-08-email-backend-foundation.md)、[B1](verification/2026-10-08-email-backend-b1.md)与[本地操作](server-email-operations-v0.1.md)。候选待审阅，真实邮件送达、客户端、备份还原、多人及部署未验收；恢复另行授权。
 
 ## 1. 文档定位
 

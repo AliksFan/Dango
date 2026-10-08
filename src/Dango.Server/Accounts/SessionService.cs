@@ -77,9 +77,13 @@ public sealed class SessionService(DangoDbContext db, UserManager<DangoUser> use
         if (active >= AccountSessionPolicy.MaxActiveSessions) throw new AccountFault("session_limit_reached", 409);
         var session = new AuthSession
         {
-            Id = Guid.NewGuid(), UserId = user.Id, SecurityStamp = user.SecurityStamp!,
-            RecoveryEpoch = environment.RecoveryEpoch, CreatedAt = now,
-            ExpiresAt = AccountSessionPolicy.ExpiresAt(now, remembered), Remembered = remembered
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            SecurityStamp = user.SecurityStamp!,
+            RecoveryEpoch = environment.RecoveryEpoch,
+            CreatedAt = now,
+            ExpiresAt = AccountSessionPolicy.ExpiresAt(now, remembered),
+            Remembered = remembered
         };
         db.AuthSessions.Add(session);
         await db.SaveChangesAsync(ct);

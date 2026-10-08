@@ -63,7 +63,9 @@ public static class FormalEntry
             if (string.IsNullOrEmpty(certificatePath) || !Path.IsPathFullyQualified(certificatePath))
             { Console.Error.WriteLine("tls_certificate_required"); return 2; }
             using var certificate = X509CertificateLoader.LoadPkcs12FromFile(certificatePath, Read("TLS_PASSWORD"),
-                X509KeyStorageFlags.EphemeralKeySet);
+                // Windows Schannel cannot use EphemeralKeySet for a TLS server. DefaultKeySet creates
+                // a temporary native key container which this certificate releases on disposal.
+                X509KeyStorageFlags.DefaultKeySet);
             if (!certificate.HasPrivateKey || certificate.NotAfter.ToUniversalTime() <= DateTime.UtcNow)
                 throw new AccountFault("tls_certificate_invalid");
             var smtp = Read("SMTP_HOST") is { Length: > 0 } smtpHost

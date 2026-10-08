@@ -23,7 +23,11 @@ public sealed class PostgresFoundationTests
             Assert.Inconclusive("An explicitly authorized isolated PostgreSQL target is required.");
         var database = new NpgsqlConnectionStringBuilder(supplied)
         {
-            IncludeErrorDetail = false, LogParameters = false, Pooling = false, Timeout = 5, CommandTimeout = 15,
+            IncludeErrorDetail = false,
+            LogParameters = false,
+            Pooling = false,
+            Timeout = 5,
+            CommandTimeout = 15,
             Timezone = "UTC",
         };
         Assert.AreEqual("127.0.0.1", database.Host);

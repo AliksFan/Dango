@@ -79,8 +79,12 @@ public sealed class SessionPolicyTests
         var user = new DangoUser { Id = Guid.NewGuid(), EmailConfirmed = true, SecurityStamp = "test-stamp", LockoutEnabled = true };
         var session = new AuthSession
         {
-            Id = Guid.NewGuid(), UserId = user.Id, SecurityStamp = user.SecurityStamp,
-            RecoveryEpoch = Epoch, CreatedAt = Now, ExpiresAt = Now.AddHours(8)
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            SecurityStamp = user.SecurityStamp,
+            RecoveryEpoch = Epoch,
+            CreatedAt = Now,
+            ExpiresAt = Now.AddHours(8)
         };
         return (user, session);
     }

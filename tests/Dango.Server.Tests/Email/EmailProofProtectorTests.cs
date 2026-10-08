@@ -85,9 +85,14 @@ public sealed class EmailProofProtectorTests
 
     private static EmailChallenge Challenge(DateTimeOffset now) => new()
     {
-        Id = Guid.NewGuid(), Purpose = EmailChallengePurpose.Registration, PendingRegistrationId = Guid.NewGuid(),
-        NormalizedEmail = "FICTIONAL@EXAMPLE.INVALID", RecoveryEpoch = Guid.NewGuid(), Generation = 1,
-        CreatedAt = now, ExpiresAt = now.AddMinutes(30)
+        Id = Guid.NewGuid(),
+        Purpose = EmailChallengePurpose.Registration,
+        PendingRegistrationId = Guid.NewGuid(),
+        NormalizedEmail = "FICTIONAL@EXAMPLE.INVALID",
+        RecoveryEpoch = Guid.NewGuid(),
+        Generation = 1,
+        CreatedAt = now,
+        ExpiresAt = now.AddMinutes(30)
     };
 
     private sealed class MutableClock(DateTimeOffset now) : TimeProvider

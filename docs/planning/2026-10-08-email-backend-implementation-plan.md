@@ -1,6 +1,6 @@
 # 邮箱后端首期实施计划
 
-日期：2026-10-08。状态：用户已同意开始，B0 配置／模型／初始迁移及独立 PostgreSQL 基础门禁已完成，候选待审阅；下一批 B1 建立正式服务入口与邮箱账号。详见[本批验证](../verification/2026-10-08-email-backend-foundation.md)，完整首期与 Phase 3 尚未验收。
+日期：2026-10-08。状态：用户已同意开始，B0 配置／模型／初始迁移与 B1 正式服务入口、邀请邮箱账号实现及自动门禁通过，候选待审阅。详见[B0 验证](../verification/2026-10-08-email-backend-foundation.md)与[B1 验证](../verification/2026-10-08-email-backend-b1.md)；下一批 B2 团子配置关联与本地存档，完整首期、真实 SMTP／客户端人工与 Phase 3 尚未验收。
 
 依据：[首期设计](2026-10-08-email-backend-design-proposal.md)、[ADR 0002](../adr/0002-server-foundation-and-scaling.md)、[ADR 0006](../adr/0006-email-accounts-and-persistent-room-state.md)与[工作流](../development-workflow-v0.1.md)。用户新增五项必查已记录于根级规则。
 

@@ -64,14 +64,23 @@ public sealed class CredentialProofTests
     {
         var user = new DangoUser
         {
-            Id = Guid.NewGuid(), Email = "fictional@example.invalid", NormalizedEmail = "FICTIONAL@EXAMPLE.INVALID",
-            EmailConfirmed = true, SecurityStamp = "test-reset-stamp"
+            Id = Guid.NewGuid(),
+            Email = "fictional@example.invalid",
+            NormalizedEmail = "FICTIONAL@EXAMPLE.INVALID",
+            EmailConfirmed = true,
+            SecurityStamp = "test-reset-stamp"
         };
         var challenge = new EmailChallenge
         {
-            Id = Guid.NewGuid(), Purpose = EmailChallengePurpose.PasswordReset, UserId = user.Id,
-            NormalizedEmail = user.NormalizedEmail, SecurityStamp = user.SecurityStamp, RecoveryEpoch = Epoch,
-            Generation = 1, CreatedAt = Now, ExpiresAt = Now.AddMinutes(30)
+            Id = Guid.NewGuid(),
+            Purpose = EmailChallengePurpose.PasswordReset,
+            UserId = user.Id,
+            NormalizedEmail = user.NormalizedEmail,
+            SecurityStamp = user.SecurityStamp,
+            RecoveryEpoch = Epoch,
+            Generation = 1,
+            CreatedAt = Now,
+            ExpiresAt = Now.AddMinutes(30)
         };
         var proof = new EmailProof(challenge.Id, challenge.Purpose, user.Id, challenge.NormalizedEmail,
             Epoch, challenge.Generation, challenge.ExpiresAt, challenge.SecurityStamp);

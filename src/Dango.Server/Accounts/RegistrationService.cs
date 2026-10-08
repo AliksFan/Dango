@@ -39,10 +39,18 @@ public sealed class RegistrationService(DangoDbContext db, UserManager<DangoUser
         var now = clock.GetUtcNow();
         var pending = new PendingRegistration
         {
-            Id = Guid.NewGuid(), RequestKey = requestKey, ResumeDigest = digest, InvitationId = invitationId,
-            Email = input.Email, NormalizedEmail = input.Normalized, RecoveryEpoch = environment.RecoveryEpoch,
-            State = RegistrationState.Pending, Generation = 1, CreatedAt = now,
-            ExpiresAt = Earlier(now.AddHours(1), invitation.ExpiresAt), LastSentAt = now
+            Id = Guid.NewGuid(),
+            RequestKey = requestKey,
+            ResumeDigest = digest,
+            InvitationId = invitationId,
+            Email = input.Email,
+            NormalizedEmail = input.Normalized,
+            RecoveryEpoch = environment.RecoveryEpoch,
+            State = RegistrationState.Pending,
+            Generation = 1,
+            CreatedAt = now,
+            ExpiresAt = Earlier(now.AddHours(1), invitation.ExpiresAt),
+            LastSentAt = now
         };
         db.PendingRegistrations.Add(pending);
         await issuer.AddAsync(EmailChallengePurpose.Registration, input.Normalized, pending.Id, null, null, 1,
@@ -135,8 +143,12 @@ public sealed class RegistrationService(DangoDbContext db, UserManager<DangoUser
         if (await db.Users.AnyAsync(u => u.NormalizedEmail == pending.NormalizedEmail, ct)) throw new AccountFault("registration_conflict", 409);
         var user = new DangoUser
         {
-            Id = Guid.NewGuid(), Email = pending.Email, UserName = pending.Email,
-            EmailConfirmed = true, LockoutEnabled = true, CreatedAt = now
+            Id = Guid.NewGuid(),
+            Email = pending.Email,
+            UserName = pending.Email,
+            EmailConfirmed = true,
+            LockoutEnabled = true,
+            CreatedAt = now
         };
         var identity = await users.CreateAsync(user, password);
         if (!identity.Succeeded) throw new AccountFault("registration_conflict", 409);
@@ -147,8 +159,14 @@ public sealed class RegistrationService(DangoDbContext db, UserManager<DangoUser
         await checkpoint.ReachedAsync("after_pet", ct);
         var room = new PersistentRoom
         {
-            Id = Guid.NewGuid(), OwnerId = user.Id, Kind = PersistentRoomKind.DesktopPet, Status = PersistentRoomStatus.Active,
-            Name = "桌宠房间", Capacity = 2, Version = 1, CreatedAt = now
+            Id = Guid.NewGuid(),
+            OwnerId = user.Id,
+            Kind = PersistentRoomKind.DesktopPet,
+            Status = PersistentRoomStatus.Active,
+            Name = "桌宠房间",
+            Capacity = 2,
+            Version = 1,
+            CreatedAt = now
         };
         db.Rooms.Add(room);
         await db.SaveChangesAsync(ct);

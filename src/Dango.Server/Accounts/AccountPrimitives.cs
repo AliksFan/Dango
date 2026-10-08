@@ -129,9 +129,16 @@ public sealed class ChallengeIssuer(DangoDbContext db, AccountEnvironment enviro
             && c.RevokedAt == null && c.ConsumedAt == null).ExecuteUpdateAsync(s => s.SetProperty(c => c.RevokedAt, now), ct);
         var challenge = new EmailChallenge
         {
-            Id = Guid.NewGuid(), Purpose = purpose, NormalizedEmail = normalizedEmail, PendingRegistrationId = pendingId,
-            UserId = userId, SecurityStamp = stamp, RecoveryEpoch = environment.RecoveryEpoch, Generation = generation,
-            CreatedAt = now, ExpiresAt = expiresAt
+            Id = Guid.NewGuid(),
+            Purpose = purpose,
+            NormalizedEmail = normalizedEmail,
+            PendingRegistrationId = pendingId,
+            UserId = userId,
+            SecurityStamp = stamp,
+            RecoveryEpoch = environment.RecoveryEpoch,
+            Generation = generation,
+            CreatedAt = now,
+            ExpiresAt = expiresAt
         };
         db.EmailChallenges.Add(challenge);
         db.EmailJobs.Add(new EmailJob { Id = Guid.NewGuid(), ChallengeId = challenge.Id, CreatedAt = now, DueAt = now });
