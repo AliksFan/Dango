@@ -11,7 +11,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-# This B0 tool is limited to a fictional, explicitly approved cluster. It never resets or deletes it.
+# This tool is limited to a fictional, explicitly approved cluster. B1 requires separate authorization.
 if (-not $IsWindows) { throw 'backend_test_windows_required' }
 if ($RunName -notmatch '^run[a-z0-9]{1,40}$') { throw 'backend_test_run_name_invalid' }
 $taskRepoDirectory = Split-Path -Parent $PSScriptRoot
@@ -120,7 +120,26 @@ try {
     $taskConnection = "Host=127.0.0.1;Port=$taskPort;Database=$taskDatabaseName;Username=$taskOwnerName;Password=$taskPassword;Include Error Detail=false"
     $taskResultsDirectory = Join-Path 'artifacts/backend-foundation/postgres-tests' ([DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss-fffffff'))
     $taskTestEnvironment = @{ DANGO_BACKEND_TEST_CONNECTION=$taskConnection; DANGO_BACKEND_TEST_DATA_DIRECTORY=$taskDataDirectory }
-    if ($B1) { $taskTestEnvironment.DANGO_BACKEND_B1_TEST_APPROVED = '1' }
+    if ($B1) {
+        $taskB1StateFile = Join-Path $taskStateDirectory 'b1test-state.json'
+        if (Test-Path -LiteralPath $taskB1StateFile) {
+            $taskB1State = Get-Content -LiteralPath $taskB1StateFile -Raw | ConvertFrom-Json
+            $taskB1Epoch = [Guid]::Parse($taskB1State.RecoveryEpoch)
+        } else {
+            $taskB1Epoch = [Guid]::NewGuid()
+            [IO.File]::WriteAllText($taskB1StateFile, (@{ RecoveryEpoch=$taskB1Epoch.ToString('D'); Version=1 } | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+        }
+        if ($taskB1Epoch -eq [Guid]::Empty) { throw 'backend_b1_epoch_invalid' }
+        $taskB1KeyDirectory = Join-Path $taskStateDirectory 'b1tests-keys'
+        $taskTestEnvironment.DANGO_BACKEND_B1_TEST_APPROVED = '1'
+        $taskTestEnvironment.DANGO_BACKEND_B1_RECOVERY_EPOCH = $taskB1Epoch.ToString('D')
+        $taskTestEnvironment.DANGO_BACKEND_B1_KEY_DIRECTORY = $taskB1KeyDirectory
+        # Migration occurs explicitly before tests, whose fixtures never alter the schema.
+        [void](Invoke-TaskProcess 'dotnet' @('src/Dango.Server/bin/Release/net10.0/Dango.Server.dll', '--formal-migrate') @{
+            DANGO_DATABASE=$taskDatabaseName; DANGO_CONNECTION_STRING=$taskConnection; DANGO_KEYS_DIRECTORY=$taskB1KeyDirectory
+            DANGO_ENDPOINT=('https://127.0.0.1:' + $taskState.Port); DANGO_RECOVERY_EPOCH=$taskB1Epoch.ToString('D')
+        })
+    }
     [void](Invoke-TaskProcess 'dotnet' @('test', 'tests/Dango.Server.Tests/Dango.Server.Tests.csproj', '-c', 'Release', '--no-build', '--no-restore', '--filter', 'TestCategory=PostgresIntegration', '--logger', 'trx;LogFileName=backend-postgres.trx', '--results-directory', $taskResultsDirectory) $taskTestEnvironment)
 } finally {
     if ($taskStartAttempted) {
