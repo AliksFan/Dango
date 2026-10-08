@@ -58,11 +58,11 @@ public sealed class DesktopPetRoomHandoffTests
     }
 
     [TestMethod]
-    public void WallpaperOrUnhealthyAcknowledgementCannotCompleteDesktopPetEntry()
+    public void WindowOrUnhealthyAcknowledgementCannotCompleteDesktopPetEntry()
     {
         var gate = new LocalRoomHandoffGate();
         var attempt = gate.Begin(LocalRoomPresentation.DesktopPet);
-        Assert.IsFalse(gate.TryComplete(attempt, LocalRoomPresentation.Wallpaper, true));
+        Assert.IsFalse(gate.TryComplete(attempt, LocalRoomPresentation.Window, true));
         Assert.IsFalse(gate.TryComplete(attempt, LocalRoomPresentation.DesktopPet, false));
         Assert.IsTrue(gate.Pending);
         Assert.AreEqual(LocalRoomPresentation.Porch, gate.Current);

@@ -2,6 +2,8 @@
 
 `Dango` 是一个多人联机桌面宠物项目的开发代号。
 
+2026-10-08 普通房收敛：按用户决定完整移除普通房壁纸呈现，只保留独立窗口；桌宠房间仍使用真实壁纸环境与独立上层团子。专用宿主、菜单、输入桥、资格检查及切换状态删除，共享鼠标 Hook 与图标查询能力提取保留。代码移除、静态检查与隔离 Release 构建完成；受影响回归为 236 通过／1 桌宠到边时限失败／25 未执行，人工验收待确认。实施和验证见[移除计划](docs/planning/2026-10-08-ordinary-room-window-only-plan.md)与[本轮记录](docs/verification/2026-10-08-ordinary-room-window-only.md)。下方普通房壁纸“保留／搁置”均为此前历史，不再作为当前功能或待修复承诺；本轮未合并 main、推送、更新日常安装或部署。
+
 2026-10-07 普通房窗口：用户通过现有窗口体验，已按授权将 `codex/local-room-implementation@4bbd2bb` 快进合入本地 main，包含两层初始场景、玩法／抚摸、滚轮视距、三种镜头模式和纵向中线修订、Esc 菜单及首页往返。沿用最终受影响测试69/69和隔离 Release 构建证据，15项真实前台右键自动门禁仍未验证；详见[验收与整合记录](docs/verification/2026-10-06-window-camera-modes.md#2026-10-07-用户人工通过与本地-main-整合)。壁纸代码和入口保留，壁纸层继续搁置、未验收，待桌宠房间充分测试后再回来排查。未推送、更新日常安装或部署；完整 Windows／正式房间／多人阶段仍开放。下方状态保留各自历史范围。
 
 2026-10-06 捏脸独立本地整合：按用户选择剥离普通房依赖，已将验证后的捏脸／首页成果快进合入本地 main。Release 构建 0 警告／0 错误，受影响测试 370/370、零跳过，普通房代码与历史未带入；具体范围、失败修复及原人工验收边界见[整合记录](docs/verification/2026-10-06-face-only-local-main-integration.md)。原候选现场和受保护 DLL 保留，未推送、更新日常安装或部署；完整 Windows／多人阶段与其它 DPI 专项仍开放。
@@ -77,7 +79,7 @@ Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](d
 - [服务端设计基线 v0.1](docs/server-design-v0.1.md)：200 人在线容量、实时同步、部署与扩容。
 - [房间机制设计](docs/planning/2026-10-02-room-mechanism-design-proposal.md)及[二维门廊、返回与无房间修订](docs/planning/2026-10-04-room-entry-and-no-room-design.md)：容量／权限机制与已通过的入口、宿主和离房规则；正式业务未实现。
 - [房间入口最小闭环实施计划](docs/planning/2026-10-04-room-entry-implementation-plan.md)：待确认的门廊 UI、真实领域前置、入房显示、回门廊和分层验收顺序；不代表编码或数据库操作已授权。
-- [本地普通房实施计划](docs/planning/2026-10-05-local-single-room-plan.md)、[产品实现验证](docs/verification/2026-10-05-local-room-product.md)及[人工评审修订](docs/verification/2026-10-05-local-room-review-revision.md)：窗口／壁纸两种呈现、Esc 中央菜单、外出控制中心与完整壁纸玩法的候选；自动结果、真实前台失败及待人工验收项分别记录，未合并 main 或更新日常安装。
+- [本地普通房实施计划](docs/planning/2026-10-05-local-single-room-plan.md)、[产品实现验证](docs/verification/2026-10-05-local-room-product.md)及[人工评审修订](docs/verification/2026-10-05-local-room-review-revision.md)：窗口与历史壁纸候选的设计、实施及失败证据；当前普通房只保留已验收窗口，壁纸代码移除范围见[2026-10-08 计划](docs/planning/2026-10-08-ordinary-room-window-only-plan.md)。
 - [桌宠房间分层设计](docs/planning/2026-10-07-desktop-pet-room-layered-design.md)、[实施计划](docs/planning/2026-10-07-desktop-pet-room-layered-implementation-plan.md)及[体验修订](docs/planning/2026-10-07-desktop-pet-room-feedback-revision.md)：真实壁纸房间与独立上层团子，当前修订大小、屏幕边界与拖动故障；人工验收未完成。
 - [设置页范围与验收设计](docs/planning/2026-10-01-settings-ui.md)及[专项验证记录](docs/verification/2026-10-01-settings-ui.md)：产品首页内设置页的范围、失败型验收与独立 Product 宿主人工确认；日常安装和完整自动门禁待补。
 - [统一实时首页与固定尺寸验证记录](docs/verification/2026-10-03-unified-live-home.md)：首页真实团子、门廊交互及三档物理目标尺寸的当前证据和未完成边界。

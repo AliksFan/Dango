@@ -1,6 +1,5 @@
 using System.IO;
 using System.Windows;
-using System.Windows.Interop;
 using System.Windows.Threading;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.AppShell.Rooms;
@@ -15,11 +14,9 @@ internal sealed partial class DangoApplicationHost
     private readonly DispatcherTimer roomHandoffTimeout = new() { Interval = TimeSpan.FromSeconds(3) };
     private LocalRoomSceneDriver? localRoomDriver;
     private LocalRoomWindow? localRoomWindow;
-    private LocalRoomWallpaperHost? localRoomWallpaper;
     private DesktopPetRoomHost? desktopPetRoom;
     private bool localRoomSelected;
     private bool roomControlCenterRequested;
-    private bool openRoomMenuAfterHandoff;
     private LocalRoomPresentation preferredRoomPresentation = LocalRoomPresentation.Window;
     private string? localRoomFailure;
     private bool restoringRoomSource;
@@ -34,8 +31,6 @@ internal sealed partial class DangoApplicationHost
     {
         localRoomDriver = new(sceneSession, stackedRuntime);
         localRoomWindow = new(localRoomDriver);
-        localRoomWallpaper = new();
-        localRoomWallpaper.Bind(localRoomDriver);
         desktopPetRoom = new();
         desktopPetRoom.Bind(localRoomDriver);
         homeWindow.ProductHome.EnableLocalRoomDoor();
@@ -45,14 +40,8 @@ internal sealed partial class DangoApplicationHost
         homeWindow.ProductHome.HealthyPorchFrameReady += attempt => CompleteLocalHandoff(attempt, LocalRoomPresentation.Porch);
         localRoomWindow.ReturnRequested += ReturnToPorch;
         localRoomWindow.HideRequested += HideLocalRoom;
-        localRoomWindow.PresentationRequested += SwitchLocalRoomPresentation;
         localRoomWindow.RecoverRequested += RecoverLocalRoom;
         localRoomWindow.ControlCenterRequested += ShowControlCenter;
-        localRoomWallpaper.ReturnRequested += ReturnToPorch;
-        localRoomWallpaper.WindowRequested += () => SwitchLocalRoomPresentation(LocalRoomPresentation.Window);
-        localRoomWallpaper.MenuRequested += ShowLocalRoomMenu;
-        localRoomWallpaper.ControlCenterRequested += ShowControlCenter;
-        localRoomWallpaper.RecoverRequested += RecoverLocalRoom;
         localRoomDriver.HealthyFrameReady += attempt =>
         {
             // A wallpaper environment frame alone cannot commit the layered desktop-pet room.
@@ -84,16 +73,6 @@ internal sealed partial class DangoApplicationHost
                 SaveDesktopPetFailureReport();
             }
             FailLocalHandoff(attempt, message);
-        };
-        localRoomWallpaper.LostDesktop += () =>
-        {
-            if (roomHandoff.Pending) FailLocalHandoff(roomHandoff.Generation, "桌面宿主已失效，可重试壁纸或用窗口打开。");
-            else if (roomHandoff.Current == LocalRoomPresentation.Wallpaper)
-            {
-                HideLocalRoom();
-                localRoomFailure = "桌面宿主已失效，请从托盘重试壁纸、用窗口打开或返回房门。";
-                trayIcon?.ShowRoomWarning(localRoomFailure);
-            }
         };
         roomHandoffTimeout.Tick += (_, _) => FailLocalHandoff(roomHandoff.Generation, "场景首帧未能就绪，可重试或返回房门。");
     }
@@ -135,29 +114,18 @@ internal sealed partial class DangoApplicationHost
         BeginLocalHandoff(LocalRoomPresentation.DesktopPet, enterWorld: true);
     }
 
-    internal void SwitchLocalRoomPresentation(LocalRoomPresentation target)
-    {
-        if (disposed || roomHandoff.Pending || target is not (LocalRoomPresentation.Window or LocalRoomPresentation.Wallpaper)) return;
-        if (localRoomSelected && preferredRoomPresentation == LocalRoomPresentation.DesktopPet) return;
-        GetOrCreateControlCenter();
-        if (roomHandoff.Current == target && localRoomSelected) return;
-        if (!localRoomSelected) localRoomDriver!.ResetEntryPosition();
-        BeginLocalHandoff(target, enterWorld: !localRoomSelected || roomWorldNeedsRestore);
-    }
-
     internal void RestoreLocalRoom()
     {
         if (roomHandoff.Pending) return;
         if (!localRoomSelected) { ShowControlCenter(); return; }
         if (roomHandoff.Current == LocalRoomPresentation.Window && localRoomDriver!.OwnsRuntime) { localRoomWindow!.FocusScene(); return; }
-        if (roomHandoff.Current is LocalRoomPresentation.Wallpaper or LocalRoomPresentation.DesktopPet) return;
+        if (roomHandoff.Current == LocalRoomPresentation.DesktopPet) return;
         BeginLocalHandoff(preferredRoomPresentation, enterWorld: roomWorldNeedsRestore);
     }
 
     internal void ReturnToPorch()
     {
         if (disposed) return;
-        openRoomMenuAfterHandoff = false;
         GetOrCreateControlCenter();
         if (roomHandoff.Pending)
         {
@@ -169,7 +137,6 @@ internal sealed partial class DangoApplicationHost
         {
             localRoomDriver!.Stop();
             localRoomWindow!.Hide();
-            localRoomWallpaper!.Hide();
             desktopPetRoom!.Hide();
             ShowAndActivate(controlCenterWindow!);
             controlCenterWindow!.ShowOverview();
@@ -186,7 +153,6 @@ internal sealed partial class DangoApplicationHost
         var wasEntering = roomHandoff.Pending && !selected;
         roomHandoffTimeout.Stop();
         restoringRoomSource = false;
-        openRoomMenuAfterHandoff = false;
         localRoomDriver.Stop();
         if (selected)
         {
@@ -194,7 +160,6 @@ internal sealed partial class DangoApplicationHost
             if (!roomControlCenterRequested) controlCenterWindow.Hide();
         }
         localRoomWindow!.Hide();
-        localRoomWallpaper!.Hide();
         desktopPetRoom!.Hide();
         roomHandoff.Hide();
         if (wasEntering)
@@ -212,7 +177,6 @@ internal sealed partial class DangoApplicationHost
         localRoomFailure = null;
         controlCenterWindow!.ProductHome.SuspendForRoom();
         localRoomDriver!.Stop();
-        localRoomWallpaper!.StopInput();
         desktopPetRoom!.StopInput();
         roomHandoffTimeout.Start();
         try
@@ -239,17 +203,13 @@ internal sealed partial class DangoApplicationHost
             }
             else
             {
-                var screen = localRoomWindow?.IsVisible == true
-                    ? Forms.Screen.FromHandle(new WindowInteropHelper(localRoomWindow).Handle)
-                    : Forms.Screen.PrimaryScreen ?? throw new InvalidOperationException("没有可用显示器。");
-                localRoomWallpaper.Show(attempt, screen);
-                localRoomDriver.Start(localRoomWallpaper.Scene, attempt, enterWorld);
+                throw new ArgumentOutOfRangeException(nameof(target), target, "不支持的房间呈现目标。");
             }
         }
         catch (Exception error) when (error is InvalidOperationException or ArgumentException or System.ComponentModel.Win32Exception)
         {
             FailLocalHandoff(attempt, target == LocalRoomPresentation.DesktopPet ? "桌宠房间挂接失败，请返回门廊重试。" :
-            target == LocalRoomPresentation.Wallpaper ? "壁纸挂接失败，可重试或用窗口打开。" : "房间准备失败，请返回门廊重试。");
+            "房间准备失败，请返回门廊重试。");
         }
     }
 
@@ -263,7 +223,6 @@ internal sealed partial class DangoApplicationHost
             localRoomSelected = false;
             roomControlCenterRequested = false;
             localRoomWindow!.Hide();
-            localRoomWallpaper!.Hide();
             desktopPetRoom!.Hide();
         }
         else
@@ -275,18 +234,14 @@ internal sealed partial class DangoApplicationHost
             if (!roomControlCenterRequested) controlCenterWindow.Hide();
             if (target == LocalRoomPresentation.Window)
             {
-                localRoomWallpaper!.Hide(); desktopPetRoom!.Hide(); localRoomWindow!.FocusScene();
-                if (openRoomMenuAfterHandoff) localRoomWindow.OpenMenu();
-                openRoomMenuAfterHandoff = false;
+                desktopPetRoom!.Hide();
+                localRoomWindow!.FocusScene();
             }
             else if (target == LocalRoomPresentation.DesktopPet)
             {
                 localRoomWindow!.Hide();
-                localRoomWallpaper!.Hide();
                 desktopPetRoom!.ConfirmReady(attempt);
             }
-            else
-            { localRoomWindow!.Hide(); desktopPetRoom!.Hide(); localRoomWallpaper!.ConfirmReady(attempt); }
         }
     }
 
@@ -294,7 +249,6 @@ internal sealed partial class DangoApplicationHost
     {
         if (!disposed && !roomHandoff.Pending && attempt == roomHandoff.Generation && localRoomSelected)
         {
-            openRoomMenuAfterHandoff = false;
             localRoomFailure = message;
             localRoomDriver!.Stop();
             if (roomHandoff.Current == LocalRoomPresentation.Window)
@@ -304,7 +258,6 @@ internal sealed partial class DangoApplicationHost
             return;
         }
         if (disposed || !roomHandoff.Fail(attempt)) return;
-        openRoomMenuAfterHandoff = false;
         roomHandoffTimeout.Stop();
         localRoomFailure = message;
         localRoomDriver!.Stop();
@@ -316,7 +269,6 @@ internal sealed partial class DangoApplicationHost
         if (source == LocalRoomPresentation.Window && localRoomSelected && !restoringRoomSource)
         {
             desktopPetRoom!.Hide();
-            localRoomWallpaper!.Hide();
             restoringRoomSource = true;
             BeginLocalHandoff(LocalRoomPresentation.Window, enterWorld: true);
             localRoomFailure = message;
@@ -326,15 +278,13 @@ internal sealed partial class DangoApplicationHost
         {
             desktopPetRoom!.Hide();
             restoringRoomSource = false;
-            localRoomWallpaper!.Hide();
             localRoomWindow!.Show();
             localRoomWindow.FocusScene();
             trayIcon?.ShowRoomWarning(message + " 可从房门返回门廊，或隐藏后重试。");
         }
-        else if (localRoomSelected && (source is LocalRoomPresentation.Wallpaper or LocalRoomPresentation.DesktopPet))
+        else if (localRoomSelected && source == LocalRoomPresentation.DesktopPet)
         {
             localRoomWindow!.Hide();
-            localRoomWallpaper!.Hide();
             desktopPetRoom!.Hide();
             roomHandoff.Hide();
             trayIcon?.ShowRoomWarning(message + " 请从托盘恢复房间或返回房门。");
@@ -344,7 +294,6 @@ internal sealed partial class DangoApplicationHost
         {
             // A failed restoration must not erase the hidden room selection or rehost its entity into the porch.
             localRoomWindow!.Hide();
-            localRoomWallpaper!.Hide();
             desktopPetRoom!.Hide();
             roomHandoff.Hide();
             ShowControlCenter();
@@ -354,7 +303,6 @@ internal sealed partial class DangoApplicationHost
         else
         {
             localRoomWindow!.Hide();
-            localRoomWallpaper!.Hide();
             desktopPetRoom!.Hide();
             localRoomSelected = false;
             ShowAndActivate(controlCenterWindow);
@@ -386,37 +334,16 @@ internal sealed partial class DangoApplicationHost
         BeginLocalHandoff(preferredRoomPresentation, enterWorld: true);
     }
 
-    private void ShowLocalRoomMenu()
-    {
-        if (!localRoomSelected || roomHandoff.Pending) return;
-        if (roomHandoff.Current == LocalRoomPresentation.Window)
-        {
-            localRoomWindow!.FocusScene();
-            localRoomWindow.OpenMenu();
-        }
-        else if (roomHandoff.Current == LocalRoomPresentation.Wallpaper)
-        {
-            localRoomWallpaper!.OpenMenu();
-        }
-    }
-
     private LocalRoomTrayActions CreateLocalRoomTrayActions() => new(
         () => localRoomSelected || roomHandoff.Pending,
-        () => roomHandoff.Current is LocalRoomPresentation.Window or LocalRoomPresentation.Wallpaper or LocalRoomPresentation.DesktopPet,
-        RestoreLocalRoom, HideLocalRoom, ReturnToPorch, SwitchLocalRoomPresentation,
-        preset => { if (preferredRoomPresentation != LocalRoomPresentation.DesktopPet) ActiveRoomScene()?.SelectView(preset); },
+        () => roomHandoff.Current is LocalRoomPresentation.Window or LocalRoomPresentation.DesktopPet,
+        RestoreLocalRoom, HideLocalRoom, ReturnToPorch,
+        preset => { if (preferredRoomPresentation != LocalRoomPresentation.DesktopPet) localRoomWindow?.Scene.SelectView(preset); },
         RecoverLocalRoom, () => preferredRoomPresentation == LocalRoomPresentation.DesktopPet);
-    private LocalRoomSceneView? ActiveRoomScene() => roomHandoff.Current switch
-    {
-        LocalRoomPresentation.DesktopPet => desktopPetRoom?.Scene,
-        LocalRoomPresentation.Wallpaper => localRoomWallpaper?.Scene,
-        _ => localRoomWindow?.Scene,
-    };
     private void DisposeLocalRoom()
     {
         roomHandoffTimeout.Stop();
         localRoomDriver?.Dispose();
-        localRoomWallpaper?.Dispose();
         desktopPetRoom?.Dispose();
         if (localRoomWindow is not null) { localRoomWindow.PrepareForExit(); localRoomWindow.Close(); }
     }

@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
-using Dango.Desktop.DesktopHost.WorkerW;
 
 namespace Dango.Desktop.DesktopHost.Win32;
 
@@ -75,10 +74,10 @@ internal static partial class NativeMethods
     internal static bool DesktopPetCurrentMessageIsPointerInput => DesktopPetGetCurrentInputMessageSource(out var source) &&
         (source.DeviceType & (2u | 4u | 8u | 16u)) != 0;
 
-    internal static (WallpaperGameplayMouseData Input, uint Timestamp) ReadDesktopPetGestureInput(nint parameter)
+    internal static (NativePoint Point, bool Shift, bool HasForbiddenModifier, uint Timestamp) ReadDesktopPetGestureInput(nint parameter)
     {
-        var timestamp = Marshal.PtrToStructure<LowLevelMouseInput>(parameter).Time;
-        return (ReadRoomGameplayMouseInput(parameter), timestamp);
+        var input = Marshal.PtrToStructure<LowLevelMouseInput>(parameter);
+        return (input.Point, IsKeyDown(0x10), HasSystemKeyboardModifier(), input.Time);
     }
 
     [DllImport("gdi32.dll", EntryPoint = "CreateRectRgn", SetLastError = true)]

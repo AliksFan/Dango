@@ -79,7 +79,7 @@ public sealed class LocalRoomAppearanceIntegrationTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
-    public void SavedAppearanceFollowsTheSameEntityAcrossRoomWindowWallpaperAndReturn()
+    public void SavedAppearanceFollowsTheSameEntityAcrossOrdinaryWindowDesktopPetAndReturn()
     {
         var root = NewRoot();
         var appearance = new AppearanceSettingsSession(Path.Combine(root, "appearance.json"));
@@ -104,22 +104,42 @@ public sealed class LocalRoomAppearanceIntegrationTests
         Assert.IsFalse(home.OwnsLiveFrameDriver);
         AssertAppearance(runtime, Field<DeformableDangoVisual>(host.LocalWindow!.Scene, "body"), id);
         var owner = runtime.FrameDriver;
+        Assert.IsNotNull(owner);
         host.ShowControlCenter();
         AssertAway(home);
         Assert.AreSame(owner, runtime.FrameDriver, "Away Home must preserve the room's only frame driver.");
         Assert.IsFalse(home.OwnsLiveFrameDriver);
 
-        host.SwitchLocalRoomPresentation(LocalRoomPresentation.Wallpaper);
-        WaitForRoom(host, LocalRoomPresentation.Wallpaper);
-        var wallpaper = Field<LocalRoomWallpaperHost>(host, "localRoomWallpaper");
-        Assert.IsTrue(wallpaper.Scene.HasHealthyFrame);
-        Assert.IsTrue(driver.OwnsRuntime);
-        Assert.AreSame(owner, runtime.FrameDriver);
-        AssertAppearance(runtime, Field<DeformableDangoVisual>(wallpaper.Scene, "body"), id);
+        host.ReturnToPorch();
+        WaitForRoom(host, LocalRoomPresentation.Porch);
+        Assert.IsFalse(home.IsDangoAway);
+        Assert.IsTrue(home.OwnsLiveFrameDriver);
+        Assert.IsFalse(driver.OwnsRuntime);
+        Assert.AreNotSame(owner, runtime.FrameDriver);
+        AssertAppearance(runtime, E<PorchSceneView>(home, "PorchScene").LiveBody, id);
 
-        host.SwitchLocalRoomPresentation(LocalRoomPresentation.Window);
-        WaitForRoom(host, LocalRoomPresentation.Window);
-        AssertAppearance(runtime, Field<DeformableDangoVisual>(host.LocalWindow.Scene, "body"), id);
+        host.EnterDesktopPetRoom();
+        WaitForRoom(host, LocalRoomPresentation.DesktopPet);
+        var desktopPet = host.DesktopPetHost!;
+        var petWindow = desktopPet.PetWindow!;
+        Assert.IsTrue(desktopPet.IsVisible && desktopPet.IsReady);
+        Assert.IsTrue(desktopPet.Scene.HasHealthyFrame && petWindow.HasHealthyFrame);
+        Assert.IsTrue(petWindow.InteractionEnabled);
+        Assert.AreSame(runtime.LastFrame, desktopPet.Scene.LastAppliedFrame);
+        Assert.AreSame(desktopPet.Scene.LastAppliedFrame, petWindow.LastAppliedFrame,
+            "The actual wallpaper environment and independent pet must display the same entity frame.");
+        Assert.IsFalse(Field<DeformableDangoVisual>(desktopPet.Scene, "body").IsVisible,
+            "The desktop-pet wallpaper must not paint a second body.");
+        Assert.IsFalse(host.LocalWindow.IsVisible);
+        Assert.IsTrue(driver.OwnsRuntime);
+        Assert.IsFalse(home.OwnsLiveFrameDriver);
+        Assert.AreSame(owner, runtime.FrameDriver);
+        AssertAppearance(runtime, Field<DeformableDangoVisual>(petWindow, "body"), id);
+        host.ShowControlCenter();
+        AssertAway(home);
+        Assert.AreSame(owner, runtime.FrameDriver, "Away Home must preserve the desktop-pet room's only frame driver.");
+        Assert.IsFalse(home.OwnsLiveFrameDriver);
+
         host.ReturnToPorch();
         WaitForRoom(host, LocalRoomPresentation.Porch);
         Assert.IsFalse(home.IsDangoAway);

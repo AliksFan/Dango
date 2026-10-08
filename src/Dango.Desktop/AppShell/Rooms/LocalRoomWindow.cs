@@ -25,7 +25,6 @@ internal sealed class LocalRoomWindow : Window
     {
         Name = "RoomMenu",
         Visibility = Visibility.Collapsed,
-        ShowCameraSettings = true,
     };
     private bool allowClose;
     private bool cameraPanActive;
@@ -37,7 +36,6 @@ internal sealed class LocalRoomWindow : Window
     internal event Action? HideRequested;
     internal event Action? RecoverRequested;
     internal event Action? ControlCenterRequested;
-    internal event Action<LocalRoomPresentation>? PresentationRequested;
     internal LocalRoomWindow(LocalRoomSceneDriver driver)
     {
         this.driver = driver;
@@ -59,7 +57,6 @@ internal sealed class LocalRoomWindow : Window
 
         menu.ReturnRequested += () => RunMenuAction(() => ReturnRequested?.Invoke());
         menu.ControlCenterRequested += () => RunMenuAction(() => ControlCenterRequested?.Invoke());
-        menu.PresentationRequested += presentation => RunMenuAction(() => PresentationRequested?.Invoke(presentation));
         menu.RecoverRequested += () => RunMenuAction(() => RecoverRequested?.Invoke());
         menu.CameraModeRequested += mode => Scene.SelectCameraMode(mode);
         WindowChrome.SetIsHitTestVisibleInChrome(menu, true);
@@ -288,9 +285,15 @@ internal sealed class LocalRoomWindow : Window
     {
         var button = new Button
         {
-            Name = name, Content = label, ToolTip = hint, Width = 36, Height = 30,
-            Margin = new Thickness(2, 3, 2, 3), Background = Brushes.Transparent,
-            BorderThickness = new Thickness(0), FontSize = 16,
+            Name = name,
+            Content = label,
+            ToolTip = hint,
+            Width = 36,
+            Height = 30,
+            Margin = new Thickness(2, 3, 2, 3),
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            FontSize = 16,
         };
         WindowChrome.SetIsHitTestVisibleInChrome(button, true);
         button.Click += (_, _) => { driver.ClearInput(); ReleaseScenePointerCapture(); HideRequested?.Invoke(); };

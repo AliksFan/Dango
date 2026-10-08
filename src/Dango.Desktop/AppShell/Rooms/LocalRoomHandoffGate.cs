@@ -1,6 +1,6 @@
 namespace Dango.Desktop.AppShell.Rooms;
 
-internal enum LocalRoomPresentation { Porch, Window, Wallpaper, Hidden, DesktopPet }
+internal enum LocalRoomPresentation { Porch, Window, Hidden, DesktopPet }
 
 // A successful Show/Loaded event or a stale scheduler callback cannot commit a handoff.
 internal sealed class LocalRoomHandoffGate

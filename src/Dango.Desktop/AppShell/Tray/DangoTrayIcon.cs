@@ -5,7 +5,7 @@ using Dango.Desktop.AppShell.Rooms;
 namespace Dango.Desktop.AppShell.Tray;
 
 internal sealed record LocalRoomTrayActions(Func<bool> IsSelected, Func<bool> IsVisible,
-    Action Restore, Action Hide, Action Return, Action<LocalRoomPresentation> Present, Action<RoomViewPreset> View, Action Recover,
+    Action Restore, Action Hide, Action Return, Action<RoomViewPreset> View, Action Recover,
     Func<bool>? IsDesktopPet = null);
 
 internal sealed class DangoTrayIcon : IDisposable
@@ -55,10 +55,6 @@ internal sealed class DangoTrayIcon : IDisposable
             Add(roomMenu, "隐藏房间", localRoom.Hide);
             Add(roomMenu, "恢复团子并重试", localRoom.Recover);
             Add(roomMenu, "房门 · 返回门廊", localRoom.Return);
-            var presentation = new Forms.ToolStripMenuItem("显示方式");
-            Add(presentation, "窗口", () => localRoom.Present(LocalRoomPresentation.Window));
-            Add(presentation, "壁纸", () => localRoom.Present(LocalRoomPresentation.Wallpaper));
-            roomMenu.DropDownItems.Add(presentation);
             var view = new Forms.ToolStripMenuItem("视角");
             Add(view, "标准", () => localRoom.View(RoomViewPreset.Standard));
             Add(view, "近景", () => localRoom.View(RoomViewPreset.Near));
@@ -68,7 +64,7 @@ internal sealed class DangoTrayIcon : IDisposable
             {
                 var desktopPet = localRoom.IsDesktopPet?.Invoke() == true && localRoom.IsSelected();
                 roomMenu.Text = desktopPet ? "桌宠房" : "普通房 · 本地单人";
-                presentation.Visible = view.Visible = !desktopPet;
+                view.Visible = !desktopPet;
             };
             menu.Items.Add(roomMenu);
         }

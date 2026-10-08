@@ -71,8 +71,8 @@ public sealed class LocalRoomWindowMenuTests
         var names = Descendants<Button>(menu).Select(button => button.Name).ToArray();
         CollectionAssert.AreEquivalent(new[]
         {
-            "RoomReturnButton", "RoomControlCenterButton", "RoomWindowButton", "RoomWallpaperButton", "RoomRecoverButton",
-        }, names, "The menu contains only the five real room actions, with no continue or camera preset buttons.");
+            "RoomReturnButton", "RoomControlCenterButton", "RoomRecoverButton",
+        }, names, "The menu contains only the three real room actions, with no continue or camera preset buttons.");
         var instructions = Find<System.Windows.Controls.TextBlock>(menu, "RoomInstructions").Text;
         foreach (var control in new[] { "A / D", "S", "空格", "滚轮", "Shift + 左键横移", "Esc" })
             StringAssert.Contains(instructions, control);
@@ -86,7 +86,6 @@ public sealed class LocalRoomWindowMenuTests
         rig.Window.ReturnRequested += () => actions++;
         rig.Window.ControlCenterRequested += () => actions++;
         rig.Window.RecoverRequested += () => actions++;
-        rig.Window.PresentationRequested += _ => actions++;
         rig.Window.OpenMenu();
         var menu = Find<LocalRoomMenuView>((Grid)rig.Window.Content, "RoomMenu");
         Assert.IsTrue(menu.IsKeyboardFocused);
@@ -139,11 +138,9 @@ public sealed class LocalRoomWindowMenuTests
         var returned = 0;
         var recovered = 0;
         var controlCenter = 0;
-        var presentations = new List<LocalRoomPresentation>();
         rig.Window.ReturnRequested += () => returned++;
         rig.Window.RecoverRequested += () => recovered++;
         rig.Window.ControlCenterRequested += () => controlCenter++;
-        rig.Window.PresentationRequested += presentations.Add;
 
         Choose(rig.Window, "RoomReturnButton");
         Assert.AreEqual(1, returned);
@@ -151,9 +148,6 @@ public sealed class LocalRoomWindowMenuTests
         Assert.AreEqual(1, recovered);
         Choose(rig.Window, "RoomControlCenterButton");
         Assert.AreEqual(1, controlCenter);
-        Choose(rig.Window, "RoomWindowButton");
-        Choose(rig.Window, "RoomWallpaperButton");
-        CollectionAssert.AreEqual(new[] { LocalRoomPresentation.Window, LocalRoomPresentation.Wallpaper }, presentations);
     }
 
     [STATestMethod]
@@ -274,8 +268,12 @@ public sealed class LocalRoomWindowMenuTests
             Driver = new(new DesktopSceneSession(), runtime);
             Window = new(Driver)
             {
-                Width = 640, Height = 420, Left = -10000, Top = -10000,
-                ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.Manual,
+                Width = 640,
+                Height = 420,
+                Left = -10000,
+                Top = -10000,
+                ShowInTaskbar = false,
+                WindowStartupLocation = WindowStartupLocation.Manual,
             };
             Window.Show(); Window.FocusScene(); Pump();
             Assert.IsTrue(Window.IsActive);

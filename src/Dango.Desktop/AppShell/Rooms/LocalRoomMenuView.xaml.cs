@@ -9,23 +9,9 @@ internal sealed partial class LocalRoomMenuView : UserControl
 {
     internal event Action? ReturnRequested;
     internal event Action? ControlCenterRequested;
-    internal event Action<LocalRoomPresentation>? PresentationRequested;
     internal event Action? RecoverRequested;
     internal event Action<RoomCameraMode>? CameraModeRequested;
-    private bool showCameraSettings;
     private bool refreshingCamera;
-    private const string Instructions = "A / D 移动    ·    S 轻压\n空格 跳跃    ·    滚轮 调视距\nShift + 左键横移 抚摸\nEsc 打开 / 收起菜单";
-
-    internal bool ShowCameraSettings
-    {
-        get => showCameraSettings;
-        set
-        {
-            showCameraSettings = value;
-            RoomCameraSettings.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
-            RoomInstructions.Text = Instructions + (value ? "\n不跟随时 · 右键拖动视角" : "");
-        }
-    }
     internal bool IsCameraDropDownOpen => RoomCameraModeSelector.IsDropDownOpen;
 
     internal LocalRoomMenuView()
@@ -53,7 +39,7 @@ internal sealed partial class LocalRoomMenuView : UserControl
 
     private void OnCameraModeSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!showCameraSettings || refreshingCamera || RoomCameraModeSelector is null) return;
+        if (refreshingCamera || RoomCameraModeSelector is null) return;
         var mode = RoomCameraModeSelector.SelectedIndex switch
         {
             0 => RoomCameraMode.Follow,
@@ -66,8 +52,6 @@ internal sealed partial class LocalRoomMenuView : UserControl
 
     private void OnReturn(object sender, RoutedEventArgs e) => ReturnRequested?.Invoke();
     private void OnControlCenter(object sender, RoutedEventArgs e) => ControlCenterRequested?.Invoke();
-    private void OnWindow(object sender, RoutedEventArgs e) => PresentationRequested?.Invoke(LocalRoomPresentation.Window);
-    private void OnWallpaper(object sender, RoutedEventArgs e) => PresentationRequested?.Invoke(LocalRoomPresentation.Wallpaper);
     private void OnRecover(object sender, RoutedEventArgs e) => RecoverRequested?.Invoke();
     private void OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {

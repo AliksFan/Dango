@@ -22,16 +22,15 @@ namespace Dango.Desktop.Tests.AppShell;
 public sealed class RoomCameraWindowTests
 {
     [STATestMethod]
-    public void CameraSelectorIsWindowOnlyAndRefreshDoesNotDispatchAnotherModeChange()
+    public void CameraSelectorIsAlwaysVisibleAndRefreshDoesNotDispatchAnotherModeChange()
     {
         var scene = new LocalRoomSceneView();
         scene.EnableWindowCamera();
         var sharedMenu = new LocalRoomMenuView();
-        Assert.IsFalse(sharedMenu.ShowCameraSettings);
-        Assert.AreEqual(Visibility.Collapsed, E<FrameworkElement>(sharedMenu, "RoomCameraSettings").Visibility);
+        Assert.AreEqual(Visibility.Visible, E<FrameworkElement>(sharedMenu, "RoomCameraSettings").Visibility);
+        StringAssert.Contains(E<TextBlock>(sharedMenu, "RoomInstructions").Text, "右键拖动视角");
         var modes = new List<RoomCameraMode>();
         sharedMenu.CameraModeRequested += modes.Add;
-        sharedMenu.ShowCameraSettings = true;
         scene.SelectCameraMode(RoomCameraMode.EdgeFollow);
         sharedMenu.RefreshStatus(scene);
         var selector = E<ComboBox>(sharedMenu, "RoomCameraModeSelector");
@@ -44,9 +43,9 @@ public sealed class RoomCameraWindowTests
         scene.SelectCameraMode(RoomCameraMode.Manual);
         sharedMenu.RefreshStatus(scene);
         Assert.AreEqual(1, modes.Count);
-        sharedMenu.ShowCameraSettings = false;
         selector.SelectedIndex = 0;
-        Assert.AreEqual(1, modes.Count, "The paused wallpaper menu must not emit camera commands from its hidden selector.");
+        CollectionAssert.AreEqual(new[] { RoomCameraMode.Manual, RoomCameraMode.Follow }, modes,
+            "The window's visible selector remains available after a status refresh.");
     }
 
     [STATestMethod]
@@ -56,11 +55,10 @@ public sealed class RoomCameraWindowTests
         rig.Window.OpenMenu();
         var menu = Field<LocalRoomMenuView>(rig.Window, "menu");
         rig.Window.UpdateLayout();
-        Assert.IsTrue(menu.ShowCameraSettings);
         Assert.AreEqual(Visibility.Visible, E<FrameworkElement>(menu, "RoomCameraSettings").Visibility);
         var scroller = E<ScrollViewer>(menu, "RoomMenuScroll");
         var presenter = VisualDescendants<ScrollContentPresenter>(scroller).First();
-        foreach (var name in new[] { "RoomCameraModeSelector", "RoomReturnButton", "RoomControlCenterButton", "RoomWindowButton", "RoomWallpaperButton", "RoomRecoverButton" })
+        foreach (var name in new[] { "RoomCameraModeSelector", "RoomReturnButton", "RoomControlCenterButton", "RoomRecoverButton" })
         {
             var action = E<FrameworkElement>(menu, name);
             action.BringIntoView();

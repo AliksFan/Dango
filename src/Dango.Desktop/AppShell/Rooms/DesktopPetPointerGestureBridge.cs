@@ -267,13 +267,13 @@ internal sealed class DesktopPetPointerGestureBridge : IDisposable
 
 internal sealed class NativeDesktopPetPointerGesturePlatform : IDesktopPetPointerGesturePlatform
 {
-    public nint Install(NativeMethods.LowLevelMouseProcedure callback) => NativeMethods.InstallRoomMouseHook(callback);
-    public bool Uninstall(nint hook) => NativeMethods.UninstallRoomMouseHook(hook);
+    public nint Install(NativeMethods.LowLevelMouseProcedure callback) => NativeMethods.InstallLowLevelMouseHook(callback);
+    public bool Uninstall(nint hook) => NativeMethods.UninstallMouseHook(hook);
     public nint Next(nint hook, int code, nint message, nint data) => NativeMethods.CallNextKeyboardHook(hook, code, message, data);
     public DesktopPetPointerSample Read(nint data)
     {
         var sample = NativeMethods.ReadDesktopPetGestureInput(data);
-        return new(new(sample.Input.Point.X, sample.Input.Point.Y), sample.Input.Shift,
-            sample.Input.HasForbiddenModifier, sample.Timestamp);
+        return new(new(sample.Point.X, sample.Point.Y), sample.Shift,
+            sample.HasForbiddenModifier, sample.Timestamp);
     }
 }

@@ -125,18 +125,18 @@ internal static partial class NativeMethods
         long? deadlineTimestamp = null)
     {
         iconHit = false;
-        if (timeoutMilliseconds == 0 || !HasRoomInspectionTime(deadlineTimestamp)) return false;
+        if (timeoutMilliseconds == 0 || !HasQueryTime(deadlineTimestamp)) return false;
         var queryDeadline = Stopwatch.GetTimestamp() + Stopwatch.Frequency * timeoutMilliseconds / 1000;
         if (deadlineTimestamp is { } eventDeadline) queryDeadline = Math.Min(queryDeadline, eventDeadline);
-        if (!TryGetRoomWindowIdentity(target.ShellViewHandle, out var shellClass, out var shellProcess) ||
-            shellClass != "SHELLDLL_DefView" || !HasRoomInspectionTime(queryDeadline))
+        if (!TryGetWindowIdentity(target.ShellViewHandle, out var shellClass, out var shellProcess) ||
+            shellClass != "SHELLDLL_DefView" || !HasQueryTime(queryDeadline))
         {
             return false;
         }
 
         var listView = FindDescendantWindowByClass(target.ShellViewHandle, "SysListView32", queryDeadline);
-        if (!HasRoomInspectionTime(queryDeadline) ||
-            !TryGetRoomWindowIdentity(listView, out var listClass, out var listProcess) ||
+        if (!HasQueryTime(queryDeadline) ||
+            !TryGetWindowIdentity(listView, out var listClass, out var listProcess) ||
             listClass != "SysListView32" || listProcess != shellProcess)
         {
             return false;
@@ -144,18 +144,18 @@ internal static partial class NativeMethods
 
         var query = new DesktopIconQuery(target, listView, GetParent(target.ShellViewHandle),
             GetParent(listView), shellProcess, screenX, screenY, queryDeadline);
-        var remaining = RemainingRoomInspectionMilliseconds(queryDeadline);
+        var remaining = RemainingQueryMilliseconds(queryDeadline);
         if (!DesktopIconQueries.TryQuery(query, remaining, out var hitTestResult) ||
-            !HasRoomInspectionTime(queryDeadline)) return false;
+            !HasQueryTime(queryDeadline)) return false;
         iconHit = hitTestResult.ToInt64() >= 0;
         return true;
     }
 
     private static OutstandingQueryResult<nint> QueryDesktopIcon(DesktopIconQuery query)
     {
-        if (!HasRoomInspectionTime(query.Deadline) || !IsCapturedDesktopIconTarget(query)) return default;
+        if (!HasQueryTime(query.Deadline) || !IsCapturedDesktopIconTarget(query)) return default;
         var point = new NativePoint { X = query.ScreenX, Y = query.ScreenY };
-        if (!ScreenToClient(query.ListView, ref point) || !HasRoomInspectionTime(query.Deadline)) return default;
+        if (!ScreenToClient(query.ListView, ref point) || !HasQueryTime(query.Deadline)) return default;
         var process = OpenProcess(ProcessVmOperation | ProcessVmRead | ProcessVmWrite, false, query.ProcessId);
         if (process == nint.Zero) return default;
 
@@ -166,12 +166,12 @@ internal static partial class NativeMethods
         {
             var hitTest = new ListViewHitTestInfo { Point = point, ItemIndex = -1 };
             var size = (nuint)Marshal.SizeOf<ListViewHitTestInfo>();
-            if (HasRoomInspectionTime(query.Deadline))
+            if (HasQueryTime(query.Deadline))
             {
                 remoteBuffer = VirtualAllocEx(process, nint.Zero, size, MemCommit | MemReserve, PageReadWrite);
-                if (remoteBuffer != nint.Zero && HasRoomInspectionTime(query.Deadline) &&
+                if (remoteBuffer != nint.Zero && HasQueryTime(query.Deadline) &&
                     WriteProcessMemory(process, remoteBuffer, ref hitTest, size, out var bytesWritten) &&
-                    bytesWritten == size && IsCapturedDesktopIconTarget(query) && HasRoomInspectionTime(query.Deadline))
+                    bytesWritten == size && IsCapturedDesktopIconTarget(query) && HasQueryTime(query.Deadline))
                 {
                     // This worker retains the LVM_HITTEST buffer until the synchronous control query returns.
                     // A caller timeout only abandons its result; it never frees resources or reopens the slot.
@@ -202,12 +202,12 @@ internal static partial class NativeMethods
 
     private static bool IsCapturedDesktopIconTarget(DesktopIconQuery query) =>
         IsValidDesktopTarget(query.Target) &&
-        TryGetRoomWindowIdentity(query.Target.ParentHandle, out _, out var parentProcess) && parentProcess == query.ProcessId &&
-        TryGetRoomWindowIdentity(query.Target.WallpaperLayerHandle, out _, out var layerProcess) && layerProcess == query.ProcessId &&
-        TryGetRoomWindowIdentity(query.Target.ShellViewHandle, out var shellClass, out var shellProcess) &&
+        TryGetWindowIdentity(query.Target.ParentHandle, out _, out var parentProcess) && parentProcess == query.ProcessId &&
+        TryGetWindowIdentity(query.Target.WallpaperLayerHandle, out _, out var layerProcess) && layerProcess == query.ProcessId &&
+        TryGetWindowIdentity(query.Target.ShellViewHandle, out var shellClass, out var shellProcess) &&
         shellClass == "SHELLDLL_DefView" && shellProcess == query.ProcessId &&
         GetParent(query.Target.ShellViewHandle) == query.ShellParent && IsValidWindow(query.ShellParent) &&
-        TryGetRoomWindowIdentity(query.ListView, out var listClass, out var listProcess) &&
+        TryGetWindowIdentity(query.ListView, out var listClass, out var listProcess) &&
         listClass == "SysListView32" && listProcess == query.ProcessId &&
         GetParent(query.ListView) == query.ListParent && IsChild(query.Target.ShellViewHandle, query.ListView);
 
@@ -460,7 +460,7 @@ internal static partial class NativeMethods
         var child = nint.Zero;
         while ((child = FindWindowEx(parentWindow, child, null, null)) != nint.Zero)
         {
-            if (!HasRoomInspectionTime(deadlineTimestamp)) return nint.Zero;
+            if (!HasQueryTime(deadlineTimestamp)) return nint.Zero;
             if (string.Equals(GetWindowClassName(child), className, StringComparison.Ordinal))
             {
                 return child;
