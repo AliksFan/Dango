@@ -223,6 +223,21 @@ internal static class Program
     {
         try
         {
+            if (args.Length == 2 && args[0] == "--round-ball")
+            {
+                var ballApp = new Application(); var window = new RoundBallWindow(args[1]);
+                ballApp.Run(window); return window.ExitCode;
+            }
+            if (args.Length == 3 && args[0] == "--round-ball-smoke")
+            {
+                var ballApp = new Application(); var window = new RoundBallWindow(args[1], args[2]);
+                ballApp.Run(window); return window.ExitCode;
+            }
+            if (args.Length == 3 && args[0] == "--round-ball-window-check")
+            {
+                var ballApp = new Application(); var window = new RoundBallWindow(args[1], args[2], automaticObservation: false);
+                ballApp.Run(window); return window.ExitCode;
+            }
             if (args.Length == 2 && args[0] == "--static-platform")
             {
                 var platformApp = new Application(); var window = new StaticPlatformWindow(args[1]);
