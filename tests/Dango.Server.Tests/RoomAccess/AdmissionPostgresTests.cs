@@ -235,4 +235,172 @@ public sealed class AdmissionPostgresTests
             await RoomAccessTestSupport.Service(services).OccupantsAsync(persistent, CancellationToken.None);
         }));
     }
+
+    [TestMethod]
+    public async Task SameRequestOnIndependentConnectionsCommitsOneLeaseAndOneReceipt()
+    {
+        await using var fixture = await FormalTestFixture.CreateAsync();
+        var owner = await PetTestSupport.RegisterAsync(fixture);
+        var room = await RoomAccessTestSupport.CreateRoomAsync(fixture, owner);
+        var state = await RoomAccessTestSupport.PersonalAsync(fixture, owner);
+        var request = new RoomEnterRequest(Guid.NewGuid(), Guid.NewGuid(), "desktop", state.RoomId, state.AssignmentVersion);
+        var results = await RaceAsync(fixture, (services, _) => RoomAccessTestSupport.Service(services)
+            .EnterAsync(owner.UserId, owner.SessionId, room.RoomId, request, CancellationToken.None));
+        Assert.IsTrue(results.All(r => r.Error is null)); Assert.AreEqual(results[0].Result, results[1].Result);
+        await fixture.InScopeAsync(async services =>
+        {
+            var db = services.GetRequiredService<DangoDbContext>();
+            Assert.AreEqual(1, await db.RoomDeviceLeases.CountAsync(l => l.PetId == owner.PetId && l.RevokedAt == null));
+            Assert.AreEqual(1, await db.RoomOperationAudits.CountAsync(a => a.ActorUserId == owner.UserId && a.RequestId == request.RequestId));
+            Assert.AreEqual(1, await db.RoomDomainEvents.CountAsync(e => e.RoomId == room.RoomId && e.EventType == "entered"));
+            Assert.AreEqual(results[0].Result!.LeaseId, (await db.PetRoomStates.SingleAsync(s => s.PetId == owner.PetId)).ControlLeaseId);
+        });
+    }
+
+    [TestMethod]
+    public async Task IndependentMigrationsUsingOneSourceVersionCannotBothCommit()
+    {
+        await using var fixture = await FormalTestFixture.CreateAsync();
+        var owner = await PetTestSupport.RegisterAsync(fixture);
+        var a = await RoomAccessTestSupport.CreateRoomAsync(fixture, owner, "privateShared");
+        var b = await RoomAccessTestSupport.CreateRoomAsync(fixture, owner);
+        var source = await RoomAccessTestSupport.PersonalAsync(fixture, owner);
+        var targets = new[] { a.RoomId, b.RoomId };
+        var results = await RaceAsync(fixture, (services, index) => RoomAccessTestSupport.Service(services).EnterAsync(owner.UserId, owner.SessionId,
+            targets[index], new(Guid.NewGuid(), Guid.NewGuid(), "desktop", source.RoomId, source.AssignmentVersion), CancellationToken.None));
+        var winner = results.Single(r => r.Result is not null).Result!;
+        Assert.AreEqual("room_assignment_conflict", results.Single(r => r.Error is not null).Error);
+        await fixture.InScopeAsync(async services =>
+        {
+            var db = services.GetRequiredService<DangoDbContext>();
+            var current = await db.PetRoomStates.SingleAsync(s => s.PetId == owner.PetId);
+            Assert.AreEqual(winner.RoomId, current.RoomId); Assert.AreEqual(winner.AssignmentVersion, current.Version);
+            Assert.AreEqual(1, await db.RoomDeviceLeases.CountAsync(l => l.PetId == owner.PetId && l.RevokedAt == null));
+            Assert.AreEqual(1, await db.RoomOperationAudits.CountAsync(audit => audit.ActorUserId == owner.UserId && audit.Operation == "entered"));
+            Assert.AreEqual(1, await db.PetRoomStates.CountAsync(s => targets.Contains(s.RoomId ?? Guid.Empty)));
+        });
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task AdmissionAndDissolveUseIndependentLockWaitsAndOnlyTheLatestVersionCanDissolve(bool admissionFirst)
+    {
+        await using var fixture = await FormalTestFixture.CreateAsync();
+        var owner = await PetTestSupport.RegisterAsync(fixture); var visitor = await PetTestSupport.RegisterAsync(fixture);
+        var room = await RoomAccessTestSupport.CreateRoomAsync(fixture, owner);
+        var code = await RoomAccessTestSupport.CredentialAsync(fixture, room.RoomId);
+        var source = await RoomAccessTestSupport.PersonalAsync(fixture, visitor);
+        var enterRequest = new RoomEnterRequest(Guid.NewGuid(), Guid.NewGuid(), "desktop", source.RoomId, source.AssignmentVersion, code);
+        var gate = new CompetitionGate();
+        var winningPid = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var waitingPid = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        async Task<(RoomAccessResult? Result, string? Error)> Enter(bool hold) => await fixture.InScopeAsync(async services =>
+        {
+            var db = services.GetRequiredService<DangoDbContext>(); await db.Database.OpenConnectionAsync();
+            (hold ? winningPid : waitingPid).SetResult(((NpgsqlConnection)db.Database.GetDbConnection()).ProcessID);
+            try { return (await RoomAccessTestSupport.Service(services, hold ? gate : null).EnterAsync(visitor.UserId, visitor.SessionId,
+                room.RoomId, enterRequest, CancellationToken.None), (string?)null); }
+            catch (AccountFault fault) { return ((RoomAccessResult?)null, fault.Code); }
+        });
+        async Task<string?> Dissolve(bool hold) => await fixture.InScopeAsync(async services =>
+        {
+            var db = services.GetRequiredService<DangoDbContext>(); await db.Database.OpenConnectionAsync();
+            (hold ? winningPid : waitingPid).SetResult(((NpgsqlConnection)db.Database.GetDbConnection()).ProcessID);
+            var service = new Dango.Server.Rooms.Management.RoomManagementService(db, services.GetRequiredService<AccountEnvironment>(),
+                services.GetRequiredService<TimeProvider>(), hold ? gate : new Dango.Server.Rooms.Management.RoomManagementCheckpoint());
+            try { await service.DissolveAsync(owner.UserId, owner.SessionId, room.RoomId, new(Guid.NewGuid(), room.AppliedVersion, true), CancellationToken.None); return null; }
+            catch (AccountFault fault) { return fault.Code; }
+        });
+        Task<(RoomAccessResult? Result, string? Error)> enter;
+        Task<string?> dissolve;
+        if (admissionFirst)
+        {
+            enter = Enter(true);
+            await gate.Arrived.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            dissolve = Dissolve(false);
+        }
+        else
+        {
+            dissolve = Dissolve(true);
+            await gate.Arrived.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            enter = Enter(false);
+        }
+        try
+        {
+            var pid = await waitingPid.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.AreNotEqual(await winningPid.Task, pid);
+            await RequirePostgresLockWaitAsync(fixture, pid);
+        }
+        finally { gate.Release.TrySetResult(); }
+        var entered = await enter; var dissolved = await dissolve;
+        if (admissionFirst)
+        {
+            Assert.IsNull(entered.Error); Assert.IsNotNull(entered.Result);
+            Assert.AreEqual("room_version_conflict", dissolved);
+            // The concurrent stale command is rejected. Re-read the committed version and make
+            // an explicit new owner request; do not guess a version or lower the CAS gate.
+            var latest = await fixture.InScopeAsync(async services => await services.GetRequiredService<DangoDbContext>().Rooms.AsNoTracking().SingleAsync(r => r.Id == room.RoomId));
+            Assert.AreEqual(entered.Result.RoomVersion, latest.Version);
+            await fixture.InScopeAsync(services => new Dango.Server.Rooms.Management.RoomManagementService(services.GetRequiredService<DangoDbContext>(),
+                services.GetRequiredService<AccountEnvironment>(), services.GetRequiredService<TimeProvider>(), new Dango.Server.Rooms.Management.RoomManagementCheckpoint())
+                .DissolveAsync(owner.UserId, owner.SessionId, room.RoomId, new(Guid.NewGuid(), latest.Version, true), CancellationToken.None));
+        }
+        else { Assert.IsNull(dissolved); Assert.AreEqual("room_inactive", entered.Error); Assert.IsNull(entered.Result); }
+        await fixture.InScopeAsync(async services =>
+        {
+            var db = services.GetRequiredService<DangoDbContext>();
+            Assert.AreEqual(PersistentRoomStatus.Dissolved, (await db.Rooms.SingleAsync(r => r.Id == room.RoomId)).Status);
+            var current = await db.PetRoomStates.SingleAsync(s => s.PetId == visitor.PetId);
+            if (admissionFirst)
+            {
+                Assert.IsNull(current.RoomId); Assert.IsNull(current.ControlLeaseId); Assert.IsNull(current.PositionX); Assert.IsNull(current.PositionY);
+                Assert.IsFalse(current.IsSleeping);
+                Assert.AreEqual(0, await db.RoomDeviceLeases.CountAsync(l => l.PetId == visitor.PetId && l.RevokedAt == null));
+            }
+            else { Assert.AreEqual(source.RoomId, current.RoomId); Assert.AreEqual(source.AssignmentVersion, current.Version); }
+        });
+    }
+
+    private static async Task<(RoomAccessResult? Result, string? Error)[]> RaceAsync(FormalTestFixture fixture,
+        Func<IServiceProvider, int, Task<RoomAccessResult>> operation)
+    {
+        var pids = new ConcurrentBag<int>(); var arrived = 0;
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        async Task<(RoomAccessResult? Result, string? Error)> Compete(int index) => await fixture.InScopeAsync(async services =>
+        {
+            var db = services.GetRequiredService<DangoDbContext>(); await db.Database.OpenConnectionAsync();
+            pids.Add(((NpgsqlConnection)db.Database.GetDbConnection()).ProcessID);
+            if (Interlocked.Increment(ref arrived) == 2) release.SetResult();
+            await release.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            try { return (await operation(services, index), (string?)null); }
+            catch (AccountFault fault) { return ((RoomAccessResult?)null, fault.Code); }
+        });
+        var results = await Task.WhenAll(Compete(0), Compete(1));
+        Assert.AreEqual(2, pids.Distinct().Count(), "Separate PostgreSQL backends must actually compete.");
+        return results;
+    }
+
+    private static Task RequirePostgresLockWaitAsync(FormalTestFixture fixture, int pid) => fixture.InScopeAsync(async services =>
+    {
+        var db = services.GetRequiredService<DangoDbContext>();
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(10);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (await db.Database.SqlQuery<bool>($"SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid = {pid} AND wait_event_type = 'Lock') AS \"Value\"").SingleAsync()) return;
+            await Task.Delay(50);
+        }
+        Assert.Fail("The independently opened operation never waited on the winner's PostgreSQL locks.");
+    });
+
+    private sealed class CompetitionGate : Dango.Server.Rooms.Access.IRoomAccessCheckpoint, Dango.Server.Rooms.Management.IRoomManagementCheckpoint
+    {
+        public TaskCompletionSource Arrived { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async Task ReachedAsync(string name, Guid subjectId, CancellationToken ct)
+        {
+            if (name != "after_locks") return;
+            Arrived.TrySetResult(); await Release.Task.WaitAsync(TimeSpan.FromSeconds(15), ct);
+        }
+    }
 }
