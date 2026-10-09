@@ -123,11 +123,12 @@ public sealed class AccessoryRestoreAuthorization
 
 internal sealed class AccessorySessionFence
 {
+    private volatile bool _isActive = true;
     internal object Gate { get; } = new();
-    internal bool IsActive { get; private set; } = true;
+    internal bool IsActive => _isActive;
 
     internal void Invalidate()
     {
-        lock (Gate) IsActive = false;
+        lock (Gate) _isActive = false;
     }
 }
