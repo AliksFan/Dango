@@ -19,6 +19,7 @@ public enum AccessoryTransportFailure
 {
     Rejected,
     RevisionConflict,
+    Authentication,
     Unavailable
 }
 

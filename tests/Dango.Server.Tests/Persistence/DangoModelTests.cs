@@ -66,7 +66,7 @@ public sealed class DangoModelTests
     {
         using var context = new DangoDbContextFactory().CreateDbContext([]);
         var migrations = context.GetService<IMigrationsAssembly>();
-        Assert.HasCount(5, migrations.Migrations);
+        Assert.HasCount(6, migrations.Migrations);
         Assert.Contains("20261008074701_InitialAccountRoomFoundation", migrations.Migrations.Keys.ToArray());
         Assert.IsTrue(migrations.Migrations.Keys.Any(key => key.EndsWith("_AccountLifecycle", StringComparison.Ordinal)));
         Assert.IsTrue(migrations.Migrations.Keys.Any(key => key.EndsWith("_RoomManagement", StringComparison.Ordinal)));
