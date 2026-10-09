@@ -10,7 +10,7 @@ namespace Dango.Client.Sync.Accounts;
 
 // The application lifecycle owns this client. When replacing it, cancel and await its
 // outstanding operations before opening a new client against the same protected-store slots.
-public sealed class FormalAccountClient : IDisposable
+public sealed partial class FormalAccountClient : IDisposable
 {
     private const int MaximumResponseBytes = 16384;
     private const int MaximumSecretBytes = 2560;
@@ -20,6 +20,7 @@ public sealed class FormalAccountClient : IDisposable
     private readonly TimeProvider clock;
     private readonly SemaphoreSlim gate = new(1, 1);
     private readonly CancellationTokenSource lifetime = new();
+    private readonly object sessionBindingGate = new();
     private int sessionGeneration;
     private bool disposed;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -76,13 +77,17 @@ public sealed class FormalAccountClient : IDisposable
     public CookieContainer Cookies { get; }
     public AccountIdentity? CurrentIdentity { get; private set; }
 
+    // Fires after identity/cookies are invalidated, outside the binding lock. A UI subscriber must
+    // marshal to its dispatcher and reject callbacks for a retired owner/attachment.
+    public event Action? AuthenticationInvalidated;
+
     public Task<AccountIdentity> ReadIdentityAsync(CancellationToken ct = default) => LockedAsync(async token =>
     {
         var generation = sessionGeneration;
         var identity = await ReadIdentityCoreAsync(token);
         CheckGeneration(generation, token);
         if (CurrentIdentity is { } previous && previous != identity) throw AccountInputs.InvalidResponse();
-        CurrentIdentity = identity;
+        AcceptIdentity(identity, generation, token);
         return identity;
     }, ct);
 
@@ -117,7 +122,7 @@ public sealed class FormalAccountClient : IDisposable
                     await WriteSecretAsync(AccountSecretSlots.Session, document, token);
                     CheckGeneration(generation, token);
                 }
-                CurrentIdentity = identity;
+                AcceptIdentity(identity, generation, token);
                 return identity;
             }
             catch
@@ -154,7 +159,7 @@ public sealed class FormalAccountClient : IDisposable
             var identity = await ReadIdentityCoreAsync(token);
             CheckGeneration(generation, token);
             if (identity != new AccountIdentity(document.UserId, document.PetId)) throw StorageInvalid();
-            CurrentIdentity = identity;
+            AcceptIdentity(identity, generation, token);
             return identity;
         }
         catch (AccountClientException error) when (error.Failure == AccountFailure.Authentication)
@@ -556,12 +561,35 @@ public sealed class FormalAccountClient : IDisposable
 
     private void ClearMemory()
     {
-        Interlocked.Increment(ref sessionGeneration);
-        CurrentIdentity = null;
-        foreach (Cookie cookie in Cookies.GetCookies(Origin)) cookie.Expired = true;
+        lock (sessionBindingGate)
+        {
+            Interlocked.Increment(ref sessionGeneration);
+            CurrentIdentity = null;
+            foreach (Cookie cookie in Cookies.GetCookies(Origin)) cookie.Expired = true;
+        }
+        if (AuthenticationInvalidated is { } invalidated)
+            foreach (Action observer in invalidated.GetInvocationList())
+                try { observer(); } catch (Exception) { /* Observers cannot keep an invalid session alive. */ }
+    }
+
+    private void AcceptIdentity(AccountIdentity identity, int generation, CancellationToken ct)
+    {
+        lock (sessionBindingGate)
+        {
+            CheckGeneration(generation, ct);
+            CurrentIdentity = identity;
+        }
     }
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(disposed, this);
+
+    // Call after Dispose has stopped new work, before another client uses the same secret slots.
+    public async Task DrainAsync(CancellationToken ct = default)
+    {
+        // Deliberately independent of the disposed lifetime token: cleanup may still hold the gate.
+        await gate.WaitAsync(ct).ConfigureAwait(false);
+        gate.Release();
+    }
     private static AccountClientException StorageFailed() => new(AccountFailure.Storage, "secret_storage_failed");
     private static AccountClientException StorageInvalid() => new(AccountFailure.Storage, "secret_storage_invalid");
 
