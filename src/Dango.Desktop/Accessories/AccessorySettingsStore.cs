@@ -75,7 +75,12 @@ public sealed class AccessorySettingsStore
     }
 
     public void Save(string settingsRoot, AccessoryConfiguration configuration,
-        IReadOnlyDictionary<string, AccessoryImageAsset>? pendingAssets = null)
+        IReadOnlyDictionary<string, AccessoryImageAsset>? pendingAssets = null) =>
+        Save(settingsRoot, configuration, pendingAssets, expectedLoad: null);
+
+    /// <summary>Checks the expected manifest before asset writes and immediately before atomic replacement.</summary>
+    public void Save(string settingsRoot, AccessoryConfiguration configuration,
+        IReadOnlyDictionary<string, AccessoryImageAsset>? pendingAssets, AccessorySettingsLoadResult? expectedLoad)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         configuration.Validate();
@@ -85,6 +90,7 @@ public sealed class AccessorySettingsStore
             if (previous.IsTransientReadFailure) throw new IOException("旧配饰清单暂时无法读取，可稍后重试。");
             throw new InvalidDataException("配饰原清单受保护，不能普通覆盖。");
         }
+        EnsureExpectedLoad(previous, expectedLoad);
         var oldImages = previous.Configuration.Items.GroupBy(item => item.AssetId, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
         var usedImages = configuration.Items.GroupBy(item => item.AssetId, StringComparer.Ordinal).Select(group => group.First());
@@ -119,6 +125,7 @@ public sealed class AccessorySettingsStore
             if (beforeCommit.IsTransientReadFailure) throw new IOException("旧配饰清单暂时无法读取，可稍后重试。");
             throw new InvalidDataException("配饰原清单受保护，不能普通覆盖。");
         }
+        EnsureExpectedLoad(beforeCommit, expectedLoad);
         try { writer.Write(GetManifestPath(settingsRoot), text); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException
             or ArgumentException or InvalidOperationException)
@@ -127,6 +134,13 @@ public sealed class AccessorySettingsStore
             var committed = Load(settingsRoot);
             if (committed.State != AccessorySettingsLoadState.Valid || !committed.Configuration.Equals(configuration)) throw;
         }
+    }
+
+    private static void EnsureExpectedLoad(AccessorySettingsLoadResult actual, AccessorySettingsLoadResult? expected)
+    {
+        if (expected is not null && (expected.State == AccessorySettingsLoadState.Protected ||
+            actual.State != expected.State || !actual.Configuration.Equals(expected.Configuration)))
+            throw new InvalidDataException("配饰清单已在外部更改；原配置保留，请重新读取后再恢复。");
     }
 
     public AccessoryImageAsset LoadImage(string settingsRoot, string assetId)
