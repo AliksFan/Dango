@@ -1,6 +1,6 @@
 # B5A 账号／配置客户端精确本地集成计划
 
-日期：2026-10-09。状态：**测试、runner 和目标计划已准备，尚未获得本计划的数据操作授权，未执行真实集成**。本计划只覆盖 B5A 正式账号客户端与同会话 Pet 适配；B1／B4 的旧批准不授权此次新客户端测试。依据[首期实施计划](2026-10-08-email-backend-implementation-plan.md)、[交互候选](2026-10-09-backend-b5-interaction-proposal.md)及根 `AGENTS.md` 的精确环境和种子写入边界。
+日期：2026-10-09。状态：**用户在本计划的精确授权问题中明确回复“允许”；已执行首轮真实集成，5／5 通过、零失败／跳过，实例及测试宿主已退出，数据与密钥保留**。结果见[B5A 验证记录](../verification/2026-10-09-email-backend-b5a.md)。本计划只覆盖 B5A 正式账号客户端与同会话 Pet 适配；B1／B4 的旧批准不授权此次新客户端测试。依据[首期实施计划](2026-10-08-email-backend-implementation-plan.md)、[交互候选](2026-10-09-backend-b5-interaction-proposal.md)及根 `AGENTS.md` 的精确环境和种子写入边界。
 
 ## 精确环境
 
