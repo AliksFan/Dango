@@ -19,6 +19,7 @@ internal sealed class DesktopAccountController : IDisposable
     private FormalAccountClient? client;
     private AccountIdentity? identity;
     private IRoomManagementClient? rooms;
+    private IRoomAccessClient? roomAccess;
     private RegistrationAttempt? registration;
     private PetConfigurationChoiceCoordinator? choice;
     private PetConfigurationReview? review;
@@ -44,11 +45,19 @@ internal sealed class DesktopAccountController : IDisposable
     internal bool IsLoggedIn => identity is not null;
     internal bool ConfigurationReady => configurationReady;
     internal IRoomManagementClient? RoomClient => identity is null ? null : rooms;
+    internal IRoomAccessClient? RoomAccessClient => identity is null ? null : roomAccess;
     internal event Action? RoomsRequested;
 
     internal void RejectRoomAuthentication(IRoomManagementClient rejected)
     {
         if (disposed || !ReferenceEquals(rejected, rooms) || client is null) return;
+        ClearAuthentication(client);
+        Show(AccountPanelPage.Login, "会话已失效，请重新登录。本机外观保留。");
+    }
+
+    internal void RejectRoomAuthentication(IRoomAccessClient rejected)
+    {
+        if (disposed || !ReferenceEquals(rejected, roomAccess) || client is null) return;
         ClearAuthentication(client);
         Show(AccountPanelPage.Login, "会话已失效，请重新登录。本机外观保留。");
     }
@@ -116,7 +125,7 @@ internal sealed class DesktopAccountController : IDisposable
             var cleanupRetry = rememberedCleanupNeeded;
             // Logout can itself be cancelled while queued behind an older request.
             rememberedCleanupNeeded = true;
-            Invalidate(); client = null; identity = null; rooms = null; choice = null; review = null;
+            Invalidate(); client = null; identity = null; rooms = null; roomAccess = null; choice = null; review = null;
             configurationReady = false; restored = true; changed(false, false);
             try
             {
@@ -236,6 +245,7 @@ internal sealed class DesktopAccountController : IDisposable
         rememberedCleanupNeeded = false;
         identity = account; configurationReady = false;
         rooms = active.CreateRoomManagementClient(account);
+        roomAccess = active.CreateRoomAccessClient(account);
         choice = createChoice(active.CreatePetClient(account));
         changed(true, false);
         Show(AccountPanelPage.Account, "已登录。采用外观前请先比较本机与账号配置。");
@@ -341,7 +351,7 @@ internal sealed class DesktopAccountController : IDisposable
     private string? lastMessage;
     private void ClearAuthentication(FormalAccountClient active)
     {
-        active.Dispose(); client = null; identity = null; rooms = null; choice = null; review = null;
+        active.Dispose(); client = null; identity = null; rooms = null; roomAccess = null; choice = null; review = null;
         restored = false; configurationReady = false; changed(false, false);
     }
     private void Show(AccountPanelPage target, string? message = null, bool unavailable = false)
@@ -396,5 +406,6 @@ internal sealed class DesktopAccountController : IDisposable
         if (disposed) return;
         disposed = true; opened = false; generation++; pending.Cancel(); pending.Dispose();
         panel.Requested -= OnRequested; panel.ClearSecrets(); client?.Dispose(); client = null;
+        identity = null; rooms = null; roomAccess = null;
     }
 }

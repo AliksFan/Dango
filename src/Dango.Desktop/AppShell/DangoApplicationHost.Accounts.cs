@@ -8,6 +8,7 @@ internal sealed partial class DangoApplicationHost
 {
     private DesktopAccountController? accountController;
     private DesktopRoomController? roomController;
+    private DesktopOnlineRoomController? onlineRoomController;
 
     private void BindAccounts(ControlCenterWindow window)
     {
@@ -25,6 +26,7 @@ internal sealed partial class DangoApplicationHost
             (signedIn, ready) =>
             {
                 if (!signedIn) roomController?.Reset();
+                onlineRoomController?.SynchronizeBinding();
                 home.SetAccountStatus(signedIn, ready); home.RefreshAccountAppearance();
             });
         roomController = new(home.RoomPanel, () => accountController.RoomClient, home.HideAccountPanel,
@@ -34,9 +36,18 @@ internal sealed partial class DangoApplicationHost
             if (!accountController.IsLoggedIn) { home.ShowAccountPanel(); return; }
             home.ShowRoomPanel(); roomController.Open();
         }
+        onlineRoomController = new(home.OnlineRoomPanel, () => accountController.RoomAccessClient,
+            () => accountController.ConfigurationReady, home.HideAccountPanel, OpenRooms, home.ShowAccountPanel,
+            rejected => { accountController.RejectRoomAuthentication(rejected); home.ShowAccountPanel(); });
+        roomController.OnlineRequested += target =>
+        {
+            if (!accountController.IsLoggedIn) { home.ShowAccountPanel(); return; }
+            home.ShowOnlineRoomPanel(); onlineRoomController.Open(target);
+        };
         home.RoomDirectoryRequested += OpenRooms;
         accountController.RoomsRequested += OpenRooms;
         home.RoomPanelClosed += roomController.Close;
+        home.OnlineRoomPanelClosed += onlineRoomController.Close;
         home.AccountRequested += accountController.Open;
         home.AccountPanelClosed += accountController.Close;
     }

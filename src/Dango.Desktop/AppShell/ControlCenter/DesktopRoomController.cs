@@ -19,6 +19,7 @@ internal sealed class DesktopRoomController : IDisposable
     private long generation;
     private bool opened, busy, disposed;
     internal RoomPanelState CurrentState => state with { Busy = busy };
+    internal event Action<RoomManagementView?>? OnlineRequested;
 
     internal DesktopRoomController(RoomPanelView panel, Func<IRoomManagementClient?> binding,
         Action close, Action account, Action<IRoomManagementClient> authenticationLost)
@@ -52,6 +53,14 @@ internal sealed class DesktopRoomController : IDisposable
         if (request.Action == RoomPanelAction.OpenAccount && pending is null) { Close(); account(); return; }
         if (pending is not null && request.Action != RoomPanelAction.RetryPending) return;
         if (client is null) { account(); return; }
+        if (request.Action == RoomPanelAction.OpenOnline)
+        {
+            if (state.Page == RoomPanelPage.Directory && request.RoomId is null)
+            { Close(); OnlineRequested?.Invoke(null); }
+            else if (state.Page == RoomPanelPage.Detail && state.Selected is { Status: "active" } selected && selected.RoomId == request.RoomId)
+            { Close(); OnlineRequested?.Invoke(selected); }
+            return;
+        }
         switch (request.Action)
         {
             case RoomPanelAction.OpenCreate when state.Page == RoomPanelPage.Directory && state.DirectoryState == "active":

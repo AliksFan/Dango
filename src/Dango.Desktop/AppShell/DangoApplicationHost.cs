@@ -188,6 +188,8 @@ internal sealed partial class DangoApplicationHost : IDisposable
         disposed = true;
         roomController?.Dispose();
         roomController = null;
+        onlineRoomController?.Dispose();
+        onlineRoomController = null;
         accountController?.Dispose();
         accountController = null;
         DisposeLocalRoom();

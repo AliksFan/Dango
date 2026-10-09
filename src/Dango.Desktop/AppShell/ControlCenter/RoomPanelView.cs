@@ -20,7 +20,7 @@ public enum RoomPanelPage { Directory, Create, Detail, Edit, ConfirmDissolve, Pe
 public enum RoomPanelAction
 {
     Refresh, ActiveDirectory, DissolvedDirectory, NextPage, SelectRoom, OpenCreate, Create, OpenEdit,
-    Update, OpenDissolve, Dissolve, Restore, RetryPending, RefreshConflict, Back, Close, OpenAccount
+    Update, OpenDissolve, Dissolve, Restore, RetryPending, RefreshConflict, Back, Close, OpenAccount, OpenOnline
 }
 public sealed record RoomPanelRequest(RoomPanelAction Action, Guid? RoomId = null);
 public sealed record RoomPanelState(RoomPanelPage Page, string DirectoryState = "active",
@@ -179,6 +179,7 @@ public sealed class RoomPanelView : UserControl
         if (state.Next is not null) AddButton("下一页", new(RoomPanelAction.NextPage));
         if (state.DirectoryState == "active") AddButton("创建共同房", new(RoomPanelAction.OpenCreate));
         AddButton("账号与登录", new(RoomPanelAction.OpenAccount));
+        AddButton("在线连接与公共码", new(RoomPanelAction.OpenOnline));
     }
 
     private void AddForm(bool create)
@@ -207,6 +208,7 @@ public sealed class RoomPanelView : UserControl
         {
             if (room.Kind == "desktopPet") AddNote("桌宠房间容量固定为 2，可修改名称，不能解散。");
             AddPrimary("修改房间", new(RoomPanelAction.OpenEdit, room.RoomId));
+            AddButton("连接与成员…", new(RoomPanelAction.OpenOnline, room.RoomId));
             if (IsShared(room)) AddButton("解散房间…", new(RoomPanelAction.OpenDissolve, room.RoomId));
         }
         else if (room.Status == "dissolved")
@@ -266,7 +268,7 @@ public sealed class RoomPanelView : UserControl
         {
             RoomPanelPage.Directory => request.Action switch
             {
-                RoomPanelAction.Refresh or RoomPanelAction.ActiveDirectory or RoomPanelAction.DissolvedDirectory or RoomPanelAction.OpenAccount => true,
+                RoomPanelAction.Refresh or RoomPanelAction.ActiveDirectory or RoomPanelAction.DissolvedDirectory or RoomPanelAction.OpenAccount or RoomPanelAction.OpenOnline => true,
                 RoomPanelAction.OpenCreate => state.DirectoryState == "active",
                 RoomPanelAction.NextPage => state.Next is not null,
                 RoomPanelAction.SelectRoom => state.Rooms?.Any(r => r.RoomId == request.RoomId) == true,
@@ -277,6 +279,7 @@ public sealed class RoomPanelView : UserControl
             RoomPanelPage.Detail => request.Action == RoomPanelAction.Back || selected && (request.Action switch
             {
                 RoomPanelAction.OpenEdit => room!.Status == "active" && IsKnownKind(room.Kind),
+                RoomPanelAction.OpenOnline => room!.Status == "active" && IsKnownKind(room.Kind),
                 RoomPanelAction.OpenDissolve => room!.Status == "active" && IsShared(room),
                 RoomPanelAction.Restore => room!.Status == "dissolved" && room.Recoverable && IsShared(room),
                 _ => false

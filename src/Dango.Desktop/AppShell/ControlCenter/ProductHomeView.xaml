@@ -590,6 +590,7 @@
             <Grid VerticalAlignment="Center" MaxWidth="560">
                 <local:AccountPanelView x:Name="AccountContent" HorizontalAlignment="Stretch" />
                 <local:RoomPanelView x:Name="RoomContent" Visibility="Collapsed" HorizontalAlignment="Stretch" />
+                <local:OnlineRoomPanelView x:Name="OnlineRoomContent" Visibility="Collapsed" HorizontalAlignment="Stretch" />
             </Grid>
         </Border>
     </Grid>
