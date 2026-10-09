@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Dango.AccessoryAssets/Dango.AccessoryAssets.csproj" />
+    <ProjectReference Include="../Dango.Protocol/Dango.Protocol.csproj" />
+    <InternalsVisibleTo Include="Dango.AccessoryModeration.Tests" />
+  </ItemGroup>
+</Project>
