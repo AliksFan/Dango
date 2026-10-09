@@ -1,6 +1,6 @@
 # 官方静态平台：独立单人小样验证
 
-日期：2026-10-09。分支：`codex/static-platform-prototype`，实施基线：`a34b097`。用户明确授权按 [F0–F4 实施计划](../planning/2026-10-09-static-platform-implementation-plan.md)编码、隔离构建／测试及打开验收窗口。当前状态：编码、自动门禁、真实窗口输入与运行观察通过，用户人工验收待完成。
+日期：2026-10-09。分支：`codex/static-platform-prototype`，实施基线：`a34b097`。用户明确授权按 [F0–F4 实施计划](../planning/2026-10-09-static-platform-implementation-plan.md)编码、隔离构建／测试及打开验收窗口。编码、自动门禁及此前真实输入／运行观察已完成；用户随后指出团子造型异常，定位为窗口横向非等比缩放，形状修复与复验另记下文。用户人工验收待完成。
 
 ## 交付范围
 
@@ -55,7 +55,7 @@ main 对照来自 `f10121b` 的已验收模块，来源见[主线整合记录](2
 
 以上托管正向结果合计 64 个不同用例，0 失败、0 跳过。测试命令与输入／结果聚合保留于 `platform-r1/tests/test-commands-r3.txt`、`test-evidence-r3.json`。历史三体对照哈希与[原统一记录](../phase-1-physics-module-unification.md)一致，通过 `DANGO_PHYSICS_ACCEPTED_THREE_PATH` 从原目录只读加载，没有复制或重建旧夹具。默认 preview scale 为 1，原零容差比较保持，未更改历史断言。
 
-独立几何 oracle 从公开身体帧重建既有显示归一化、缩放和二次 B 样条，帧中的轮廓已包含节点半径外扩，不重复外扩。2 DIP 预算固定为 `1/30` 物理单位，不随窗口缩小放宽；过程同样检查有限值、面积和速度。native 诊断没有冒充独立 oracle。
+独立几何 oracle 从公开身体帧重建既有显示归一化、缩放和二次 B 样条，帧中的轮廓已包含节点半径外扩，不重复外扩。接触门槛按计划的标准 60 DIP／单位冻结为 `1/30` 物理单位，不随窗口缩小放宽；过程同样检查有限值、面积和速度。该预算不等于修复后水平 80 DIP／单位映射下各方向实际屏幕间隙均不超过 2 DIP。native 诊断没有冒充独立 oracle；这些物理／接触检查也没有验证窗口保留原始造型比例。
 
 ### 能失败的反例
 
@@ -81,7 +81,7 @@ dotnet test tests/Dango.Physics.Tests/Dango.Physics.Tests.csproj -c Release --fi
 
 ## 真实窗口与性能
 
-输入检查使用 `platform-ui-final-r4/bin/Dango.JointReview/release/`，最终窗口为 `platform-ui-final-r5/bin/Dango.JointReview/release/`；r5 仅补强观察结束条件及日志，输入／Step 路径未改。候选模块仍为同一 r3 哈希，两次构建均 0 警告、0 错误。OS 输入路径通过真实 HWND 的 `SendInput` 进入，没有直接调用 session 来冒充按键。输入证据为 `platform-ui-hwnd-r4/keyboard-check.json`、`lifecycle-check.json`、自身窗口 PNG 和 `close-result.json`；PID 44528 已正常退出 0。
+此前输入检查使用 `platform-ui-final-r4/bin/Dango.JointReview/release/`，运行观察使用 `platform-ui-final-r5/bin/Dango.JointReview/release/`；r5 仅补强观察结束条件及日志，输入／Step 路径未改。这两版都存在下文记录的视觉横向压缩，不能作为保持原造型的证据。候选模块仍为同一 r3 哈希，两次构建均 0 警告、0 错误。OS 输入路径通过真实 HWND 的 `SendInput` 进入，没有直接调用 session 来冒充按键。输入证据为 `platform-ui-hwnd-r4/keyboard-check.json`、`lifecycle-check.json`、自身窗口 PNG 和 `close-result.json`；PID 44528 已正常退出 0。
 
 - 当前 HWND DPI 144（150%），中文输入线程 HKL `8040804`。D 600 ms 使身体布局框 X 从 870 到 960，松键后停在 1002、速度降至 `0.0093`；A 返回后降至 `0.0059`。这些坐标仅为本任务窗口的脚本化验证数据。
 - S 下压使布局框 Y `619 → 623 → 619`；Space 使 Y `619 → 494` 并清除平台支撑，持续按住不会落地后自动再次起跳。checkbox 焦点下 D 无位移，Space 只切换轮廓。
@@ -112,11 +112,25 @@ dotnet test tests/Dango.Physics.Tests/Dango.Physics.Tests.csproj -c Release --fi
 
 以上绘制频率为 `Draw` 新状态更新次数，不代表显示合成 FPS；不关闭既有 59 FPS 性能门禁。Working-set 是观测值，不单独作为泄漏证明；资源回收结合退出清理及 100 次 native 生命周期门禁。长时间最小化不算长期主动游玩或完整睡眠验收。真实物理设备手感、其他硬件及用户人工验收仍未验证。
 
+### 原造型比例回归与 r6 修复
+
+用户在 r5 验收窗口指出“你这团子怎么这个形状”。自身 HWND 截图与状态保留于 `shape-feedback-20261009-124803/current-window.png`、`state.json`。根因是窗口把原始 160×120 视觉组件映射为 `Scale/80`、`Scale/60`；名义 Scale=60 时两轴为 0.75／1，身体、双眼及叶芽整体横向压窄 25%。这是显示接入回归，原 native 参数和原始视觉组件未变；此前碰撞、平台对齐及输入检查漏掉了原造型比例检查。
+
+修复只涉及窗口坐标映射：原视觉两轴共用 `VisualScale`，世界到屏幕保留水平 `80×VisualScale`／竖直 `60×VisualScale` 的原标尺，组件中心仍为 `(80,66)`。平台图片、矩形覆盖层、身体轮廓与拖动反变换同步使用此映射。native、碰撞合同、身体参数及受保护 DLL 均未变。
+
+`platform-ui-final-r6` 隔离 Release 构建 0 警告、0 错误；模块仍为同一 r3 哈希。真实 HWND 定向复验约 19.33 秒，证据为 `platform-ui-hwnd-r6/ratio-input-check.json`、`original-aspect-top.png`、`before-resize.png`、`after-resize.png` 和 `close-result.json`。在 150% DPI 下组件恢复为 240×180 像素，即原始 160×120 DIP，旧版为 180×180 像素；平台宽同步为 408 像素。真实 A／D 产生位移，松键速度分别回落至 `.0115`／`.0083`；绘制中心能捕获，透明角不能捕获，鼠标横移后身体真实移动，松开捕获归零。调整窗口尺寸后比例和平台支撑保持，间隙 `.00050`、速度 `.0051`。该测试进程 PID 43372 正常退出 0，复验期间原用户窗口 PID 56276 保留。
+
+两张尺寸变化截图的独立像素测量保留于 `platform-ui-hwnd-r6/visual-measurements.json`：平台木纹与碰撞覆盖层的实色边界最大偏差 0 px，身体轮廓与顶线之间空白像素行 0。测量不推断抗锯齿的亚像素位置。此次尺寸变化前后视觉缩放均为 1，未触发 `VisualScale<1` 分支；动态侧面实际屏幕像素预算也未定向复验。
+
+r6 的受影响 C# 空白格式只读检查与 `git diff --check` 通过；238 个文档相对文件目标复核均存在，`platform-r1/doc-links-shape-r6.json`，不检查锚点。
+
+r6 为原比例、输入映射与尺寸变化的定向复验；上表长时运行测量仍来自有视觉压缩的 r5，不冒充 r6 的长时结果。没有重复未改变的 native 64 项及长时观察，用户对修复后造型和操作手感的人工验收仍待完成。
+
 ## 人工验收与交付状态
 
 - 用户人工手感验收：待完成；自动门禁、真实输入核验和运行观察不能替代用户判断。
 - Git：本批在任务分支保存本地实施提交，具体哈希见分支日志；main 未合并，远端未推送。
 - 日常安装、受保护 DLL 与部署：未改动。
-- 当前窗口及测试进程：输入检查 PID 44528、首次观察 PID 11048、最终观察 PID 42596 均已退出；交付仅保留最终 r5 的用户验收窗口，不停止无关进程。
+- 当前窗口及测试进程：输入检查 PID 44528、首次观察 PID 11048、最终观察 PID 42596 及 r6 定向检查 PID 43372 均已退出。交付使用 r6 替换本任务的旧 r5 用户验收窗口，具体 PID／哈希／本地提交记入隔离启动证据，不停止无关进程。
 - 没有服务、端口、数据库或云资源；保留隔离构建、TRX、JSONL 和自身窗口截图，无资源删除操作。
 - 尚未验证 100%／125% 等其他 DPI、多屏、睡眠、其他硬件、长期稳定性、正式房间和多人；150% 与一次窗口尺寸变更已执行，既有性能门禁继续保留。

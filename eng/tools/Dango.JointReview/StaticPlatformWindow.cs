@@ -23,6 +23,10 @@ internal sealed class StaticPlatformWindow : Window
 {
     private const double MinimumObservationSeconds = 600;
     private const double MinimumActiveSeconds = 560;
+    private const double OriginalHorizontalScale = 80;
+    private const double OriginalVerticalScale = 60;
+    private const double VisualCenterX = 80;
+    private const double VisualCenterY = 66;
     private readonly string libraryPath;
     private readonly Canvas scene = new() { Background = new SolidColorBrush(Color.FromRgb(250, 246, 239)), ClipToBounds = true, Focusable = true };
     private readonly TextBlock status = new() { Margin = new Thickness(14), TextWrapping = TextWrapping.Wrap, MinHeight = 62 };
@@ -62,10 +66,12 @@ internal sealed class StaticPlatformWindow : Window
     private string? currentFailure;
     private string? failure;
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
-    private double Scale => Math.Clamp(Math.Min(60, scene.ActualHeight / 5.4), 30, 60);
+    private double VerticalScale => Math.Clamp(Math.Min(OriginalVerticalScale, scene.ActualHeight / 5.4), OriginalVerticalScale / 2, OriginalVerticalScale);
+    private double VisualScale => VerticalScale / OriginalVerticalScale;
+    private double HorizontalScale => OriginalHorizontalScale * VisualScale;
     private double OriginX => scene.ActualWidth / 2;
     private double FloorY => Math.Max(100, scene.ActualHeight - 40);
-    private double OriginY => FloorY + DangoPhysicsDefaults.Current.GroundHeight * Scale;
+    private double OriginY => FloorY + DangoPhysicsDefaults.Current.GroundHeight * VerticalScale;
 
     internal int ExitCode { get; private set; }
 
@@ -267,8 +273,8 @@ internal sealed class StaticPlatformWindow : Window
         catch (Exception error) { StopWithFailure(error); }
     }
 
-    private Point ToWorld(Point point) => new((point.X - OriginX) / Scale, (OriginY - point.Y) / Scale);
-    private Point ToScreen(double x, double y) => new(OriginX + x * Scale, OriginY - y * Scale);
+    private Point ToWorld(Point point) => new((point.X - OriginX) / HorizontalScale, (OriginY - point.Y) / VerticalScale);
+    private Point ToScreen(double x, double y) => new(OriginX + x * HorizontalScale, OriginY - y * VerticalScale);
 
     private void SafeDraw()
     {
@@ -282,9 +288,9 @@ internal sealed class StaticPlatformWindow : Window
         if (session?.Platform is { } platform)
         {
             var corner = ToScreen(platform.Left, platform.Top);
-            platformImage.Width = platform.Width * Scale; platformImage.Height = platform.Height * Scale;
+            platformImage.Width = platform.Width * HorizontalScale; platformImage.Height = platform.Height * VerticalScale;
             Canvas.SetLeft(platformImage, corner.X); Canvas.SetTop(platformImage, corner.Y);
-            platformOutline.Width = platform.Width * Scale; platformOutline.Height = platform.Height * Scale;
+            platformOutline.Width = platform.Width * HorizontalScale; platformOutline.Height = platform.Height * VerticalScale;
             Canvas.SetLeft(platformOutline, corner.X); Canvas.SetTop(platformOutline, corner.Y);
             platformImage.Visibility = Visibility.Visible;
             platformOutline.Visibility = outlineToggle.IsChecked == true ? Visibility.Visible : Visibility.Hidden;
@@ -295,11 +301,11 @@ internal sealed class StaticPlatformWindow : Window
         if (!result.Succeeded || presentation.FallbackReason != PhysicsPresentationFallbackReason.None)
             throw new InvalidDataException("真实团子绘制轮廓校验失败。");
         var core = ToScreen(nativeBody.CoreX, nativeBody.CoreY);
-        var transform = new ScaleTransform(Scale / 80, Scale / 60);
+        var transform = new ScaleTransform(VisualScale, VisualScale);
         foreach (var visual in new FrameworkElement[] { body, hat })
         {
             visual.RenderTransform = transform;
-            Canvas.SetLeft(visual, core.X - Scale); Canvas.SetTop(visual, core.Y - Scale * 1.1);
+            Canvas.SetLeft(visual, core.X - VisualCenterX * VisualScale); Canvas.SetTop(visual, core.Y - VisualCenterY * VisualScale);
             visual.Visibility = Visibility.Visible;
         }
         body.ApplyFrame(presentation); hat.ApplyFrame(presentation);
@@ -307,7 +313,7 @@ internal sealed class StaticPlatformWindow : Window
             throw new InvalidDataException("真实团子绘制轮廓校验失败。");
         displayedGeometry = result.Geometry;
         bodyOutline.Data = displayedGeometry; bodyOutline.RenderTransform = transform;
-        Canvas.SetLeft(bodyOutline, core.X - Scale); Canvas.SetTop(bodyOutline, core.Y - Scale * 1.1);
+        Canvas.SetLeft(bodyOutline, core.X - VisualCenterX * VisualScale); Canvas.SetTop(bodyOutline, core.Y - VisualCenterY * VisualScale);
         bodyOutline.Visibility = outlineToggle.IsChecked == true ? Visibility.Visible : Visibility.Hidden;
     }
 
