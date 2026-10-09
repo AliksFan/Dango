@@ -59,7 +59,7 @@ public sealed class AccessorySettingsStore
             var entries = new List<AccessoryItem>();
             foreach (var item in items.EnumerateArray())
             {
-                _ = ReadExactObject(item, ItemFields);
+                _ = ReadExactObject(item, ItemFields, ["allowFolding", "maxDeformationPercent", "maxConnectionTravelPercent"]);
                 entries.Add(JsonSerializer.Deserialize<AccessoryItem>(item, SerializerOptions) ??
                     throw new InvalidDataException("配饰条目为空。"));
             }
@@ -149,13 +149,15 @@ public sealed class AccessorySettingsStore
         return Path.Combine(Path.GetFullPath(settingsRoot), "accessory-assets", assetId + ".png");
     }
 
-    private static Dictionary<string, JsonElement> ReadExactObject(JsonElement element, string[] requiredFields)
+    private static Dictionary<string, JsonElement> ReadExactObject(JsonElement element, string[] requiredFields,
+        string[]? optionalFields = null)
     {
         if (element.ValueKind != JsonValueKind.Object) throw new InvalidDataException("配饰数据不是对象。");
         var fields = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
         foreach (var property in element.EnumerateObject())
             if (!fields.TryAdd(property.Name, property.Value)) throw new InvalidDataException("配饰数据存在重复字段。");
-        if (fields.Count != requiredFields.Length || requiredFields.Any(name => !fields.ContainsKey(name)))
+        if (requiredFields.Any(name => !fields.ContainsKey(name)) ||
+            fields.Keys.Any(name => !requiredFields.Contains(name) && !(optionalFields?.Contains(name) ?? false)))
             throw new InvalidDataException("配饰数据字段缺失或包含未知字段。");
         return fields;
     }

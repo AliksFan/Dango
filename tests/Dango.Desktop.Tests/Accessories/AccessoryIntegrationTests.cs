@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Reflection;
 using System.Text.Json;
 using System.Windows;
@@ -68,10 +69,19 @@ public sealed class AccessoryIntegrationTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
-    public void MultipleSoftGravityAndElasticAccessoriesCannotAlterAnyNativeOrBodyStep()
+    [DataRow(false)]
+    [DataRow(true)]
+    public void MultipleSoftGravityAndElasticAccessoriesCannotAlterAnyNativeOrBodyStep(bool folding)
     {
         using var bare = Ready(AccessoryConfiguration.Empty);
-        using var dressed = Ready(Multiple(dynamic: true));
+        var extremes = new AccessoryConfiguration(Multiple(dynamic: true).Items.Select(item => item with
+        {
+            Softness = 100,
+            ConnectionStrength = 0,
+            AllowFolding = folding,
+            MaxDeformationPercent = 200,
+        }));
+        using var dressed = Ready(extremes);
         var sawDeformedTexture = false; var sawAirborne = false;
         AccessoryMeshFrame? originalMesh = null;
         for (var step = 0; step < 550; step++)
@@ -133,6 +143,144 @@ public sealed class AccessoryIntegrationTests
             Assert.IsFalse(session.IsDirty);
         }
         finally { window.Close(); }
+    }
+
+    [STATestMethod]
+    [TestCategory("NativeIntegration")]
+    public void StableEquippedHostNeverReshowsOrRebuildsItsHiddenLegacyHatWhileAllEightMeshesAdvance()
+    {
+        var configuration = new AccessoryConfiguration(Enumerable.Range(0, 8).Select(index =>
+            new AccessoryItem($"fictional-eight-{index}", $"Fictional accessory {index}",
+                index % 2 == 0 ? "builtin-sprout" : "builtin-bowler", 64, 64)
+            {
+                Layer = index % 2 == 0 ? AccessoryLayer.Behind : AccessoryLayer.Front,
+                Order = index,
+                BodyAnchorX = .2 + index * .08,
+                BodyAnchorY = .2 + index % 3 * .15,
+                Softness = 35,
+                GravityInfluence = 20,
+                LockRotation = false,
+            }).ToArray());
+        using var runtime = Ready(configuration);
+        for (var step = 0; step < 150; step++) runtime.Tick(Input, Step);
+        var canvas = new Canvas();
+        var body = new DeformableDangoVisual { ShowHat = false }; var hat = new DangoHatVisual();
+        canvas.Children.Add(body); canvas.Children.Add(hat);
+        DangoHostFrameBinding.Apply(body, hat, runtime.LastFrame!, 0, runtime: runtime);
+        Assert.AreEqual(Visibility.Collapsed, hat.Visibility);
+        var gaitLayer = (UIElement)hat.FindName("GaitLayer");
+        var hatLayer = (Canvas)hat.FindName("HatLayer");
+        var originalGait = gaitLayer.RenderTransform; var originalPlacement = hatLayer.RenderTransform;
+        var originalPaths = hatLayer.Children.Cast<System.Windows.Shapes.Path>().ToArray();
+        var visibilityChanges = 0; var gaitChanges = 0; var placementChanges = 0; var gaitFrames = 0;
+        var visibility = DependencyPropertyDescriptor.FromProperty(UIElement.VisibilityProperty, typeof(DangoHatVisual))!;
+        var transform = DependencyPropertyDescriptor.FromProperty(UIElement.RenderTransformProperty, typeof(UIElement))!;
+        void VisibilityChanged(object? sender, EventArgs args) => visibilityChanges++;
+        void GaitChanged(object? sender, EventArgs args) => gaitChanges++;
+        void PlacementChanged(object? sender, EventArgs args) => placementChanges++;
+        try
+        {
+            visibility.AddValueChanged(hat, VisibilityChanged);
+            transform.AddValueChanged(gaitLayer, GaitChanged); transform.AddValueChanged(hatLayer, PlacementChanged);
+            for (var step = 0; step < 30; step++)
+            {
+                runtime.SetDirectionalControl(new(false, true, false, false));
+                var frame = runtime.Tick(Input, Step);
+                var physical = runtime.LastPhysicsFrame; var serialized = JsonSerializer.Serialize(frame);
+                var nativeStep = frame.Bodies[0].Diagnostics.SimulatedStepCount;
+                Assert.IsNotNull(frame.Bodies[0].Attachments!.Hat!.Pose, "Hidden external visuals must retain the full runtime Hat solver.");
+                if (frame.Gait is { IsIdentity: false }) gaitFrames++;
+                DangoHostFrameBinding.Apply(body, hat, frame, 0,
+                    appearance: step % 2 == 0 ? HatAppearance.TopHat : HatAppearance.Bowler,
+                    hatSize: 1 + step * .01, runtime: runtime);
+                Assert.AreSame(physical, runtime.LastPhysicsFrame);
+                Assert.AreEqual(nativeStep, runtime.LastFrame!.Bodies[0].Diagnostics.SimulatedStepCount);
+                Assert.AreEqual(serialized, JsonSerializer.Serialize(runtime.LastFrame), "Binding must preserve body, Face, Hat, Gait and source geometry.");
+                Assert.AreEqual(Visibility.Visible, body.Visibility);
+                Assert.AreEqual(DangoContourFailure.None, body.LastContourFailure);
+                var outputs = runtime.GetAccessoryFrames(frame, 0); Assert.HasCount(8, outputs);
+                var meshes = canvas.Children.OfType<Canvas>().SelectMany(layer => layer.Children.OfType<AccessoryMeshVisual>()).ToArray();
+                Assert.HasCount(8, meshes);
+                Assert.IsTrue(meshes.All(mesh => mesh.Frame!.StepIndex == outputs[0].Mesh.StepIndex && mesh.CaptureBitmap() is not null));
+            }
+        }
+        finally
+        {
+            visibility.RemoveValueChanged(hat, VisibilityChanged);
+            transform.RemoveValueChanged(gaitLayer, GaitChanged); transform.RemoveValueChanged(hatLayer, PlacementChanged);
+        }
+        Assert.IsTrue(gaitFrames > 0, "The counterexample must retain real nonidentity walking gait.");
+        Assert.AreEqual(0, visibilityChanges, "An already hidden legacy hat must not alternate Visible and Collapsed on each applied accessory frame.");
+        Assert.AreEqual(0, gaitChanges); Assert.AreEqual(0, placementChanges);
+        Assert.AreSame(originalGait, gaitLayer.RenderTransform); Assert.AreSame(originalPlacement, hatLayer.RenderTransform);
+        CollectionAssert.AreEqual(originalPaths, hatLayer.Children.Cast<System.Windows.Shapes.Path>().ToArray(), "Changing hidden appearance must not rebuild its paths.");
+    }
+
+    [STATestMethod]
+    [TestCategory("NativeIntegration")]
+    public void CancelingCompatibilityPreviewRestoresTheCurrentLegacyAppearanceHatPoseAndGaitImmediately()
+    {
+        var session = new AccessorySettingsSession(NewRoot(), "top-hat");
+        Assert.IsTrue(session.IsCompatibilityMode);
+        using var runtime = StackedDangoSceneRuntime.CreateProduct(NativePath);
+        runtime.BindAccessories(session); Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
+        runtime.Start(); runtime.SetViewport(new(0, 0, 1600, 900));
+        var owner = new object(); runtime.AttachQuietIdleHost(owner, true); runtime.UpdateWanderScreenWidth(owner, null);
+        for (var step = 0; step < 150; step++) runtime.Tick(Input, Step);
+        var canvas = new Canvas(); var body = new DeformableDangoVisual { ShowHat = false }; var hat = new DangoHatVisual();
+        canvas.Children.Add(body); canvas.Children.Add(hat);
+        DangoHostFrameBinding.Apply(body, hat, runtime.LastFrame!, 0, appearance: HatAppearance.TopHat, runtime: runtime);
+        Assert.AreEqual(Visibility.Visible, hat.Visibility);
+        session.Stage(Multiple(dynamic: true)); runtime.SetAccessories(session.DraftConfiguration);
+        for (var step = 0; step < 30; step++)
+        {
+            runtime.SetDirectionalControl(new(false, true, false, false));
+            var frame = runtime.Tick(Input, Step);
+            DangoHostFrameBinding.Apply(body, hat, frame, 0, appearance: HatAppearance.Bowler, hatSize: 1.7, runtime: runtime);
+            Assert.AreEqual(Visibility.Collapsed, hat.Visibility);
+        }
+        var current = runtime.LastFrame!; var physical = runtime.LastPhysicsFrame;
+        var count = current.Bodies[0].Diagnostics.SimulatedStepCount;
+        Assert.IsTrue(current.Gait is { IsIdentity: false }, "Restoration must consume a current nonidentity gait.");
+        Assert.IsNotNull(current.Bodies[0].Attachments!.Hat!.Pose);
+        session.CancelPreview(); runtime.SetAccessories(session.SavedConfiguration, !session.IsCompatibilityMode);
+        Assert.IsFalse(runtime.AccessoriesEnabled);
+        var expected = new DangoHatVisual { Appearance = HatAppearance.Bowler, HatSize = 1.7 };
+        expected.ApplyFrame(current.Bodies[0], current.Gait);
+        DangoHostFrameBinding.Apply(body, hat, current, 0, appearance: HatAppearance.Bowler, hatSize: 1.7, runtime: runtime);
+        Assert.AreEqual(Visibility.Visible, hat.Visibility);
+        Assert.AreEqual(expected.Appearance, hat.Appearance); Assert.AreEqual(expected.HatSize, hat.HatSize);
+        foreach (var layer in new[] { "HatLayer", "GaitLayer" })
+            Assert.AreEqual(((UIElement)expected.FindName(layer)).RenderTransform.Value,
+                ((UIElement)hat.FindName(layer)).RenderTransform.Value, "The first restored binding must use the current frame rather than stale hidden geometry.");
+        CollectionAssert.AreEqual(((Canvas)expected.FindName("HatLayer")).Children.Cast<System.Windows.Shapes.Path>().Select(path => path.Data.ToString()).ToArray(),
+            ((Canvas)hat.FindName("HatLayer")).Children.Cast<System.Windows.Shapes.Path>().Select(path => path.Data.ToString()).ToArray());
+        Assert.IsFalse(canvas.Children.OfType<Canvas>().Any(), "Compatibility cancellation must remove the accessory host layers.");
+        Assert.AreSame(physical, runtime.LastPhysicsFrame); Assert.AreEqual(count, runtime.LastFrame!.Bodies[0].Diagnostics.SimulatedStepCount);
+    }
+
+    [STATestMethod]
+    [TestCategory("NativeIntegration")]
+    public void AccessoryHatSuppressionRequiresACanvasHostAndUsesTheRuntimeAppearanceEntity()
+    {
+        using var runtime = Ready(Multiple());
+        for (var step = 0; step < 150; step++) runtime.Tick(Input, Step);
+        Assert.IsTrue(runtime.AddDango()); var frame = runtime.Tick(Input, Step);
+        var grid = new Grid(); var body = new DeformableDangoVisual { ShowHat = false }; var hat = new DangoHatVisual();
+        grid.Children.Add(body); grid.Children.Add(hat);
+        DangoHostFrameBinding.Apply(body, hat, frame, 0, appearance: HatAppearance.Bowler, runtime: runtime);
+        Assert.AreEqual(Visibility.Visible, hat.Visibility, "Non-Canvas hosts have no accessory layers and must retain their ordinary hat.");
+        grid.Children.Clear(); var canvas = new Canvas(); canvas.Children.Add(body); canvas.Children.Add(hat);
+        // This optional color/appearance override cannot select the accessory owning entity.
+        DangoHostFrameBinding.Apply(body, hat, frame, 0, appearanceEntity: frame.EntityIds[1], runtime: runtime);
+        Assert.AreEqual(Visibility.Collapsed, hat.Visibility);
+        var other = new DeformableDangoVisual { ShowHat = false }; var otherHat = new DangoHatVisual();
+        canvas.Children.Add(other); canvas.Children.Add(otherHat);
+        DangoHostFrameBinding.Apply(other, otherHat, frame, 1, appearanceEntity: frame.EntityIds[0], runtime: runtime);
+        Assert.AreEqual(Visibility.Visible, otherHat.Visibility);
+        // Ordinary binding without a runtime also restores the current frame immediately.
+        DangoHostFrameBinding.Apply(body, hat, frame, 0, appearance: HatAppearance.TopHat);
+        Assert.AreEqual(Visibility.Visible, hat.Visibility); Assert.AreEqual(HatAppearance.TopHat, hat.Appearance);
     }
 
     [STATestMethod]

@@ -254,8 +254,10 @@
                              ToolTip="未绑定实时场景的界面预览" AutomationProperties.Name="团子实时预览">
                         <Viewbox.RenderTransform><ScaleTransform x:Name="PetScale" ScaleX="1" ScaleY="1" /></Viewbox.RenderTransform>
                         <Canvas x:Name="LiveSceneCanvas" Width="160" Height="120" ClipToBounds="False">
-                            <visuals:DeformableDangoVisual x:Name="LiveDangoVisual" ShowHat="False" IsHitTestVisible="False" />
-                            <visuals:DangoHatVisual x:Name="LiveDangoHat" IsHitTestVisible="False" />
+                            <Canvas x:Name="LiveEntityLayer" Width="160" Height="120" ClipToBounds="False">
+                                <visuals:DeformableDangoVisual x:Name="LiveDangoVisual" ShowHat="False" IsHitTestVisible="False" />
+                                <visuals:DangoHatVisual x:Name="LiveDangoHat" IsHitTestVisible="False" />
+                            </Canvas>
                         </Canvas>
                     </Viewbox>
                     <TextBlock x:Name="LiveSceneStatusText" Text="界面预览 · 无实时场景" FontSize="12" TextAlignment="Center"

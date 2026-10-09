@@ -10,6 +10,8 @@ public sealed record AccessoryMeshFrame(
     IReadOnlyList<int> TriangleIndices, Rect Bounds, Point ImagePivot,
     Vector ConnectionOffset, double RotationDegrees)
 {
+    public bool AllowFolding { get; init; }
+
     public AccessoryMeshFrame Translated(Vector offset)
     {
         var bounds = Bounds; bounds.Offset(offset);
@@ -85,9 +87,9 @@ public sealed class AccessoryMotionSolver
         if (strength >= 1) connectionX = connectionY = default;
         else
         {
-            var frequency = 0.75 + strength * 4.25 - 0.4 * looseExtension;
+            var frequency = 0.75 + strength * 4.25 - 0.57 * looseExtension;
             var stiffness = Math.Pow(2 * Math.PI * frequency, 2);
-            var limit = length * 0.18;
+            var limit = length * item.MaxConnectionTravelPercent / 100;
             connectionX = DampedSpring.AdvanceBounded(connectionX, inertialForce.X / stiffness,
                 frequency, 0.8, seconds, -limit, limit);
             connectionY = DampedSpring.AdvanceBounded(connectionY, inertialForce.Y / stiffness,
@@ -100,18 +102,19 @@ public sealed class AccessoryMotionSolver
             // The same softness controls all material points. Their spatially varying response
             // comes from distance to the one pivot, not painted per-region stiffness or extra anchors.
             var force = inertialForce / length;
-            var materialGain = softness * (1 + 2 * softExtension);
-            var bendLimit = 0.10 + 0.14 * softExtension;
-            var strainLimit = 0.08 + 0.10 * softExtension;
+            var materialGain = softness * (1 + 17 * softExtension);
+            var bendLimit = 0.10 + 0.80 * softExtension;
+            var compressionLimit = 0.08 + 0.27 * softExtension;
+            var stretchLimit = 0.08 + 0.67 * softExtension;
             var targetBend = force * (0.018 * materialGain);
             if (targetBend.Length > bendLimit) targetBend *= bendLimit / targetBend.Length;
-            var frequency = 4.5 - softness * 2 - softExtension;
+            var frequency = 4.5 - softness * 2 - 1.6 * softExtension;
             bendX = DampedSpring.AdvanceBounded(bendX, targetBend.X, frequency, 0.8, seconds, -bendLimit, bendLimit);
             bendY = DampedSpring.AdvanceBounded(bendY, targetBend.Y, frequency, 0.8, seconds, -bendLimit, bendLimit);
-            strainX = DampedSpring.AdvanceBounded(strainX, Math.Clamp(-Math.Abs(force.X) * 0.006 * materialGain, -strainLimit, strainLimit),
-                frequency, 0.8, seconds, -strainLimit, strainLimit);
-            strainY = DampedSpring.AdvanceBounded(strainY, Math.Clamp(force.Y * 0.009 * materialGain, -strainLimit, strainLimit),
-                frequency, 0.8, seconds, -strainLimit, strainLimit);
+            strainX = DampedSpring.AdvanceBounded(strainX, Math.Clamp(-Math.Abs(force.X) * 0.006 * materialGain, -compressionLimit, compressionLimit),
+                frequency, 0.8, seconds, -compressionLimit, compressionLimit);
+            strainY = DampedSpring.AdvanceBounded(strainY, Math.Clamp(force.Y * 0.009 * materialGain, -compressionLimit, stretchLimit),
+                frequency, 0.8, seconds, -compressionLimit, stretchLimit);
         }
         AdvanceAngle(item, inertialForce, displayWidth, displayHeight, seconds);
         return Refresh(anchorPoint, displayWidth, displayHeight, item);
@@ -129,17 +132,37 @@ public sealed class AccessoryMotionSolver
         if (item.LimitSwing) rotation = Math.Clamp(rotation, -item.MaxSwingDegrees * Math.PI / 180, item.MaxSwingDegrees * Math.PI / 180);
         var radians = item.BaseAngleDegrees * Math.PI / 180 + rotation;
         var cosine = Math.Cos(radians); var sine = Math.Sin(radians);
+        var length = Math.Sqrt(displayWidth * displayWidth + displayHeight * displayHeight);
+        LimitConnectionTravel(length * item.MaxConnectionTravelPercent / 100);
         var connection = item.ConnectionStrength >= 100 ? new Vector() : new Vector(connectionX.Position, connectionY.Position);
         var pivot = anchorPoint + connection;
-        var length = Math.Sqrt(displayWidth * displayWidth + displayHeight * displayHeight);
         var materialBend = item.Softness == 0 ? new Vector() : new Vector(bendX.Position, bendY.Position);
-        // The rigid/strain map has minimum singular value >= .82. Radial bend adds at most
-        // 2 * .30 = .60 to the Jacobian norm for every legal pivot (including mesh-cell secants),
-        // leaving minimum singular value >= .22: continuous material and mesh cannot fold.
-        var bendMagnitudeLimit = 0.14 + 0.16 * SmoothStep((item.Softness / 100 - 0.6) / 0.4);
+        var bendMagnitudeLimit = 0.14 + 0.76 * SmoothStep((item.Softness / 100 - 0.6) / 0.4);
         if (materialBend.Length > bendMagnitudeLimit) materialBend *= bendMagnitudeLimit / materialBend.Length;
         var sx = item.Softness == 0 ? 0 : strainX.Position;
         var sy = item.Softness == 0 ? 0 : strainY.Position;
+        if (!item.AllowFolding)
+            materialBend = PreventFolding(materialBend, sx, sy, cosine, sine,
+                displayWidth, displayHeight, length, item.ImagePivotX, item.ImagePivotY);
+        // Limit material displacement relative to the same rotated rigid image. Connection
+        // translation and overall rotation remain independent. One scale preserves the field,
+        // the exact pivot, and the positive determinant of the non-folding map.
+        var maximumDisplacement = 0d;
+        foreach (var uv in materialUvs)
+        {
+            var dx = (uv.X - item.ImagePivotX) * displayWidth;
+            var dy = (uv.Y - item.ImagePivotY) * displayHeight;
+            var radial = (dx * dx + dy * dy) / length;
+            var displacement = new Vector(sx * dx * cosine - sy * dy * sine + materialBend.X * radial,
+                sx * dx * sine + sy * dy * cosine + materialBend.Y * radial);
+            maximumDisplacement = Math.Max(maximumDisplacement, displacement.Length);
+        }
+        var deformationLimit = length * item.MaxDeformationPercent / 100;
+        if (maximumDisplacement > deformationLimit)
+        {
+            var ratio = deformationLimit / maximumDisplacement;
+            materialBend *= ratio; sx *= ratio; sy *= ratio;
+        }
         var vertices = new Point[materialUvs.Count];
         for (var i = 0; i < vertices.Length; i++)
         {
@@ -155,7 +178,36 @@ public sealed class AccessoryMotionSolver
         var left = vertices.Min(p => p.X); var top = vertices.Min(p => p.Y);
         var bounds = new Rect(left, top, vertices.Max(p => p.X) - left, vertices.Max(p => p.Y) - top);
         return Current = new(stepIndex, Array.AsReadOnly(vertices), materialUvs, materialTriangles, bounds, pivot,
-            connection, item.BaseAngleDegrees + rotation * 180 / Math.PI);
+            connection, item.BaseAngleDegrees + rotation * 180 / Math.PI)
+        { AllowFolding = item.AllowFolding };
+    }
+
+    private static Vector PreventFolding(Vector bend, double sx, double sy, double cosine, double sine,
+        double width, double height, double length, double pivotX, double pivotY)
+    {
+        // det(A + bend * gradient^T) = det(A) * (1 + gradient^T * A^-1 * bend),
+        // A = rotation * diag(1+sx, 1+sy). The radial field's continuous gradients and
+        // every rectangular mesh-cell secant lie within the same corner rectangle.
+        // Keep the determinant factor >= .2: strain >= -.35 gives area >= .0845.
+        var x = (cosine * bend.X + sine * bend.Y) / (1 + sx);
+        var y = (-sine * bend.X + cosine * bend.Y) / (1 + sy);
+        var minimumSlope = 2 / length *
+            (x * (x >= 0 ? -pivotX * width : (1 - pivotX) * width) +
+             y * (y >= 0 ? -pivotY * height : (1 - pivotY) * height));
+        return minimumSlope < -.8 ? bend * (-.8 / minimumSlope) : bend;
+    }
+
+    private void LimitConnectionTravel(double limit)
+    {
+        if (limit == 0) { connectionX = connectionY = default; return; }
+        var position = new Vector(connectionX.Position, connectionY.Position);
+        if (position.Length < limit) return;
+        var normal = position / position.Length;
+        var velocity = new Vector(connectionX.Velocity, connectionY.Velocity);
+        var outwardSpeed = Vector.Multiply(normal, velocity);
+        if (outwardSpeed > 0) velocity -= normal * outwardSpeed;
+        position = normal * limit;
+        connectionX = new(position.X, velocity.X); connectionY = new(position.Y, velocity.Y);
     }
 
     private void Observe(Point anchor, double seconds)
@@ -233,6 +285,8 @@ public sealed class AccessoryMotionSolver
             !double.IsFinite(width) || !double.IsFinite(height) || width is <= 0 or > 2048 || height is <= 0 or > 2048 ||
             !double.IsFinite(item.ImagePivotX) || !double.IsFinite(item.ImagePivotY) || item.ImagePivotX is < 0 or > 1 || item.ImagePivotY is < 0 or > 1 ||
             !double.IsFinite(item.Softness) || item.Softness is < 0 or > 100 || !double.IsFinite(item.ConnectionStrength) || item.ConnectionStrength is < 0 or > 100 ||
+            !double.IsFinite(item.MaxDeformationPercent) || item.MaxDeformationPercent is < 0 or > 200 ||
+            !double.IsFinite(item.MaxConnectionTravelPercent) || item.MaxConnectionTravelPercent is < 0 or > 200 ||
             !double.IsFinite(item.GravityInfluence) || item.GravityInfluence is < 0 or > 100 || !double.IsFinite(item.RotationDamping) || item.RotationDamping is < 0 or > 100 ||
             !double.IsFinite(item.ReturnStrength) || item.ReturnStrength is < 0 or > 100 || !double.IsFinite(item.MaxSwingDegrees) || item.MaxSwingDegrees is < 0 or > 180 ||
             !double.IsFinite(item.BaseAngleDegrees) || item.BaseAngleDegrees is < -180 or > 180)

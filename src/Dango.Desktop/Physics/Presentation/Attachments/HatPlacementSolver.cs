@@ -7,12 +7,14 @@ public sealed class HatPlacementSolver
 {
     private readonly HatTrackSolver track;
     private readonly HatFitValues neutralGuide;
+    private readonly HatFitValues neutralSurface;
     private readonly AttachmentPoint referenceCenter;
     private readonly double referenceAngle;
     private HatPlacementSolver(HatTrackSolver track, HatFitValues neutralGuide, PresentationAttachment reference)
     {
         this.track = track;
         this.neutralGuide = neutralGuide;
+        neutralSurface = neutralGuide;
         // Calibrate the original Canvas transform at the material root (80,25).
         // Its legacy transform origin is (80,15); preserve the resulting pose,
         // not that pivot as a constraint on subsequent sliding.
@@ -21,8 +23,9 @@ public sealed class HatPlacementSolver
         var rootY = 15 + 10 * Math.Cos(angle) - Math.Clamp(reference.Position.Y - 0.82, -0.2, 0.2) * 58;
         referenceCenter = new((rootX - 80) / 160, (66 - rootY) / 160);
         referenceAngle = -angle;
-        Minimum = FindLimit(track.Minimum);
-        Maximum = FindLimit(track.Maximum);
+        using var workspace = track.RentWorkspace();
+        Minimum = FindLimit(track.Minimum, workspace);
+        Maximum = FindLimit(track.Maximum, workspace);
     }
 
     public static HatPlacementSolver? Create(AttachmentShapeGeometry shape, PresentationAttachment reference)
@@ -37,42 +40,52 @@ public sealed class HatPlacementSolver
     public HatVisualPose? Fit(double s)
     {
         if (!InRange(s)) return null;
+        if (IsPositiveZero(s)) return TryCalibrate(neutralSurface, out var center, out var angle) ? new(center, angle, s) : null;
         using var workspace = track.RentWorkspace();
-        return TryFitRaw(s, workspace, out var center, out var angle) ? new(center, angle, s) : null;
+        return Fit(s, workspace);
     }
+
+    internal HatFitWorkspace RentWorkspace() => track.RentWorkspace();
+    internal HatVisualPose? Fit(double s, in HatFitWorkspace workspace) =>
+        InRange(s) && TryFitRaw(s, workspace, out var center, out var angle) ? new(center, angle, s) : null;
 
     private bool InRange(double s) => double.IsFinite(s) && s >= Minimum && s <= Maximum;
 
     public double AvailableLift(double s)
     {
+        if (IsPositiveZero(s)) return InRange(s) && TryCalibrate(neutralSurface, out var neutralCenter, out _) ?
+            Math.Max(0, (neutralSurface.Center.Y - neutralCenter.Y) * 0.5) : 0;
         using var workspace = track.RentWorkspace();
         return track.TryFitScalars(s, workspace, out var surface) && InRange(s) &&
             TryCalibrate(surface, out var center, out _) ? Math.Max(0, (surface.Center.Y - center.Y) * 0.5) : 0;
     }
 
-    private HatPlacementSolver(HatTrackSolver next, HatPlacementSolver calibration)
+    private HatPlacementSolver(HatTrackSolver next, HatPlacementSolver calibration, HatFitValues neutralSurface)
     {
         track = next;
         neutralGuide = calibration.neutralGuide;
+        this.neutralSurface = neutralSurface;
         referenceCenter = calibration.referenceCenter;
         referenceAngle = calibration.referenceAngle;
-        Minimum = FindLimit(track.Minimum);
-        Maximum = FindLimit(track.Maximum);
+        using var workspace = track.RentWorkspace();
+        Minimum = FindLimit(track.Minimum, workspace);
+        Maximum = FindLimit(track.Maximum, workspace);
     }
 
     // Rebuild geometry while retaining the accepted initial embedded-root calibration.
     public HatPlacementSolver? Remap(AttachmentShapeGeometry shape)
     {
         var next = HatTrackSolver.CreateGeometryGuide(shape);
-        if (next is null || !next.TryFitScalars(0, out _)) return null;
-        var result = new HatPlacementSolver(next, this);
-        using var workspace = next.RentWorkspace();
-        return result.InRange(0) && result.TryFitRaw(0, workspace, out _, out _) ? result : null;
+        if (next is null || !next.TryFitScalars(0, out var neutralSurface)) return null;
+        var result = new HatPlacementSolver(next, this, neutralSurface);
+        return result.InRange(0) && result.TryCalibrate(neutralSurface, out _, out _) ? result : null;
     }
 
     private bool TryFitRaw(double s, in HatFitWorkspace workspace, out AttachmentPoint center, out double angle)
     {
         center = default; angle = 0;
+        // Cache only +0 from this immutable track. -0 retains the original evaluation.
+        if (IsPositiveZero(s)) return TryCalibrate(neutralSurface, out center, out angle);
         if (!track.TryFitScalars(s, workspace, out var pose)) return false;
         return TryCalibrate(pose, out center, out angle);
     }
@@ -85,10 +98,11 @@ public sealed class HatPlacementSolver
             Math.Abs(angle) <= 0.35 && Math.Abs(center.X) <= 1 && Math.Abs(center.Y) <= 1;
     }
 
-    private double FindLimit(double endpoint)
+    private static bool IsPositiveZero(double value) => BitConverter.DoubleToInt64Bits(value) == 0;
+
+    private double FindLimit(double endpoint, in HatFitWorkspace workspace)
     {
         double previous = 0;
-        using var workspace = track.RentWorkspace();
         for (var i = 1; i <= 160; i++)
         {
             var s = endpoint * i / 160;

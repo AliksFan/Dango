@@ -33,7 +33,7 @@ internal sealed class AccessoryImageEditorWindow : Window
     internal double ViewZoom { get; private set; } = 1;
     internal string StatusMessage => status.Text;
 
-    internal AccessoryImageEditorWindow(AccessoryItem item, BitmapSource image)
+    internal AccessoryImageEditorWindow(AccessoryItem item, BitmapSource image, string? importNotice = null)
     {
         draft = item;
         AccessoryEditorTheme.Install(this);
@@ -59,6 +59,13 @@ internal sealed class AccessoryImageEditorWindow : Window
         previewFrame.SetResourceReference(Border.BorderBrushProperty, "HomeLine");
         Grid.SetRowSpan(previewFrame, 2); layout.Children.Add(previewFrame);
         var controls = new StackPanel { Margin = new Thickness(16, 0, 0, 0) };
+        if (!string.IsNullOrWhiteSpace(importNotice))
+        {
+            var notice = new TextBlock { Text = importNotice, TextWrapping = TextWrapping.Wrap, FontSize = 11, Margin = new Thickness(0, 0, 0, 12) };
+            notice.SetResourceReference(TextBlock.ForegroundProperty, "HomeMuted");
+            AutomationProperties.SetName(notice, "图片压缩提示");
+            controls.Children.Add(notice);
+        }
         var parameterScroll = new ScrollViewer
         {
             Content = controls,

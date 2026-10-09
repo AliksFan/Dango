@@ -1,10 +1,12 @@
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using Dango.Desktop.Accessories;
 using Point = System.Windows.Point;
 using Cursors = System.Windows.Input.Cursors;
 using Dango.Core.Coordinates;
 using Dango.Desktop.AppShell.Rooms;
+using Dango.Desktop.DesktopHost;
 using Dango.Desktop.Physics.Presentation;
 using Dango.Desktop.Rendering.Visuals;
 
@@ -16,7 +18,13 @@ public partial class ProductHomeView
     private readonly AccessoryEditorPanel accessoryPanel = new();
     private bool pickingAccessoryAnchor;
     private RoomViewController? accessoryCamera;
-    private long accessoryCameraFrame;
+    private readonly RoomPositionInterpolator accessoryPositions = new();
+    private HostFrameDiagnostics accessoryPresentationSnapshot;
+    private bool hasAccessoryPositionSample;
+    private long? previousAccessoryPresentationTicks;
+    private LogicalPoint? accessoryNativeCenter;
+    private LogicalVector accessoryPresentationOffset;
+    private bool accessoryNativeGrounded;
     private bool accessoryPhysicsConfigured;
     private bool accessoryProjectionRefreshQueued;
     private bool IsAccessoryPreview => IsEditing && SelectedEditor == HomeEditor.Wardrobe;
@@ -89,8 +97,8 @@ public partial class ProductHomeView
 
     private void UpdateAccessoryPreviewMode()
     {
+        ResetAccessoryPresentation();
         accessoryCamera = null;
-        accessoryCameraFrame = 0;
         LiveSceneCanvas.UseLayoutRounding = !IsAccessoryPreview;
         PetShadow.UseLayoutRounding = !IsAccessoryPreview;
         PetShadowTranslation.X = PetShadowTranslation.Y = 0;
@@ -117,6 +125,7 @@ public partial class ProductHomeView
     {
         if (liveSurfaceNeedsAlignment || liveSurfaceFailure is not null || BoundRuntime?.LocalGroundY is not { } ground)
         {
+            ResetAccessoryPresentation();
             LiveDangoVisual.Visibility = LiveDangoHat.Visibility = Visibility.Collapsed;
             AccessoryHostBinding.Hide(LiveDangoVisual);
             PetShadow.Visibility = Visibility.Collapsed;
@@ -124,30 +133,23 @@ public partial class ProductHomeView
             LiveSceneStatusText.Visibility = Visibility.Visible;
             return;
         }
-        var previewTransform = LiveSceneCanvas.TransformToAncestor(PetVisualArea);
-        var previewOrigin = previewTransform.Transform(new Point());
-        var scale = previewTransform.Transform(new Point(0, 1)).Y - previewOrigin.Y;
-        if (scale <= 0 || !double.IsFinite(scale)) return;
-        var viewportHeight = (PetVisualArea.ActualHeight - previewOrigin.Y) / scale;
-        var shadowLayoutCenterY = PetShadow.Margin.Top + PetShadow.Height / 2;
-        var groundInset = (PetVisualArea.ActualHeight - shadowLayoutCenterY) / scale;
-        if (accessoryCamera is null)
-        {
-            accessoryCamera = new RoomViewController(standardScale: 1);
-            accessoryCamera.EnableUnboundedFollow(groundInset, Math.Max(0, groundInset - 1));
-        }
-        accessoryCamera.Resize(LiveSceneCanvas.ActualWidth, viewportHeight, ground);
+        if (!TryGetAccessoryPreviewLayout(out _, out var scale, out _, out _, out _)) return;
         var bounds = DangoHostFrameBinding.Bounds(frame, 0);
         var center = BoundRuntime.CurrentSelectedCenter ?? bounds.Center;
         var grounded = BoundRuntime.LastPhysicsFrame is { Succeeded: true } physics && physics.Bodies[0].IsGrounded;
         if (grounded)
             shadowGroundCenterY = center.Y;
         var alignment = BoundRuntime.NeutralBodyGroundOffset;
-        // The shape computes the current painted bottom; its contour never becomes
-        // the camera focus. Accessory drawing still consumes this same body frame.
-        LiveDangoVisual.ApplyFrame(frame.Bodies[0], frame.Gait);
+        // Draw once, then read this same contour for contact alignment. Drawing
+        // a preliminary body here rebuilt both eyes and the path a second time.
+        DangoHostFrameBinding.Apply(LiveDangoVisual, LiveDangoHat, frame, 0,
+            new LogicalVector(0, alignment + (groundedVisualOffset ?? 0)),
+            appearance: BoundRuntime.DisplayHatAppearance, hatSize: BoundRuntime.DisplayHatSize,
+            bodyFillOverride: BoundRuntime.BodyPreviewFill, eyeFillOverride: BoundRuntime.EyePreviewFill,
+            appearanceEntity: BoundRuntime.AppearanceEntity, runtime: BoundRuntime);
         if (LiveDangoVisual.LastContourFailure != DangoContourFailure.None)
         {
+            ResetAccessoryPresentation();
             LiveDangoVisual.Visibility = LiveDangoHat.Visibility = Visibility.Collapsed;
             AccessoryHostBinding.Hide(LiveDangoVisual);
             PetShadow.Visibility = Visibility.Collapsed;
@@ -157,22 +159,110 @@ public partial class ProductHomeView
         }
         var renderedBottom = bounds.Y + LiveDangoVisual.RenderedBodyBottom!.Value;
         if (grounded)
+        {
             groundedVisualOffset = ground - renderedBottom - alignment - 1 / scale;
-        var bodyAlignment = alignment + (groundedVisualOffset ?? 0);
-        var now = Environment.TickCount64;
-        // Only the horizontal trajectory drives the preview camera. Its vertical
-        // ground framing stays fixed throughout takeoff, descent and landing.
-        var p = accessoryCamera.Update(center.X,
-            accessoryCameraFrame == 0 ? 0 : now - accessoryCameraFrame,
-            ReduceMotion || !SystemParameters.ClientAreaAnimation);
-        accessoryCameraFrame = now;
-        DangoHostFrameBinding.Apply(LiveDangoVisual, LiveDangoHat, frame, 0,
-            new LogicalVector(p.OffsetX, p.OffsetY + bodyAlignment),
-            appearance: BoundRuntime.DisplayHatAppearance, hatSize: BoundRuntime.DisplayHatSize,
-            bodyFillOverride: BoundRuntime.BodyPreviewFill, eyeFillOverride: BoundRuntime.EyePreviewFill,
-            appearanceEntity: BoundRuntime.AppearanceEntity, runtime: BoundRuntime);
-        var floor = p.WorldToScreen(new(center.X, ground));
-        var lift = Math.Clamp(((shadowGroundCenterY ?? center.Y) - center.Y) / 120, 0, 1);
+            var left = bounds.X;
+            var top = bounds.Y + alignment + groundedVisualOffset.Value;
+            System.Windows.Controls.Canvas.SetTop(LiveDangoVisual, top);
+            System.Windows.Controls.Canvas.SetTop(LiveDangoHat, top);
+            AccessoryHostBinding.Position(LiveDangoVisual, left, top);
+        }
+        accessoryNativeCenter = center;
+        accessoryNativeGrounded = grounded;
+        UpdateAccessoryProjection(0, advanceCamera: false);
+        UpdateAccessoryPresentationStatus();
+    }
+
+    private void PresentAccessoryPreview(object? sender, EventArgs args)
+    {
+        if (liveScheduler is null) return;
+        var now = liveScheduler.Snapshot;
+        var before = accessoryPresentationSnapshot;
+        accessoryPresentationSnapshot = now;
+        if (!IsAccessoryPreview || now.DuplicateCallbacks != before.DuplicateCallbacks) return;
+        if (!OwnsLiveFrameDriver || !liveScheduler.IsRunning || !IsVisible || BoundRuntime?.LastError is not null ||
+            liveSurfaceNeedsAlignment || liveSurfaceFailure is not null || accessoryNativeCenter is not { } center ||
+            LiveDangoVisual.Visibility != Visibility.Visible || LiveDangoVisual.LastContourFailure != DangoContourFailure.None)
+        {
+            ResetAccessoryPresentation();
+            return;
+        }
+        var simulationTicks = now.SuccessfulSteps * HostFrameClock.FixedStep.Ticks;
+        var clockTicks = simulationTicks + now.RemainderTicks;
+        var discontinuity = now.Overloads != before.Overloads || now.LongPauses != before.LongPauses ||
+            now.ClockResets != before.ClockResets || now.Faults != before.Faults ||
+            now.RefreshFrames != before.RefreshFrames ||
+            previousAccessoryPresentationTicks is { } previous && clockTicks < previous;
+        if (!hasAccessoryPositionSample || discontinuity)
+        {
+            accessoryPositions.Reset(center, simulationTicks);
+            hasAccessoryPositionSample = true;
+            previousAccessoryPresentationTicks = null;
+            accessoryCamera?.ResetMotion();
+        }
+        else if (now.AppliedFrames != before.AppliedFrames)
+            accessoryPositions.Add(center, simulationTicks);
+        var elapsedMs = previousAccessoryPresentationTicks is { } last ?
+            Math.Clamp((clockTicks - last) / (double)TimeSpan.TicksPerMillisecond, 0, 100) : 0;
+        previousAccessoryPresentationTicks = clockTicks;
+        var displayed = accessoryPositions.At(clockTicks - HostFrameClock.FixedStep.Ticks);
+        // The latest grounded contour already carries exact contact correction.
+        // Interpolating native core Y there would move that painted contact.
+        accessoryPresentationOffset = new(displayed.X - center.X, accessoryNativeGrounded ? 0 : displayed.Y - center.Y);
+        UpdateAccessoryProjection(elapsedMs);
+    }
+
+    private void ResetAccessoryPresentation()
+    {
+        accessoryPositions.Clear();
+        hasAccessoryPositionSample = false;
+        previousAccessoryPresentationTicks = null;
+        accessoryNativeCenter = null;
+        accessoryPresentationOffset = default;
+        accessoryPresentationSnapshot = liveScheduler?.Snapshot ?? default;
+        accessoryCamera?.ResetMotion();
+        LiveEntityLayer.RenderTransform = Transform.Identity;
+    }
+
+    private bool TryGetAccessoryPreviewLayout(out GeneralTransform previewTransform, out double scale,
+        out double viewportHeight, out double shadowLayoutCenterY, out double groundInset)
+    {
+        // This fixed outer canvas never receives the world transform, so measuring
+        // the arranged preview cannot feed camera motion back into its viewport.
+        previewTransform = LiveSceneCanvas.TransformToAncestor(PetVisualArea);
+        var previewOrigin = previewTransform.Transform(new Point());
+        scale = previewTransform.Transform(new Point(0, 1)).Y - previewOrigin.Y;
+        viewportHeight = shadowLayoutCenterY = groundInset = 0;
+        if (scale <= 0 || !double.IsFinite(scale)) return false;
+        viewportHeight = (PetVisualArea.ActualHeight - previewOrigin.Y) / scale;
+        shadowLayoutCenterY = PetShadow.Margin.Top + PetShadow.Height / 2;
+        groundInset = (PetVisualArea.ActualHeight - shadowLayoutCenterY) / scale;
+        return true;
+    }
+
+    private void UpdateAccessoryProjection(double elapsedMs, bool advanceCamera = true)
+    {
+        if (accessoryNativeCenter is not { } native || BoundRuntime?.LocalGroundY is not { } ground ||
+            !TryGetAccessoryPreviewLayout(out var previewTransform, out _, out var viewportHeight,
+                out var shadowLayoutCenterY, out var groundInset)) return;
+        var firstCamera = accessoryCamera is null;
+        if (firstCamera)
+        {
+            accessoryCamera = new RoomViewController(standardScale: 1);
+            accessoryCamera.EnableUnboundedFollow(groundInset, Math.Max(0, groundInset - 1));
+        }
+        accessoryCamera!.Resize(LiveSceneCanvas.ActualWidth, viewportHeight, ground);
+        var displayed = new LogicalPoint(native.X + accessoryPresentationOffset.X, native.Y + accessoryPresentationOffset.Y);
+        // Use the same callback clock and whole-entity interpolation as ordinary
+        // windows, while retaining this preview's fixed vertical ground framing.
+        var p = advanceCamera || firstCamera
+            ? accessoryCamera.Update(displayed.X, elapsedMs, ReduceMotion || !SystemParameters.ClientAreaAnimation)
+            : accessoryCamera.Projection;
+        LiveEntityLayer.RenderTransform = new MatrixTransform(p.Scale, 0, 0, p.Scale,
+            p.OffsetX + accessoryPresentationOffset.X * p.Scale,
+            p.OffsetY + accessoryPresentationOffset.Y * p.Scale);
+        var floor = p.WorldToScreen(new(displayed.X, ground));
+        var lift = Math.Clamp(((shadowGroundCenterY ?? native.Y) - displayed.Y) / 120, 0, 1);
         // Keep the shadow in the exact same arranged projection as the body.
         // A layout margin would round each moving world-floor position to pixels.
         var projectedFloor = previewTransform.Transform(new Point(floor.X, floor.Y));
@@ -185,7 +275,6 @@ public partial class ProductHomeView
         PetShadow.Opacity = .17 - .09 * lift;
         PetShadow.Visibility = floor.Y >= 0 && floor.Y <= viewportHeight + 1 &&
             LiveDangoVisual.LastContourFailure == DangoContourFailure.None ? Visibility.Visible : Visibility.Collapsed;
-        UpdateAccessoryPresentationStatus();
     }
 
     private void RefreshAccessoryFrame()

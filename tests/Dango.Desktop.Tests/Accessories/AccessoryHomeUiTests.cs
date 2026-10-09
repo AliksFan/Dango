@@ -536,9 +536,10 @@ public sealed class AccessoryHomeUiTests
             var image = Descendants<Image>(card).Single();
             var thumbnail = Assert.IsInstanceOfType<BitmapSource>(image.Source,
                 "Every visible library card must show its actual image, rather than a text placeholder.");
-            Assert.IsTrue(thumbnail.PixelWidth > 0 && thumbnail.PixelHeight > 0 &&
-                Math.Max(thumbnail.PixelWidth, thumbnail.PixelHeight) <= AccessoryEditorPanel.ThumbnailEdge,
-                "Gallery images must use bounded thumbnails of the real asset.");
+            var dpi = VisualTreeHelper.GetDpi(Panel(home));
+            var expectedEdge = (int)Math.Ceiling(AccessoryEditorPanel.ThumbnailEdge * Math.Max(dpi.DpiScaleX, dpi.DpiScaleY));
+            Assert.AreEqual(expectedEdge, Math.Max(thumbnail.PixelWidth, thumbnail.PixelHeight),
+                "Real asset thumbnails must cover 48 DIP at the current DPI without using a full-size asset.");
             AssertInside(bounds, Bounds(home, image), "image within gallery card " + index);
             Assert.IsTrue(bounds.Height <= 70, "Gallery cards must retain their natural icon-row height.");
             Assert.IsFalse(card.Content is string, "Library rows must contain image cards.");

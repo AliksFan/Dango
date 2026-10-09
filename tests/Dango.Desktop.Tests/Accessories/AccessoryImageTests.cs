@@ -45,7 +45,7 @@ public sealed class AccessoryImageTests
     }
 
     [TestMethod]
-    public void OversizedDimensionsAndAnimatedPngAreRejectedBeforeImageDecode()
+    public void CorruptedDimensionsAndAnimatedPngAreRejectedBeforeImageDecode()
     {
         var path = WritePng("large.png", [0, 0, 0, 0, 20, 40, 60, 255]);
         var png = File.ReadAllBytes(path);
@@ -66,8 +66,9 @@ public sealed class AccessoryImageTests
     {
         Directory.CreateDirectory(root);
         var path = Path.Combine(root, "large.png");
-        using (var stream = File.Create(path)) stream.SetLength(16L * 1024 * 1024 + 1);
-        Assert.ThrowsExactly<InvalidDataException>(() => AccessoryImageAsset.ImportPng(path));
+        using (var stream = File.Create(path)) stream.SetLength(AccessoryImageAsset.MaximumSourceFileBytes + 1);
+        var error = Assert.ThrowsExactly<InvalidDataException>(() => AccessoryImageAsset.ImportPng(path));
+        StringAssert.Contains(error.Message, "64 MiB");
     }
 
     [TestMethod]

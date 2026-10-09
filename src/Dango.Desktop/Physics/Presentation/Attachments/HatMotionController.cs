@@ -35,18 +35,19 @@ public sealed class HatMotionController(PhysicsPresentationFrame? baseline = nul
         safety = "Normal";
         if (placement is not null && placement.Fit(state.Position) is { } old)
         {
+            using var workspace = next.RentWorkspace();
             // Follow crown motion, then preserve the nearest location along its changing arc.
-            var desired = old.Center + next.Fit(0)!.Center - placement.Fit(0)!.Center;
+            var desired = old.Center + next.Fit(0, workspace)!.Center - placement.Fit(0)!.Center;
             double lo = next.Minimum, hi = next.Maximum;
             for (var i = 0; i < 20; i++)
             {
                 var a = lo + (hi - lo) / 3; var b = hi - (hi - lo) / 3;
-                if ((next.Fit(a)!.Center - desired).Length <= (next.Fit(b)!.Center - desired).Length) hi = b;
+                if ((next.Fit(a, workspace)!.Center - desired).Length <= (next.Fit(b, workspace)!.Center - desired).Length) hi = b;
                 else lo = a;
             }
             var mapped = (lo + hi) / 2;
             // Exact unchanged geometry must not accumulate a numerical search bias.
-            var unchanged = next.Fit(Math.Clamp(state.Position, next.Minimum, next.Maximum));
+            var unchanged = next.Fit(Math.Clamp(state.Position, next.Minimum, next.Maximum), workspace);
             if (unchanged is not null && (unchanged.Center - desired).Length < 1e-9) mapped = Math.Clamp(state.Position, next.Minimum, next.Maximum);
             state = state with { Position = mapped };
         }

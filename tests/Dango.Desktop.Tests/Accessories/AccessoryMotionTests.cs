@@ -52,10 +52,11 @@ public sealed class AccessoryMotionTests
             elasticFrame = elastic.Update(i, 1d / 60, new(80, 80), 64, 64, elasticItem);
         }
         Assert.AreEqual(new Vector(), fixedFrame!.ConnectionOffset);
-        Assert.IsTrue(elasticFrame!.ConnectionOffset.Y > 1 && elasticFrame.ConnectionOffset.Length < 30);
+        Assert.IsTrue(elasticFrame!.ConnectionOffset.Y > 50 && elasticFrame.ConnectionOffset.Length < 70);
         Assert.AreEqual(64 * Math.Sqrt(2), Distance(elasticFrame, 0, elasticFrame.Vertices.Count - 1), 1e-8);
         var noGravity = elasticItem with { GravityInfluence = 0 };
-        for (var i = 600; i < 1200; i++) elasticFrame = elastic.Update(i, 1d / 60, new(80, 80), 64, 64, noGravity);
+        // The newly loosened endpoint deliberately has a longer recovery time constant.
+        for (var i = 600; i < 1800; i++) elasticFrame = elastic.Update(i, 1d / 60, new(80, 80), 64, 64, noGravity);
         Assert.IsTrue(elasticFrame.ConnectionOffset.Length < 0.001);
     }
 
@@ -147,7 +148,7 @@ public sealed class AccessoryMotionTests
         for (var i = 0; i < 600; i++)
         {
             var frame = solver.Update(i, 1d / 60, new(i % 2 * 10000, i % 3 * 10000), 256, 256, item);
-            Assert.IsTrue(frame.ConnectionOffset.Length < 100);
+            Assert.IsTrue(frame.ConnectionOffset.Length <= .75 * Math.Sqrt(2) * 256 * Math.Sqrt(2) + 1e-8);
             Assert.IsTrue(double.IsFinite(frame.RotationDegrees));
             for (var t = 0; t < frame.TriangleIndices.Count; t += 3)
             {

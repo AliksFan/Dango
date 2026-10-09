@@ -9,7 +9,6 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Threading;
 using Button = System.Windows.Controls.Button;
 using CheckBox = System.Windows.Controls.CheckBox;
-using ComboBox = System.Windows.Controls.ComboBox;
 using Control = System.Windows.Controls.Control;
 using ContextMenu = System.Windows.Controls.ContextMenu;
 using DataObject = System.Windows.DataObject;
@@ -42,14 +41,23 @@ internal sealed class AccessoryEditorPanel : StackPanel
     private readonly Dictionary<AccessoryEditorSection, StackPanel> sections = [];
     private readonly Dictionary<AccessoryEditorSection, Button> sectionButtons = [];
     private readonly Dictionary<string, LibraryCard> libraryCards = [];
+    private readonly Dictionary<string, string> importNotices = [];
     private readonly Dictionary<string, BitmapSource?> thumbnails = [];
     private readonly LinkedList<string> thumbnailRecency = new();
     private readonly HashSet<Image> thumbnailOwners = [];
     private ScrollViewer? outerScroll;
     private bool thumbnailUpdateQueued;
+    private int thumbnailPixelEdge = ThumbnailEdge;
     private readonly CheckBox lockRotation = new() { Content = "锁定朝向", Margin = new Thickness(0, 4, 0, 4) };
     private readonly CheckBox limitSwing = new() { Content = "限制摆角", Margin = new Thickness(0, 4, 0, 4) };
-    private readonly ComboBox layer = new() { MinWidth = 0, Margin = new Thickness(0, 3, 0, 8) };
+    private readonly CheckBox allowFolding = new()
+    {
+        Content = "允许翻折",
+        Margin = new Thickness(0, 4, 0, 4),
+        ToolTip = "允许图片在强形变时折过去；关闭时防止翻折。只影响配饰图片，不参与碰撞。",
+    };
+    private readonly Button frontLayer;
+    private readonly Button behindLayer;
     private readonly Button apply;
     private readonly Button reset;
     private readonly Button createTool;
@@ -65,6 +73,7 @@ internal sealed class AccessoryEditorPanel : StackPanel
     private string? selectedId;
     private string? previewError;
     private string? operationError;
+    private string? reportedSessionStatus;
     private string previewNotice = "拖动即时预览 · 应用后保存";
     private bool? reportedDirty;
 
@@ -145,16 +154,11 @@ internal sealed class AccessoryEditorPanel : StackPanel
         name.LostKeyboardFocus += (_, _) => { if (!confirmingDeletion) CommitPendingInputs(); };
         name.PreviewKeyDown += (_, e) => { if (e.Key == Key.Enter) { CommitPendingInputs(); e.Handled = true; } };
         name.TextChanged += (_, _) => { if (!refreshing) UpdateStatus(); };
-        placement.Children.Add(new TextBlock { Text = "图层" });
-        layer.Items.Add("团子后"); layer.Items.Add("团子前");
-        AutomationProperties.SetName(layer, "配饰前后图层"); placement.Children.Add(layer);
-        layer.SelectionChanged += (_, _) =>
-        {
-            if (refreshing || layer.SelectedIndex < 0) return;
-            var selected = layer.SelectedIndex == 0 ? AccessoryLayer.Behind : AccessoryLayer.Front;
-            Edit(item => item with { Layer = selected });
-        };
-        var ordering = new WrapPanel();
+        var ordering = new WrapPanel { Margin = new Thickness(0, 3, 0, 8) };
+        frontLayer = AccessoryEditorTheme.IconButton("团子前", "M3,3 L14,3 L14,14 L3,14 Z M17,10 L21,10 L21,21 L10,21 L10,17", "团子前 · 显示在团子前面", () => Edit(item => item with { Layer = AccessoryLayer.Front }));
+        behindLayer = AccessoryEditorTheme.IconButton("团子后", "M10,10 L21,10 L21,21 L10,21 Z M14,7 L14,3 L3,3 L3,14 L7,14", "团子后 · 显示在团子后面", () => Edit(item => item with { Layer = AccessoryLayer.Behind }));
+        frontLayer.Margin = behindLayer.Margin = new Thickness(0, 0, 8, 0);
+        ordering.Children.Add(frontLayer); ordering.Children.Add(behindLayer);
         var moveUp = AccessoryEditorTheme.IconButton("上移", "M6,14 L12,8 L18,14", "上移 · 叠在同层配饰前面", () => MoveSelected(1));
         moveUp.Margin = new Thickness(0, 0, 8, 0);
         ordering.Children.Add(moveUp);
@@ -167,7 +171,25 @@ internal sealed class AccessoryEditorPanel : StackPanel
         AddNumber(placement, "身体附着 X", "附着 X", "bodyX", 0, 1, value => Edit(item => item with { BodyAnchorX = value }));
         AddNumber(placement, "身体附着 Y", "附着 Y", "bodyY", 0, 1, value => Edit(item => item with { BodyAnchorY = value }));
         AddNumber(connection, "柔软度", "柔软度", "softness", 0, 100, value => Edit(item => item with { Softness = value }));
+        AddNumber(connection, "最高允许形变量 %", "形变上限 %", "deformation", 0, 200,
+            value => Edit(item => item with { MaxDeformationPercent = value }));
+        sliders["deformation"].ToolTip = valueTexts["deformation"].ToolTip =
+            "图片各点相对原造型的最大移动距离，以配饰尺寸的对角线为 100%；0 保持刚性，不限制连接弹性或整体旋转。";
+        AutomationProperties.SetName(allowFolding, "允许翻折");
+        connection.Children.Add(allowFolding);
+        RoutedEventHandler foldingChanged = (_, _) =>
+        {
+            if (refreshing) return;
+            var selected = allowFolding.IsChecked == true;
+            Edit(item => item with { AllowFolding = selected });
+        };
+        allowFolding.Checked += foldingChanged;
+        allowFolding.Unchecked += foldingChanged;
         AddNumber(connection, "连接强度", "连接强度", "connection", 0, 100, value => Edit(item => item with { ConnectionStrength = value }));
+        AddNumber(connection, "连接最大行程 %", "连接行程上限 %", "travel", 0, 200,
+            value => Edit(item => item with { MaxConnectionTravelPercent = value }));
+        sliders["travel"].ToolTip = valueTexts["travel"].ToolTip =
+            "图片支点与团子附着点之间的最大距离，以配饰尺寸的对角线为 100%；0 保持支点重合，不限制图片自身形变。";
         AddNumber(rotation, "旋转阻尼", "旋转阻尼", "damping", 0, 100, value => Edit(item => item with { RotationDamping = value }));
         rotation.Children.Add(lockRotation);
         lockRotation.Click += (_, _) =>
@@ -205,6 +227,7 @@ internal sealed class AccessoryEditorPanel : StackPanel
         ArgumentNullException.ThrowIfNull(value);
         ClearVisibleThumbnails();
         thumbnails.Clear(); thumbnailRecency.Clear();
+        importNotices.Clear();
         foreach (var card in libraryCards.Values) card.ImageUnavailable = false;
         session = value; previewError = null; selectedId = value.DraftConfiguration.Items.FirstOrDefault()?.Id;
         SelectedSection = AccessoryEditorSection.Library; UpdateSections();
@@ -224,6 +247,11 @@ internal sealed class AccessoryEditorPanel : StackPanel
         generation++;
         refreshing = true;
         var items = session?.DraftConfiguration.Items ?? [];
+        if (importNotices.Count > 0)
+        {
+            var retainedIds = items.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+            foreach (var id in importNotices.Keys.Where(id => !retainedIds.Contains(id)).ToArray()) importNotices.Remove(id);
+        }
         var equippedItems = items.Where(item => item.IsEquipped).OrderBy(item => item.Layer).ThenBy(item => item.Order).ThenBy(item => item.Id, StringComparer.Ordinal).ToArray();
         var unequippedItems = items.Where(item => !item.IsEquipped).ToArray();
         if (!list.Items.Cast<ListBoxItem>().Select(row => (string)row.Tag).SequenceEqual(equippedItems.Select(item => item.Id)) ||
@@ -272,14 +300,18 @@ internal sealed class AccessoryEditorPanel : StackPanel
     /// <summary>Saving and visible preview are separate results; only the host can clear its drawing error.</summary>
     internal void SetPreviewError(string? error)
     {
-        previewError = string.IsNullOrWhiteSpace(error) ? null : error;
+        var next = string.IsNullOrWhiteSpace(error) ? null : error;
+        if (previewError == next && reportedSessionStatus == session?.StatusMessage) return;
+        previewError = next;
         UpdateStatus();
     }
 
     private void UpdateStatus()
     {
         var savedStatus = session?.StatusMessage ?? "导入透明 PNG，编辑后应用到本机。";
-        var text = string.Join("\n", new[] { operationError, previewError, savedStatus }.Where(message => !string.IsNullOrWhiteSpace(message)));
+        reportedSessionStatus = savedStatus;
+        var importNotice = SelectedItem is { } selected ? importNotices.GetValueOrDefault(selected.Id) : null;
+        var text = string.Join("\n", new[] { operationError, previewError, importNotice, savedStatus }.Where(message => !string.IsNullOrWhiteSpace(message)));
         var buffered = HasBufferedInput;
         apply.IsEnabled = session is not null && !session.IsWriteProtected && (session.HasPendingSave || buffered);
         var notice = session?.IsWriteProtected == true ? "清单受保护 · 只读预览" : buffered ? "输入待确认 · 应用后保存" :
@@ -302,11 +334,15 @@ internal sealed class AccessoryEditorPanel : StackPanel
         if (item is not null)
         {
             name.Text = item.Name;
-            layer.SelectedIndex = item.Layer == AccessoryLayer.Behind ? 0 : 1;
+            SetLayerSelected(frontLayer, item.Layer == AccessoryLayer.Front);
+            SetLayerSelected(behindLayer, item.Layer == AccessoryLayer.Behind);
             lockRotation.IsChecked = item.LockRotation; limitSwing.IsChecked = item.LimitSwing;
+            allowFolding.IsChecked = item.AllowFolding;
             sliders["size"].Value = item.SizePercent; sliders["angle"].Value = item.BaseAngleDegrees;
             sliders["bodyX"].Value = item.BodyAnchorX; sliders["bodyY"].Value = item.BodyAnchorY;
             sliders["softness"].Value = item.Softness; sliders["connection"].Value = item.ConnectionStrength;
+            sliders["deformation"].Value = item.MaxDeformationPercent;
+            sliders["travel"].Value = item.MaxConnectionTravelPercent;
             sliders["damping"].Value = item.RotationDamping; sliders["return"].Value = item.ReturnStrength;
             sliders["swing"].Value = item.MaxSwingDegrees; sliders["gravity"].Value = item.GravityInfluence;
             limitSwing.IsEnabled = editable && !item.LockRotation;
@@ -475,7 +511,7 @@ internal sealed class AccessoryEditorPanel : StackPanel
 
     private AccessoryItem? OpenImageEditor(AccessoryItem item, BitmapSource image)
     {
-        var window = new AccessoryImageEditorWindow(item, image) { Owner = Window.GetWindow(this) };
+        var window = new AccessoryImageEditorWindow(item, image, importNotices.GetValueOrDefault(item.Id)) { Owner = Window.GetWindow(this) };
         AccessoryEditorTheme.CopyFrom(this, window);
         return window.ShowDialog() == true ? window.Result : null;
     }
@@ -536,7 +572,9 @@ internal sealed class AccessoryEditorPanel : StackPanel
             BodyAnchorX = numbers["bodyX"],
             BodyAnchorY = numbers["bodyY"],
             Softness = numbers["softness"],
+            MaxDeformationPercent = numbers["deformation"],
             ConnectionStrength = numbers["connection"],
+            MaxConnectionTravelPercent = numbers["travel"],
             RotationDamping = numbers["damping"],
             ReturnStrength = numbers["return"],
             MaxSwingDegrees = numbers["swing"],
@@ -571,7 +609,9 @@ internal sealed class AccessoryEditorPanel : StackPanel
         if (path is null || generation != importGeneration || !IsEnabled) return;
         Execute(() =>
         {
-            selectedId = session.ImportPng(path).Id;
+            var imported = session.ImportPng(path);
+            selectedId = imported.Id;
+            if (session.LastImportInfo?.Notice is { } notice) importNotices[imported.Id] = notice;
             Changed(discardInput: true);
             SelectSection(AccessoryEditorSection.Placement);
             EditSelectedImage();
@@ -598,7 +638,10 @@ internal sealed class AccessoryEditorPanel : StackPanel
         SizePercent = 100,
         BaseAngleDegrees = 0,
         Softness = 0,
+        AllowFolding = false,
+        MaxDeformationPercent = 100,
         ConnectionStrength = 100,
+        MaxConnectionTravelPercent = 75,
         RotationDamping = 60,
         ReturnStrength = 60,
         GravityInfluence = 0,
@@ -651,10 +694,16 @@ internal sealed class AccessoryEditorPanel : StackPanel
         sectionButtons[section] = button; tabs.Children.Add(button);
     }
 
+    private static void SetLayerSelected(Button button, bool selected)
+    {
+        button.Tag = selected ? "Selected" : null;
+        button.SetResourceReference(Control.ForegroundProperty, selected ? "HomePrimaryInk" : "HomeInk");
+        AutomationProperties.SetItemStatus(button, selected ? "已选" : "未选");
+    }
+
     private StackPanel AddGroup(AccessoryEditorSection section, string name)
     {
         var body = new StackPanel { Margin = new Thickness(0, 6, 0, 6) };
-        body.Children.Add(new TextBlock { Text = name, FontSize = 12, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 6) });
         AutomationProperties.SetName(body, "配饰参数：" + name);
         sections[section] = body; editor.Children.Add(body);
         return body;
@@ -823,6 +872,12 @@ internal sealed class AccessoryEditorPanel : StackPanel
 
     private void OnLibraryScrollChanged(object sender, ScrollChangedEventArgs e) => QueueThumbnailUpdate();
 
+    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
+    {
+        base.OnDpiChanged(oldDpi, newDpi);
+        QueueThumbnailUpdate();
+    }
+
     private void QueueThumbnailUpdate()
     {
         if (thumbnailUpdateQueued) return;
@@ -842,6 +897,13 @@ internal sealed class AccessoryEditorPanel : StackPanel
             ClearVisibleThumbnails();
             return;
         }
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var pixelEdge = (int)Math.Ceiling(ThumbnailEdge * Math.Max(dpi.DpiScaleX, dpi.DpiScaleY));
+        if (thumbnailPixelEdge != pixelEdge)
+        {
+            thumbnailPixelEdge = pixelEdge;
+            ClearVisibleThumbnails(); thumbnails.Clear(); thumbnailRecency.Clear();
+        }
         foreach (var item in session.DraftConfiguration.Items)
         {
             if (!libraryCards.TryGetValue(item.Id, out var card)) continue;
@@ -854,7 +916,7 @@ internal sealed class AccessoryEditorPanel : StackPanel
             if (!thumbnails.TryGetValue(item.AssetId, out var thumbnail))
             {
                 var source = session.TryGetImage(item.AssetId) ?? BuiltinAccessoryImages.Get(item.AssetId);
-                thumbnail = source is null ? null : CreateThumbnail(source);
+                thumbnail = source is null ? null : CreateThumbnail(source, thumbnailPixelEdge);
                 thumbnails[item.AssetId] = thumbnail;
                 ThumbnailDecodeCount++;
             }
@@ -892,9 +954,9 @@ internal sealed class AccessoryEditorPanel : StackPanel
         return true;
     }
 
-    private static BitmapSource CreateThumbnail(BitmapSource source)
+    private static BitmapSource CreateThumbnail(BitmapSource source, int pixelEdge)
     {
-        var scale = (double)ThumbnailEdge / Math.Max(source.PixelWidth, source.PixelHeight);
+        var scale = (double)pixelEdge / Math.Max(source.PixelWidth, source.PixelHeight);
         var width = Math.Max(1, (int)Math.Round(source.PixelWidth * scale));
         var height = Math.Max(1, (int)Math.Round(source.PixelHeight * scale));
         var drawing = new DrawingVisual();

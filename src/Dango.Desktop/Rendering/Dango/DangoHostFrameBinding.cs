@@ -33,11 +33,20 @@ internal static class DangoHostFrameBinding
         StackedDangoSceneRuntime? runtime = null)
     {
         var active = index < frame.Bodies.Count;
-        body.Visibility = hat.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+        var suppressLegacyHat = active && runtime is { AccessoriesEnabled: true } && body.Parent is Canvas &&
+            (runtime.AppearanceEntity is null ? index == 0 :
+                index < frame.EntityIds.Count && frame.EntityIds[index] == runtime.AppearanceEntity);
+        body.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+        hat.Visibility = active && !suppressLegacyHat ? Visibility.Visible : Visibility.Collapsed;
         body.Tag = active && index < frame.EntityIds.Count ? frame.EntityIds[index] : null;
         if (!active) { AccessoryHostBinding.Hide(body); return; }
-        body.Appearance = hat.Appearance = appearance;
-        body.HatSize = hat.HatSize = hatSize;
+        body.Appearance = appearance;
+        body.HatSize = hatSize;
+        if (!suppressLegacyHat)
+        {
+            hat.Appearance = appearance;
+            hat.HatSize = hatSize;
+        }
         var bounds = Bounds(frame, index).Translate(translation);
         Canvas.SetLeft(body, bounds.X); Canvas.SetTop(body, bounds.Y);
         Canvas.SetLeft(hat, bounds.X); Canvas.SetTop(hat, bounds.Y);
@@ -48,7 +57,9 @@ internal static class DangoHostFrameBinding
         var gait = frame.Gait is { } candidate && index < frame.EntityIds.Count &&
             candidate.Matches(frame.Bodies[index], frame.EntityIds[index]) ? candidate : null;
         body.ApplyFrame(frame.Bodies[index], gait);
-        hat.ApplyFrame(frame.Bodies[index], gait);
+        // Accessory layers replace only this Canvas host's customized legacy
+        // visual. Runtime Hat/Gait state still advances and restores on this frame.
+        if (!suppressLegacyHat) hat.ApplyFrame(frame.Bodies[index], gait);
         AccessoryHostBinding.Apply(body, hat, frame, index, translation, runtime);
     }
 

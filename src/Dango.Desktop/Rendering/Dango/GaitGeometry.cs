@@ -1,4 +1,5 @@
 using Dango.Core.Coordinates;
+using System.Runtime.CompilerServices;
 using Dango.Desktop.Physics.Presentation;
 using Dango.Desktop.Physics.Presentation.Attachments;
 using Dango.Physics;
@@ -7,6 +8,9 @@ namespace Dango.Desktop.Rendering.Visuals;
 
 internal static class GaitGeometry
 {
+    // This per-frame nested geometry loop must start with optimized code rather
+    // than waiting for tier promotion while the user is already walking.
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     internal static GaitPresentationFrame? Create(PhysicsPresentationFrame frame, DangoEntityId entity,
         LogicalRect bounds, LogicalRect viewport, double strain, bool autonomous, double hatSize)
     {
@@ -30,11 +34,10 @@ internal static class GaitGeometry
         if (eyes.SelectMany(e => e).Any(point => !Contains(body, point))) return null;
         // A diagonal positive scale cannot reduce any point-to-segment distance by more
         // than its smallest scale. Compute the expensive original clearance only once.
-        var eyeClearance = double.PositiveInfinity;
-        foreach (var eye in eyes)
-            foreach (var point in eye)
-                for (var i = 0; i < body.Length; i++)
-                    eyeClearance = Math.Min(eyeClearance, SegmentDistance(point, body[i], body[(i + 1) % body.Length]));
+        var eyeClearanceSquared = MinimumEyeClearanceSquared(body, eyes);
+        // Square root is monotone, so the same minimum needs only one root.
+        // Keep the original squared-distance arithmetic and every sample.
+        var eyeClearance = Math.Sqrt(eyeClearanceSquared);
         var eyeGap = eyes.All(e => e.Length > 0) ? eyes[1].Min(p => p.X) - eyes[0].Max(p => p.X) : double.PositiveInfinity;
         GaitPresentationFrame Make(double factor) => new(entity, attachment.Generation, attachment.StepIndex,
             center, bottom, 1 - .5 * strain * factor, 1 + strain * factor);
@@ -63,6 +66,7 @@ internal static class GaitGeometry
         return lo < 1e-6 ? null : Make(lo);
     }
     internal static LogicalPoint Canvas(AttachmentPoint p) => new(80 + p.X * 160, 66 - p.Y * 160);
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static bool Contains(LogicalPoint[] polygon, LogicalPoint point)
     {
         var inside = false;
@@ -75,11 +79,105 @@ internal static class GaitGeometry
         return inside;
     }
     private static double Distance(LogicalPoint a, LogicalPoint b) => Math.Sqrt(Math.Pow(a.X - b.X, 2) + Math.Pow(a.Y - b.Y, 2));
-    private static double SegmentDistance(LogicalPoint p, LogicalPoint a, LogicalPoint b)
+    private const double MaximumBoundCoordinate = 1_000_000;
+    private readonly record struct EyeBounds(double Left, double Top, double Right, double Bottom, bool Eligible);
+    private readonly record struct Segment(LogicalPoint Start, double Dx, double Dy, double LengthSquared, double LowerBoundSquared);
+
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    internal static double MinimumEyeClearanceSquared(LogicalPoint[] body, LogicalPoint[][] eyes)
     {
-        var dx = b.X - a.X; var dy = b.Y - a.Y;
-        var length = dx * dx + dy * dy;
+        var eyeBounds = Bounds(eyes);
+        Span<Segment> segments = body.Length <= 128
+            ? stackalloc Segment[body.Length]
+            : new Segment[body.Length];
+        for (var index = 0; index < body.Length; index++)
+        {
+            var a = body[index]; var b = body[(index + 1) % body.Length];
+            var dx = b.X - a.X; var dy = b.Y - a.Y;
+            var length = dx * dx + dy * dy;
+            segments[index] = new(a, dx, dy, length,
+                ClearanceLowerBoundSquared(eyeBounds, a, dx, dy, length));
+        }
+        var best = double.PositiveInfinity;
+        foreach (var eye in eyes)
+            foreach (var point in eye)
+                foreach (ref readonly var segment in segments)
+                {
+                    // The bound covers every actual eye point, and is deliberately
+                    // expanded. Equality still executes the original projection.
+                    if (segment.LowerBoundSquared > best) continue;
+                    best = Math.Min(best, SegmentDistanceSquared(point, in segment));
+                }
+        return best;
+    }
+
+    internal static double ClearanceLowerBoundSquared(LogicalPoint point, LogicalPoint start,
+        double dx, double dy, double lengthSquared) =>
+        ClearanceLowerBoundSquared(new EyeBounds(point.X, point.Y, point.X, point.Y,
+            InBoundDomain(point.X) && InBoundDomain(point.Y)), start, dx, dy, lengthSquared);
+
+    internal static bool CanSkipClearanceSegment(LogicalPoint point, LogicalPoint start,
+        double dx, double dy, double lengthSquared, double bestSquared) =>
+        double.IsFinite(bestSquared) && bestSquared >= 0 &&
+        ClearanceLowerBoundSquared(point, start, dx, dy, lengthSquared) > bestSquared;
+
+    private static bool InBoundDomain(double value) => double.IsFinite(value) && Math.Abs(value) <= MaximumBoundCoordinate;
+
+    private static EyeBounds Bounds(LogicalPoint[][] eyes)
+    {
+        double left = double.PositiveInfinity, top = double.PositiveInfinity;
+        double right = double.NegativeInfinity, bottom = double.NegativeInfinity;
+        foreach (var eye in eyes)
+            foreach (var point in eye)
+            {
+                if (!InBoundDomain(point.X) || !InBoundDomain(point.Y)) return default;
+                left = Math.Min(left, point.X); right = Math.Max(right, point.X);
+                top = Math.Min(top, point.Y); bottom = Math.Max(bottom, point.Y);
+            }
+        return new(left, top, right, bottom, left != double.PositiveInfinity);
+    }
+
+    private static double ClearanceLowerBoundSquared(EyeBounds eyes, LogicalPoint start,
+        double dx, double dy, double lengthSquared)
+    {
+        // This bounded finite domain prevents the original projection numerator
+        // from overflowing to inf - inf. Outside it, execute every original edge.
+        if (!eyes.Eligible || !InBoundDomain(start.X) || !InBoundDomain(start.Y) ||
+            !InBoundDomain(dx) || !InBoundDomain(dy) || !double.IsFinite(lengthSquared) || lengthSquared < 0)
+            return 0;
+        // t = 1 evaluates Start + Delta, which can differ from the supplied end.
+        // Rounded multiply/add remains inside these actual computed endpoints.
+        var endX = start.X + dx; var endY = start.Y + dy;
+        var scale = Math.Max(1, Math.Max(Math.Max(Math.Abs(start.X), Math.Abs(start.Y)),
+            Math.Max(Math.Max(Math.Abs(endX), Math.Abs(endY)),
+                Math.Max(Math.Max(Math.Abs(dx), Math.Abs(dy)),
+                    Math.Max(Math.Max(Math.Abs(eyes.Left), Math.Abs(eyes.Top)),
+                        Math.Max(Math.Abs(eyes.Right), Math.Abs(eyes.Bottom)))))));
+        var padding = scale * 1e-9;
+        var left = Math.BitDecrement(Math.Min(start.X, endX) - padding);
+        var right = Math.BitIncrement(Math.Max(start.X, endX) + padding);
+        var top = Math.BitDecrement(Math.Min(start.Y, endY) - padding);
+        var bottom = Math.BitIncrement(Math.Max(start.Y, endY) + padding);
+        var x = Gap(eyes.Left - padding, eyes.Right + padding, left, right);
+        var y = Gap(eyes.Top - padding, eyes.Bottom + padding, top, bottom);
+        // Keep Pow, including the sign of a separated interval's residual. The
+        // geometric padding is far larger than adjacent-double rounding errors.
+        var lower = Math.Pow(x, 2) + Math.Pow(y, 2);
+        return !double.IsFinite(lower) || lower <= 0 ? 0 : Math.Max(0, Math.BitDecrement(lower));
+
+        static double Gap(double eyeMinimum, double eyeMaximum, double segmentMinimum, double segmentMaximum)
+        {
+            if (eyeMaximum < segmentMinimum) return Math.BitIncrement(eyeMaximum - segmentMinimum);
+            if (eyeMinimum > segmentMaximum) return Math.BitDecrement(eyeMinimum - segmentMaximum);
+            return 0;
+        }
+    }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static double SegmentDistanceSquared(LogicalPoint p, in Segment segment)
+    {
+        var a = segment.Start; var dx = segment.Dx; var dy = segment.Dy; var length = segment.LengthSquared;
         var t = length == 0 ? 0 : Math.Clamp(((p.X - a.X) * dx + (p.Y - a.Y) * dy) / length, 0, 1);
-        return Distance(p, new(a.X + t * dx, a.Y + t * dy));
+        var q = new LogicalPoint(a.X + t * dx, a.Y + t * dy);
+        return Math.Pow(p.X - q.X, 2) + Math.Pow(p.Y - q.Y, 2);
     }
 }

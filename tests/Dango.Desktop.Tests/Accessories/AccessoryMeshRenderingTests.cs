@@ -62,6 +62,7 @@ public sealed class AccessoryMeshRenderingTests
     }
 
     [STATestMethod]
+    [TestCategory("Performance")]
     public void ActualVisibleWindowRendersEightFlexibleAccessoriesWithMeasuredDpiAndFrameCadence()
     {
         var texture = Texture(2048);
@@ -263,9 +264,12 @@ public sealed class AccessoryMeshRenderingTests
     [DataRow(1.0, 64)]
     [DataRow(1.5, 64)]
     [DataRow(1.5, 2048)]
+    [DataRow(1.5, 4096)]
+    [TestCategory("Performance")]
     public void EightLargeFlexibleTexturesFitTheMeasuredLocalRasterBudget(double pixelsPerDip, int sourceEdge)
     {
-        var texture = Texture(sourceEdge); var solvers = Enumerable.Range(0, 8).Select(_ => new AccessoryMotionSolver()).ToArray();
+        var sourceHeight = Math.Min(sourceEdge, (int)(AccessoryImageAsset.MaximumPixels / sourceEdge));
+        var texture = Texture(sourceEdge, sourceHeight); var solvers = Enumerable.Range(0, 8).Select(_ => new AccessoryMotionSolver()).ToArray();
         var visuals = Enumerable.Range(0, 8).Select(_ => new AccessoryMeshVisual()).ToArray();
         foreach (var visual in visuals) visual.SetTexture(texture);
         var item = Item() with
@@ -298,7 +302,7 @@ public sealed class AccessoryMeshRenderingTests
             { samples.Add(watch.Elapsed.TotalMilliseconds); raster.Add(batch.RasterMilliseconds); upload.Add(batch.UploadMilliseconds); }
         }
         samples.Sort(); var p95 = samples[(int)(samples.Count * 0.95)];
-        TestContext.WriteLine($"8 x 256 DIP flexible mesh solve + raster, {sourceEdge}px source at {pixelsPerDip:P0} DPI equivalent: median {samples[samples.Count / 2]:F2} ms; p95 {p95:F2} ms; max {samples[^1]:F2} ms; CPU workers <= {Math.Min(Environment.ProcessorCount, AccessoryMeshVisual.MaximumRasterWorkers)} per raster.");
+        TestContext.WriteLine($"8 x 256 DIP flexible mesh solve + raster, {sourceEdge} x {sourceHeight}px source at {pixelsPerDip:P0} DPI equivalent: median {samples[samples.Count / 2]:F2} ms; p95 {p95:F2} ms; max {samples[^1]:F2} ms; CPU workers <= {Math.Min(Environment.ProcessorCount, AccessoryMeshVisual.MaximumRasterWorkers)} per raster.");
         TestContext.WriteLine($"Average raster {raster.Average():F2} ms; bitmap upload {upload.Average():F2} ms.");
         Assert.IsTrue(p95 < 16, $"8-texture CPU solve/raster exceeds 16 ms: p95={p95:F2} ms; do not silently lower softness or density.");
         foreach (var visual in visuals) Assert.IsNotNull(visual.CaptureBitmap());
@@ -307,17 +311,18 @@ public sealed class AccessoryMeshRenderingTests
     private static AccessoryItem Item() => new("mesh-test", "Synthetic texture", "builtin-sprout", 64, 64)
     { ImagePivotX = 0.5, ImagePivotY = 0.5, ConnectionStrength = 100, LockRotation = true };
 
-    private static BitmapSource Texture(int edge = 64)
+    private static BitmapSource Texture(int edge = 64, int? height = null)
     {
-        var data = new byte[edge * edge * 4];
-        for (var y = edge / 16; y < edge * 15 / 16; y++)
+        var pixelHeight = height ?? edge;
+        var data = new byte[edge * pixelHeight * 4];
+        for (var y = pixelHeight / 16; y < pixelHeight * 15 / 16; y++)
             for (var x = edge / 16; x < edge * 15 / 16; x++)
             {
                 var index = (y * edge + x) * 4; var checker = (x / (edge / 8) + y / (edge / 8)) % 2 == 0;
                 data[index] = checker ? (byte)220 : (byte)40; data[index + 1] = 120;
                 data[index + 2] = checker ? (byte)40 : (byte)220; data[index + 3] = 128;
             }
-        var bitmap = BitmapSource.Create(edge, edge, 96, 96, PixelFormats.Bgra32, null, data, edge * 4); bitmap.Freeze(); return bitmap;
+        var bitmap = BitmapSource.Create(edge, pixelHeight, 96, 96, PixelFormats.Bgra32, null, data, edge * 4); bitmap.Freeze(); return bitmap;
     }
 
     private static int[] Pixels(BitmapSource bitmap)

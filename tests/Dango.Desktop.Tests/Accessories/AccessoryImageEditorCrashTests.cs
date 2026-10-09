@@ -24,7 +24,7 @@ public sealed class AccessoryImageEditorCrashTests
     [STATestMethod]
     public void OversizedPngSelectedFromCreateIsReportedWithoutOpeningTheImageModalOrChangingTheDraft()
     {
-        using var fixture = CreateFixture(2049, 8);
+        using var fixture = CreateFixture(16385, 8);
         var before = fixture.Session.DraftConfiguration;
         var sourceBytes = File.ReadAllBytes(fixture.Source);
         Assert.IsFalse(typeof(IOException).IsAssignableFrom(typeof(InvalidDataException)),
@@ -40,17 +40,19 @@ public sealed class AccessoryImageEditorCrashTests
         Assert.IsTrue(fixture.Owner.IsVisible, "The owned host must remain usable after an import validation error.");
         Assert.IsNull(FindOwnedModal(fixture.Owner), "A rejected image must never reach the image editor.");
         StringAssert.Contains(fixture.Panel.StatusMessage, "操作未完成");
-        StringAssert.Contains(fixture.Panel.StatusMessage, "2048");
+        StringAssert.Contains(fixture.Panel.StatusMessage, "16384");
         Assert.IsFalse(File.Exists(AccessorySettingsStore.GetManifestPath(fixture.Root)));
         CollectionAssert.AreEqual(sourceBytes, File.ReadAllBytes(fixture.Source));
     }
 
     [STATestMethod]
-    [DataRow(true)]
-    [DataRow(false)]
-    public void AcceptedTransparentFileOpensAndRendersTheRealModalBeforeConfirmOrCancel(bool accept)
+    [DataRow(true, false)]
+    [DataRow(false, false)]
+    [DataRow(true, true)]
+    [DataRow(false, true)]
+    public void AcceptedTransparentFileOpensAndRendersTheRealModalBeforeConfirmOrCancel(bool accept, bool compress)
     {
-        using var fixture = CreateFixture(320, 192);
+        using var fixture = CreateFixture(compress ? 4097 : 320, 192);
         var saved = fixture.Session.SavedConfiguration;
         var originalSource = File.ReadAllBytes(fixture.Source);
         Exception? failure = null;
@@ -75,6 +77,14 @@ public sealed class AccessoryImageEditorCrashTests
                 var surface = VisualDescendants(imageEditor).OfType<AccessoryImageEditorSurface>().Single();
                 Assert.IsTrue(surface.IsLoaded && surface.ActualWidth > 0 && surface.ActualHeight > 0,
                     "The imported PNG surface must complete its actual Loaded and measure/arrange path.");
+                var notice = VisualDescendants(imageEditor).OfType<TextBlock>().SingleOrDefault(text => AutomationProperties.GetName(text) == "图片压缩提示");
+                if (compress)
+                {
+                    Assert.IsNotNull(notice); Assert.IsTrue(notice.IsVisible);
+                    StringAssert.Contains(notice.Text, "已压缩"); StringAssert.Contains(notice.Text, "4097"); StringAssert.Contains(notice.Text, "4096");
+                    StringAssert.Contains(fixture.Panel.StatusMessage, "已压缩");
+                }
+                else Assert.IsNull(notice, "A below-limit image must not display a compression warning.");
                 CaptureAndVerifyImportedPixels(surface, fixture.Run, accept ? "confirm" : "cancel");
                 TestContext.WriteLine("Real image modal Loaded; measured surface " + surface.RenderSize + "; imported PNG pixels rendered.");
 

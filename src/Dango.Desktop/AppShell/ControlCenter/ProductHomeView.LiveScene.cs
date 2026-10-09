@@ -70,6 +70,7 @@ public partial class ProductHomeView
         BoundRuntime = runtime;
         PetShadow.Visibility = Visibility.Collapsed;
         liveScheduler = new HostFrameScheduler(runtime, PrepareLiveFrame, CreateLiveInput, ApplyLiveFrame);
+        liveScheduler.CallbackCompleted += PresentAccessoryPreview;
         if (appearanceSession is not null) runtime.SetAppearance(appearanceSession.DraftAppearance);
         else { standaloneDraft = runtime.EffectiveAppearance; runtime.SetAppearance(standaloneDraft); }
         RefreshAppearanceControls();
@@ -128,6 +129,9 @@ public partial class ProductHomeView
         visualAnchor = null;
         shadowGroundCenterY = null;
         groundedVisualOffset = null;
+        ResetAccessoryPresentation();
+        liveScheduler!.CallbackCompleted -= PresentAccessoryPreview;
+        liveScheduler.CallbackCompleted += PresentAccessoryPreview;
         liveScheduler!.Start();
     }
 
@@ -148,8 +152,7 @@ public partial class ProductHomeView
         if (porchConfirmation is not null) System.Windows.Media.CompositionTarget.Rendering -= porchConfirmation;
         porchConfirmation = null;
         liveIntent = DirectionalControlIntent.None;
-        accessoryCameraFrame = 0;
-        accessoryCamera?.ResetMotion();
+        ResetAccessoryPresentation();
         visualAnchor = null;
         shadowGroundCenterY = null;
         groundedVisualOffset = null;
@@ -162,6 +165,7 @@ public partial class ProductHomeView
         var runtime = BoundRuntime;
         if (!IsVisible || IsSettingsOpen || !OwnsLiveFrameDriver || !runtime!.IsRunning || BoundSceneSession?.Controller is null)
             return false;
+        if (liveSurfacePlacementPending) ResetAccessoryPresentation();
         PrepareRequestedLiveSurface();
         if (!TryAlignLiveSurface()) return false;
         runtime.SetDirectionalControl(liveSurfaceNeedsAlignment ? DirectionalControlIntent.None : liveIntent);
@@ -183,6 +187,7 @@ public partial class ProductHomeView
         if (frame.Bodies.Count == 0 || !frame.Bodies[0].IsVisible || frame.ConstraintsReleased || BoundRuntime.LastError is not null ||
             frame.Bodies[0].FallbackReason != PhysicsPresentationFallbackReason.None)
         {
+            ResetAccessoryPresentation();
             LiveDangoVisual.Visibility = LiveDangoHat.Visibility = Visibility.Collapsed;
             Dango.Desktop.Accessories.AccessoryHostBinding.Hide(LiveDangoVisual);
             PetShadow.Visibility = Visibility.Collapsed;
@@ -314,6 +319,7 @@ public partial class ProductHomeView
 
     private void UpdateLiveMovementMode()
     {
+        ResetAccessoryPresentation();
         if (!OwnsLiveFrameDriver) return;
         BoundRuntime!.UpdateWanderScreenWidth(this, IsInPorch ? PorchScene.ViewportWorldWidth : null);
         BoundRuntime.UpdateQuietIdleHost(this, !IsAccessoryPreview);

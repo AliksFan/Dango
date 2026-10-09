@@ -7,8 +7,8 @@ namespace Dango.Desktop.Accessories;
 public sealed class AccessorySettingsSession
 {
     public const int MaximumCachedImages = 16;
-    public const long MaximumPendingPixels = 32L * 1024 * 1024;
-    public const long MaximumPendingPngBytes = 128L * 1024 * 1024;
+    public const long MaximumPendingPixels = AccessoryConfiguration.MaximumEquippedItems * AccessoryImageAsset.MaximumPixels;
+    public const long MaximumPendingPngBytes = AccessoryConfiguration.MaximumEquippedItems * AccessoryImageAsset.MaximumFileBytes;
     private readonly int ownerThreadId = Environment.CurrentManagedThreadId;
     private readonly string settingsRoot;
     private readonly AccessorySettingsStore store;
@@ -49,6 +49,7 @@ public sealed class AccessorySettingsSession
     public AccessoryConfiguration DraftConfiguration { get; private set; }
     public bool IsWriteProtected { get; private set; }
     public bool IsCompatibilityMode { get; private set; }
+    public AccessoryImageImportInfo? LastImportInfo { get; private set; }
     public bool IsDirty => !DraftConfiguration.Equals(SavedConfiguration);
     public bool HasPendingSave => IsDirty || IsCompatibilityMode;
     public string StatusMessage
@@ -193,6 +194,7 @@ public sealed class AccessorySettingsSession
     public AccessoryItem ImportPng(string path)
     {
         VerifyAccess();
+        LastImportInfo = null;
         var asset = AccessoryImageAsset.ImportPng(path);
         if (!pendingAssets.ContainsKey(asset.AssetId) &&
             (PendingPixelCount + (long)asset.PixelWidth * asset.PixelHeight > maximumPendingPixels ||
@@ -215,6 +217,7 @@ public sealed class AccessorySettingsSession
         images.Remove(asset.AssetId);
         imageRecency.Remove(asset.AssetId);
         Stage(next);
+        LastImportInfo = asset.ImportInfo;
         if (!equip) StatusMessage = "图片已导入草稿；已佩戴 8 件，新配饰暂未佩戴。应用后才保存。";
         return item;
     }

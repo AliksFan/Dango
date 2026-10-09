@@ -85,6 +85,17 @@ public sealed class AccessoryProcessRestartTests
             WaitUntil(first, () => ((ValuePattern)anchorInput.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == "0.73",
                 "focused numeric input update", log);
             log.Write("first-process-focused-numeric-input", new { first.Process.Id, text = "0.73" });
+            Invoke(WaitForControl(first, firstWindow, "配饰：柔性与连接", ControlType.Button, log), log, "open-material-first");
+            foreach (var (name, text) in new[] { ("最高允许形变量 % 数值", "175"), ("连接最大行程 % 数值", "150") })
+            {
+                var input = WaitForControl(first, firstWindow, name, ControlType.Edit, log);
+                input.SetFocus();
+                ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).SetValue(text);
+            }
+            var folding = WaitForControl(first, firstWindow, "允许翻折", ControlType.CheckBox, log);
+            ((TogglePattern)folding.GetCurrentPattern(TogglePattern.Pattern)).Toggle();
+            WaitUntil(first, () => ((TogglePattern)folding.GetCurrentPattern(TogglePattern.Pattern)).Current.ToggleState == ToggleState.On,
+                "folding option checked", log);
             LogOwnedWardrobeState(first, firstWindow, log, "before-apply");
             Invoke(WaitForControl(first, firstWindow, "应用", ControlType.Button, log), log, "apply-first-process");
             LogOwnedWardrobeState(first, firstWindow, log, "after-apply-invocation");
@@ -92,13 +103,17 @@ public sealed class AccessoryProcessRestartTests
             // a FileShare.Read poll can itself block the Windows atomic overwrite.
             WaitUntil(first, () => FindControl(firstWindow, "配饰已保存到本机。", ControlType.Text) is not null &&
                 FindControl(firstWindow, "应用", ControlType.Button) is { Current.IsEnabled: false } &&
-                FindControl(firstWindow, "身体附着 X", ControlType.Slider) is { } slider &&
-                Math.Abs(GetRange(slider).Current.Value - changedAnchor) < 1e-9,
+                FindControl(firstWindow, "连接最大行程 %", ControlType.Slider) is { } slider &&
+                Math.Abs(GetRange(slider).Current.Value - 150) < 1e-9,
                 "first process UI save completion", log);
             var committed = new AccessorySettingsStore().Load(reviewRoot);
             Assert.AreEqual(AccessorySettingsLoadState.Valid, committed.State);
             Assert.AreEqual(changedAnchor, committed.Configuration.Items.Single(item => item.Id == imported.Id).BodyAnchorX, 1e-9,
                 "The UI save result must be independently confirmed on disk.");
+            var committedItem = committed.Configuration.Items.Single(item => item.Id == imported.Id);
+            Assert.IsTrue(committedItem.AllowFolding);
+            Assert.AreEqual(175d, committedItem.MaxDeformationPercent);
+            Assert.AreEqual(150d, committedItem.MaxConnectionTravelPercent);
             Assert.AreEqual("sprout", new ControlCenterWindowSettingsStore().LoadOrDefault(Path.Combine(reviewRoot, "settings.json")).Settings.HatPresetId);
             log.Write("first-process-ui-commit-confirmed", new { first.Process.Id, bodyAnchorX = changedAnchor });
             first.StopNormally(firstWindow);
@@ -114,6 +129,11 @@ public sealed class AccessoryProcessRestartTests
             OpenPlacementSection(second, secondWindow, log, "open-placement-second");
             var restored = GetRange(WaitForControl(second, secondWindow, "身体附着 X", ControlType.Slider, log)).Current.Value;
             Assert.AreEqual(changedAnchor, restored, 1e-9);
+            Invoke(WaitForControl(second, secondWindow, "配饰：柔性与连接", ControlType.Button, log), log, "open-material-second");
+            Assert.AreEqual(175d, GetRange(WaitForControl(second, secondWindow, "最高允许形变量 %", ControlType.Slider, log)).Current.Value);
+            Assert.AreEqual(150d, GetRange(WaitForControl(second, secondWindow, "连接最大行程 %", ControlType.Slider, log)).Current.Value);
+            Assert.AreEqual(ToggleState.On, ((TogglePattern)WaitForControl(second, secondWindow, "允许翻折", ControlType.CheckBox, log)
+                .GetCurrentPattern(TogglePattern.Pattern)).Current.ToggleState);
             Assert.IsFalse(File.Exists(source));
             Assert.IsTrue(File.Exists(AccessorySettingsStore.GetAssetPath(reviewRoot, imported.AssetId)));
             log.Write("second-process-ui-restored", new { second.Process.Id, bodyAnchorX = restored, imported.Name });
@@ -342,7 +362,9 @@ public sealed class AccessoryProcessRestartTests
         Assert.AreEqual(child.Process.Id, window.Current.ProcessId);
         var controls = window.FindAll(TreeScope.Descendants, Condition.TrueCondition).Cast<AutomationElement>()
             .Where(element => element.Current.ControlType == ControlType.Text ||
-                element.Current.Name is "配饰名称" or "身体附着 X 数值" or "身体附着 X" or "应用")
+                element.Current.ControlType == ControlType.Button || element.Current.ControlType == ControlType.CheckBox ||
+                element.Current.Name is "配饰名称" or "身体附着 X 数值" or "身体附着 X" or
+                    "最高允许形变量 % 数值" or "最高允许形变量 %" or "连接最大行程 % 数值" or "连接最大行程 %")
             .Select(element =>
             {
                 string? value = null;

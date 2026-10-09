@@ -19,6 +19,55 @@ public sealed class AccessoryEditorTests
     private static string NewRoot() => Path.Combine(TestRepository.Root, "artifacts", "accessory-ui-editor-harness", "editor-data", Guid.NewGuid().ToString("N"));
 
     [STATestMethod]
+    public void UnchangedPreviewErrorStillReportsANewImageLoadWarning()
+    {
+        var session = new AccessorySettingsSession(NewRoot());
+        var unavailable = new AccessoryItem("fictional-missing-status", "Fictional missing status", new string('a', 64), 64, 64);
+        session.Stage(new([unavailable]));
+        var panel = new AccessoryEditorPanel(); panel.Bind(session);
+        panel.SetPreviewError(null);
+        Assert.IsFalse(panel.StatusMessage.Contains("部分配饰图片无法显示", StringComparison.Ordinal));
+        Assert.IsNull(session.TryGetImage(unavailable.AssetId));
+        panel.SetPreviewError(null);
+        StringAssert.Contains(panel.StatusMessage, "部分配饰图片无法显示");
+    }
+
+    [STATestMethod]
+    public void LayerActionsAreFourFaceIconsAndParameterSectionsHaveNoVisibleHeadings()
+    {
+        var root = NewRoot(); var session = new AccessorySettingsSession(root);
+        var item = new AccessoryItem("fictional-layer-icons", "Fictional layer icons", "builtin-sprout", 64, 64);
+        session.Stage(new([item])); Assert.IsTrue(session.TrySave());
+        var panel = new AccessoryEditorPanel(); panel.Bind(session);
+        panel.SelectSection(AccessoryEditorSection.Placement);
+        WithWindow(panel, 280, 1000, () =>
+        {
+            var names = new[] { "团子前", "团子后", "上移", "下移" };
+            Assert.IsFalse(Descendants(panel).OfType<ComboBox>().Any(), "Layer selection must use reachable icons instead of a dropdown.");
+            var buttons = Descendants(panel).OfType<Button>().Where(button => names.Contains(AutomationProperties.GetName(button))).ToArray();
+            CollectionAssert.AreEqual(names, buttons.Select(AutomationProperties.GetName).ToArray());
+            AssertFaceIcons(buttons);
+            foreach (var button in buttons) Assert.IsTrue(button.IsVisible && button.IsEnabled && button.ToolTip is string);
+            var before = buttons[0]; var behind = buttons[1];
+            Assert.AreEqual("已选", AutomationProperties.GetItemStatus(before));
+            Assert.AreEqual("未选", AutomationProperties.GetItemStatus(behind));
+            ((IInvokeProvider)new ButtonAutomationPeer(behind).GetPattern(PatternInterface.Invoke)!).Invoke(); Pump();
+            Assert.AreEqual(AccessoryLayer.Behind, panel.SelectedItem!.Layer);
+            Assert.AreEqual("已选", AutomationProperties.GetItemStatus(behind));
+            Assert.AreEqual("未选", AutomationProperties.GetItemStatus(before));
+            Assert.AreEqual(item, new AccessorySettingsSession(root).SavedConfiguration.Items.Single(), "Changing the layer must remain a draft until Apply.");
+            panel.ApplyDraft();
+            Assert.AreEqual(AccessoryLayer.Behind, new AccessorySettingsSession(root).SavedConfiguration.Items.Single().Layer);
+            foreach (var section in new[] { AccessoryEditorSection.Placement, AccessoryEditorSection.Connection, AccessoryEditorSection.Rotation })
+            {
+                Assert.IsTrue(panel.SelectSection(section)); Pump();
+                Assert.IsFalse(Descendants(panel).OfType<TextBlock>().Any(text => text.IsVisible && text.Text is "图像与位置" or "柔性与连接" or "旋转与重力" or "图层"),
+                    "Icon navigation already identifies the section; repeated visible headings must be omitted.");
+            }
+        });
+    }
+
+    [STATestMethod]
     public void ImageConfirmationOnlyStagesAndExplicitApplySurvivesReload()
     {
         var root = NewRoot(); var session = new AccessorySettingsSession(root);
@@ -226,7 +275,9 @@ public sealed class AccessoryEditorTests
                     Assert.IsTrue(labelBounds.Right <= inputBounds.Left + .01, "Compact current value must not overlap its label.");
                 }
             }
-            Assert.HasCount(10, labels); Assert.IsTrue(panel.SelectSection(AccessoryEditorSection.Placement)); Pump();
+            Assert.HasCount(12, labels); Assert.IsTrue(labels.Contains("最高允许形变量 %"));
+            Assert.IsTrue(labels.Contains("连接最大行程 %"));
+            Assert.IsTrue(panel.SelectSection(AccessoryEditorSection.Placement)); Pump();
             var bodyX = Descendants(panel).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "身体附着 X 数值");
             bodyX.Text = "0.73";
             var key = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(bodyX)!, 0, Key.Enter) { RoutedEvent = Keyboard.PreviewKeyDownEvent };
@@ -496,7 +547,11 @@ public sealed class AccessoryEditorTests
             Pump();
             var input = Descendants(panel).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "身体附着 X 数值");
             Assert.IsTrue(input.Focus()); Pump(); input.Text = valid ? .73.ToString(CultureInfo.CurrentCulture) : "2";
-            if (choice == "layer") Descendants(panel).OfType<ComboBox>().Single().SelectedIndex = 0;
+            if (choice == "layer")
+            {
+                var behind = Descendants(panel).OfType<Button>().Single(button => AutomationProperties.GetName(button) == "团子后");
+                ((IInvokeProvider)new ButtonAutomationPeer(behind).GetPattern(PatternInterface.Invoke)!).Invoke();
+            }
             else if (choice == "equipped") panel.ToggleWear(item.Id);
             else
             {
@@ -661,7 +716,10 @@ public sealed class AccessoryEditorTests
             foreach (var image in visible)
             {
                 var bitmap = (BitmapSource)image.Source;
-                Assert.IsTrue(bitmap.IsFrozen); Assert.IsTrue(bitmap.PixelWidth <= AccessoryEditorPanel.ThumbnailEdge && bitmap.PixelHeight <= AccessoryEditorPanel.ThumbnailEdge);
+                var dpi = VisualTreeHelper.GetDpi(panel);
+                var pixelEdge = (int)Math.Ceiling(AccessoryEditorPanel.ThumbnailEdge * Math.Max(dpi.DpiScaleX, dpi.DpiScaleY));
+                Assert.IsTrue(bitmap.IsFrozen); Assert.AreEqual(pixelEdge, Math.Max(bitmap.PixelWidth, bitmap.PixelHeight),
+                    "The thumbnail must cover the actual DPI pixel size without changing its DIP layout size.");
                 Assert.IsTrue(image.ActualWidth <= AccessoryEditorPanel.ThumbnailEdge + .01 && image.ActualHeight <= AccessoryEditorPanel.ThumbnailEdge + .01,
                     "Library thumbnails must stay at icon size in the rendered card.");
                 Assert.AreEqual(PixelFormats.Pbgra32, bitmap.Format);

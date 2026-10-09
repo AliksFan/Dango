@@ -48,7 +48,7 @@ public sealed class AccessoryMaterialRangeTests
             $"Minimum-strength equilibrium {frame.ConnectionOffset.Y} has not expanded beyond {oldOffset}.");
         Assert.AreEqual(256 * Math.Sqrt(2), CornerDistance(frame), 1e-8,
             "A loose connection must not invent material softness.");
-        Assert.IsTrue(frame.ConnectionOffset.Length < Math.Sqrt(2) * 256 * .18);
+        Assert.IsTrue(frame.ConnectionOffset.Length < Math.Sqrt(2) * 256 * .75);
 
         var solver = new AccessoryMotionSolver();
         for (var step = 0; step < 600; step++) solver.Update(step, Seconds, new(300, 200), 256, 256, item);
@@ -143,6 +143,8 @@ public sealed class AccessoryMaterialRangeTests
     [DataRow(1d, 2048d, .37, .41, -180d, 100d, true)]
     [DataRow(2048d, 1d, 1d, 1d, 179d, 0d, false)]
     [DataRow(256d, 256d, .37, .41, 73d, 100d, false)]
+    [DataRow(256d, 32d, 1d, 1d, 90d, 100d, false)]
+    [DataRow(32d, 256d, 0d, 0d, -90d, 100d, false)]
     public void ExpandedExtremesStayFiniteBoundedAndUnfoldedUnderRapidSignals(
         double width, double height, double pivotX, double pivotY, double baseAngle, double gravity, bool limitSwing)
     {
@@ -168,7 +170,7 @@ public sealed class AccessoryMaterialRangeTests
             var seconds = step % 2 == 0 ? .1 : 1d / 240;
             var frame = solver.Update(step, seconds, anchor, width, height, item);
             Assert.IsTrue(double.IsFinite(frame.RotationDegrees));
-            Assert.IsTrue(frame.ConnectionOffset.Length <= .18 * Math.Sqrt(2) * diagonal + 1e-8);
+            Assert.IsTrue(frame.ConnectionOffset.Length <= .75 * Math.Sqrt(2) * diagonal + 1e-8);
             if (limitSwing) Assert.IsTrue(Math.Abs(frame.RotationDegrees - baseAngle) <= 7.000001);
             Assert.IsTrue(double.IsFinite(frame.Bounds.X) && double.IsFinite(frame.Bounds.Y));
             Assert.IsTrue(double.IsFinite(frame.Bounds.Width) && double.IsFinite(frame.Bounds.Height));
@@ -176,7 +178,7 @@ public sealed class AccessoryMaterialRangeTests
             foreach (var vertex in frame.Vertices)
             {
                 Assert.IsTrue(double.IsFinite(vertex.X) && double.IsFinite(vertex.Y));
-                Assert.IsTrue((vertex - frame.ImagePivot).Length <= 1.48 * diagonal + 1e-8);
+                Assert.IsTrue((vertex - frame.ImagePivot).Length <= 2 * diagonal + 1e-8);
             }
             for (var triangle = 0; triangle < frame.TriangleIndices.Count; triangle += 3)
             {

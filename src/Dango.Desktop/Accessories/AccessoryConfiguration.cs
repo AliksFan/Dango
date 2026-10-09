@@ -17,7 +17,10 @@ public sealed record AccessoryItem(string Id, string Name, string AssetId, int P
     public double BodyAnchorX { get; init; } = .5;
     public double BodyAnchorY { get; init; }
     public double Softness { get; init; }
+    public bool AllowFolding { get; init; }
+    public double MaxDeformationPercent { get; init; } = 100;
     public double ConnectionStrength { get; init; } = 100;
+    public double MaxConnectionTravelPercent { get; init; } = 75;
     public double RotationDamping { get; init; } = 60;
     public bool LockRotation { get; init; } = true;
     public double ReturnStrength { get; init; } = 60;
@@ -42,6 +45,8 @@ public sealed record AccessoryItem(string Id, string Name, string AssetId, int P
         Range(ImagePivotX, 0, 1, "图片支点 X"); Range(ImagePivotY, 0, 1, "图片支点 Y");
         Range(BodyAnchorX, 0, 1, "身体附着 X"); Range(BodyAnchorY, 0, 1, "身体附着 Y");
         Range(Softness, 0, 100, "柔软度"); Range(ConnectionStrength, 0, 100, "连接强度");
+        Range(MaxDeformationPercent, 0, 200, "形变上限");
+        Range(MaxConnectionTravelPercent, 0, 200, "连接行程上限");
         Range(RotationDamping, 0, 100, "旋转阻尼"); Range(ReturnStrength, 0, 100, "回正强度");
         Range(MaxSwingDegrees, 0, 180, "最大摆角"); Range(GravityInfluence, 0, 100, "重力影响");
     }

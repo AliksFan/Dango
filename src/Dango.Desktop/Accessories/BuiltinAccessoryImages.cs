@@ -9,6 +9,7 @@ namespace Dango.Desktop.Accessories;
 /// <summary>Existing authored artwork as immutable transparent pictures, without product categories.</summary>
 public static class BuiltinAccessoryImages
 {
+    public const int TextureEdge = 512;
     private static readonly Dictionary<string, BitmapSource> Cache = [];
     private static readonly object CacheGate = new();
 
@@ -33,6 +34,7 @@ public static class BuiltinAccessoryImages
         var drawing = new DrawingVisual();
         using (var dc = drawing.RenderOpen())
         {
+            dc.PushTransform(new ScaleTransform(TextureEdge / 64d, TextureEdge / 64d));
             // Root (80,25) remains centered near the bottom of a 64-square canvas.
             dc.PushTransform(new TranslateTransform(32 - 80, 60 - 25));
             // Draw the authored geometries directly. A detached VisualBrush can defer
@@ -40,8 +42,9 @@ public static class BuiltinAccessoryImages
             foreach (var path in artwork.Children.OfType<System.Windows.Shapes.Path>())
                 dc.DrawGeometry(path.Fill, null, path.Data);
             dc.Pop();
+            dc.Pop();
         }
-        var bitmap = new RenderTargetBitmap(64, 64, 96, 96, PixelFormats.Pbgra32);
+        var bitmap = new RenderTargetBitmap(TextureEdge, TextureEdge, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(drawing); bitmap.Freeze(); Cache[assetId] = bitmap;
         return bitmap;
     }
