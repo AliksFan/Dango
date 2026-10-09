@@ -244,6 +244,11 @@ public sealed class AccessoryAccountSync : IAsyncDisposable
                 return AccessoryRestoreResult.NoOutfit;
             }
             stored.Validate();
+            lock (_gate)
+            {
+                if (!IsCurrent(session)) return AccessoryRestoreResult.Superseded;
+                if (stored.Revision < session.ServerRevision) throw new SafeFailure("stale_account_outfit");
+            }
             var images = new List<AccessoryImageSnapshot>();
             foreach (var item in stored.Outfit.Items.Where(item => !AccessoryOutfitItem.IsBuiltInAsset(item.AssetId))
                 .DistinctBy(item => item.AssetId, StringComparer.Ordinal))
@@ -438,6 +443,14 @@ public sealed class AccessoryAccountSync : IAsyncDisposable
                         AccessoryAccountTransportException { Failure: AccessoryTransportFailure.Rejected } => "accessory_commit_rejected",
                         _ => "asset_upload_failed"
                     };
+                    // A newer local Apply is a new authorized backup attempt. Do not lose that
+                    // queued attempt merely because an older unsent/rejected outfit failed.
+                    if (session.State == AccessorySyncState.Failed && session.LatestSnapshot is { } latest &&
+                        latest.LocalCommitVersion > source.LocalCommitVersion)
+                    {
+                        session.FailedSnapshot = null;
+                        session.State = AccessorySyncState.Queued;
+                    }
                 }
             }
         }
