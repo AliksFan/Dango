@@ -23,13 +23,15 @@ internal sealed class FormalTestFixture : IAsyncDisposable
     private readonly WebApplication app;
     private readonly X509Certificate2 certificate;
     private readonly bool started;
+    private readonly string? resourceReceiptPath;
 
-    private FormalTestFixture(WebApplication app, X509Certificate2 certificate, Uri endpoint, bool started)
+    private FormalTestFixture(WebApplication app, X509Certificate2 certificate, Uri endpoint, bool started, string? resourceReceiptPath)
     {
         this.app = app;
         this.certificate = certificate;
         this.started = started;
         Endpoint = endpoint;
+        this.resourceReceiptPath = resourceReceiptPath;
     }
 
     public Uri Endpoint { get; }
@@ -37,21 +39,23 @@ internal sealed class FormalTestFixture : IAsyncDisposable
     public static async Task<FormalTestFixture> CreateAsync(bool startHttp = false, IRegistrationCheckpoint? checkpoint = null,
         TimeProvider? clock = null, IEmailSender? sender = null, bool enableEmailWorker = false,
         AccountEnvironment? environment = null, Action<IServiceCollection>? configure = null, bool requireB5AApproval = false,
-        bool requireB5BApproval = false)
+        bool requireB5BApproval = false, bool requireB5CApproval = false)
     {
-        Assert.IsFalse(requireB5AApproval && requireB5BApproval, "Client integration stages cannot share approval.");
-        var target = await ValidateTargetAsync(requireB5AApproval, requireB5BApproval);
+        Assert.IsTrue(new[] { requireB5AApproval, requireB5BApproval, requireB5CApproval }.Count(value => value) <= 1,
+            "Client integration stages cannot share approval.");
+        Assert.IsFalse(requireB5CApproval && enableEmailWorker, "B5C cannot enable an email worker.");
+        var target = await ValidateTargetAsync(requireB5AApproval, requireB5BApproval, requireB5CApproval);
         var epochText = Environment.GetEnvironmentVariable("DANGO_BACKEND_B1_RECOVERY_EPOCH");
         Assert.IsTrue(Guid.TryParse(epochText, out var epoch) && epoch != Guid.Empty,
             "The authorized runner must supply the isolated B1 recovery epoch.");
         var keyDirectory = Environment.GetEnvironmentVariable("DANGO_BACKEND_B1_KEY_DIRECTORY");
         Assert.IsFalse(string.IsNullOrEmpty(keyDirectory));
         Assert.AreEqual(Path.Combine(Path.GetDirectoryName(target.DataDirectory)!, "b1tests-keys"), Path.GetFullPath(keyDirectory!), true);
-        if (requireB5BApproval)
+        if (requireB5BApproval || requireB5CApproval)
         {
             var keys = new DirectoryInfo(keyDirectory!);
             Assert.IsTrue(keys.Exists && (keys.Attributes & FileAttributes.ReparsePoint) == 0,
-                "B5B must reuse the existing key ring.");
+                "The room client stage must reuse the existing key ring.");
             var statePath = Path.Combine(Path.GetDirectoryName(target.DataDirectory)!, "b1test-state.json");
             var stateFile = new FileInfo(statePath);
             Assert.IsTrue(stateFile.Exists && stateFile.Length is > 0 and <= 8192
@@ -59,10 +63,11 @@ internal sealed class FormalTestFixture : IAsyncDisposable
             using var state = JsonDocument.Parse(await File.ReadAllBytesAsync(statePath));
             Assert.AreEqual(1, state.RootElement.GetProperty("Version").GetInt32());
             Assert.AreEqual(epoch, state.RootElement.GetProperty("RecoveryEpoch").GetGuid(),
-                "B5B cannot invent a replacement recovery epoch.");
+                "The room client stage cannot invent a replacement recovery epoch.");
         }
         var endpoint = new Uri($"https://127.0.0.1:{FindLoopbackPort()}/");
         var repository = FindRepository();
+        var resourceReceiptPath = requireB5CApproval ? B5CResourcePath(repository, endpoint.Port) : null;
         Assert.IsTrue(FormalServerOptions.TryCreate("dango_backend_b0", target.ConnectionString, keyDirectory!,
             endpoint.AbsoluteUri, repository, out var options, out _));
         var certificate = CreateCertificate();
@@ -77,12 +82,14 @@ internal sealed class FormalTestFixture : IAsyncDisposable
                 configure?.Invoke(services);
             }, enableEmailWorker);
             if (startHttp) await app.StartAsync();
-            return new(app, certificate, endpoint, startHttp);
+            WriteResourceReceipt(resourceReceiptPath, endpoint.Port, startHttp, false, false);
+            return new(app, certificate, endpoint, startHttp, resourceReceiptPath);
         }
         catch
         {
             try { if (app is not null) await app.DisposeAsync(); }
             finally { certificate.Dispose(); }
+            WriteResourceReceipt(resourceReceiptPath, endpoint.Port, false, false, true);
             throw;
         }
     }
@@ -153,14 +160,17 @@ internal sealed class FormalTestFixture : IAsyncDisposable
         return (await response.Content.ReadFromJsonAsync<T>())!;
     }
 
-    private static async Task<Target> ValidateTargetAsync(bool requireB5AApproval, bool requireB5BApproval)
+    private static async Task<Target> ValidateTargetAsync(bool requireB5AApproval, bool requireB5BApproval, bool requireB5CApproval)
     {
         // This check precedes connection, port probing, certificate creation and key-ring access.
         // Earlier-stage approval must never authorize new client integration writes.
-        var approval = requireB5BApproval ? "DANGO_BACKEND_B5B_TEST_APPROVED"
+        var approval = requireB5CApproval ? "DANGO_BACKEND_B5C_TEST_APPROVED"
+            : requireB5BApproval ? "DANGO_BACKEND_B5B_TEST_APPROVED"
             : requireB5AApproval ? "DANGO_BACKEND_B5A_TEST_APPROVED" : "DANGO_BACKEND_B1_TEST_APPROVED";
         if (Environment.GetEnvironmentVariable(approval) != "1")
-            Assert.Inconclusive(requireB5BApproval
+            Assert.Inconclusive(requireB5CApproval
+                ? "B5C formal Hub and lifecycle writes require separate precise authorization."
+                : requireB5BApproval
                 ? "B5B client room writes require separate precise authorization."
                 : requireB5AApproval
                 ? "B5A client account writes require separate precise authorization."
@@ -185,7 +195,7 @@ internal sealed class FormalTestFixture : IAsyncDisposable
         };
         Assert.AreEqual("127.0.0.1", builder.Host);
         Assert.AreEqual("dango_backend_b0", builder.Database);
-        if (requireB5AApproval || requireB5BApproval)
+        if (requireB5AApproval || requireB5BApproval || requireB5CApproval)
         {
             Assert.AreEqual("dango_b0_owner", builder.Username);
             var statePath = Path.Combine(Path.GetDirectoryName(physical)!, "state.json");
@@ -210,7 +220,7 @@ internal sealed class FormalTestFixture : IAsyncDisposable
             Assert.AreEqual("dango_backend_b0", reader.GetString(0));
             Assert.IsTrue(reader.GetInt32(1) is >= 180000 and < 190000);
             Assert.AreEqual(physical, Path.TrimEndingDirectorySeparator(Path.GetFullPath(reader.GetString(2))), true);
-            if (requireB5AApproval || requireB5BApproval)
+            if (requireB5AApproval || requireB5BApproval || requireB5CApproval)
             {
                 Assert.AreEqual("127.0.0.1", reader.GetString(3));
                 Assert.AreEqual("dango_b0_owner", reader.GetString(4));
@@ -256,12 +266,41 @@ internal sealed class FormalTestFixture : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        try { if (started) await app.StopAsync(); }
+        var stopped = !started;
+        var disposed = false;
+        try { if (started) await app.StopAsync(); stopped = true; }
         finally
         {
-            try { await app.DisposeAsync(); }
-            finally { certificate.Dispose(); }
+            try { await app.DisposeAsync(); disposed = true; }
+            finally
+            {
+                certificate.Dispose();
+                WriteResourceReceipt(resourceReceiptPath, Endpoint.Port, started, stopped, disposed);
+            }
         }
+    }
+
+    private static string B5CResourcePath(string repository, int port)
+    {
+        var supplied = Environment.GetEnvironmentVariable("DANGO_BACKEND_B5C_RESOURCE_DIRECTORY");
+        Assert.IsFalse(string.IsNullOrEmpty(supplied), "B5C needs the runner-owned ignored resource directory.");
+        var path = Path.GetFullPath(supplied!);
+        var approved = Path.GetFullPath(Path.Combine(repository, "artifacts", "backend-b5c", "postgres-tests"))
+            + Path.DirectorySeparatorChar;
+        Assert.IsTrue(path.StartsWith(approved, StringComparison.OrdinalIgnoreCase) && Directory.Exists(path));
+        for (DirectoryInfo? part = new(path); part is not null; part = part.Parent)
+            Assert.IsFalse(part.Exists && (part.Attributes & FileAttributes.ReparsePoint) != 0);
+        return Path.Combine(path, $"fixture-{port}-{Guid.NewGuid():N}.json");
+    }
+
+    private static void WriteResourceReceipt(string? path, int port, bool started, bool stopped, bool disposed)
+    {
+        if (path is null) return;
+        File.WriteAllText(path, JsonSerializer.Serialize(new
+        {
+            Version = 1, Port = port, ProcessId = Environment.ProcessId, Started = started,
+            Stopped = stopped, Disposed = disposed
+        }));
     }
 
     private sealed record Target(string ConnectionString, string DataDirectory);
