@@ -93,6 +93,7 @@ Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](d
 - [Windows 本地收口设计与实施计划](docs/planning/2026-10-03-windows-local-closeout.md)及[验证记录](docs/verification/2026-10-03-windows-local-closeout.md)：同屏两缩放单机候选已获人工确认，后续分别授权的日常更新和本地整合已完成；自动差异与未验证项保留，推送另行批准。
 - [帽子轨道分配优化](docs/phase-1-hat-track-allocation-design.md)及[实施计划](docs/phase-1-hat-track-allocation-plan.md)：已批准的局部优化与等价、分配、真实宿主性能验收顺序。
 - [DIY 配饰设计](docs/planning/2026-10-07-accessory-diy-design.md)、[分步实施计划](docs/planning/2026-10-07-accessory-diy-plan.md)及[第一版 main 整合](docs/verification/2026-10-09-accessory-v1-main-integration.md)：Windows 本地导入、编辑、多件图层、单支点、柔性／翻折和保存重载已获第一版人工确认；历次失败与未验证边界保留，分享及配饰间挂接为后续候选。
+- [当前穿搭账号备份设计](docs/planning/2026-10-09-accessory-account-backup.md)、[C2 实施](docs/planning/2026-10-09-accessory-c2-execution.md)、[验证记录](docs/verification/2026-10-09-accessory-c2-private-backup.md)及[精确数据计划](docs/planning/2026-10-09-accessory-c2-local-data-plan.md)：正式私有配饰 API／EF／Windows 接线候选已实现，统一 596/596 通过；新增迁移和真实数据库／HTTPS 27 案例等待单独授权，人工／双机及正式审核／房间投影未验收。
 - [DIY 配饰第二轮界面与实时预览验证](docs/verification/2026-10-08-accessory-ui-refinement.md)：团子左侧分组图标、四列素材库、创建与取消边界、真实按键控制及滚动原点自由地面的候选；历次失败与修复分开记录，最终门禁及人工验收状态以报告为准。
 - [DIY 配饰第四轮修订验证](docs/verification/2026-10-08-accessory-ui-v4.md)：四图标、标题省略、图片上限／压缩提示及持续移动修复；输出等价、性能红灯和候选验收状态分别记录。
 - [DIY 配饰第五轮材料与行程验证](docs/verification/2026-10-09-accessory-material-v5.md)：扩大柔软度及弱连接端点，新增可选翻折、图片形变上限和连接径向行程上限；失败反例、保存重载及候选验收状态分别记录。

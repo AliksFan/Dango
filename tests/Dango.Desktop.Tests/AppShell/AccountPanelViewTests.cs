@@ -224,8 +224,13 @@ public sealed class AccountPanelViewTests
     }
     private static JsonElement Configuration(string color) => JsonSerializer.SerializeToElement(new
     {
-        appearanceSchemaVersion = 3, bodyColorHex = color, eyeColorHex = "#334455", eyeSizePercent = 110,
-        eyeOvalityPercent = 10, eyeHeightControlPercent = 50, eyeSpacingControlPercent = 25
+        appearanceSchemaVersion = 3,
+        bodyColorHex = color,
+        eyeColorHex = "#334455",
+        eyeSizePercent = 110,
+        eyeOvalityPercent = 10,
+        eyeHeightControlPercent = 50,
+        eyeSpacingControlPercent = 25
     });
     private static T Element<T>(AccountPanelView view, string name) where T : class =>
         view.FindName(name) as T ?? throw new AssertFailedException($"Missing {name}.");

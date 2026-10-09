@@ -51,8 +51,11 @@ public sealed class AccessoryAccountControllerTests
         WithDispatcher(() =>
         {
             var session = Saved(); var panel = new AccessoryAccountPanelView();
-            var transport = new ControlledTransport { VerifyLocalCommit = () =>
-                Assert.AreEqual(session.SavedConfiguration, new AccessorySettingsStore().Load(root).Configuration) };
+            var transport = new ControlledTransport
+            {
+                VerifyLocalCommit = () =>
+                Assert.AreEqual(session.SavedConfiguration, new AccessorySettingsStore().Load(root).Configuration)
+            };
             using var controller = new AccessoryAccountController(panel, session, () => { }, () => { });
             controller.Attach(Scope(), transport);
             PumpUntil(() => GetButton(panel, "AccessoryBackupLocal").IsEnabled);

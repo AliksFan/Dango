@@ -4,6 +4,7 @@ using Dango.Server.Configuration;
 using Dango.Server.Email;
 using Dango.Server.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Dango.Server.Hosting;
 
@@ -28,12 +29,11 @@ public static class FormalEntry
                 {
                     await db.Database.OpenConnectionAsync();
                     await using var command = db.Database.GetDbConnection().CreateCommand();
-                    command.CommandText = "SELECT current_database(), current_setting('data_directory'), current_setting('server_version_num')::integer";
+                    command.CommandText = "SELECT current_database(), current_setting('data_directory'), current_setting('server_version_num')::integer, current_setting('listen_addresses'), current_user";
                     await using var reader = await command.ExecuteReaderAsync();
-                    if (!await reader.ReadAsync() || reader.GetString(0) != options.DatabaseName
-                        || !string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(reader.GetString(1))),
-                            Path.TrimEndingDirectorySeparator(Path.GetFullPath(expectedDirectory)), StringComparison.OrdinalIgnoreCase)
-                        || reader.GetInt32(2) is < 180000 or >= 190000)
+                    if (!await reader.ReadAsync() || !MigrationTargetMatches(options.DatabaseName, expectedDirectory,
+                        new NpgsqlConnectionStringBuilder(options.ConnectionString).Username!, reader.GetString(0),
+                        reader.GetString(1), reader.GetInt32(2), reader.GetString(3), reader.GetString(4)))
                         throw new AccountFault("maintenance_database_target_invalid");
                 }
                 if (Read("EXPECTED_MIGRATION") is { Length: > 0 } expectedMigration)
@@ -108,6 +108,15 @@ public static class FormalEntry
         catch (OperationCanceledException) { return 0; }
         catch (Exception ex) when (ex is not OutOfMemoryException) { Console.Error.WriteLine("formal_operation_failed"); return 3; }
     }
+
+    internal static bool MigrationTargetMatches(string expectedDatabase, string expectedDirectory, string expectedRole,
+        string database, string directory, int version, string listenAddresses, string role) =>
+        database == expectedDatabase
+        && string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory)),
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(expectedDirectory)), StringComparison.OrdinalIgnoreCase)
+        && version is >= 180000 and < 190000
+        && listenAddresses == "127.0.0.1"
+        && role == expectedRole;
 
     private static string? Read(string suffix) => Environment.GetEnvironmentVariable($"DANGO_{suffix}");
 }

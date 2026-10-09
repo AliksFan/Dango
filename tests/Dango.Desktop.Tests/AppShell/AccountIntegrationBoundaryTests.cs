@@ -441,13 +441,13 @@ public sealed class AccountIntegrationBoundaryTests
             foreach (var key in new[] { Key.A, Key.D, Key.W, Key.Space })
             {
                 password.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, Environment.TickCount, key)
-                    { RoutedEvent = Keyboard.PreviewKeyDownEvent });
+                { RoutedEvent = Keyboard.PreviewKeyDownEvent });
                 Assert.IsTrue(home.IsAccountPanelOpen);
                 Assert.IsFalse(home.IsEditing);
                 Assert.IsFalse(home.IsInPorch);
             }
             var escape = new KeyEventArgs(Keyboard.PrimaryDevice, source, Environment.TickCount, Key.Escape)
-                { RoutedEvent = Keyboard.PreviewKeyDownEvent };
+            { RoutedEvent = Keyboard.PreviewKeyDownEvent };
             password.RaiseEvent(escape);
             Assert.IsTrue(escape.Handled);
             Assert.IsFalse(home.IsAccountPanelOpen);
@@ -544,15 +544,21 @@ public sealed class AccountIntegrationBoundaryTests
                     Completions++;
                     throw new HttpRequestException("fictional interrupted response");
                 }
-                return Json(new { id = registrationId, state = Completions == 0 ? RegistrationState : "completed",
-                    expiresAt = DateTimeOffset.UtcNow.AddHours(24), completionExpiresAt = RegistrationState == "pending" && Completions == 0
-                        ? (DateTimeOffset?)null : DateTimeOffset.UtcNow.AddHours(1), emailStatus = EmailStatus });
+                return Json(new
+                {
+                    id = registrationId,
+                    state = Completions == 0 ? RegistrationState : "completed",
+                    expiresAt = DateTimeOffset.UtcNow.AddHours(24),
+                    completionExpiresAt = RegistrationState == "pending" && Completions == 0
+                        ? (DateTimeOffset?)null : DateTimeOffset.UtcNow.AddHours(1),
+                    emailStatus = EmailStatus
+                });
             }
             if (path == "/api/v1/auth/login")
             {
                 LoginStarted = true;
                 Cookies?.Add(Origin, new Cookie("__Host-Dango.Auth", "fictional_session", "/")
-                    { Secure = true, HttpOnly = true, Expires = DateTime.UtcNow.AddHours(7) });
+                { Secure = true, HttpOnly = true, Expires = DateTime.UtcNow.AddHours(7) });
                 return DelayLogin ? await Delayed.Task : Json(new { userId = UserId, sessionId = Guid.NewGuid(), expiresAt = DateTimeOffset.UtcNow.AddHours(7) });
             }
             if (path == "/api/v1/auth/logout")

@@ -360,8 +360,13 @@ public sealed class AccessoryHttpTransportTests
             }
             if (record.Path == "api/v1/auth/logout") return Json(new { status = "signed_out" });
             if (record.Path == "api/v1/me") return Json(new { userId = UserId });
-            if (record.Path == "api/v1/me/pet") return Json(new { userId = UserId, petId = PetId, configurationVersion = 1,
-                configuration = JsonDocument.Parse(PetConfigurationChoiceTests.AppearanceJson).RootElement.Clone() });
+            if (record.Path == "api/v1/me/pet") return Json(new
+            {
+                userId = UserId,
+                petId = PetId,
+                configurationVersion = 1,
+                configuration = JsonDocument.Parse(PetConfigurationChoiceTests.AppearanceJson).RootElement.Clone()
+            });
             Assert.IsTrue(record.HadAuth);
             if (record.Method != HttpMethod.Get) Assert.IsNotNull(record.Csrf);
             if (record.Path == "api/v1/me/pet/accessory-assets")

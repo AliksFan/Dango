@@ -52,6 +52,21 @@ if (-not $ExecuteApprovedPlan) {
     return
 }
 
+function Test-TaskOwnedPostgresInstance {
+    param([int]$StartedPid, [int]$CurrentPid, [string]$ExpectedDataDirectory, [string]$RecordedDataDirectory,
+        [string]$ExpectedExecutable, [object]$CurrentProcess, [DateTime]$StartTime)
+    if ($StartedPid -le 0 -or $StartedPid -ne $CurrentPid -or $null -eq $CurrentProcess -or
+        [string]::IsNullOrEmpty($CurrentProcess.CommandLine) -or
+        -not [IO.Path]::IsPathFullyQualified($RecordedDataDirectory)) { return $false }
+    $taskExpectedData = [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetFullPath($ExpectedDataDirectory))
+    $taskRecordedData = [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetFullPath($RecordedDataDirectory))
+    $taskCommandDirectory = '(?:^|[\s"=])' + [regex]::Escape($taskExpectedData) + '(?=$|[\s"])'
+    return $taskRecordedData.Equals($taskExpectedData, [StringComparison]::OrdinalIgnoreCase) -and
+        $CurrentProcess.ExecutablePath -eq $ExpectedExecutable -and
+        [regex]::IsMatch($CurrentProcess.CommandLine.Replace('/', '\'), $taskCommandDirectory, [Text.RegularExpressions.RegexOptions]::IgnoreCase) -and
+        $CurrentProcess.CreationDate.ToUniversalTime() -ge $StartTime.AddSeconds(-1)
+}
+
 function Invoke-TaskProcess {
     param([string]$Executable, [string[]]$Arguments, [hashtable]$EnvironmentValues = @{}, [switch]$PermitFailure)
     $taskProcessInfo = [Diagnostics.ProcessStartInfo]::new()
@@ -223,17 +238,19 @@ try {
     if ($taskStartAttempted) {
         $taskPidFile = Join-Path $taskDataDirectory 'postmaster.pid'
         if (Test-Path -LiteralPath $taskPidFile) {
-            $taskCurrentPid = [int](Get-Content -LiteralPath $taskPidFile -TotalCount 1)
-            $taskCurrentProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $taskCurrentPid"
-            $taskExpectedExecutable = Join-Path $taskBinaryDirectory 'postgres.exe'
-            $taskIdentityMatches = $null -ne $taskCurrentProcess -and $taskCurrentProcess.ExecutablePath -eq $taskExpectedExecutable -and
-                $taskCurrentProcess.CommandLine.Replace('/', '\').Contains($taskDataDirectory) -and
-                $taskCurrentProcess.CreationDate.ToUniversalTime() -ge $taskStartTime.AddSeconds(-1) -and
-                ($taskStartedPid -eq 0 -or $taskStartedPid -eq $taskCurrentPid)
-            if ($taskIdentityMatches) {
-                $taskStartedPid = $taskCurrentPid
-                [void](Invoke-TaskProcess $taskControlExecutable @('stop', '-D', $taskDataDirectory, '-m', 'fast', '-w'))
-            } else { Write-Warning "backend_test_identity_unverified_no_stop_attempted; possible_residual_pid=$taskCurrentPid" }
+            $taskPidLines = @(Get-Content -LiteralPath $taskPidFile -TotalCount 2)
+            $taskCurrentPid = 0
+            if ($taskStartedPid -gt 0 -and $taskPidLines.Count -ge 2 -and
+                [int]::TryParse($taskPidLines[0], [ref]$taskCurrentPid) -and $taskCurrentPid -eq $taskStartedPid) {
+                $taskCurrentProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $taskCurrentPid"
+                $taskExpectedExecutable = Join-Path $taskBinaryDirectory 'postgres.exe'
+                $taskIdentityMatches = Test-TaskOwnedPostgresInstance -StartedPid $taskStartedPid -CurrentPid $taskCurrentPid `
+                    -ExpectedDataDirectory $taskDataDirectory -RecordedDataDirectory $taskPidLines[1] `
+                    -ExpectedExecutable $taskExpectedExecutable -CurrentProcess $taskCurrentProcess -StartTime $taskStartTime
+                if ($taskIdentityMatches) {
+                    [void](Invoke-TaskProcess $taskControlExecutable @('stop', '-D', $taskDataDirectory, '-m', 'fast', '-w'))
+                } else { Write-Warning "backend_test_identity_unverified_no_stop_attempted; possible_residual_pid=$taskCurrentPid" }
+            } else { Write-Warning 'backend_test_identity_unverified_no_stop_attempted; possible_residual_instance' }
         }
     }
     $taskPassword = $null

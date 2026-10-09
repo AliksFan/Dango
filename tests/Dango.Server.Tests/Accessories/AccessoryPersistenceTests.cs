@@ -18,11 +18,14 @@ public sealed class AccessoryPersistenceTests
     [TestMethod]
     public void CompleteRecipeRoundTripsEveryParameterAndHasStableDigest()
     {
-        var request = Request() with { Outfit = new(1, [new("a", "flower", "builtin-bowler", 64, 64)
+        var request = Request() with
+        {
+            Outfit = new(1, [new("a", "flower", "builtin-bowler", 64, 64)
         { Layer = AccessoryOutfitLayer.Behind, Order = 4, SizePercent = 130, BaseAngleDegrees = -30, ImagePivotX = .25, ImagePivotY = .7,
           BodyAnchorX = .1, BodyAnchorY = .8, Softness = 5, AllowFolding = true, MaxDeformationPercent = 50, ConnectionStrength = 40,
           MaxConnectionTravelPercent = 35, RotationDamping = 25, LockRotation = false, ReturnStrength = 15, MaxSwingDegrees = 60,
-          LimitSwing = false, GravityInfluence = 20 }] ) };
+          LimitSwing = false, GravityInfluence = 20 }])
+        };
         var bytes = JsonSerializer.SerializeToUtf8Bytes(request, AccessoryPersistence.Json);
         var parsed = AccessoryPersistence.ParseCommit(bytes);
         Assert.AreEqual(request, parsed);

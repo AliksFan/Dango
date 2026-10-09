@@ -75,14 +75,19 @@ public sealed class AccountPanelView : UserControl
         PreviewKeyDown += OnInputKeyDown;
         var scroll = new ScrollViewer
         {
-            Name = "AccountScroll", Content = body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, CanContentScroll = false
+            Name = "AccountScroll",
+            Content = body,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            CanContentScroll = false
         };
         RegisterName(scroll.Name, scroll);
         var surface = new Border
         {
-            CornerRadius = new CornerRadius(12), BorderThickness = new Thickness(1),
-            Background = new SolidColorBrush(Color.FromRgb(253, 252, 249)), Child = scroll
+            CornerRadius = new CornerRadius(12),
+            BorderThickness = new Thickness(1),
+            Background = new SolidColorBrush(Color.FromRgb(253, 252, 249)),
+            Child = scroll
         };
         surface.SetResourceReference(Border.BorderBrushProperty, "HomeLine");
         surface.SetResourceReference(Border.BackgroundProperty, "HomeSoft");
@@ -182,9 +187,12 @@ public sealed class AccountPanelView : UserControl
     {
         var titles = new Dictionary<AccountPanelPage, string>
         {
-            [AccountPanelPage.Login] = "邮箱登录", [AccountPanelPage.Register] = "受邀注册",
-            [AccountPanelPage.Mail] = "等待邮箱验证", [AccountPanelPage.CompleteRegistration] = "完成注册",
-            [AccountPanelPage.PasswordReset] = "找回密码", [AccountPanelPage.Account] = "账号",
+            [AccountPanelPage.Login] = "邮箱登录",
+            [AccountPanelPage.Register] = "受邀注册",
+            [AccountPanelPage.Mail] = "等待邮箱验证",
+            [AccountPanelPage.CompleteRegistration] = "完成注册",
+            [AccountPanelPage.PasswordReset] = "找回密码",
+            [AccountPanelPage.Account] = "账号",
             [AccountPanelPage.ConfigurationChoice] = "选择配置来源"
         };
         var header = new Grid { Margin = new Thickness(0, 0, 0, 14) };
@@ -234,8 +242,15 @@ public sealed class AccountPanelView : UserControl
         {
             var hex = configuration.GetProperty(property).GetString()!.ToUpperInvariant();
             var group = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 12, 4) };
-            group.Children.Add(new Border { Width = 18, Height = 18, CornerRadius = new CornerRadius(4), BorderThickness = new Thickness(1),
-                BorderBrush = System.Windows.Media.Brushes.Gray, Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex)) });
+            group.Children.Add(new Border
+            {
+                Width = 18,
+                Height = 18,
+                CornerRadius = new CornerRadius(4),
+                BorderThickness = new Thickness(1),
+                BorderBrush = System.Windows.Media.Brushes.Gray,
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex))
+            });
             group.Children.Add(Text($"{label} {hex}", new Thickness(5, 0, 0, 0)));
             colors.Children.Add(group);
         }
@@ -243,9 +258,17 @@ public sealed class AccountPanelView : UserControl
         var properties = new[] { ("大小", "eyeSizePercent"), ("椭圆度", "eyeOvalityPercent"), ("高度", "eyeHeightControlPercent"), ("眼距", "eyeSpacingControlPercent") };
         var parameters = string.Join("  ·  ", properties.Select(p => $"{p.Item1} {configuration.GetProperty(p.Item2).GetDouble().ToString("0.#", CultureInfo.InvariantCulture)}%"));
         details.Children.Add(Text(parameters));
-        var radio = new RadioButton { Name = name, GroupName = "AccountConfigurationSource", Content = details,
-            IsChecked = choice == source, IsEnabled = !state.Busy, Padding = new Thickness(10), Margin = new Thickness(0, 5, 0, 5),
-            HorizontalContentAlignment = HorizontalAlignment.Stretch };
+        var radio = new RadioButton
+        {
+            Name = name,
+            GroupName = "AccountConfigurationSource",
+            Content = details,
+            IsChecked = choice == source,
+            IsEnabled = !state.Busy,
+            Padding = new Thickness(10),
+            Margin = new Thickness(0, 5, 0, 5),
+            HorizontalContentAlignment = HorizontalAlignment.Stretch
+        };
         AutomationProperties.SetName(radio, title);
         radio.Checked += (_, _) =>
         {
@@ -291,8 +314,13 @@ public sealed class AccountPanelView : UserControl
 
     private Button MakeButton(string label, AccountPanelAction action, bool allowBusy)
     {
-        var button = new Button { Content = Text(label), MinHeight = 36, IsEnabled = !state.Busy || allowBusy,
-            Padding = new Thickness(10, 6, 10, 6) };
+        var button = new Button
+        {
+            Content = Text(label),
+            MinHeight = 36,
+            IsEnabled = !state.Busy || allowBusy,
+            Padding = new Thickness(10, 6, 10, 6)
+        };
         AutomationProperties.SetName(button, label);
         button.SetResourceReference(Button.BorderBrushProperty, "HomeLine");
         button.Click += (_, _) => Request(action);
@@ -322,13 +350,21 @@ public sealed class AccountPanelView : UserControl
 
     private static TextBlock Text(string value, Thickness? margin = null) => new()
     {
-        Text = value, TextWrapping = TextWrapping.Wrap, Margin = margin ?? new Thickness(0)
+        Text = value,
+        TextWrapping = TextWrapping.Wrap,
+        Margin = margin ?? new Thickness(0)
     };
 
     private static TextBox Input(string name, string label, int maxLength)
     {
-        var control = new TextBox { Name = name, MaxLength = maxLength, MinHeight = 36, Padding = new Thickness(8, 6, 8, 6),
-            VerticalContentAlignment = VerticalAlignment.Center };
+        var control = new TextBox
+        {
+            Name = name,
+            MaxLength = maxLength,
+            MinHeight = 36,
+            Padding = new Thickness(8, 6, 8, 6),
+            VerticalContentAlignment = VerticalAlignment.Center
+        };
         AutomationProperties.SetName(control, label);
         control.SetResourceReference(TextBox.ForegroundProperty, "HomeInk");
         control.SetResourceReference(TextBox.BackgroundProperty, "HomeSoft");
@@ -338,8 +374,14 @@ public sealed class AccountPanelView : UserControl
 
     private static PasswordBox Secret(string name, string label, int maxLength)
     {
-        var control = new PasswordBox { Name = name, MaxLength = maxLength, MinHeight = 36, Padding = new Thickness(8, 6, 8, 6),
-            VerticalContentAlignment = VerticalAlignment.Center };
+        var control = new PasswordBox
+        {
+            Name = name,
+            MaxLength = maxLength,
+            MinHeight = 36,
+            Padding = new Thickness(8, 6, 8, 6),
+            VerticalContentAlignment = VerticalAlignment.Center
+        };
         AutomationProperties.SetName(control, label);
         control.SetResourceReference(PasswordBox.ForegroundProperty, "HomeInk");
         control.SetResourceReference(PasswordBox.BackgroundProperty, "HomeSoft");

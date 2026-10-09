@@ -164,8 +164,15 @@ public sealed class AccessoryAccountService(DangoDbContext db, AccountEnvironmen
         current.Revision = revision + 1;
         current.OutfitJson = outfitJson;
         current.UpdatedAt = now;
-        db.AccessoryCommitReceipts.Add(new AccessoryCommitReceipt { PetId = context.Pet.Id, IdempotencyKey = request.IdempotencyKey,
-            RequestDigest = requestDigest, Revision = current.Revision, OutfitJson = outfitJson, CreatedAt = now });
+        db.AccessoryCommitReceipts.Add(new AccessoryCommitReceipt
+        {
+            PetId = context.Pet.Id,
+            IdempotencyKey = request.IdempotencyKey,
+            RequestDigest = requestDigest,
+            Revision = current.Revision,
+            OutfitJson = outfitJson,
+            CreatedAt = now
+        });
         try { await db.SaveChangesAsync(ct); }
         catch (DbUpdateConcurrencyException) { throw new AccountFault("accessory_revision_conflict", 409); }
         await checkpoint.ReachedAsync("after_outfit_and_receipt", ct);

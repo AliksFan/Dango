@@ -308,7 +308,7 @@ internal sealed class DesktopAccountController : IDisposable
                     Show(AccountPanelPage.Login, LogoutFailureMessage((AccountClientException)ex));
                 }
                 else if (!logout && registration is not null && ex is AccountClientException
-                    { Code: "invitation_invalid" or "registration_expired" or "registration_proof_invalid" or "registration_result_expired" or "registration_conflict" })
+                { Code: "invitation_invalid" or "registration_expired" or "registration_proof_invalid" or "registration_result_expired" or "registration_conflict" })
                 {
                     registrationRejected = true;
                     Show(AccountPanelPage.Register, "旧注册请求已过期或被明确拒绝。可确认清除本机继续信息并改用新邀请；这不会取消服务器已有请求。");
