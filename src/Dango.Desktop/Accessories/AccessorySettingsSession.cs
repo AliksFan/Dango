@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows.Media.Imaging;
+using Dango.Desktop.Accessories.AccountSync;
 
 namespace Dango.Desktop.Accessories;
 
@@ -20,6 +21,7 @@ public sealed class AccessorySettingsSession
     private readonly Dictionary<string, string> imageWarnings = new(StringComparer.Ordinal);
     private string statusMessage = string.Empty;
     private string? cacheWarning;
+    private string? commitWarning;
 
     public AccessorySettingsSession(string settingsRoot, string legacyHatPresetId = "sprout", AccessorySettingsStore? store = null)
         : this(settingsRoot, legacyHatPresetId, store, MaximumPendingPixels, MaximumPendingPngBytes)
@@ -46,6 +48,8 @@ public sealed class AccessorySettingsSession
     }
 
     public AccessoryConfiguration SavedConfiguration { get; private set; }
+    public long LocalCommitVersion { get; private set; }
+    public event EventHandler<AccessorySettingsCommittedEventArgs>? Committed;
     public AccessoryConfiguration DraftConfiguration { get; private set; }
     public bool IsWriteProtected { get; private set; }
     public bool IsCompatibilityMode { get; private set; }
@@ -59,7 +63,8 @@ public sealed class AccessorySettingsSession
             VerifyAccess();
             var imageNotice = imageWarnings.Count == 0 ? string.Empty :
                 $" 部分配饰图片无法显示，已隔离 {imageWarnings.Count} 张图片；其配置仍保留。";
-            return statusMessage + imageNotice + (cacheWarning is null ? string.Empty : " " + cacheWarning);
+            return statusMessage + imageNotice + (cacheWarning is null ? string.Empty : " " + cacheWarning) +
+                (commitWarning is null ? string.Empty : " " + commitWarning);
         }
         private set => statusMessage = value;
     }
@@ -67,6 +72,10 @@ public sealed class AccessorySettingsSession
     internal int PendingImageCount => pendingAssets.Count;
     internal long PendingPixelCount => pendingAssets.Values.Sum(asset => (long)asset.PixelWidth * asset.PixelHeight);
     internal long PendingPngBytes => pendingAssets.Values.Sum(asset => asset.EncodedByteLength);
+    internal string AccountSyncSettingsRoot
+    {
+        get { VerifyAccess(); return settingsRoot; }
+    }
 
     public void Stage(AccessoryConfiguration configuration)
     {
@@ -133,6 +142,7 @@ public sealed class AccessorySettingsSession
             cacheWarning = $"图片缓存未刷新（{error.GetType().Name}）；配置已写入，可重试画面。";
         }
         finally { pendingAssets.Clear(); }
+        RaiseCommitted(AccessoryCommitOrigin.Apply);
         return true;
     }
 
@@ -188,6 +198,7 @@ public sealed class AccessorySettingsSession
         foreach (var assetId in pendingAssets.Keys.Where(assetId => !usedAssets.Contains(assetId)).ToArray()) pendingAssets.Remove(assetId);
         foreach (var assetId in imageWarnings.Keys.Where(assetId => !usedAssets.Contains(assetId)).ToArray()) imageWarnings.Remove(assetId);
         StatusMessage = wasSaved ? "配饰已删除；其他未应用修改仍保留。" : "已删除未应用的配饰；其他草稿仍保留。";
+        if (wasSaved) RaiseCommitted(AccessoryCommitOrigin.Delete);
         return true;
     }
 
@@ -303,5 +314,63 @@ public sealed class AccessorySettingsSession
     {
         if (Environment.CurrentManagedThreadId != ownerThreadId)
             throw new InvalidOperationException("配饰会话须在创建线程使用；冻结图片可跨线程读取。");
+    }
+
+    internal bool TryRestoreSavedConfiguration(AccessoryConfiguration expectedSavedConfiguration,
+        long expectedLocalCommitVersion, AccessoryConfiguration restoredConfiguration,
+        IReadOnlyDictionary<string, AccessoryImageAsset> assets)
+    {
+        VerifyAccess();
+        ArgumentNullException.ThrowIfNull(expectedSavedConfiguration);
+        ArgumentNullException.ThrowIfNull(restoredConfiguration);
+        ArgumentNullException.ThrowIfNull(assets);
+        if (IsDirty || IsWriteProtected || expectedLocalCommitVersion != LocalCommitVersion ||
+            !SavedConfiguration.Equals(expectedSavedConfiguration))
+        {
+            StatusMessage = "配饰未恢复：本机有未应用修改或保存状态已变化；原配置及草稿保留。";
+            return false;
+        }
+        var loaded = store.Load(settingsRoot);
+        if (IsCompatibilityMode ? loaded.State != AccessorySettingsLoadState.Missing :
+            loaded.State != AccessorySettingsLoadState.Valid || !loaded.Configuration.Equals(expectedSavedConfiguration))
+        {
+            StatusMessage = "配饰未恢复：本机清单已在外部变化或暂时无法读取；原配置保留。";
+            return false;
+        }
+        try { store.Save(settingsRoot, restoredConfiguration, assets, expectedLoad: loaded); }
+        catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException
+            or ArgumentException or InvalidOperationException)
+        {
+            StatusMessage = $"配饰未恢复（{error.GetType().Name}）；原配置及草稿保留。";
+            return false;
+        }
+        SavedConfiguration = restoredConfiguration;
+        DraftConfiguration = restoredConfiguration;
+        IsCompatibilityMode = false;
+        pendingAssets.Clear();
+        images.Clear();
+        imageRecency.Clear();
+        imageWarnings.Clear();
+        cacheWarning = null;
+        LastImportInfo = null;
+        StatusMessage = "账号配饰已完整恢复到本机。";
+        RaiseCommitted(AccessoryCommitOrigin.AccountRestore);
+        return true;
+    }
+
+    private void RaiseCommitted(AccessoryCommitOrigin origin)
+    {
+        LocalCommitVersion++;
+        commitWarning = null;
+        var notification = new AccessorySettingsCommittedEventArgs(SavedConfiguration, LocalCommitVersion, origin);
+        foreach (var subscriber in Committed?.GetInvocationList() ?? [])
+        {
+            try { ((EventHandler<AccessorySettingsCommittedEventArgs>)subscriber)(this, notification); }
+            catch (Exception error)
+            {
+                // Local persistence is already confirmed. Backup/presentation callbacks cannot undo that commit.
+                commitWarning = $"本机保存已完成，但保存后通知处理失败（{error.GetType().Name}）。";
+            }
+        }
     }
 }
