@@ -8,5 +8,6 @@ public sealed record RoomRestoreRequest(Guid RequestId, long ExpectedVersion);
 // A replay acknowledges the original committed operation, not the room's current state. Read the detail again.
 public sealed record RoomOperationResult(Guid RoomId, long AppliedVersion, string Operation);
 public sealed record RoomManagementView(Guid RoomId, string Kind, string Name, int Capacity, string Status,
-    long Version, int ReservedSeats, int Occupancy, DateTimeOffset? RecoverUntil, bool Recoverable);
+    long Version, int ReservedSeats, int Occupancy, DateTimeOffset? RecoverUntil, bool Recoverable,
+    string TemplateId, int TemplateVersion);
 public sealed record RoomManagementPage(RoomManagementView[] Rooms, Guid? Next);
