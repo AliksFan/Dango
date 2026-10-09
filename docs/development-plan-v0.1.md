@@ -1,5 +1,7 @@
 # Dango 分阶段开发计划 v0.1
 
+> 2026-10-09 B5 交互候选：已完成[账号／配置／房间可点击方案](planning/2026-10-09-backend-b5-interaction-proposal.md)及[局部浏览器检查](verification/2026-10-09-email-backend-b5-preview.md)，等待用户确认居中浮层或右侧面板及入口流程。正式 Windows 接入、真实服务闭环与人工验收未完成；本次没有数据库、真实发信、合并、推送、安装或部署操作。
+
 > 2026-10-09 邮箱后端首期：按[设计](planning/2026-10-08-email-backend-design-proposal.md)与[实施计划](planning/2026-10-08-email-backend-implementation-plan.md)推进 B0–B5，五项质量要求已加入 AGENTS.md。B0–B2 已实现候选，B3 房间管理已通过 105 项真实集成门禁；B4 正式准入／租约／Hub／通知候选已实现，用户按[精确计划](planning/2026-10-09-backend-b4-local-data-plan.md)授权后已应用两个前向迁移，修复实际时间精度与锁冲突问题，最终真实 B1–B4 PostgreSQL／HTTPS／SignalR LongPolling 回归 168／168、Server 无数据库 186／186 通过。证据见[B0](verification/2026-10-08-email-backend-foundation.md)、[B1](verification/2026-10-08-email-backend-b1.md)、[B2](verification/2026-10-09-email-backend-b2.md)、[B3](verification/2026-10-09-email-backend-b3.md)及[B4](verification/2026-10-09-email-backend-b4.md)。B2／B4 客户端人工、B5 界面、真实发信、备份还原、正式 WebSocket／长期 worker 及完整 Phase 3／M7 未验收；合并、推送与部署另行授权。
 
 > 2026-10-08 桌宠房间本地 main 整合：用户在人工通过后明确授权合并，已将 `codex/desktop-pet-layered@d090005` 从 `main@8ff78e0` 快进合入本地 `main`，无冲突；合并后的实现与已验 r2 候选一致，受保护 DLL hash 不变。沿用功能／回归 114＋58 项与人工验收证据，不重新宣称自动性能通过。详见[本地合并记录](verification/2026-10-07-desktop-pet-room-feedback.md#2026-10-08-用户授权与本地-main-合并)。未推送、更新日常安装、部署或关闭完整阶段；下方未合并状态保留为各次交付时的历史快照。
