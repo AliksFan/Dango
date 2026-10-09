@@ -425,7 +425,7 @@ public sealed class AccessoryAccountSync : IAsyncDisposable
                 session.ActiveSnapshot = null;
                 session.FailedSnapshot = source;
                 if (attempt is not null && exception is not AccessoryAccountTransportException
-                    { Failure: AccessoryTransportFailure.Rejected or AccessoryTransportFailure.RevisionConflict } &&
+                    { Failure: AccessoryTransportFailure.Rejected or AccessoryTransportFailure.RevisionConflict or AccessoryTransportFailure.Authentication } &&
                     exception is not SafeFailure { Code: "service_origin_changed" })
                 {
                     session.State = AccessorySyncState.OutcomeUnknown;
@@ -440,6 +440,7 @@ public sealed class AccessoryAccountSync : IAsyncDisposable
                     {
                         SafeFailure failure => failure.Code,
                         AccessoryAccountTransportException { Failure: AccessoryTransportFailure.RevisionConflict } => "accessory_revision_conflict",
+                        AccessoryAccountTransportException { Failure: AccessoryTransportFailure.Authentication } => "accessory_authentication_required",
                         AccessoryAccountTransportException { Failure: AccessoryTransportFailure.Rejected } => "accessory_commit_rejected",
                         _ => "asset_upload_failed"
                     };

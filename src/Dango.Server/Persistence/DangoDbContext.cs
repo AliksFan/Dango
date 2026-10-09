@@ -99,6 +99,7 @@ public sealed partial class DangoDbContext(DbContextOptions<DangoDbContext> opti
         ConfigureAccounts(builder);
         ConfigureRoomManagement(builder);
         ConfigureRoomAccess(builder);
+        ConfigureAccessories(builder);
         foreach (var entity in builder.Model.GetEntityTypes())
         {
             foreach (var property in entity.GetProperties()) property.SetColumnName(SnakeCase(property.Name));
