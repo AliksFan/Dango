@@ -11,9 +11,11 @@ internal static class Program
         try
         {
             if (args.Length is not 1 and not 3) return 2;
+            if (args.Length == 3 && args[1] == "--measure-idle-probe") return IdleDiagnostics.MeasureProbe(args[0], args[2]);
             var library = Path.GetFullPath(args[0]);
             if (args.Length == 3 && args[1] == "--verify") return Verification.Run(library, args[2]);
             if (args.Length == 3 && args[1] == "--verify-drag") return DragVerification.Run(library, args[2]);
+            if (args.Length == 3 && args[1] == "--diagnose-idle") return IdleDiagnostics.Run(library, args[2]);
             if (args.Length == 3 && args[1] == "--probe-drag") return DragVerification.Run(library, args[2], minimal: true);
             if (args.Length == 3 && args[1] == "--calibrate") return Calibration.Run(library, args[2]);
             if (args.Length == 3 && args[1] == "--calibrate-stability") return Calibration.Stability(library, args[2]);
