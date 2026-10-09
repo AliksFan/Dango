@@ -2,7 +2,7 @@
 
 日期：2026-10-08；2026-10-09 更新。状态：用户已同意开始，B0 配置／模型／初始迁移与 B1 正式服务入口、邀请邮箱账号已实现；B2 本人配置接口、显式选择编排与本地存档候选已实现，自动验证包含明确未执行项，人工待验收；B3 房间管理候选实现、静态及真实 PostgreSQL／HTTPS 门禁已完成，用户单独批准后应用精确迁移并执行限定到期清理，105 项集成通过。详见[B0 验证](../verification/2026-10-08-email-backend-foundation.md)、[B1 验证](../verification/2026-10-08-email-backend-b1.md)、[B2 验证](../verification/2026-10-09-email-backend-b2.md)与[B3 验证](../verification/2026-10-09-email-backend-b3.md)；B4 正式准入／Hub、B5 登录／选择界面、完整首期、真实 SMTP／客户端人工与 Phase 3 尚未验收。
 
-B4 正式准入、公共码管理、租约／控制、快照、独立 Hub 和逐收件人 outbox 已实现候选；Server 无数据库 183 项、Protocol 9 项、Client.Sync 77 项通过。源码迁移未应用，真实数据库／正式 Hub 等待[精确数据计划](2026-10-09-backend-b4-local-data-plan.md)授权；见[B4 验证](../verification/2026-10-09-email-backend-b4.md)。
+B4 正式准入、公共码管理、租约／控制、快照、独立 Hub 和逐收件人 outbox 已实现候选；Server 无数据库 186 项、Protocol 9 项、Client.Sync 77 项通过。用户按[精确数据计划](2026-10-09-backend-b4-local-data-plan.md)授权后已前向应用两迁移，修复真实集成发现的时间精度与锁冲突映射问题，最终 B1–B4 PostgreSQL／HTTPS／SignalR LongPolling 回归 168／168 通过；见[B4 验证](../verification/2026-10-09-email-backend-b4.md)。B5、客户端人工、正式 WebSocket、长期 worker、真实发信与备份还原仍未验证，不将自动门禁完成写成完整首期验收。
 
 依据：[首期设计](2026-10-08-email-backend-design-proposal.md)、[ADR 0002](../adr/0002-server-foundation-and-scaling.md)、[ADR 0006](../adr/0006-email-accounts-and-persistent-room-state.md)与[工作流](../development-workflow-v0.1.md)。用户新增五项必查已记录于根级规则。
 
