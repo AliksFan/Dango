@@ -13,6 +13,8 @@ internal static class Program
             if (args.Length is not 1 and not 3) return 2;
             var library = Path.GetFullPath(args[0]);
             if (args.Length == 3 && args[1] == "--verify") return Verification.Run(library, args[2]);
+            if (args.Length == 3 && args[1] == "--verify-drag") return DragVerification.Run(library, args[2]);
+            if (args.Length == 3 && args[1] == "--probe-drag") return DragVerification.Run(library, args[2], minimal: true);
             if (args.Length == 3 && args[1] == "--calibrate") return Calibration.Run(library, args[2]);
             if (args.Length == 3 && args[1] == "--calibrate-stability") return Calibration.Stability(library, args[2]);
             if (args.Length == 3 && args[1] == "--calibrate-forces") return Calibration.Stability(library, args[2], "balance");

@@ -13,7 +13,7 @@
 - 晃动抑制 0～100：两组弹簧阻尼比 0.5～2.0，默认 90 对应原值 1.85。它改变恢复过程，不宣称数值越高越快回圆。
 - 参数修改是草稿；“应用参数并下落”显式重建两个对照世界。暂停／失焦清空输入，错误停止并显示诊断，只能显式重新下落。
 
-身体复用生产 `DangoStreamGeometryFactory` 的轮廓校验和样条。左侧每物理单位对应 X=105、Y=105×58/72 像素，保留正式身体比例；右侧两轴均为 105 像素，使自由飞行时的可见身体接近圆形。地面、镜头、骨架和拖动逆映射均使用本侧比例。超出表现坐标范围的轮廓先等比例归一化，再补偿画布尺寸，保证真实大小不被缩小；此行为有尺寸正例门禁。
+身体复用生产 `DangoStreamGeometryFactory` 的轮廓校验和样条。左侧每物理单位对应 X=105、Y=105×58/72 像素，保留正式身体比例；右侧两轴均为 105 像素，使自由飞行时的可见身体接近圆形。地面、镜头、骨架和拖动逆映射均使用本侧比例。轮廓先按配置体型转换到默认尺寸坐标，再补偿画布尺寸，保证真实大小不被缩小；超出表现坐标范围时保留旧等比例处理。真实 native 甩动回归另行检查径向硬上限，不能靠表现坐标归一化掩盖超限。
 
 眼睛和芽复用正式基础资产、保持装饰等比例，用当前绘制轮廓边界定位；身体颜色取参考图的 #F5D5A5。装饰仅用于外形对照，未接入完整生产附件运动或捏脸挂点链，不证明生产捏脸兼容。
 
@@ -27,15 +27,33 @@
 6. 默认参考图身体宽高比 331/221，容差 0.03；最宽位置在从顶向下 60%～70%；高度 10%、25%、50%、65%、80%、90%、97% 的归一化宽度为 0.5438、0.7915、0.9728、1、0.9366、0.7915、0.5619，平均误差不超过 0.04、最大误差不超过 0.08；底部最后 2.3% 高度的覆盖宽度为总宽的 43%～57%。默认落地末 120 帧逐帧匹配。正例接受正式原外观；负例拒绝抵消比例后的原物理轮廓，以及只有宽高比相近的对称椭圆。此组阈值在参数扫描前固定。
 7. 默认候选连续 36,000 帧（10 分钟模拟时间），每帧检查健康及穿地；10 秒停稳后每秒检查接地、速度、参考外形，并对整段核心和宽高跨度要求小于 0.003；末 600 帧逐帧采样。首版只检查末段漂移，本轮补充整段采样以发现慢形变。加速运行不等于 10 分钟真实桌面运行。
 
-本轮不声称全滑块组合、极端鼠标操作、长期真实桌面、多体接触或用户人工验收已通过。
+用户已认可默认落地外形；甩动修复尚待人工复测。本轮不声称全滑块组合、极端鼠标操作、长期真实桌面或多体接触已通过，整个物理阶段尚未验收。
 
 本轮实际结果：Release 构建零警告、零错误；新自动门禁 **34/35，长期漂移失败**，因此候选待修改，不标记已验收。九组实际拖动后回圆约 0.32～0.87 秒；参考落地形态实际提起、松开后约 0.60 秒回圆。默认第 10 秒实际样条宽高比约 1.489（正式原版约 1.498），截面平均／最大误差约 0.0143／0.0382，最宽位置 61%，底部覆盖 55.39%。同尺寸软硬端点的实际落地形态差通过。
 
-默认连续 36,000 帧健康、接地停稳、外形匹配通过，但 10 秒后整段宽高最大跨度 0.027926（约 2.93 显示像素），超过 0.003；宽高比缓慢变至约 1.523。有限扫描径向／外围频率、局部角度平衡及阻尼均未消除慢形变；扫描不替代验收，也不自动切换小样配置。保留当前参考形状较好的默认候选，没有放宽阈值、增加形状补偿力或修改 native 解算器。
+默认连续 36,000 帧健康、接地停稳、外形匹配通过，但 10 秒后整段宽高最大跨度 0.027926（约 2.93 显示像素），超过 0.003；宽高比缓慢变至约 1.523。有限扫描径向／外围频率、局部角度平衡及阻尼均未消除慢形变；扫描不替代验收，也不自动切换小样配置。外形校准保留当前参考形状较好的默认候选，没有放宽阈值或增加形状补偿力；之后的甩动修复只增加有界约束求解预算，见下节。
 
 后续诊断线索是弹簧、面积径向压力和触限位置／速度投影的耦合；现有单向面积压力在非圆轮廓上不保证净力为零，但尚未统计各项净力或约束修正，不能称作已定位根因。没有使用相同整段门禁测量原版，不能断言此漂移只存在于候选。下一项工作应先做有边界的力平衡与约束轨迹诊断，再决定材料或解算方式修订，不能继续无界寻参。
 
 已打开真实窗口，通过 UI Automation 验证三滑块、未应用草稿提示、应用后实际形态变化、恢复默认和高处下落，并查看真实物理帧离屏快照。自动操作不作为用户手感验收；本小样尚不满足生产接入门禁。
+
+## 甩动冻结修复
+
+用户报告“通过，但是甩动的时候卡住了”。旧窗口真实诊断为右侧候选 `-91`，约束求解失败锁存；窗口仍响应操作，但两个对照面板均停止。稳定复现使用先停稳 600 帧、再反复横向及上下甩动的 `ground-swing` 输入，默认候选在第 764 帧冻结。旧 96 次投影后残差为 1.1973083e-5，略超原有 1e-5 门槛；继续同一投影到第 101 次即可满足门槛。
+
+本修复将最大投影预算从 96 增至 384，保留原精度、提前退出、形状硬限制和真实故障锁存，不自动重建世界。正常已收敛帧结果保持一致；困难帧最坏求解预算增至四倍。原生测试加入真实失败输入夹具，并检查收敛及动能未增加。两侧显示和拖动共用连续镜头转换，拖动期间固定镜头，防止身体运动反馈到鼠标目标；松手、失焦、暂停和捕获丢失均解除固定。拖出面板会被裁剪，松手后镜头恢复跟随可能重新定位，这些实际手感仍待人工复测。
+
+扩展尺寸回归还发现 120% 合法身体被生产绘制校验的默认尺寸绝对阈值误判为 `FootLikeSpike`。现在按配置体型校验、同比补偿绘制大小，生产校验器保持不变。三个尺寸的合成正例都按真实比例绘制，真正 canonical 尖脚负例都被拒绝；它们明确属于绘制夹具。真实轨迹每帧独立检查径向硬上限加节点外沿，容差为 2e-5（求解容差及浮点误差）；最大 canonical 半径约 0.874607，合法上限为 0.8746。
+
+实际验证：
+
+- Release 构建零警告、零错误；`git diff --check` 通过。
+- `--verify-drag` **35/35**：3 个尺寸绘制正反例、2 个左右镜头坐标检查、30 组 native 轨迹。三种轨迹各含原版默认及大小 80／100／120 × 柔软度 0／50／100，晃动抑制使用默认 90。每组先停稳 600 帧，再甩动／间歇释放 5400 帧，再释放 600 帧、重新施加方向控制 60 帧，全程健康、绘制合法、无冻结且再次响应。不是硬件鼠标手感验收。
+- 原生约束夹具、退化拒绝及三组 36,000 帧基线检查通过；弹簧平衡四组通过。模块回归 **11/11**，包含原版默认 900 帧逐帧兼容和容量 1／2／3。
+- 原外形门禁重新运行仍为 **34/35**：参考外形、近圆、恢复等通过；长期漂移仍为 0.027926，未解决、未放宽。
+- 新真实窗口 UI Automation 验证滑块／草稿／应用／恢复默认／高处下落通过；旧冻结小样正常关闭，新窗口留给用户复测。
+
+失败证据保留在 `drag-before.json` 和 `drag-after-diagnostic.json`；当前结果为 `drag-after-final.json`、`verification-drag-final.json`、`native-drag-constraints.log`、`test-results/drag-module-tests.trx`、`ui-verification-drag-fixed.json` 和 `comparison-drag-fixed.png`（均位于忽略的 `artifacts/round-material/`）。当前隔离 DLL 为 `native-drag-final/Release/dango_physics_module.dll`，SHA256 为 `A4600B47CD198B1F1A735EE9FCF0C0DD81DD544C715305BC52A2176D3BE7F553`。正式 DLL SHA256 仍为 `6712D66ECEF9588123CAFCD868455080598B5B58711A698FB8AF022A0CDA191A`。只在小样分支本地提交，不合并、推送或更新日常安装。
 
 ## 运行
 
@@ -43,11 +61,12 @@
 
 ```powershell
 pwsh -NoProfile -File eng/run-material-sample.ps1 -NativeModulePath <isolated-module.dll>
-dotnet artifacts/round-material/app/Dango.MaterialSample.dll <isolated-module.dll> --verify artifacts/round-material/verification-calibrated-final.json
-dotnet artifacts/round-material/app/Dango.MaterialSample.dll <isolated-module.dll> --snapshot artifacts/round-material/comparison-calibrated.png
+dotnet artifacts/round-material/app/Dango.MaterialSample.dll <isolated-module.dll> --verify artifacts/round-material/verification-drag-final.json
+dotnet artifacts/round-material/app/Dango.MaterialSample.dll <isolated-module.dll> --verify-drag artifacts/round-material/drag-after-final.json
+dotnet artifacts/round-material/app/Dango.MaterialSample.dll <isolated-module.dll> --snapshot artifacts/round-material/comparison-drag-fixed.png
 ```
 
-`--verify` 写完整结果，任一必过项失败则退出 1；`--snapshot` 渲染真实落地帧，并且绘制失败不能生成成功快照。
+省略 `-NativeModulePath` 时启动脚本使用已构建的 `native-drag-final` 隔离 DLL。`--verify` 和 `--verify-drag` 写完整结果，任一必过项失败则退出 1；`--probe-drag` 仅复现默认候选 `ground-swing`，不代替完整矩阵。`--snapshot` 渲染真实落地帧，并且绘制失败不能生成成功快照。
 
 `--calibrate` 执行有限频率／面积扫描；`--calibrate-stability`、`--calibrate-forces`、`--calibrate-damping` 分别探索频率、局部平滑和阻尼的稳定性。探索命令退出 0 仅表示报告成功生成；每行明确记录是否通过、已检查帧数，出现不匹配或漂移即停止该候选。不可把探索命令退出码称作门禁通过。
 
@@ -57,4 +76,4 @@ dotnet artifacts/round-material/app/Dango.MaterialSample.dll <isolated-module.dl
 
 曾试验面积保持强度 1.8～7.8 的“饱满程度”滑块，其端点落地面积差未达到预设 1%，因此此功能退出当前交付，保留失败记录，不降低门槛。现有面积保持仍是旧单向径向压力，不是已经改造的守恒材料模型；后续应独立评估面积梯度约束及参数效果，再决定是否开放。
 
-首版 32/32 结果及探索失败保留在忽略目录；它们未验证用户图片外形，不作为本轮通过证据。当前状态以 `artifacts/round-material/verification-calibrated-final.json`、`ui-verification-calibrated.json` 和本轮人工评审为准。频率／长时／平滑／阻尼探索报告分别为 `shape-calibration.json`、`stability-calibration.json`、`force-calibration.json`、`balance-calibration.json`、`damping-calibration.json`。正式基线、native 二进制和产品文档的已验收事实保持原样；未合并 main、未推送、未更新日常安装。
+首版 32/32 结果及探索失败保留在忽略目录；它们未验证用户图片外形，不作为本轮通过证据。当前状态以本次甩动修复报告及人工评审为准，先前外形报告 `verification-calibrated-final.json` 保留。频率／长时／平滑／阻尼探索报告分别为 `shape-calibration.json`、`stability-calibration.json`、`force-calibration.json`、`balance-calibration.json`、`damping-calibration.json`。正式基线、native 二进制和产品文档的已验收事实保持原样；未合并 main、未推送、未更新日常安装。

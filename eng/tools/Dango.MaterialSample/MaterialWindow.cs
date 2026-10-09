@@ -152,15 +152,17 @@ internal sealed class MaterialWindow : Window, IDisposable
 
     private void Tick()
     {
+        var currentScene = -1;
         try
         {
             for (var i = 0; i < sessions.Length; i++)
             {
+                currentScene = i;
                 var view = scenes[i];
                 var state = sessions[i].Step(jump, squeeze.IsChecked == true,
                     view.Dragging, view.DragTarget.X, view.DragTarget.Y);
                 var shape = ShapeMetrics.Measure(state);
-                var bounds = SampleGeometry.Create(state, i == 0).Bounds;
+                var bounds = SampleGeometry.Create(state, i == 0, bodySize: sessions[i].BodySize).Bounds;
                 var renderedAspect = bounds.Width / bounds.Height;
                 metrics[i].Text = $"{(state.IsGrounded ? "已接地" : "离地")}  ·  身体显示宽高比 {renderedAspect:F3}\n" +
                     $"骨架径向差 {shape.RadialSpread:P1}  ·  {(Math.Abs(renderedAspect - 1) <= .04 && shape.IsRound ? "显示接近圆形" : "形变中")}  ·  帧 {sessions[i].Frames}";
@@ -174,7 +176,7 @@ internal sealed class MaterialWindow : Window, IDisposable
         }
         catch (Exception error)
         {
-            Fail(error.Message);
+            Fail($"{(currentScene == 0 ? "左侧原版" : "右侧候选")}：{error.Message}");
             foreach (var view in scenes) view.InvalidateVisual();
         }
     }
@@ -226,10 +228,10 @@ internal sealed class SceneView : FrameworkElement
     internal Point DragTarget { get; private set; }
     private Geometry? hitGeometry;
     private Vector hitOffset;
+    private readonly SceneCoordinates coordinates = new();
 
-    private double OriginY => Session?.State is { CoreY: > 1.9f } state
-        ? state.CoreY * ScaleY + ActualHeight * .38
-        : ActualHeight - 36 + (Session?.Configuration.GroundHeight ?? -.72) * ScaleY;
+    private double OriginY => coordinates.CameraOrigin(ActualHeight, ScaleY,
+        Session?.Configuration.GroundHeight ?? -.72, Session?.State?.CoreY ?? 0);
 
     internal SceneView(bool productionMapping)
     {
@@ -239,16 +241,19 @@ internal sealed class SceneView : FrameworkElement
         {
             var p = e.GetPosition(this);
             if (!AllowDrag || hitGeometry is null || !hitGeometry.FillContains(p - hitOffset)) return;
-            Dragging = CaptureMouse(); UpdateDrag(p); e.Handled = true;
+            Dragging = CaptureMouse();
+            if (Dragging) coordinates.BeginDrag(ActualHeight, ScaleY, Session?.Configuration.GroundHeight ?? -.72, Session?.State?.CoreY ?? 0);
+            UpdateDrag(p); e.Handled = true;
         };
         MouseMove += (_, e) => { if (Dragging) UpdateDrag(e.GetPosition(this)); };
         MouseLeftButtonUp += (_, _) => StopDrag();
-        LostMouseCapture += (_, _) => Dragging = false;
+        LostMouseCapture += (_, _) => { Dragging = false; coordinates.EndDrag(); InvalidateVisual(); };
     }
 
-    private void UpdateDrag(Point point) => DragTarget = new((point.X - ActualWidth / 2) / Scale, (OriginY - point.Y) / ScaleY);
+    private void UpdateDrag(Point point) => DragTarget = coordinates.WorldTarget(point, ActualWidth, ActualHeight,
+        Scale, ScaleY, Session?.Configuration.GroundHeight ?? -.72, Session?.State?.CoreY ?? 0);
 
-    internal void StopDrag() { Dragging = false; if (IsMouseCaptured) ReleaseMouseCapture(); }
+    internal void StopDrag() { Dragging = false; coordinates.EndDrag(); if (IsMouseCaptured) ReleaseMouseCapture(); InvalidateVisual(); }
 
     protected override void OnRender(DrawingContext drawing)
     {
@@ -259,7 +264,7 @@ internal sealed class SceneView : FrameworkElement
         drawing.DrawLine(new Pen(Brushes.LightGray, 2), new(12, groundY), new(ActualWidth - 12, groundY));
         var center = new Point(ActualWidth / 2 + state.CoreX * Scale, OriginY - state.CoreY * ScaleY);
         Geometry geometry;
-        try { geometry = SampleGeometry.Create(state, productionMapping, productionMapping ? Scale / 72 : Scale); }
+        try { geometry = SampleGeometry.Create(state, productionMapping, productionMapping ? Scale / 72 : Scale, Session.BodySize); }
         catch (Exception error)
         {
             RenderFailed?.Invoke($"真实轮廓绘制停止：{error.Message}。请显式重新下落。");

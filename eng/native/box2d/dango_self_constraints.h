@@ -3,6 +3,9 @@
 
 #include <box2d/box2d.h>
 #include <math.h>
+#if defined(DANGO_CONSTRAINT_TEST_DIAGNOSTICS)
+#include <stdio.h>
+#endif
 
 #define DANGO_CONSTRAINT_NODES 16
 #define DANGO_CONSTRAINT_CORE 16
@@ -241,7 +244,13 @@ static float dango_constraint_sweep(dango_constraint_state* s, bool correct)
 
 static bool dango_constraint_solve(dango_constraint_state* s)
 {
-    for (int iteration = 0; iteration < 96; ++iteration)
+#if defined(DANGO_CONSTRAINT_TEST_DIAGNOSTICS)
+    dango_constraint_state before = *s;
+#endif
+    // Soft rigs under changing drag can still be converging after 96 sweeps.
+    // Healthy steps retain the same early exit and tolerance; difficult contact
+    // configurations receive a bounded extra budget before a genuine fault latches.
+    for (int iteration = 0; iteration < 384; ++iteration)
     {
         float residual = dango_constraint_sweep_order(s, true, iteration % 2 != 0);
         if (!isfinite(residual))
@@ -250,11 +259,20 @@ static bool dango_constraint_solve(dango_constraint_state* s)
         }
         if (dango_constraint_sweep(s, false) <= DANGO_CONSTRAINT_TOLERANCE)
         {
+#if defined(DANGO_CONSTRAINT_TEST_DIAGNOSTICS)
+            if (iteration >= 96) fprintf(stderr, "Recovered constraint after %d sweeps\n", iteration + 1);
+#endif
             return true;
         }
     }
 #if defined(DANGO_CONSTRAINT_TEST_DIAGNOSTICS)
     fprintf(stderr, "Constraint residual: %.9g\n", (double)dango_constraint_sweep(s, false));
+    for (int i = 0; i < 17; ++i)
+    {
+        fprintf(stderr, "input %d: {%.9gf, %.9gf}, velocity {%.9gf, %.9gf}, inverse mass %.9gf\n", i,
+            (double)before.positions[i].x, (double)before.positions[i].y,
+            (double)before.velocities[i].x, (double)before.velocities[i].y, (double)before.inverse_mass[i]);
+    }
     for (int i = 0; i < 16; ++i)
     {
         fprintf(stderr, "node %d: raw angle residual %.9g, display %.9g, y %.9g\n", i,

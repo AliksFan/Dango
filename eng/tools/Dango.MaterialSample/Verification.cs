@@ -35,7 +35,7 @@ internal static class Verification
                 for (var i = 0; i < 120; i++)
                 {
                     var state = session.Step(); var metrics = ShapeMetrics.Measure(state);
-                    var renderedAspect = RenderedAspect(state);
+                    var renderedAspect = RenderedAspect(state, session.BodySize);
                     Require(!state.IsGrounded && state.GroundContactCount == 0 &&
                         metrics.LowestWorldY > session.Configuration.GroundHeight + .05, "飞行窗口发生接触。");
                     if (i >= 60)
@@ -58,7 +58,7 @@ internal static class Verification
                 for (var i = 0; i < 600; i++)
                 {
                     var state = session.Step(); var shape = ShapeMetrics.Measure(state);
-                    _ = RenderedAspect(state);
+                    _ = RenderedAspect(state, session.BodySize);
                     everGrounded |= state.IsGrounded;
                     Require(shape.LowestWorldY >= session.Configuration.GroundHeight - .002, "轮廓穿过地面。");
                     if (i >= 480)
@@ -215,9 +215,9 @@ internal static class Verification
         if (!condition) throw new InvalidOperationException(message);
     }
 
-    private static double RenderedAspect(DangoBodyState state)
+    private static double RenderedAspect(DangoBodyState state, double bodySize = 1)
     {
-        var bounds = SampleGeometry.Create(state).Bounds;
+        var bounds = SampleGeometry.Create(state, bodySize: bodySize).Bounds;
         return bounds.Width / bounds.Height;
     }
 
@@ -246,7 +246,7 @@ internal static class Verification
         for (var i = 0; i < 108; i++)
         {
             var state = session.Step(); var shape = ShapeMetrics.Measure(state); spread.Add(shape.RadialSpread);
-            var renderedAspect = RenderedAspect(state);
+            var renderedAspect = RenderedAspect(state, session.BodySize);
             Require(!state.IsGrounded && state.GroundContactCount == 0 &&
                 shape.LowestWorldY > session.Configuration.GroundHeight + .05, "恢复期间发生接触。");
             consecutiveRoundFrames = shape.IsRound && Math.Abs(renderedAspect - 1) <= .04 ? consecutiveRoundFrames + 1 : 0;

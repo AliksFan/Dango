@@ -70,9 +70,13 @@ internal sealed record SilhouetteMetrics(double Aspect, double WidestHeight,
 // coordinate contract, then compensate in the canvas dimensions so size is unchanged.
 internal static class SampleGeometry
 {
-    internal static Geometry Create(DangoBodyState state, bool productionMapping = false, double scale = 1)
+    internal static Geometry Create(DangoBodyState state, bool productionMapping = false, double scale = 1, double bodySize = 1)
     {
-        var normalization = Math.Max(1, state.Contour.Max(value => Math.Abs((double)value)));
+        if (!double.IsFinite(bodySize) || bodySize <= 0) throw new ArgumentOutOfRangeException(nameof(bodySize));
+        // The production validator's absolute coordinates describe the default-size
+        // rig. Validate scaled rigs in that same convention, then compensate in
+        // drawing dimensions; a larger valid rig must not look like a long foot.
+        var normalization = Math.Max(bodySize, state.Contour.Max(value => Math.Abs((double)value)));
         var points = Enumerable.Range(0, state.PointCount).Select(i => new PresentationPoint(
             state.Contour[2 * i] / normalization, state.Contour[2 * i + 1] / normalization)).ToArray();
         var width = (productionMapping ? 160 : 1 / .45) * scale * normalization;

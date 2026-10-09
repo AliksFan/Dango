@@ -50,6 +50,7 @@ internal sealed class MaterialSession : IDisposable
     private readonly DangoPhysicsWorld world;
     private readonly DangoEntityId id;
     internal DangoSelfPhysicsParameters Configuration { get; }
+    internal double BodySize => Configuration.RadialRestLength / DangoPhysicsDefaults.Current.RadialRestLength;
     internal DangoBodyState? State { get; private set; }
     internal int Frames { get; private set; }
 
@@ -62,9 +63,9 @@ internal sealed class MaterialSession : IDisposable
     }
 
     internal DangoBodyState Step(bool jump = false, bool downward = false,
-        bool drag = false, double dragX = 0, double dragY = 0)
+        bool drag = false, double dragX = 0, double dragY = 0, double horizontal = 0)
     {
-        var frame = world.Step(FixedStep, [new(id, Downward: downward ? 1 : 0,
+        var frame = world.Step(FixedStep, [new(id, Horizontal: horizontal, Downward: downward ? 1 : 0,
             JumpPressed: jump, DragActive: drag, DragTargetX: dragX, DragTargetY: dragY)]);
         State = frame.Bodies.Single();
         Frames++;
