@@ -190,6 +190,7 @@ internal sealed partial class DangoApplicationHost : IDisposable
         if (!exitSettingsHandled) { SaveLocalRoomCheckpoint(); SaveSettings(); }
         controlCenterWindow?.ProductHome.CancelAppearancePreview();
         disposed = true;
+        DisposeAccessoryAccounts();
         accountController?.Dispose();
         accountController = null;
         DisposeLocalRoom();
