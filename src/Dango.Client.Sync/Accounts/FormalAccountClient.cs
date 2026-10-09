@@ -10,7 +10,7 @@ namespace Dango.Client.Sync.Accounts;
 
 // The application lifecycle owns this client. When replacing it, cancel and await its
 // outstanding operations before opening a new client against the same protected-store slots.
-public sealed class FormalAccountClient : IDisposable
+public sealed partial class FormalAccountClient : IDisposable
 {
     private const int MaximumResponseBytes = 16384;
     private const int MaximumSecretBytes = 2560;
@@ -292,7 +292,9 @@ public sealed class FormalAccountClient : IDisposable
         return new(userId, pet.PetId);
     }
 
-    private async Task<JsonElement> RequestAsync(HttpMethod method, string path, object? body, string? registrationProof, CancellationToken ct)
+    private async Task<JsonElement> RequestAsync(HttpMethod method, string path, object? body, string? registrationProof, CancellationToken ct,
+        HttpStatusCode successStatus = HttpStatusCode.OK, int maximumSuccessBytes = MaximumResponseBytes,
+        IReadOnlySet<string>? additionalErrorCodes = null)
     {
         ct.ThrowIfCancellationRequested();
         string? token = null;
@@ -315,17 +317,21 @@ public sealed class FormalAccountClient : IDisposable
             if ((int)response.StatusCode is >= 300 and < 400) throw AccountInputs.InvalidResponse();
             if (response.StatusCode is HttpStatusCode.ServiceUnavailable or HttpStatusCode.BadGateway or HttpStatusCode.GatewayTimeout)
                 throw new AccountClientException(AccountFailure.Unavailable, "request_outcome_unknown");
-            var json = await ReadJsonAsync(response, ct);
-            if (response.StatusCode != HttpStatusCode.OK) throw ParseError(response.StatusCode, json);
+            var json = await ReadJsonAsync(response, ct, response.StatusCode == successStatus ? maximumSuccessBytes : MaximumResponseBytes);
+            if (response.StatusCode != successStatus)
+            {
+                if (response.IsSuccessStatusCode) throw AccountInputs.InvalidResponse();
+                throw ParseError(response.StatusCode, json, additionalErrorCodes);
+            }
             return json;
         }
         catch (Exception error) when (error is HttpRequestException or IOException || error is OperationCanceledException && !ct.IsCancellationRequested)
         { throw new AccountClientException(AccountFailure.Unavailable, "request_outcome_unknown"); }
     }
 
-    private static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response, CancellationToken ct)
+    private static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response, CancellationToken ct, int maximumBytes)
     {
-        if (response.Content.Headers.ContentLength > MaximumResponseBytes
+        if (response.Content.Headers.ContentLength > maximumBytes
             || response.Content.Headers.ContentType?.MediaType != "application/json") throw AccountInputs.InvalidResponse();
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromSeconds(20));
@@ -336,7 +342,7 @@ public sealed class FormalAccountClient : IDisposable
         {
             var read = await stream.ReadAsync(buffer, deadline.Token);
             if (read == 0) break;
-            if (bytes.Length + read > MaximumResponseBytes) throw AccountInputs.InvalidResponse();
+            if (bytes.Length + read > maximumBytes) throw AccountInputs.InvalidResponse();
             bytes.Write(buffer, 0, read);
         }
         try
@@ -361,11 +367,11 @@ public sealed class FormalAccountClient : IDisposable
         return false;
     }
 
-    private static AccountClientException ParseError(HttpStatusCode status, JsonElement json)
+    private static AccountClientException ParseError(HttpStatusCode status, JsonElement json, IReadOnlySet<string>? additionalErrorCodes)
     {
         var code = "remote_request_rejected";
         if (json.ValueKind == JsonValueKind.Object && json.TryGetProperty("code", out var raw) && raw.ValueKind == JsonValueKind.String
-            && raw.GetString() is { } candidate && ErrorCodes.Contains(candidate)) code = candidate;
+            && raw.GetString() is { } candidate && (ErrorCodes.Contains(candidate) || additionalErrorCodes?.Contains(candidate) == true)) code = candidate;
         var failure = status switch
         {
             HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => AccountFailure.Authentication,
