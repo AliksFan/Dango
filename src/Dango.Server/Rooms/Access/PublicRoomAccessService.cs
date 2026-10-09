@@ -64,6 +64,7 @@ public sealed class PublicRoomAccessService(DangoDbContext db, AccountEnvironmen
                 };
                 credential.ProtectedCode = protector.Protect(code, credential.Id, room.Id, credential.Generation);
                 db.PublicRoomCredentials.Add(credential);
+                context.RequiredCredentialAtCommit = credential.Id;
                 await db.SaveChangesAsync(ct);
                 await checkpoint.ReachedAsync("public_after_code", context.Pet.Id, ct);
                 var receipt = PublicRoomAccessPolicy.Receipt(credential, room.Version);
