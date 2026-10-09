@@ -36,15 +36,31 @@ internal sealed class FormalTestFixture : IAsyncDisposable
 
     public static async Task<FormalTestFixture> CreateAsync(bool startHttp = false, IRegistrationCheckpoint? checkpoint = null,
         TimeProvider? clock = null, IEmailSender? sender = null, bool enableEmailWorker = false,
-        AccountEnvironment? environment = null, Action<IServiceCollection>? configure = null, bool requireB5AApproval = false)
+        AccountEnvironment? environment = null, Action<IServiceCollection>? configure = null, bool requireB5AApproval = false,
+        bool requireB5BApproval = false)
     {
-        var target = await ValidateTargetAsync(requireB5AApproval);
+        Assert.IsFalse(requireB5AApproval && requireB5BApproval, "Client integration stages cannot share approval.");
+        var target = await ValidateTargetAsync(requireB5AApproval, requireB5BApproval);
         var epochText = Environment.GetEnvironmentVariable("DANGO_BACKEND_B1_RECOVERY_EPOCH");
         Assert.IsTrue(Guid.TryParse(epochText, out var epoch) && epoch != Guid.Empty,
             "The authorized runner must supply the isolated B1 recovery epoch.");
         var keyDirectory = Environment.GetEnvironmentVariable("DANGO_BACKEND_B1_KEY_DIRECTORY");
         Assert.IsFalse(string.IsNullOrEmpty(keyDirectory));
         Assert.AreEqual(Path.Combine(Path.GetDirectoryName(target.DataDirectory)!, "b1tests-keys"), Path.GetFullPath(keyDirectory!), true);
+        if (requireB5BApproval)
+        {
+            var keys = new DirectoryInfo(keyDirectory!);
+            Assert.IsTrue(keys.Exists && (keys.Attributes & FileAttributes.ReparsePoint) == 0,
+                "B5B must reuse the existing key ring.");
+            var statePath = Path.Combine(Path.GetDirectoryName(target.DataDirectory)!, "b1test-state.json");
+            var stateFile = new FileInfo(statePath);
+            Assert.IsTrue(stateFile.Exists && stateFile.Length is > 0 and <= 8192
+                && (stateFile.Attributes & FileAttributes.ReparsePoint) == 0);
+            using var state = JsonDocument.Parse(await File.ReadAllBytesAsync(statePath));
+            Assert.AreEqual(1, state.RootElement.GetProperty("Version").GetInt32());
+            Assert.AreEqual(epoch, state.RootElement.GetProperty("RecoveryEpoch").GetGuid(),
+                "B5B cannot invent a replacement recovery epoch.");
+        }
         var endpoint = new Uri($"https://127.0.0.1:{FindLoopbackPort()}/");
         var repository = FindRepository();
         Assert.IsTrue(FormalServerOptions.TryCreate("dango_backend_b0", target.ConnectionString, keyDirectory!,
@@ -137,13 +153,16 @@ internal sealed class FormalTestFixture : IAsyncDisposable
         return (await response.Content.ReadFromJsonAsync<T>())!;
     }
 
-    private static async Task<Target> ValidateTargetAsync(bool requireB5AApproval)
+    private static async Task<Target> ValidateTargetAsync(bool requireB5AApproval, bool requireB5BApproval)
     {
         // This check precedes connection, port probing, certificate creation and key-ring access.
-        // B1/B4 approval must never authorize the client's new B5A integration writes.
-        var approval = requireB5AApproval ? "DANGO_BACKEND_B5A_TEST_APPROVED" : "DANGO_BACKEND_B1_TEST_APPROVED";
+        // Earlier-stage approval must never authorize new client integration writes.
+        var approval = requireB5BApproval ? "DANGO_BACKEND_B5B_TEST_APPROVED"
+            : requireB5AApproval ? "DANGO_BACKEND_B5A_TEST_APPROVED" : "DANGO_BACKEND_B1_TEST_APPROVED";
         if (Environment.GetEnvironmentVariable(approval) != "1")
-            Assert.Inconclusive(requireB5AApproval
+            Assert.Inconclusive(requireB5BApproval
+                ? "B5B client room writes require separate precise authorization."
+                : requireB5AApproval
                 ? "B5A client account writes require separate precise authorization."
                 : "B1 fictional account and email writes require separate precise authorization.");
         var supplied = Environment.GetEnvironmentVariable("DANGO_BACKEND_TEST_CONNECTION");
@@ -166,7 +185,7 @@ internal sealed class FormalTestFixture : IAsyncDisposable
         };
         Assert.AreEqual("127.0.0.1", builder.Host);
         Assert.AreEqual("dango_backend_b0", builder.Database);
-        if (requireB5AApproval)
+        if (requireB5AApproval || requireB5BApproval)
         {
             Assert.AreEqual("dango_b0_owner", builder.Username);
             var statePath = Path.Combine(Path.GetDirectoryName(physical)!, "state.json");
@@ -191,7 +210,7 @@ internal sealed class FormalTestFixture : IAsyncDisposable
             Assert.AreEqual("dango_backend_b0", reader.GetString(0));
             Assert.IsTrue(reader.GetInt32(1) is >= 180000 and < 190000);
             Assert.AreEqual(physical, Path.TrimEndingDirectorySeparator(Path.GetFullPath(reader.GetString(2))), true);
-            if (requireB5AApproval)
+            if (requireB5AApproval || requireB5BApproval)
             {
                 Assert.AreEqual("127.0.0.1", reader.GetString(3));
                 Assert.AreEqual("dango_b0_owner", reader.GetString(4));
