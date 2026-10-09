@@ -530,6 +530,24 @@ public sealed class AccessoryAccountSyncTests
         Assert.AreEqual("service_origin_changed", sync.SafeDiagnostics.ErrorCode);
     }
 
+    [TestMethod]
+    public async Task DefinitiveAuthenticationRejectionDoesNotPretendAnUnknownWriteOccurred()
+    {
+        var transport = new FakeTransport
+        {
+            CommitHandler = (_, _, _) => throw new AccessoryAccountTransportException(AccessoryTransportFailure.Authentication)
+        };
+        await using var sync = new AccessoryAccountSync(new FakeRepository());
+        sync.AttachAccount(Scope(), transport, 3);
+        sync.QueueLocalCommit(new(AccessoryOutfitManifest.Empty, [], 1));
+        await Until(() => sync.SafeDiagnostics.State == AccessorySyncState.Failed);
+        Assert.AreEqual("accessory_authentication_required", sync.SafeDiagnostics.ErrorCode);
+        Assert.AreEqual(3L, sync.SafeDiagnostics.ServerRevision);
+        Assert.IsNull(sync.SafeDiagnostics.LastBackedUpLocalVersion);
+        Assert.AreEqual(AccessoryCommitResolutionKind.Unknown, await sync.ReconcileUnknownCommitAsync());
+        Assert.AreEqual(0, transport.ResolvedKeys.Count);
+    }
+
     private static AccessoryOutfitItem Item(AccessoryImageSnapshot image, string id) => new(id, "Fictional accessory", image.AssetId, 1, 1);
     private static AccessoryLocalSnapshot Snapshot(AccessoryImageSnapshot image, long version) => new(new(1, [Item(image, "a")]), [image], version);
     private static UploadedAccessoryAsset Mapping(AccessoryImageSnapshot image) => new(image.AssetId, image.AssetId, image.PixelWidth, image.PixelHeight, 1);

@@ -36,9 +36,11 @@ internal sealed class FormalTestFixture : IAsyncDisposable
 
     public static async Task<FormalTestFixture> CreateAsync(bool startHttp = false, IRegistrationCheckpoint? checkpoint = null,
         TimeProvider? clock = null, IEmailSender? sender = null, bool enableEmailWorker = false,
-        AccountEnvironment? environment = null, Action<IServiceCollection>? configure = null, bool requireB5AApproval = false)
+        AccountEnvironment? environment = null, Action<IServiceCollection>? configure = null, bool requireB5AApproval = false,
+        bool requireC2Approval = false)
     {
-        var target = await ValidateTargetAsync(requireB5AApproval);
+        Assert.IsFalse(requireB5AApproval && requireC2Approval);
+        var target = await ValidateTargetAsync(requireB5AApproval, requireC2Approval);
         var epochText = Environment.GetEnvironmentVariable("DANGO_BACKEND_B1_RECOVERY_EPOCH");
         Assert.IsTrue(Guid.TryParse(epochText, out var epoch) && epoch != Guid.Empty,
             "The authorized runner must supply the isolated B1 recovery epoch.");
@@ -47,8 +49,16 @@ internal sealed class FormalTestFixture : IAsyncDisposable
         Assert.AreEqual(Path.Combine(Path.GetDirectoryName(target.DataDirectory)!, "b1tests-keys"), Path.GetFullPath(keyDirectory!), true);
         var endpoint = new Uri($"https://127.0.0.1:{FindLoopbackPort()}/");
         var repository = FindRepository();
+        string? blobDirectory = null;
+        if (requireC2Approval)
+        {
+            blobDirectory = Environment.GetEnvironmentVariable("DANGO_BACKEND_C2_BLOB_DIRECTORY");
+            Assert.IsFalse(string.IsNullOrEmpty(blobDirectory));
+            Assert.AreEqual(Path.Combine(Path.GetDirectoryName(target.DataDirectory)!, "accessory-c2-blobs"), Path.GetFullPath(blobDirectory!), true);
+            Assert.IsTrue(Directory.Exists(blobDirectory));
+        }
         Assert.IsTrue(FormalServerOptions.TryCreate("dango_backend_b0", target.ConnectionString, keyDirectory!,
-            endpoint.AbsoluteUri, repository, out var options, out _));
+            endpoint.AbsoluteUri, repository, out var options, out _, blobDirectory));
         var certificate = CreateCertificate();
         WebApplication? app = null;
         try
@@ -137,13 +147,14 @@ internal sealed class FormalTestFixture : IAsyncDisposable
         return (await response.Content.ReadFromJsonAsync<T>())!;
     }
 
-    private static async Task<Target> ValidateTargetAsync(bool requireB5AApproval)
+    private static async Task<Target> ValidateTargetAsync(bool requireB5AApproval, bool requireC2Approval)
     {
         // This check precedes connection, port probing, certificate creation and key-ring access.
         // B1/B4 approval must never authorize the client's new B5A integration writes.
-        var approval = requireB5AApproval ? "DANGO_BACKEND_B5A_TEST_APPROVED" : "DANGO_BACKEND_B1_TEST_APPROVED";
+        var approval = requireC2Approval ? "DANGO_BACKEND_C2_TEST_APPROVED"
+            : requireB5AApproval ? "DANGO_BACKEND_B5A_TEST_APPROVED" : "DANGO_BACKEND_B1_TEST_APPROVED";
         if (Environment.GetEnvironmentVariable(approval) != "1")
-            Assert.Inconclusive(requireB5AApproval
+            Assert.Inconclusive(requireC2Approval ? "C2 accessory schema and fictional account writes require separate precise authorization." : requireB5AApproval
                 ? "B5A client account writes require separate precise authorization."
                 : "B1 fictional account and email writes require separate precise authorization.");
         var supplied = Environment.GetEnvironmentVariable("DANGO_BACKEND_TEST_CONNECTION");
@@ -166,7 +177,7 @@ internal sealed class FormalTestFixture : IAsyncDisposable
         };
         Assert.AreEqual("127.0.0.1", builder.Host);
         Assert.AreEqual("dango_backend_b0", builder.Database);
-        if (requireB5AApproval)
+        if (requireB5AApproval || requireC2Approval)
         {
             Assert.AreEqual("dango_b0_owner", builder.Username);
             var statePath = Path.Combine(Path.GetDirectoryName(physical)!, "state.json");
@@ -191,7 +202,7 @@ internal sealed class FormalTestFixture : IAsyncDisposable
             Assert.AreEqual("dango_backend_b0", reader.GetString(0));
             Assert.IsTrue(reader.GetInt32(1) is >= 180000 and < 190000);
             Assert.AreEqual(physical, Path.TrimEndingDirectorySeparator(Path.GetFullPath(reader.GetString(2))), true);
-            if (requireB5AApproval)
+            if (requireB5AApproval || requireC2Approval)
             {
                 Assert.AreEqual("127.0.0.1", reader.GetString(3));
                 Assert.AreEqual("dango_b0_owner", reader.GetString(4));

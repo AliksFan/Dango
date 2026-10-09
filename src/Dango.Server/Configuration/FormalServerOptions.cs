@@ -67,7 +67,7 @@ public sealed class FormalServerOptions
         { return false; }
 
         string? blobPath = null;
-        if (accessoryBlobDirectory is not null)
+        if (!string.IsNullOrEmpty(accessoryBlobDirectory))
         {
             errorCode = "formal_accessory_directory_invalid";
             try
