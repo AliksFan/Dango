@@ -33,6 +33,7 @@ public sealed class PersistentRoom
     public string TemplateId { get; set; } = "ordinary-default";
     public int TemplateVersion { get; set; } = 1;
     public long Version { get; set; }
+    public long AdmissionGeneration { get; set; } = 1;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? DissolvedAt { get; set; }
     public DateTimeOffset? RecoverUntil { get; set; }
@@ -55,4 +56,5 @@ public sealed class PetRoomState
     public bool IsSleeping { get; set; }
     public long Version { get; set; }
     public long ControlGeneration { get; set; }
+    public Guid? ControlLeaseId { get; set; }
 }

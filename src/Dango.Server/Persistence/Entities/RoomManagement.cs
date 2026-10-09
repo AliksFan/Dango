@@ -11,6 +11,8 @@ public sealed class RoomOperationAudit
     public long AppliedVersion { get; set; }
     public string Operation { get; set; } = string.Empty;
     public DateTimeOffset OccurredAt { get; set; }
+    public Guid? BoundSessionId { get; set; }
+    public string? ResultJson { get; set; }
 }
 
 // Durable notification intent only. B4 implements dispatch and recipient reauthorization.
@@ -22,4 +24,5 @@ public sealed class RoomDomainEvent
     public string EventType { get; set; } = string.Empty;
     public DateTimeOffset OccurredAt { get; set; }
     public DateTimeOffset? PublishedAt { get; set; }
+    public Guid[] TargetUserIds { get; set; } = [];
 }
