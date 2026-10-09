@@ -36,9 +36,9 @@ internal sealed class FormalTestFixture : IAsyncDisposable
 
     public static async Task<FormalTestFixture> CreateAsync(bool startHttp = false, IRegistrationCheckpoint? checkpoint = null,
         TimeProvider? clock = null, IEmailSender? sender = null, bool enableEmailWorker = false,
-        AccountEnvironment? environment = null, Action<IServiceCollection>? configure = null)
+        AccountEnvironment? environment = null, Action<IServiceCollection>? configure = null, bool requireB5AApproval = false)
     {
-        var target = await ValidateTargetAsync();
+        var target = await ValidateTargetAsync(requireB5AApproval);
         var epochText = Environment.GetEnvironmentVariable("DANGO_BACKEND_B1_RECOVERY_EPOCH");
         Assert.IsTrue(Guid.TryParse(epochText, out var epoch) && epoch != Guid.Empty,
             "The authorized runner must supply the isolated B1 recovery epoch.");
@@ -50,22 +50,23 @@ internal sealed class FormalTestFixture : IAsyncDisposable
         Assert.IsTrue(FormalServerOptions.TryCreate("dango_backend_b0", target.ConnectionString, keyDirectory!,
             endpoint.AbsoluteUri, repository, out var options, out _));
         var certificate = CreateCertificate();
-        var app = FormalHost.Create(options!, environment ?? new AccountEnvironment(epoch), certificate, services =>
-        {
-            if (checkpoint is not null) services.Replace(ServiceDescriptor.Singleton(checkpoint));
-            if (clock is not null) services.Replace(ServiceDescriptor.Singleton(clock));
-            if (sender is not null) services.Replace(ServiceDescriptor.Singleton(sender));
-            configure?.Invoke(services);
-        }, enableEmailWorker);
+        WebApplication? app = null;
         try
         {
+            app = FormalHost.Create(options!, environment ?? new AccountEnvironment(epoch), certificate, services =>
+            {
+                if (checkpoint is not null) services.Replace(ServiceDescriptor.Singleton(checkpoint));
+                if (clock is not null) services.Replace(ServiceDescriptor.Singleton(clock));
+                if (sender is not null) services.Replace(ServiceDescriptor.Singleton(sender));
+                configure?.Invoke(services);
+            }, enableEmailWorker);
             if (startHttp) await app.StartAsync();
             return new(app, certificate, endpoint, startHttp);
         }
         catch
         {
-            await app.DisposeAsync();
-            certificate.Dispose();
+            try { if (app is not null) await app.DisposeAsync(); }
+            finally { certificate.Dispose(); }
             throw;
         }
     }
@@ -136,10 +137,15 @@ internal sealed class FormalTestFixture : IAsyncDisposable
         return (await response.Content.ReadFromJsonAsync<T>())!;
     }
 
-    private static async Task<Target> ValidateTargetAsync()
+    private static async Task<Target> ValidateTargetAsync(bool requireB5AApproval)
     {
-        if (Environment.GetEnvironmentVariable("DANGO_BACKEND_B1_TEST_APPROVED") != "1")
-            Assert.Inconclusive("B1 fictional account and email writes require separate precise authorization.");
+        // This check precedes connection, port probing, certificate creation and key-ring access.
+        // B1/B4 approval must never authorize the client's new B5A integration writes.
+        var approval = requireB5AApproval ? "DANGO_BACKEND_B5A_TEST_APPROVED" : "DANGO_BACKEND_B1_TEST_APPROVED";
+        if (Environment.GetEnvironmentVariable(approval) != "1")
+            Assert.Inconclusive(requireB5AApproval
+                ? "B5A client account writes require separate precise authorization."
+                : "B1 fictional account and email writes require separate precise authorization.");
         var supplied = Environment.GetEnvironmentVariable("DANGO_BACKEND_TEST_CONNECTION");
         var directory = Environment.GetEnvironmentVariable("DANGO_BACKEND_TEST_DATA_DIRECTORY");
         if (string.IsNullOrEmpty(supplied) || string.IsNullOrEmpty(directory))
@@ -160,15 +166,36 @@ internal sealed class FormalTestFixture : IAsyncDisposable
         };
         Assert.AreEqual("127.0.0.1", builder.Host);
         Assert.AreEqual("dango_backend_b0", builder.Database);
+        if (requireB5AApproval)
+        {
+            Assert.AreEqual("dango_b0_owner", builder.Username);
+            var statePath = Path.Combine(Path.GetDirectoryName(physical)!, "state.json");
+            var stateFile = new FileInfo(statePath);
+            Assert.IsTrue(stateFile.Exists && stateFile.Length is > 0 and <= 8192
+                && (stateFile.Attributes & FileAttributes.ReparsePoint) == 0);
+            using var state = JsonDocument.Parse(await File.ReadAllBytesAsync(statePath));
+            var facts = state.RootElement;
+            Assert.AreEqual("run20261008b0", facts.GetProperty("RunName").GetString());
+            Assert.AreEqual("dango_backend_b0", facts.GetProperty("Database").GetString());
+            Assert.AreEqual("dango_b0_owner", facts.GetProperty("Owner").GetString());
+            Assert.AreEqual(physical, Path.TrimEndingDirectorySeparator(Path.GetFullPath(facts.GetProperty("DataDirectory").GetString()!)), true);
+            Assert.AreEqual(1, facts.GetProperty("Version").GetInt32());
+            Assert.AreEqual(facts.GetProperty("Port").GetInt32(), builder.Port);
+        }
         await using var connection = new NpgsqlConnection(builder.ConnectionString);
         await connection.OpenAsync();
-        await using var command = new NpgsqlCommand("SELECT current_database(), current_setting('server_version_num')::integer, current_setting('data_directory')", connection);
+        await using var command = new NpgsqlCommand("SELECT current_database(), current_setting('server_version_num')::integer, current_setting('data_directory'), current_setting('listen_addresses'), current_user", connection);
         await using (var reader = await command.ExecuteReaderAsync())
         {
             Assert.IsTrue(await reader.ReadAsync());
             Assert.AreEqual("dango_backend_b0", reader.GetString(0));
             Assert.IsTrue(reader.GetInt32(1) is >= 180000 and < 190000);
             Assert.AreEqual(physical, Path.TrimEndingDirectorySeparator(Path.GetFullPath(reader.GetString(2))), true);
+            if (requireB5AApproval)
+            {
+                Assert.AreEqual("127.0.0.1", reader.GetString(3));
+                Assert.AreEqual("dango_b0_owner", reader.GetString(4));
+            }
         }
         await using var db = new DangoDbContext(DangoDatabaseOptions.Create(builder.ConnectionString));
         Assert.IsFalse((await db.Database.GetPendingMigrationsAsync()).Any(), "The authorized runner must apply migrations explicitly before these gates.");
@@ -210,9 +237,12 @@ internal sealed class FormalTestFixture : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (started) await app.StopAsync();
-        await app.DisposeAsync();
-        certificate.Dispose();
+        try { if (started) await app.StopAsync(); }
+        finally
+        {
+            try { await app.DisposeAsync(); }
+            finally { certificate.Dispose(); }
+        }
     }
 
     private sealed record Target(string ConnectionString, string DataDirectory);
