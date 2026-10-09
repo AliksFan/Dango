@@ -20,6 +20,7 @@ public sealed class PublicRoomCredential
 {
     public Guid Id { get; set; }
     public Guid RoomId { get; set; }
+    public Guid RecoveryEpoch { get; set; }
     public long Generation { get; set; }
     public string CodeDigest { get; set; } = string.Empty;
     // Only Data Protection ciphertext is persisted, for replay of the owner's reset acknowledgement.
