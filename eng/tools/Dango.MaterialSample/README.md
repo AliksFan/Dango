@@ -1,6 +1,6 @@
 # 圆形自然态与材料小样
 
-2026-10-09。范围：用户同意继续验证“所有团子的自然形状为圆形，落地形态由物性产生”。本轮交付独立 Windows 单团子对照小样，生产捏脸、设置、物理默认值和 DLL 均不切换。完整材料模型、多人配置、持久化和生产接入尚未获本轮验证。
+2026-10-09～10。范围：用户同意继续验证“所有团子的自然形状为圆形，落地形态由物性产生”。本轮交付独立 Windows 单团子对照小样，生产捏脸、设置、物理默认值和 DLL 均不切换。完整材料模型、多人配置、持久化和生产接入尚未获本轮验证。
 
 ## 模型和操作
 
@@ -12,6 +12,8 @@
 - 柔软度 0～100：径向／外围频率分别映射为原值的 0.55／0.90（硬）、0.35／0.75（默认）、0.25／0.55（软），区间线性插值。默认频率为 1.82／15.075，面积保持仍为 4.8。既有长度与角度硬限制保留；默认落地底部径向压缩会触及 0.65 下限，不声称完全由无限制弹簧决定形态。
 - 晃动抑制 0～100：两组弹簧阻尼比 0.5～2.0，默认 90 对应原值 1.85。它改变恢复过程，不宣称数值越高越快回圆。
 - 参数修改是草稿；“应用参数并下落”显式重建两个对照世界。暂停／失焦清空输入，错误停止并显示诊断，只能显式重新下落。
+
+显式传入 `--baseline-library` 时，左侧实际加载指定基线 DLL，右侧实际加载首个候选 DLL；仅传一个 DLL 时，两侧都加载该 DLL，只比较原默认参数和材料参数。程序不按文件名识别算法，也不自动查找旧 DLL。当前已认可的小样使用旧隔离 DLL；下述新材料试验没有切换该人工验收基线。
 
 身体复用生产 `DangoStreamGeometryFactory` 的轮廓校验和样条。左侧每物理单位对应 X=105、Y=105×58/72 像素，保留正式身体比例；右侧两轴均为 105 像素，使自由飞行时的可见身体接近圆形。地面、镜头、骨架和拖动逆映射均使用本侧比例。轮廓先按配置体型转换到默认尺寸坐标，再补偿画布尺寸，保证真实大小不被缩小；超出表现坐标范围时保留旧等比例处理。真实 native 甩动回归另行检查径向硬上限，不能靠表现坐标归一化掩盖超限。
 
@@ -104,7 +106,41 @@
 
 首轮测试误把只属于弯曲的反向角 cut 拒绝条件用于面积项，因此失败；修正为该简单 CCW 轮廓面积成功／弯曲失败，并新增真正的非相邻自触负例，没有改动门槛。自审还补充了非空输出时的独立非法节点数检查，避免空指针错误掩盖缺失的节点数校验。首轮失败记录为 `material-forces-step1-first-run.log`；最终正常结果为 `material-forces-step1-final-v2.log`；四个真实失败模式为 `material-forces-step1-negative-{area,bending,point-cap,sign}.log`，均在忽略的 `artifacts/round-material/`，保存时拒绝覆写。独立只读审查通过。
 
-此项完成算法夹具验证，未运行新材料的实际世界轨迹、WPF 绘制、甩动或人工验收。旧长期稳定门禁仍失败，两份受保护 DLL hash 保持上文值；已认可小样外形和操作没有切换。没有端口、持久数据操作或残留测试进程。下一项先单独替换面积力，记录完整默认静置轨迹，再决定弯曲项的真实试验；夹具通过不证明漂移已修复。
+此项完成算法夹具验证，当时未运行新材料的实际世界轨迹、WPF 绘制、甩动或人工验收。旧长期稳定门禁仍失败，两份受保护 DLL hash 保持上文值；已认可小样外形和操作没有切换。没有端口、持久数据操作或残留测试进程。用户随后授权持续推进至需要人工协助／验收，第 2 项先单独替换面积力，再运行弯曲及明确标注的组合，见下节；夹具通过不证明漂移已修复。
+
+## 隔离材料实际试验
+
+新材料只通过私有编译定义 `DANGO_MATERIAL_EXPERIMENT_MODE` 启用：`dango_material_area`、`dango_material_bending`、`dango_material_both` 分别替换面积项、局部角度平衡项和两项组合。默认 `dango_physics_module` 编译仍走旧算法，没有新增 ABI 或生产配置字段，也不按柔软度偷偷切换。面积系数沿用 4.8；弯曲系数固定为 `k = S × r × tan(π/n) / 2`，默认约 0.11497135，只匹配规则自然环的旧中心径向贡献，不称完整算子等价。新材料计算先使用 double、整组共同限幅，再验证全部 float 输出后施力。
+
+实际面积私有 DLL 与已认可隔离 DLL 使用双源入口运行 `--diagnose-idle`。报告中候选为 `dango_material_area.dll`（SHA256 `3A9B7CE8DF1C15BB7960FDAAF5A44AF1B092F26FEDD55DCBFDE1794D1FCDFC49`），原参数对照实际加载上文 `A4600B…F553` 基线。两组各完整执行 36,000 帧，逐帧绘制、健康及穿地通过；原版跨度仍为 0.270553，材料跨度为 0.0287595，原采样集合出现 52 个参考失配样本，首次在第 601 帧，跨度首次失败在第 3181 帧。因此面积替换没有通过。此报告为 `idle-actual-area-gradient.json`；独立源码诊断的默认算法回归另核对了 504 个 float 检查点值和 8 个跨度值，全部按位一致，见 `gradient-baseline-equivalence.json`。
+
+五个固定原生试验各执行 36,000 帧，无错误或锁存。跨度沿用原采样集合及 0.003 门槛；WPF 列仅测量 10／30／60／120／300／600 秒六帧真实快照，不替代全帧门禁：
+
+| 固定试验 | 最大跨度 | 六帧 WPF 参考外形 | 结论 |
+|---|---:|---|---|
+| 面积梯度 | 0.0287595 | 前三帧失配，后三帧匹配 | 拒绝 |
+| 弯曲梯度 | 0.0277615 | 全匹配 | 跨度失败，拒绝 |
+| 两梯度组合 | 0.0286142 | 前三帧失配，后三帧匹配 | 拒绝 |
+| 两梯度＋跳过未变径向范围重设 | 0.0282055 | 前三帧失配，后三帧匹配 | 拒绝 |
+| 两梯度＋自然圆环半节点初相位 | 0.000765890 | 全匹配 | 默认静置通过，镜像甩动后长时漂移失败 |
+
+前三项实际 float 施力的内部合力／力矩降至浮点噪声：两梯度组合的最大一秒平均合力分别约 `4.72e-9`／`5.70e-9`，力矩约 `1.30e-9`／`2.42e-9`。这是每秒聚合的平均量，不是瞬时最大值，也没有证明长期稳定。面积和两梯度组合的早期核心 Y 约 -0.233，后期约 -0.256414；节点坐标对应由一个底节点支撑转到两个相邻底节点支撑、径向下限与底边上限共同触限的几何分支。触地记录是投影后的几何接近统计，不等于实际接触冲量或完整支撑力证据。缓存范围试验仍发生转换，因此冲量清零不是已证实的充分根因。
+
+半节点试验只将自然圆环初相位由 0 改为 `π/16`，仍为等半径自然圆；使用未缓存的两梯度组合，不修改其他参数或采样起点、不写入接地轮廓。六帧 WPF 宽高比为 1.479962～1.479966，实际尺寸约 174.939 × 118.205 像素，最宽位置 62%，截面平均／最大误差约 0.01529／0.03645，底部覆盖约 55.74%，均通过原外形标准。随后实际 `dango_material_both_phase.dll`（SHA256 `80A7883D14FE3CB7BE9820BFB344F958C245FD3F0A08F8B5EBF18D96FE0C2DE1`）与旧隔离基线双源跑完整默认静置：候选 36,000 帧逐帧健康、绘制、穿地通过，原采样参考与停稳失配均为 0，跨度仍为 0.000765890；原版跨度失败继续保留。该报告为 `idle-actual-material-gradients-half-phase.json`。完整原小样门禁及甩动矩阵随后分别通过 **35/35**、**35/35**，报告为 `verification-material-gradients-half-phase.json` 与 `drag-material-gradients-half-phase.json`；这两套既有门禁没有覆盖甩动后 600 秒静置，不能由此认定任意落地取向长期稳定。
+
+新固定否证使用默认大小 100、柔软度 50、晃动抑制 90，分别运行原 `ground-swing` 与仅反转 X 目标的镜像轨迹。每条先运行 6,000 帧真实甩动轨迹，再在同一世界、同一实体上全输入为零继续 36,000 帧；不重建、不重置、不修正姿态，保留静置第 10 秒后的原 1,180 个门槛样本。两条均完整执行，逐帧绘制及穿地失败为 0，原采样参考及停稳失配为 0。正向跨度 0.00102902 通过；镜像跨度 **0.00997956 失败**，首次超过 0.003 在静置第 721 帧（世界第 6,721 帧），核心 X 跨度约 0.009980、外沿控制点高度跨度约 0.006220。报告为 `idle-post-drag-material-gradients-half-phase.json`，`executionCompleted=true`、`thresholdsPassed=false`。因此半相位尚不能进入新人工验收，原 35＋35 项通过没有覆盖此长时问题。
+
+由镜像失败再做一项固定单变量诊断：私有 `dango_material_both_phase_no_spin`（编译位值 15）只跳过接地且无主动输入时额外的 `passive_spin` 旋转速度阻尼，其原衰减系数为 120／秒。自然半相位、两梯度、步长、摩擦、线性阻尼、水平静置平移阻尼及其他约束保持原样，不扫描参数、不延后采样边界。实际默认静置 36,000 帧跨度 0.000552871 通过，逐帧与原采样问题均为 0；但同一固定甩动后静置中，正向跨度 **0.01382515**、镜像跨度 **0.01144081** 均失败，首次分别在静置第 781／721 帧，其他绘制、穿地、参考及停稳问题为 0。三份 `idle-{native,actual,post-drag}-material-gradients-half-phase-no-spin.json` 保留结果。这个变体被拒绝，不能用默认初态通过掩盖甩动后的失败。
+
+随后从未禁用旋转阻尼的半相位模式 7 再做一项固定单变量：私有 `dango_material_both_phase_configured_friction`（编译位值 23）只跳过无主动输入时将节点摩擦设为 16 的覆盖，始终沿用原配置 0.72；旋转阻尼及其他算法、参数、约束和采样集合保持原样，没有叠加上一项改动。实际默认 36,000 帧跨度 0.000623237 通过；但两条甩动后的静置跨度分别为 **0.16435705／0.01027786**，均首次在静置第 1,681 帧（世界第 7,681 帧）超过原门槛，其他绘制、穿地、参考及停稳问题为 0。三份 `idle-{native,actual,post-drag}-material-gradients-half-phase-configured-friction.json` 保留结果；此变体同样被拒绝。旋转阻尼与摩擦单项对照均未建立充分根因，不通过无界寻参或放宽门槛补偿失败。
+
+依据约束路径审查，再从半相位模式 7 做一项固定隔离：私有 `dango_material_both_phase_projected_radial`（编译位值 39）只关闭 Box2D 径向 distance-joint 的 limit，径向弹簧仍启用，步后投影仍维护全部原径向、外围、角度及地面硬范围；其他参数、阻尼和采样集合不变，也没有叠加上述两项改动。该试验隔离同一径向硬范围的两条既有执行路径，没有放宽原边界或引入新的安全规则，不预定这就是充分根因。实际默认 36,000 帧跨度 0.000711981 通过；两条甩动后的静置跨度分别为 **0.01374909／0.00745090**，首次分别在静置第 781／721 帧超过原门槛，其他绘制、穿地、参考及停稳问题为 0，仍拒绝作为修复。三份 `idle-{native,actual,post-drag}-material-gradients-half-phase-projected-radial.json` 保留完整结果。
+
+实际错误锁存集成验证已扩展覆盖默认、面积、弯曲、两梯度、半相位、跳过旋转阻尼、配置摩擦及投影径向编译模式，通过 166,602 项检查，包含原参数／材料参数下的 16 组健康轨迹与 28 组故障夹具。每组健康轨迹检查全部径向弹簧仍启用，仅投影径向模式关闭 Box2D 径向 limit，其他模式的径向 limit 及全部外围 limit 仍启用。故障通过主动构造短边重合或自交轮廓触发，面积／弯曲分别返回 `-94`／`-95`；模块在积分前锁存，保留最后合法 42-float 快照，骨架身份、位置、速度及接触计数不变。之后三次主动控制仍不能清除锁存或隐式重建；显式 reset 后清除错误，原实体继续健康运行 60 帧。最新结果为 `material-integration-projected-radial.log`，此前集成日志保留。该测试检验故障处理契约，不表示正常鼠标操作会触发这些人工非法几何。
+
+最终 Release 构建零警告／零错误，独立数学 24 组主要夹具及 4 个可失败负例通过（`material-forces-step2-final.log`），默认无宏模块限定兼容回归 **11/11**（`test-results/gradient-default-scoped-module-final-tests.trx`）；首次较宽类筛选为 4 项通过、6 项历史三体库对照因夹具 DLL 缺失失败（`test-results/gradient-default-module-tests.trx`），原失败报告保留，这 6 项未验证，不声称全套回归通过。
+
+本节证据位于忽略的 `artifacts/round-material/`：`idle-native-{area-gradient,bending-gradient,material-gradients,material-gradients-cached,material-gradients-half-phase}.json` 与同名 `idle-render-*.json`，另有上述真实 DLL 全帧报告、甩动后静置报告、基线等价报告及集成日志。缓存及半相位 WPF 报告以新文件创建，没有覆盖旧证据。**35/35＋35/35 只属于半相位模式 7 的既有门禁，其镜像甩动后长时稳定已经被否证；三个后续固定隔离也均失败。** 本增量到此停止扩展单变量变体，下一阶段已形成[接触与约束裁定候选](../../../docs/planning/2026-10-10-round-material-contact-solver-candidate.md)，属于待批准设计，不能写成已有充分根因或物理验收通过。没有选定新材料候选，没有打开新候选人工验收窗口；用户已认可的旧小样与两份受保护 DLL 保留原状态。没有切换生产、合并、推送或更新日常安装。
 
 ## 运行
 
@@ -112,6 +148,7 @@
 
 ```powershell
 pwsh -NoProfile -File eng/run-material-sample.ps1 -NativeModulePath <isolated-module.dll>
+pwsh -NoProfile -File eng/run-material-sample.ps1 -NativeModulePath <candidate.dll> -BaselineNativeModulePath <baseline.dll>
 dotnet artifacts/round-material/app/Dango.MaterialSample.dll <isolated-module.dll> --verify artifacts/round-material/verification-drag-final.json
 dotnet artifacts/round-material/app/Dango.MaterialSample.dll <isolated-module.dll> --verify-drag artifacts/round-material/drag-after-final.json
 dotnet artifacts/round-material/app/Dango.MaterialSample.dll <isolated-module.dll> --snapshot artifacts/round-material/comparison-drag-fixed.png
@@ -119,9 +156,28 @@ dotnet artifacts/round-material/idle-diagnostic-app/Dango.MaterialSample.dll <is
 dotnet artifacts/round-material/idle-diagnostic-app/Dango.MaterialSample.dll <idle-native-report.json> --measure-idle-probe <new-render-report.json>
 ```
 
-省略 `-NativeModulePath` 时启动脚本使用已构建的 `native-drag-final` 隔离 DLL。`--verify` 和 `--verify-drag` 写完整结果，任一必过项失败则退出 1；`--probe-drag` 仅复现默认候选 `ground-swing`，不代替完整矩阵。`--snapshot` 渲染真实落地帧，并且绘制失败不能生成成功快照。
+省略 `-NativeModulePath` 时启动脚本使用已构建的 `native-drag-final` 隔离 DLL。可选 `-BaselineNativeModulePath` 显式指定左侧 DLL，两个路径均解析为实际文件后传给窗口；省略时仍为同 DLL 参数对照。`--verify` 和 `--verify-drag` 写完整结果，任一必过项失败则退出 1；`--probe-drag` 仅复现默认候选 `ground-swing`，不代替完整矩阵。`--snapshot` 渲染真实落地帧，并且绘制失败不能生成成功快照。
+
+新的双源入口使用当前构建的样例程序，参数顺序固定：
+
+```powershell
+Dango.MaterialSample.exe <candidate.dll> --baseline-library <baseline.dll>
+Dango.MaterialSample.exe <candidate.dll> --verify <new-report.json> --baseline-library <baseline.dll>
+Dango.MaterialSample.exe <candidate.dll> --verify-drag <new-report.json> --baseline-library <baseline.dll>
+Dango.MaterialSample.exe <candidate.dll> --diagnose-idle <new-report.json> --baseline-library <baseline.dll>
+```
+
+完整验证的原版轮廓对照使用基线；甩动矩阵三个原默认参数轨迹使用基线、27 个材料轨迹使用候选；静置诊断两个 trial 分别使用基线／候选。报告的 `librarySources` 记录两侧文件名、SHA256 和选择来源，各项保留实际角色；原 `nativeSha256`／`nativeFileName` 始终指首个候选 DLL。`ExplicitBaseline` 只表示传入了参数，允许同路径／同 hash，不证明算法不同。五参数模式仅支持上述三种报告入口，其他入口不能追加基线参数；非法组合退出 2。`--diagnose-idle` 退出 0 只表示完整执行，不代表稳定通过。
+
+甩动后静置入口只接受单候选三参数，不接受附加基线；报告记录实际候选的单一 `librarySource`。报告路径须为新文件。退出 0 只表示两条固定轨迹完整执行，是否通过门槛单独看 `thresholdsPassed`，不能把诊断退出码作为验收结果：
+
+```powershell
+Dango.MaterialSample.exe <candidate.dll> --diagnose-post-drag-idle <new-report.json>
+```
 
 原生诊断按上述固定源码在新隔离构建目录构建 target `dango_material_idle_diagnostics`。执行 `dango_material_idle_diagnostics.exe <new-report.json> baseline` 跑原版／候选；`area-reaction`、`no-local-balance`、`cached-range` 分别只跑对应单变量候选。这些模式是明确诊断变体，不是材料预设或生产功能。诊断报告路径必须是新文件，不能用返回 0 冒充全部门槛通过。
+
+第 2 项新增 `area-gradient`、`bending-gradient`、`material-gradients`、`material-gradients-cached`、`material-gradients-half-phase`、`material-gradients-half-phase-no-spin`、`material-gradients-half-phase-configured-friction` 和 `material-gradients-half-phase-projected-radial` 固定诊断模式。前三种私有 DLL target 如上，半相位私有 DLL 为 `dango_material_both_phase`，跳过额外旋转阻尼的固定变体为 `dango_material_both_phase_no_spin`，使用配置摩擦的固定变体为 `dango_material_both_phase_configured_friction`，单一投影径向限长的固定变体为 `dango_material_both_phase_projected_radial`；错误锁存夹具 target 为 `dango_material_integration_tests`。它们只在新的隔离构建目录中执行，不替换正式模块。
 
 独立材料夹具使用同一固定源码，在新目录配置 CMake 后只构建 target `dango_material_force_tests`，不构建或替换 DLL。此次隔离目录为 `artifacts/round-material/native-material-forces-step1`：
 

@@ -1,4 +1,4 @@
-// Isolated material candidate math. Not linked into any production or sample DLL.
+// Isolated material candidate math. Production and accepted sample DLLs do not use it.
 #ifndef DANGO_MATERIAL_FORCES_H
 #define DANGO_MATERIAL_FORCES_H
 

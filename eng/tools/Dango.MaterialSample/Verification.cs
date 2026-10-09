@@ -1,5 +1,4 @@
 using System.IO;
-using System.Security.Cryptography;
 using System.Text.Json;
 using Dango.Desktop.Physics.Presentation;
 using Dango.Physics;
@@ -7,19 +6,21 @@ using Dango.Physics.Configuration;
 
 namespace Dango.MaterialSample;
 
-internal sealed record CheckResult(string Name, bool Passed, object Evidence);
+internal sealed record CheckResult(string Name, bool Passed, object Evidence, string LibraryRole = "candidate");
 
 internal static class Verification
 {
-    internal static int Run(string library, string output)
+    internal static int Run(string library, string output, string? baselineLibrary = null)
     {
+        var librarySources = MaterialLibraries.Describe(library, baselineLibrary);
+        var baseline = baselineLibrary ?? library;
         var results = new List<CheckResult>();
         var landed = new Dictionary<string, ShapeMetrics>();
         var flown = new Dictionary<string, ShapeMetrics>();
-        void Check(string name, Action action)
+        void Check(string name, Action action, string libraryRole = "candidate")
         {
             try { action(); }
-            catch (Exception error) { results.Add(new(name, false, new { error = error.Message })); }
+            catch (Exception error) { results.Add(new(name, false, new { error = error.Message }, libraryRole)); }
             Console.WriteLine($"{name}: {(results[^1].Passed ? "PASS" : "FAIL")}");
         }
 
@@ -138,8 +139,8 @@ internal static class Verification
             Require(Math.Abs(enlargedBounds.Width / originalBounds.Width - 2) <= .0001 &&
                 Math.Abs(enlargedBounds.Height / originalBounds.Height - 2) <= .0001,
                 "表现坐标归一化缩小了实际身体尺寸。");
-            results.Add(new("round-metric-positive-and-negative-controls", true, new { circular, elliptical }));
-        });
+            results.Add(new("round-metric-positive-and-negative-controls", true, new { circular, elliptical }, "synthetic"));
+        }, "synthetic");
 
         Check("default-ground-matches-reference-silhouette", () =>
         {
@@ -164,7 +165,7 @@ internal static class Verification
 
         Check("silhouette-positive-and-negative-controls", () =>
         {
-            using var original = new MaterialSession(library, DangoPhysicsDefaults.Current);
+            using var original = new MaterialSession(baseline, DangoPhysicsDefaults.Current);
             for (var i = 0; i < 600; i++) original.Step();
             var formalOriginal = SilhouetteMetrics.Measure(original.State!, productionMapping: true);
             var wrongMapping = SilhouetteMetrics.Measure(original.State!);
@@ -178,8 +179,8 @@ internal static class Verification
             Require(!wrongMapping.MatchesReference, "原物理取消正式绘制比例后被错误接受。");
             Require(Math.Abs(wrongEllipse.Aspect - SilhouetteMetrics.ReferenceAspect) < .03 && !wrongEllipse.MatchesReference,
                 "仅宽高比相近的对称椭圆被错误接受。");
-            results.Add(new("silhouette-positive-and-negative-controls", true, new { formalOriginal, wrongMapping, wrongEllipse }));
-        });
+            results.Add(new("silhouette-positive-and-negative-controls", true, new { formalOriginal, wrongMapping, wrongEllipse }, "baseline"));
+        }, "baseline");
 
         Check("default-long-idle", () =>
         {
@@ -204,7 +205,8 @@ internal static class Verification
 
         File.WriteAllText(output, JsonSerializer.Serialize(new
         {
-            schema = 2, nativeSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(library))),
+            schema = 2, nativeSha256 = librarySources.Candidate.Sha256,
+            nativeFileName = librarySources.Candidate.FileName, librarySources,
             passed = results.Count(r => r.Passed), failed = results.Count(r => !r.Passed), results,
         }, new JsonSerializerOptions { WriteIndented = true }));
         return results.All(r => r.Passed) ? 0 : 1;

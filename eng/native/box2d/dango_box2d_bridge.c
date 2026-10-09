@@ -2,6 +2,9 @@
 #include <math.h>
 #include <stdlib.h>
 #include "dango_self_constraints.h"
+#if defined(DANGO_MATERIAL_EXPERIMENT_MODE)
+#include "dango_material_forces.h"
+#endif
 
 #if defined(_WIN32)
 #define DANGO_API __declspec(dllexport)
@@ -2051,14 +2054,69 @@ static float dango_self_signed_area(dango_self_soft_body* body)
     return 0.5f * twice_area;
 }
 
-static void dango_self_apply_area_force(
+#if defined(DANGO_MATERIAL_EXPERIMENT_MODE)
+// Explicit isolated-build mode: bit 1 is area, bit 2 is bending, bit 4 is
+// half-node initial phase; bit 8 omits only extra passive spin damping.
+// Bit 16 retains configured contact friction during idle.
+// Bit 32 leaves radial bounds to the unchanged post-step constraint solver.
+// No ABI field,
+// material-slider heuristic or production default selects this candidate.
+static int dango_self_material_mode(void)
+{
+    return DANGO_MATERIAL_EXPERIMENT_MODE;
+}
+
+static int dango_self_material_force_values(dango_self_soft_body* body,
+    const dango_self_physics_config* config, bool bending, b2Vec2* values)
+{
+    if (body->node_count < 3 || body->node_count > DANGO_SOFT_BODY_MAX_NODES)
+        return bending ? -95 : -94;
+    dango_material_vec2 points[DANGO_SOFT_BODY_MAX_NODES], forces[DANGO_SOFT_BODY_MAX_NODES];
+    for (int i = 0; i < body->node_count; ++i)
+    {
+        b2Vec2 p = b2Body_GetPosition(body->node_body_ids[i]);
+        points[i] = (dango_material_vec2){p.x, p.y};
+    }
+    double energy, cap_scale;
+    // At a natural regular ring, match the old center radial contribution.
+    // This is a fixed dimensional mapping, not full old-force equivalence.
+    double k = config->local_angle_balance_strength * (double)body->radial_rest_length *
+        tan(3.14159265358979323846 / body->node_count) * 0.5;
+    int status = bending ? dango_material_bending(points, body->node_count, k, &energy, forces) :
+        dango_material_area(points, body->node_count, body->target_area,
+            body->radial_rest_length, config->area_strength, &energy, forces);
+    if (status != DANGO_MATERIAL_OK) return bending ? -95 : -94;
+    if (dango_material_cap(forces, body->node_count, config->repulsion_maximum_force, &cap_scale) != DANGO_MATERIAL_OK)
+        return bending ? -95 : -94;
+    // Validate every float before any candidate force is applied.
+    for (int i = 0; i < body->node_count; ++i)
+    {
+        values[i] = (b2Vec2){(float)forces[i].x, (float)forces[i].y};
+        if (!isfinite(values[i].x) || !isfinite(values[i].y)) return bending ? -95 : -94;
+    }
+    return 0;
+}
+#endif
+
+static int dango_self_apply_area_force(
     dango_self_soft_body* body,
     const dango_self_physics_config* config)
 {
+#if defined(DANGO_MATERIAL_EXPERIMENT_MODE)
+    if (dango_self_material_mode() & 1)
+    {
+        b2Vec2 forces[DANGO_SOFT_BODY_MAX_NODES];
+        int error = dango_self_material_force_values(body, config, false, forces);
+        if (error) return error;
+        for (int i = 0; i < body->node_count; ++i)
+            b2Body_ApplyForceToCenter(body->node_body_ids[i], forces[i], true);
+        return 0;
+    }
+#endif
     float area = dango_self_signed_area(body);
     if (!isfinite(area) || area >= body->target_area || config->area_strength <= 0.0f)
     {
-        return;
+        return 0;
     }
     float pressure = config->area_strength * (body->target_area - area) / body->target_area;
     pressure = fminf(pressure, config->repulsion_maximum_force);
@@ -2076,6 +2134,7 @@ static void dango_self_apply_area_force(
                 true);
         }
     }
+    return 0;
 }
 
 static b2Vec2 dango_self_top_force(b2Vec2 radial, float strength)
@@ -2309,13 +2368,24 @@ static float dango_self_interior_angle(dango_self_soft_body* body, int index)
     return 3.14159265358979323846f - atan2f(cross, dot);
 }
 
-static void dango_self_apply_local_angle_balance_force(
+static int dango_self_apply_local_angle_balance_force(
     dango_self_soft_body* body,
     const dango_self_physics_config* config)
 {
+#if defined(DANGO_MATERIAL_EXPERIMENT_MODE)
+    if (dango_self_material_mode() & 2)
+    {
+        b2Vec2 forces[DANGO_SOFT_BODY_MAX_NODES];
+        int error = dango_self_material_force_values(body, config, true, forces);
+        if (error) return error;
+        for (int i = 0; i < body->node_count; ++i)
+            b2Body_ApplyForceToCenter(body->node_body_ids[i], forces[i], true);
+        return 0;
+    }
+#endif
     if (config->local_angle_balance_strength <= 0.0f)
     {
-        return;
+        return 0;
     }
 
     for (int index = 0; index < body->node_count; ++index)
@@ -2357,6 +2427,7 @@ static void dango_self_apply_local_angle_balance_force(
         b2Body_ApplyForceToCenter(body->node_body_ids[previous], neighbor_force, true);
         b2Body_ApplyForceToCenter(body->node_body_ids[next], neighbor_force, true);
     }
+    return 0;
 }
 
 static float dango_orientation(b2Vec2 first, b2Vec2 second, b2Vec2 third)
@@ -2503,6 +2574,13 @@ void dango_self_create_rig(dango_self_soft_body* body,
     for (int index = 0; index < body->node_count; ++index)
     {
         float angle = 6.28318530717958647692f * (float)index / (float)body->node_count;
+#if defined(DANGO_MATERIAL_EXPERIMENT_MODE)
+        // A fixed natural-circle orientation experiment, never a grounded pose.
+        if (dango_self_material_mode() & 4)
+        {
+            angle += 3.14159265358979323846f / (float)body->node_count;
+        }
+#endif
         b2Vec2 local =
         {
             body->radial_rest_length * cosf(angle),
@@ -2526,6 +2604,12 @@ void dango_self_create_rig(dango_self_soft_body* body,
             config->radial_hertz,
             config->radial_damping);
         b2DistanceJoint_EnableLimit(body->radial_joint_ids[index], true);
+#if defined(DANGO_MATERIAL_EXPERIMENT_MODE)
+        if (dango_self_material_mode() & 32)
+        {
+            b2DistanceJoint_EnableLimit(body->radial_joint_ids[index], false);
+        }
+#endif
         b2DistanceJoint_SetLengthRange(
             body->radial_joint_ids[index],
             body->radial_rest_length * config->radial_minimum_ratio,
@@ -2579,16 +2663,17 @@ void dango_self_destroy_rig(dango_self_soft_body* body)
     body->selected_drag_node = -1;
 }
 
-static void dango_self_apply_internal_forces(dango_self_soft_body* body,
+static int dango_self_apply_internal_forces(dango_self_soft_body* body,
     const dango_self_physics_config* config)
 {
-    dango_self_apply_area_force(body, config);
+    int error = dango_self_apply_area_force(body, config);
+    if (error) return error;
     dango_self_apply_top_pressure(body, config);
     dango_self_apply_ground_deformation_force(body, config);
     dango_self_apply_radial_repulsion(body, config);
     dango_self_apply_angle_barrier(body, config);
     dango_self_apply_convexity_barrier(body, config);
-    dango_self_apply_local_angle_balance_force(body, config);
+    return dango_self_apply_local_angle_balance_force(body, config);
 }
 
 int dango_self_world_create(const dango_self_physics_config* config,dango_self_soft_body** self_handle)
@@ -2680,7 +2765,7 @@ void dango_self_initialize_at(dango_self_soft_body* body, const dango_self_physi
 
 }
 
-void dango_self_apply_step_forces(dango_self_soft_body* body, const dango_self_physics_config* config,
+int dango_self_apply_step_forces(dango_self_soft_body* body, const dango_self_physics_config* config,
     float small_time_step, int small_step, float horizontal_control, float downward_control,
     int jump_pressed, int drag_active, float drag_target_x, float drag_target_y)
 {
@@ -2751,7 +2836,7 @@ void dango_self_apply_step_forces(dango_self_soft_body* body, const dango_self_p
         body->selected_drag_node = -1;
     }
 
-    dango_self_apply_internal_forces(body, config);
+    return dango_self_apply_internal_forces(body, config);
 }
 
 int dango_self_read_frame(dango_self_soft_body* body, const dango_self_physics_config* config,
@@ -2876,8 +2961,9 @@ DANGO_API int dango_box2d_self_soft_body_step(
     float small_time_step = time_step / (float)small_steps;
     for (int small_step = 0; small_step < small_steps; ++small_step)
     {
-        dango_self_apply_step_forces(body, config, small_time_step, small_step,
+        int material_error = dango_self_apply_step_forces(body, config, small_time_step, small_step,
             horizontal_control, downward_control, jump_pressed, drag_active, drag_target_x, drag_target_y);
+        if (material_error) return material_error;
         b2World_Step(body->world_id, small_time_step, 1);
         if (!dango_self_solve_constraints(body, config))
         {

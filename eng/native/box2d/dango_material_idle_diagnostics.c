@@ -7,6 +7,9 @@
 #include "box2d/box2d.h"
 #include "dango_self_physics_internal.h"
 
+static int idle_material_mode;
+#define DANGO_MATERIAL_EXPERIMENT_MODE idle_material_mode
+
 static void idle_force(const char* caller, b2BodyId id, b2Vec2 force, bool wake);
 static void idle_range(b2JointId id, float minimum, float maximum);
 static void idle_world_step(b2WorldId world, float dt, int substeps);
@@ -33,7 +36,10 @@ static bool idle_limit(dango_self_soft_body* body, float limit);
 
 enum { IDLE_AREA, IDLE_TOP, IDLE_GROUND, IDLE_REPULSION, IDLE_ANGLE, IDLE_CONVEXITY, IDLE_BALANCE, IDLE_FORCE_COUNT };
 enum { IDLE_INTEGRATION, IDLE_CONSTRAINTS, IDLE_DAMPING, IDLE_SPEED, IDLE_STAGE_COUNT };
-enum { IDLE_BASELINE, IDLE_AREA_REACTION, IDLE_NO_BALANCE, IDLE_CACHED_RANGE };
+enum { IDLE_BASELINE, IDLE_AREA_REACTION, IDLE_NO_BALANCE, IDLE_CACHED_RANGE,
+    IDLE_AREA_GRADIENT, IDLE_BENDING_GRADIENT, IDLE_MATERIAL_GRADIENTS, IDLE_GRADIENTS_CACHED,
+    IDLE_GRADIENTS_HALF_PHASE, IDLE_GRADIENTS_HALF_PHASE_NO_SPIN,
+    IDLE_GRADIENTS_HALF_PHASE_CONFIGURED_FRICTION, IDLE_GRADIENTS_HALF_PHASE_PROJECTED_RADIAL };
 static const char* force_names[] = {"area", "top", "ground_spreading", "repulsion", "angle_barrier", "convexity", "local_balance"};
 static const char* stage_names[] = {"box2d_integration", "hard_constraints", "ground_damping", "speed_limit"};
 static const char* touch_names[] = {"radial_lower", "radial_upper", "perimeter_lower", "perimeter_upper", "raw_angle_lower", "raw_angle_upper", "display_angle_lower", "display_angle_upper", "ground"};
@@ -172,7 +178,8 @@ static void idle_range(b2JointId id, float minimum, float maximum)
 {
     if (idle_body)
     {
-        if (idle_variant == IDLE_CACHED_RANGE && minimum == b2DistanceJoint_GetMinLength(id) && maximum == b2DistanceJoint_GetMaxLength(id))
+        if ((idle_variant == IDLE_CACHED_RANGE || idle_variant == IDLE_GRADIENTS_CACHED) &&
+            minimum == b2DistanceJoint_GetMinLength(id) && maximum == b2DistanceJoint_GetMaxLength(id))
         {
             ++idle_stats.range_skips; return;
         }
@@ -351,6 +358,13 @@ static int idle_run(FILE* output, bool candidate, int variant)
     const int requested = 36000;
     const float dt = .0166666f;
     idle_variant = variant; idle_body = NULL; idle_config = idle_defaults(candidate);
+    idle_material_mode = variant == IDLE_AREA_GRADIENT ? 1 :
+        variant == IDLE_BENDING_GRADIENT ? 2 :
+        (variant == IDLE_MATERIAL_GRADIENTS || variant == IDLE_GRADIENTS_CACHED) ? 3 :
+        variant == IDLE_GRADIENTS_HALF_PHASE ? 7 :
+        variant == IDLE_GRADIENTS_HALF_PHASE_NO_SPIN ? 15 :
+        variant == IDLE_GRADIENTS_HALF_PHASE_CONFIGURED_FRICTION ? 23 :
+        variant == IDLE_GRADIENTS_HALF_PHASE_PROJECTED_RADIAL ? 39 : 0;
     memset(&idle_stats, 0, sizeof idle_stats); memset(idle_step_forces, 0, sizeof idle_step_forces);
     memset(idle_step_calls, 0, sizeof idle_step_calls); memset(idle_step_absolute, 0, sizeof idle_step_absolute);
     void* handle = NULL; int id = 0;
@@ -413,20 +427,36 @@ static int idle_run(FILE* output, bool candidate, int variant)
 
 int main(int argc, char** argv)
 {
-    if (argc < 2 || argc > 3) { fprintf(stderr, "Usage: diagnostic output.json [baseline|area-reaction|no-local-balance|cached-range]\n"); return 2; }
+    if (argc < 2 || argc > 3) { fprintf(stderr, "Usage: diagnostic output.json [baseline|area-reaction|no-local-balance|cached-range|area-gradient|bending-gradient|material-gradients|material-gradients-cached|material-gradients-half-phase|material-gradients-half-phase-no-spin|material-gradients-half-phase-configured-friction|material-gradients-half-phase-projected-radial]\n"); return 2; }
     int variant = IDLE_BASELINE;
     if (argc == 3)
     {
         if (!strcmp(argv[2], "area-reaction")) variant = IDLE_AREA_REACTION;
         else if (!strcmp(argv[2], "no-local-balance")) variant = IDLE_NO_BALANCE;
         else if (!strcmp(argv[2], "cached-range")) variant = IDLE_CACHED_RANGE;
+        else if (!strcmp(argv[2], "area-gradient")) variant = IDLE_AREA_GRADIENT;
+        else if (!strcmp(argv[2], "bending-gradient")) variant = IDLE_BENDING_GRADIENT;
+        else if (!strcmp(argv[2], "material-gradients")) variant = IDLE_MATERIAL_GRADIENTS;
+        else if (!strcmp(argv[2], "material-gradients-cached")) variant = IDLE_GRADIENTS_CACHED;
+        else if (!strcmp(argv[2], "material-gradients-half-phase")) variant = IDLE_GRADIENTS_HALF_PHASE;
+        else if (!strcmp(argv[2], "material-gradients-half-phase-no-spin")) variant = IDLE_GRADIENTS_HALF_PHASE_NO_SPIN;
+        else if (!strcmp(argv[2], "material-gradients-half-phase-configured-friction")) variant = IDLE_GRADIENTS_HALF_PHASE_CONFIGURED_FRICTION;
+        else if (!strcmp(argv[2], "material-gradients-half-phase-projected-radial")) variant = IDLE_GRADIENTS_HALF_PHASE_PROJECTED_RADIAL;
         else if (strcmp(argv[2], "baseline")) return 2;
     }
     FILE* existing = fopen(argv[1], "r");
     if (existing) { fclose(existing); fprintf(stderr, "Refusing to overwrite an existing diagnostic report.\n"); return 2; }
     FILE* output = fopen(argv[1], "w"); if (!output) return 2;
     fputs("{\"schema\":1,\"diagnosticOnly\":true,\"requestedFrames\":36000,\"dt\":", output);
-    fprintf(output, "%.17g,\"variantName\":\"%s\",\"notes\":\"Source-equivalent standalone executable, not a probe inside the DLL. Forces are time-weighted means. Stage deltas are window sums, with final net projection per small step; no per-row projection trace. SolverSweeps includes correction and validation sweeps (normally two per iteration). Integration includes gravity, Box2D linear damping, springs and contact. Display sizes are expanded control-point envelopes, not painted spline bounds. Touch counts are post-projection proximity, not contact impulses. Span-only pass is not full acceptance.\",\"cases\":[", (double).0166666f, variant == IDLE_AREA_REACTION ? "area-reaction" : variant == IDLE_NO_BALANCE ? "no-local-balance" : variant == IDLE_CACHED_RANGE ? "cached-range" : "baseline");
+    const char* variant_name = variant == IDLE_AREA_REACTION ? "area-reaction" : variant == IDLE_NO_BALANCE ? "no-local-balance" :
+        variant == IDLE_CACHED_RANGE ? "cached-range" : variant == IDLE_AREA_GRADIENT ? "area-gradient" :
+        variant == IDLE_BENDING_GRADIENT ? "bending-gradient" : variant == IDLE_MATERIAL_GRADIENTS ? "material-gradients" :
+        variant == IDLE_GRADIENTS_CACHED ? "material-gradients-cached" :
+        variant == IDLE_GRADIENTS_HALF_PHASE ? "material-gradients-half-phase" :
+        variant == IDLE_GRADIENTS_HALF_PHASE_NO_SPIN ? "material-gradients-half-phase-no-spin" :
+        variant == IDLE_GRADIENTS_HALF_PHASE_CONFIGURED_FRICTION ? "material-gradients-half-phase-configured-friction" :
+        variant == IDLE_GRADIENTS_HALF_PHASE_PROJECTED_RADIAL ? "material-gradients-half-phase-projected-radial" : "baseline";
+    fprintf(output, "%.17g,\"variantName\":\"%s\",\"notes\":\"Source-equivalent standalone executable, not a probe inside the DLL. Forces are time-weighted means. Stage deltas are window sums, with final net projection per small step; no per-row projection trace. SolverSweeps includes correction and validation sweeps (normally two per iteration). Integration includes gravity, Box2D linear damping, springs and contact. Display sizes are expanded control-point envelopes, not painted spline bounds. Touch counts are post-projection proximity, not contact impulses. Span-only pass is not full acceptance.\",\"cases\":[", (double).0166666f, variant_name);
     int result = 0;
     if (variant == IDLE_BASELINE) { result |= idle_run(output, false, variant); fputc(',', output); }
     result |= idle_run(output, true, variant);

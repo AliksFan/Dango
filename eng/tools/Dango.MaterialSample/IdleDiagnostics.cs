@@ -91,21 +91,24 @@ internal static class IdleDiagnostics
         return 0; // Output generation succeeded; this is not a material gate result.
     }
 
-    internal static int Run(string library, string output)
+    internal static int Run(string library, string output, string? baselineLibrary = null)
     {
+        var librarySources = MaterialLibraries.Describe(library, baselineLibrary);
         output = Path.GetFullPath(output);
         if (File.Exists(output)) throw new IOException("静置诊断输出已存在；请提供新路径以保留既有报告。");
         var parent = Path.GetDirectoryName(output);
         if (parent is not null) Directory.CreateDirectory(parent);
         var configurations = new[]
         {
-            (Name: "original-default", Configuration: DangoPhysicsDefaults.Current, ProductionMapping: true),
-            (Name: "material-default", Configuration: new MaterialControls().Configure(), ProductionMapping: false),
+            (Name: "original-default", Configuration: DangoPhysicsDefaults.Current, ProductionMapping: true,
+                Library: baselineLibrary ?? library, LibraryRole: "baseline", LibrarySource: librarySources.Baseline),
+            (Name: "material-default", Configuration: new MaterialControls().Configure(), ProductionMapping: false,
+                Library: library, LibraryRole: "candidate", LibrarySource: librarySources.Candidate),
         };
         var trials = new List<Trial>();
-        foreach (var (name, configuration, productionMapping) in configurations)
+        foreach (var (name, configuration, productionMapping, selectedLibrary, libraryRole, librarySource) in configurations)
         {
-            var trial = Diagnose(library, name, configuration, productionMapping);
+            var trial = Diagnose(selectedLibrary, name, configuration, productionMapping, libraryRole, librarySource);
             trials.Add(trial);
             Console.WriteLine($"{name}: frames={trial.CompletedFrames}/{RequestedFrames}, " +
                 $"drift={trial.Spans.MaximumExistingGateDrift:F9}, " +
@@ -116,8 +119,8 @@ internal static class IdleDiagnostics
         {
             kind = "independent-idle-diagnostic",
             acceptance = "Diagnostic only; this command does not replace --verify or user acceptance.",
-            nativeSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(library))),
-            nativeFileName = Path.GetFileName(library),
+            nativeSha256 = librarySources.Candidate.Sha256,
+            nativeFileName = librarySources.Candidate.FileName, librarySources,
             nativeAbiVersion = DangoPhysicsWorld.NativeAbiVersion,
             requestedFrames = RequestedFrames,
             timing = new
@@ -146,7 +149,8 @@ internal static class IdleDiagnostics
         return trials.All(trial => trial.CompletedFrames == RequestedFrames && trial.StoppedReason is null) ? 0 : 1;
     }
 
-    private static Trial Diagnose(string library, string name, DangoSelfPhysicsParameters configuration, bool productionMapping)
+    private static Trial Diagnose(string library, string name, DangoSelfPhysicsParameters configuration, bool productionMapping,
+        string libraryRole, MaterialLibrarySource librarySource)
     {
         var clock = Stopwatch.StartNew();
         var failures = new Dictionary<string, Failure>();
@@ -251,7 +255,7 @@ internal static class IdleDiagnostics
             Record("diagnostic-world-failure", completedFrames, error.ToString());
         }
         clock.Stop();
-        return new(name, configuration, productionMapping,
+        return new(name, configuration, productionMapping, libraryRole, librarySource,
             productionMapping ? "X=105 px/world unit, Y=105*58/72; current production body ratio." : "X=Y=105 px/world unit; isotropic candidate body.",
             completedFrames, completedFrames * MaterialSession.FixedStep.TotalSeconds,
             completedFrames * (double)(float)MaterialSession.FixedStep.TotalSeconds,
@@ -270,6 +274,7 @@ internal static class IdleDiagnostics
     private sealed record Spans(double CoreX, double CoreY, double Width, double Height, double SignedArea,
         double DisplayWidthPixels, double DisplayHeightPixels, double MaximumExistingGateDrift);
     private sealed record Trial(string Name, DangoSelfPhysicsParameters Configuration, bool ProductionMapping,
+        string LibraryRole, MaterialLibrarySource LibrarySource,
         string DisplayMapping, int CompletedFrames, double ManagedSeconds, double NativeSeconds, double WallSeconds,
         int RenderedFrames, int RenderingFailures, int PenetrationFailures, int ReferenceFailures, int SettlingFailures,
         double GlobalPeakSpeed, string? StoppedReason, Spans Spans, IReadOnlyList<Failure> Failures,

@@ -217,6 +217,18 @@ DANGO_API int dango_collision_contract_tests(void* handle,int broken)
     }
     return failures;
 }
+#if defined(DANGO_MATERIAL_EXPERIMENT_MODE)
+static bool collision_material_passive_spin_enabled(void)
+{
+    // Private fixed diagnostic only; all other damping and integration remain.
+    return (DANGO_MATERIAL_EXPERIMENT_MODE & 8) == 0;
+}
+static bool collision_material_idle_friction_override_enabled(void)
+{
+    return (DANGO_MATERIAL_EXPERIMENT_MODE & 16) == 0;
+}
+#endif
+
 static void collision_damp(collision_review* p,int r,float dt,const float* control)
 {
     if (p->disable_damping_for_test) return;
@@ -228,7 +240,10 @@ static void collision_damp(collision_review* p,int r,float dt,const float* contr
         if (n<16 && positions[n].y-p->config.node_radius<=p->config.ground_height+.001f) ground=true;
     }
     bool active=control[0]!=0 || control[1]!=0 || control[2]!=0 || control[3]!=0;
-    passive_spin(positions,velocities,masses,dt,ground,active);
+#if defined(DANGO_MATERIAL_EXPERIMENT_MODE)
+    if (collision_material_passive_spin_enabled())
+#endif
+        passive_spin(positions,velocities,masses,dt,ground,active);
     if (ground && !active)
     {
         float mass=0,horizontal=0;
@@ -377,9 +392,13 @@ DANGO_API int dango_collision_step(void* handle, float dt, const float* controls
                 dango_self_soft_body* body=p->bodies[r];
                 bool idle=c[0]==0 && c[1]==0 && c[2]==0 && c[3]==0;
                 float friction=!p->disable_damping_for_test && idle ? 16.0f : p->config.friction;
+#if defined(DANGO_MATERIAL_EXPERIMENT_MODE)
+                if (!collision_material_idle_friction_override_enabled()) friction=p->config.friction;
+#endif
                 for (int n=0;n<16;++n) b2Shape_SetFriction(body->node_shape_ids[n],friction);
-                dango_self_apply_step_forces(body,&p->config,small_dt,sub,c[0],c[1],
+                p->error=dango_self_apply_step_forces(body,&p->config,small_dt,sub,c[0],c[1],
                     (p->legacy_interaction_flags&1) ? (int)c[2] : 0,(int)c[3],c[4],c[5]);
+                if (p->error) break;
                 // Borrow only the accepted ground spreading force; do not change
                 // actual grounding, air control, friction, or the support launch height.
                 if (!(p->legacy_interaction_flags&128) && supported[r]>=0 && !body->grounded && c[2]==0 && c[3]==0)
@@ -393,6 +412,7 @@ DANGO_API int dango_collision_step(void* handle, float dt, const float* controls
                     collision_launch(p,r,!body->grounded && supported[r]>=0,supported[r]);
                 }
             }
+            if (p->error) break;
             b2World_Step(p->bodies[0]->world_id,small_dt,1);
             for (int r=0;r<p->capacity;++r)
                 if (p->active[r])

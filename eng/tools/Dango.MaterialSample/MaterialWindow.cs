@@ -16,6 +16,8 @@ namespace Dango.MaterialSample;
 internal sealed class MaterialWindow : Window, IDisposable
 {
     private readonly string library;
+    private readonly string baselineLibrary;
+    private readonly MaterialLibrarySources librarySources;
     private readonly DockPanel surface = new() { Background = Brushes.White };
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, Margin = new(20, 10, 20, 16) };
     private readonly Slider size = MakeSlider(80, 120, 100);
@@ -31,9 +33,11 @@ internal sealed class MaterialWindow : Window, IDisposable
     private double spawnHeight;
     private bool disposed;
 
-    internal MaterialWindow(string library)
+    internal MaterialWindow(string library, string? baselineLibrary = null)
     {
         this.library = library;
+        this.baselineLibrary = baselineLibrary ?? library;
+        librarySources = MaterialLibraries.Describe(library, baselineLibrary);
         Title = "Dango · 圆形自然态与材料小样";
         Width = 1120; Height = 760; MinWidth = 960; MinHeight = 650;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
@@ -47,7 +51,10 @@ internal sealed class MaterialWindow : Window, IDisposable
         AddTop(heading);
         AddTop(new TextBlock
         {
-            Text = "左侧保留原版的身体显示比例，右侧落地形状由材料产生。拖动后松开可观察回圆；修改参数后按“应用参数并下落”。",
+            Text = (librarySources.ExplicitBaseline
+                ? "左侧使用独立原版基线 DLL 与原身体显示比例，右侧使用候选 DLL。"
+                : "两侧使用同一 DLL；左侧是原参数与原身体显示比例，右侧是材料参数。") +
+                "拖动后松开可观察回圆；修改参数后按“应用参数并下落”。",
             TextWrapping = TextWrapping.Wrap, Foreground = Brushes.DimGray, Margin = new(20, 0, 20, 12),
         });
         var sliders = new Grid { Margin = new(20, 0, 20, 10) };
@@ -89,8 +96,11 @@ internal sealed class MaterialWindow : Window, IDisposable
             var panel = new DockPanel { Margin = new(4), Background = new SolidColorBrush(Color.FromRgb(248, 248, 246)) };
             var label = new TextBlock
             {
-                Text = i == 0 ? "原版对照 · 原物理与原身体比例" : "材料候选 · 默认落地对齐参考图",
+                Text = i == 0 ? librarySources.ExplicitBaseline
+                    ? "原版基线 · 原物理与原身体比例" : "默认参数对照 · 同一 DLL 与原身体比例"
+                    : "材料候选 · 默认落地对齐参考图",
                 FontSize = 16, FontWeight = FontWeights.SemiBold, Margin = new(14, 12, 14, 6),
+                ToolTip = i == 0 ? librarySources.Baseline : librarySources.Candidate,
             };
             DockPanel.SetDock(label, Dock.Top); panel.Children.Add(label);
             metrics[i].Margin = new(14, 8, 14, 12); metrics[i].TextWrapping = TextWrapping.Wrap;
@@ -136,7 +146,7 @@ internal sealed class MaterialWindow : Window, IDisposable
         try
         {
             var candidate = new MaterialControls(size.Value, softness.Value, settling.Value).Configure();
-            var original = new MaterialSession(library, DangoPhysicsDefaults.Current, height);
+            var original = new MaterialSession(baselineLibrary, DangoPhysicsDefaults.Current, height);
             try { sessions = [original, new MaterialSession(library, candidate, height)]; }
             catch { original.Dispose(); throw; }
             spawnHeight = height; paused = faulted = pending = false;
@@ -176,7 +186,10 @@ internal sealed class MaterialWindow : Window, IDisposable
         }
         catch (Exception error)
         {
-            Fail($"{(currentScene == 0 ? "左侧原版" : "右侧候选")}：{error.Message}");
+            var sourceLabel = currentScene == 0
+                ? librarySources.ExplicitBaseline ? "左侧原版基线" : "左侧默认参数"
+                : "右侧候选";
+            Fail($"{sourceLabel}：{error.Message}");
             foreach (var view in scenes) view.InvalidateVisual();
         }
     }

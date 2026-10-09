@@ -1,4 +1,5 @@
 using System.IO;
+using System.Security.Cryptography;
 using System.Windows;
 
 namespace Dango.MaterialSample;
@@ -10,32 +11,67 @@ internal static class Program
     {
         try
         {
-            if (args.Length is not 1 and not 3) return 2;
+            if (args.Length is not 1 and not 3 and not 5) return 2;
             if (args.Length == 3 && args[1] == "--measure-idle-probe") return IdleDiagnostics.MeasureProbe(args[0], args[2]);
             var library = Path.GetFullPath(args[0]);
+            string? baselineLibrary = null;
+            if (args.Length == 5)
+            {
+                if (args[3] != "--baseline-library") return 2;
+                baselineLibrary = Path.GetFullPath(args[4]);
+                return args[1] switch
+                {
+                    "--verify" => Verification.Run(library, args[2], baselineLibrary),
+                    "--verify-drag" => DragVerification.Run(library, args[2], baselineLibrary: baselineLibrary),
+                    "--diagnose-idle" => IdleDiagnostics.Run(library, args[2], baselineLibrary),
+                    _ => 2,
+                };
+            }
+            if (args.Length == 3 && args[1] == "--baseline-library")
+                baselineLibrary = Path.GetFullPath(args[2]);
             if (args.Length == 3 && args[1] == "--verify") return Verification.Run(library, args[2]);
             if (args.Length == 3 && args[1] == "--verify-drag") return DragVerification.Run(library, args[2]);
             if (args.Length == 3 && args[1] == "--diagnose-idle") return IdleDiagnostics.Run(library, args[2]);
+            if (args.Length == 3 && args[1] == "--diagnose-post-drag-idle") return PostDragIdleDiagnostics.Run(library, args[2]);
             if (args.Length == 3 && args[1] == "--probe-drag") return DragVerification.Run(library, args[2], minimal: true);
             if (args.Length == 3 && args[1] == "--calibrate") return Calibration.Run(library, args[2]);
             if (args.Length == 3 && args[1] == "--calibrate-stability") return Calibration.Stability(library, args[2]);
             if (args.Length == 3 && args[1] == "--calibrate-forces") return Calibration.Stability(library, args[2], "balance");
             if (args.Length == 3 && args[1] == "--calibrate-damping") return Calibration.Stability(library, args[2], "damping");
+            if (args.Length == 3 && args[1] is not "--snapshot" and not "--baseline-library") return 2;
             var app = new Application();
-            using var window = new MaterialWindow(library);
+            using var window = new MaterialWindow(library, baselineLibrary);
             if (args.Length == 3 && args[1] == "--snapshot")
             {
                 window.SaveSnapshot(args[2]);
                 return 0;
             }
-            if (args.Length != 1) return 2;
+            if (args.Length != 1 && baselineLibrary is null) return 2;
             return app.Run(window);
         }
         catch (Exception error)
         {
             Console.Error.WriteLine(error);
-            if (args.Length == 1) MessageBox.Show(error.Message, "团子物理小样启动失败");
+            if (args.Length == 1 || args.Length == 3 && args[1] == "--baseline-library")
+                MessageBox.Show(error.Message, "团子物理小样启动失败");
             return 1;
         }
+    }
+}
+
+internal sealed record MaterialLibrarySource(string FileName, string Sha256, string Selection);
+internal sealed record MaterialLibrarySources(MaterialLibrarySource Candidate, MaterialLibrarySource Baseline, bool ExplicitBaseline);
+
+internal static class MaterialLibraries
+{
+    internal static MaterialLibrarySources Describe(string library, string? baselineLibrary)
+    {
+        MaterialLibrarySource Source(string path, string selection) => new(Path.GetFileName(path),
+            Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))), selection);
+        return new(Source(library, "Primary CLI library; used for material candidate parameters."),
+            Source(baselineLibrary ?? library, baselineLibrary is null
+                ? "Primary CLI library fallback; legacy single-library default-parameter comparison."
+                : "Explicit --baseline-library; used for original default-parameter comparison."),
+            baselineLibrary is not null);
     }
 }

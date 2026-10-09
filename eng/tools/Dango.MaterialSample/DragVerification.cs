@@ -1,5 +1,4 @@
 using System.IO;
-using System.Security.Cryptography;
 using System.Text.Json;
 using System.Diagnostics;
 using System.Windows;
@@ -10,8 +9,10 @@ namespace Dango.MaterialSample;
 
 internal static class DragVerification
 {
-    internal static int Run(string library, string output, bool minimal = false)
+    internal static int Run(string library, string output, bool minimal = false, string? baselineLibrary = null)
     {
+        var librarySources = MaterialLibraries.Describe(library, baselineLibrary);
+        var baselinePath = baselineLibrary ?? library;
         var results = new List<object>();
         var failures = 0;
         // Pure rendering fixtures, not native trajectories. The flattened circle
@@ -81,8 +82,12 @@ internal static class DragVerification
         foreach (var softness in minimal ? new[] { 50d } : new[] { -1d, 0d, 50d, 100d })
         {
             if (softness < 0 && size != 100) continue;
-            var config = softness < 0 ? DangoPhysicsDefaults.Current : new MaterialControls(size, softness).Configure();
-            using var session = new MaterialSession(library, config, profile == "changing" ? 5d / 3 : 0);
+            var isBaseline = softness < 0;
+            var libraryRole = isBaseline ? "baseline" : "candidate";
+            var parameterProfile = isBaseline ? "baseline-default-parameters" : "candidate-material-controls";
+            var librarySource = isBaseline ? librarySources.Baseline : librarySources.Candidate;
+            var config = isBaseline ? DangoPhysicsDefaults.Current : new MaterialControls(size, softness).Configure();
+            using var session = new MaterialSession(isBaseline ? baselinePath : library, config, profile == "changing" ? 5d / 3 : 0);
             var clock = Stopwatch.StartNew();
             double targetX = 0, targetY = 0, peakSpeed = 0, maximumCanonicalRadius = 0;
             var active = false;
@@ -110,18 +115,21 @@ internal static class DragVerification
                 for (var i = 0; i < 60; i++) maximumCanonicalRadius = Math.Max(maximumCanonicalRadius, RenderNative(session, session.Step(horizontal: 1)));
                 var moved = session.State!.CoreX - startX;
                 if (moved < .04) throw new InvalidOperationException($"甩动后没有继续响应方向力：{moved:F6}");
-                results.Add(new { profile, size, softness, passed = true, frames = session.Frames, peakSpeed, maximumCanonicalRadius, moved, elapsedSeconds = clock.Elapsed.TotalSeconds });
+                results.Add(new { profile, size, softness, libraryRole, parameterProfile, librarySource,
+                    passed = true, frames = session.Frames, peakSpeed, maximumCanonicalRadius, moved, elapsedSeconds = clock.Elapsed.TotalSeconds });
                 Console.WriteLine($"{profile}/size={size}/softness={softness}: PASS");
             }
             catch (Exception error)
             {
                 failures++;
-                results.Add(new { profile, size, softness, passed = false, phase, frames = session.Frames,
+                results.Add(new { profile, size, softness, libraryRole, parameterProfile, librarySource,
+                    passed = false, phase, frames = session.Frames,
                     targetX, targetY, active, peakSpeed, maximumCanonicalRadius, error = error.Message, lastFrame = session.State });
                 Console.WriteLine($"{profile}/size={size}/softness={softness}: FAIL frame={session.Frames}: {error.Message}");
             }
             File.WriteAllText(output, JsonSerializer.Serialize(new { kind = "changing-drag-regression",
-                nativeSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(library))), passed = results.Count - failures, failures, results },
+                nativeSha256 = librarySources.Candidate.Sha256, nativeFileName = librarySources.Candidate.FileName,
+                librarySources, passed = results.Count - failures, failures, results },
                 new JsonSerializerOptions { WriteIndented = true }));
         }
         return failures == 0 ? 0 : 1;
