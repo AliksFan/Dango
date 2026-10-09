@@ -20,7 +20,7 @@ internal sealed partial class DangoApplicationHost
         ThrowIfDisposed();
         var paths = new DangoUserDataPaths(settingsPath);
         var repository = new LocalPetConfigurationRepository(paths.AppearancePath, appearance, workerWWindow.Dispatcher,
-            configuration => { if (!disposed) stackedRuntime.SetAppearance(configuration); });
+            configuration => { if (!disposed) { stackedRuntime.SetAppearance(configuration); controlCenterWindow?.ProductHome.RefreshAccountAppearance(); } });
         var journal = new PetConfigurationFileJournal(Path.Combine(
             paths.GetAccountDirectory(remote.Origin, remote.UserId, remote.PetId), "configuration-choices"));
         return new(remote, repository, journal);

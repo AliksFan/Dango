@@ -171,7 +171,7 @@ public partial class ProductHomeView
             return false;
         PrepareRequestedLiveSurface();
         if (!TryAlignLiveSurface()) return false;
-        runtime.SetDirectionalControl(liveSurfaceNeedsAlignment ? DirectionalControlIntent.None : liveIntent);
+        runtime.SetDirectionalControl(liveSurfaceNeedsAlignment || IsAccountPanelOpen ? DirectionalControlIntent.None : liveIntent);
         runtime.UpdateQuietIdleHost(this, true);
         return true;
     }
@@ -320,6 +320,6 @@ public partial class ProductHomeView
 
     private void OnStageMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if ((ReferenceEquals(e.OriginalSource, Stage) || IsInPorch) && !IsEditing && !IsSettingsOpen) Stage.Focus();
+        if ((ReferenceEquals(e.OriginalSource, Stage) || IsInPorch) && !IsEditing && !IsSettingsOpen && !IsAccountPanelOpen) Stage.Focus();
     }
 }

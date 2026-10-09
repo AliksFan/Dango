@@ -6,7 +6,7 @@ B4 正式准入、公共码管理、租约／控制、快照、独立 Hub 和逐
 
 依据：[首期设计](2026-10-08-email-backend-design-proposal.md)、[ADR 0002](../adr/0002-server-foundation-and-scaling.md)、[ADR 0006](../adr/0006-email-accounts-and-persistent-room-state.md)与[工作流](../development-workflow-v0.1.md)。用户新增五项必查已记录于根级规则。
 
-B5 已开始：按“先给小型可点击交互确认”完成[账号／配置／房间候选](2026-10-09-backend-b5-interaction-proposal.md)及[浏览器局部检查](../verification/2026-10-09-email-backend-b5-preview.md)，等待用户确认布局与挂载点。正式 Windows 适配尚未开始，本次没有数据库或邮件操作；候选确认不等同于 B5 功能验收。
+B5 已开始：完成[账号／配置／房间候选](2026-10-09-backend-b5-interaction-proposal.md)及[浏览器局部检查](../verification/2026-10-09-email-backend-b5-preview.md)后，用户选择居中浮层。按[B5A 计划](2026-10-09-backend-b5-account-execution.md)在独立任务分支实现正式账号客户端、Windows 安全存储边界、浮层及显式配置选择；自动与离屏检查见[B5A 记录](../verification/2026-10-09-email-backend-b5a.md)。真实客户端→HTTPS→PostgreSQL 门禁已按[新精确计划](2026-10-09-backend-b5a-local-data-plan.md)准备但未授权／未执行；系统凭据实写、Windows 人工与房间接入仍未完成，不关闭完整 B5。
 
 ## 1. 起点、范围与所有权
 

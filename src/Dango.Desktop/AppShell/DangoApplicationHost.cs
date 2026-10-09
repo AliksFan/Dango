@@ -186,6 +186,8 @@ internal sealed partial class DangoApplicationHost : IDisposable
         if (!exitSettingsHandled) { SaveLocalRoomCheckpoint(); SaveSettings(); }
         controlCenterWindow?.ProductHome.CancelAppearancePreview();
         disposed = true;
+        accountController?.Dispose();
+        accountController = null;
         DisposeLocalRoom();
         trayIcon?.Dispose();
         trayIcon = null;
@@ -217,6 +219,7 @@ internal sealed partial class DangoApplicationHost : IDisposable
             controlCenterWindow.ProductHome.BindLiveScene(sceneSession, stackedRuntime);
             controlCenterWindow.ProductHome.SetPorchReviewMode(porchReview);
             if (!porchReview && !faceReview) BindLocalRoom(controlCenterWindow);
+            if (!porchReview && !faceReview) BindAccounts(controlCenterWindow);
             if (porchReview) controlCenterWindow.Title = "Dango · 门廊 E1 场景预览";
         }
         controlCenterWindow.OverviewPresented += () =>

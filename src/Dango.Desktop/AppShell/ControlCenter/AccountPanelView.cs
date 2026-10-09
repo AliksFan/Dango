@@ -26,12 +26,13 @@ public enum AccountPanelAction
 {
     Login, Logout, StartRegistration, RefreshRegistration, ResendRegistration, CompleteRegistration,
     RequestPasswordReset, AdoptLocal, AdoptCloud, RefreshConfigurations, OpenLogin, OpenRegister,
-    OpenPasswordReset, OpenConfiguration, Close
+    OpenPasswordReset, OpenConfiguration, UseNewInvitation, Close
 }
 
 /// <summary>Presentation state contains no passwords, invitation proofs, or session credentials.</summary>
 public sealed record AccountPanelState(AccountPanelPage Page, string? Message = null, bool Busy = false,
-    bool CanCompleteRegistration = false, PetConfigurationReview? Review = null);
+    bool CanCompleteRegistration = false, PetConfigurationReview? Review = null,
+    bool CanReplaceRegistration = false, bool CanClearRememberedLogin = false);
 
 /// <summary>Centered account panel content. The host owns its overlay, focus restoration, and all operations.</summary>
 public sealed class AccountPanelView : UserControl
@@ -128,17 +129,20 @@ public sealed class AccountPanelView : UserControl
                 AddPrimary("登录", AccountPanelAction.Login);
                 AddNavigation("受邀注册", AccountPanelAction.OpenRegister);
                 AddNavigation("找回密码", AccountPanelAction.OpenPasswordReset);
+                if (state.CanClearRememberedLogin) AddNavigation("重试清除记住登录", AccountPanelAction.Logout);
                 break;
             case AccountPanelPage.Register:
                 AddNote("使用受邀邮箱注册。请求受理后，需要在邮件中的浏览器页面验证邮箱。");
                 AddField("受邀邮箱", email); AddField("邀请 ID", invitationId); AddField("邀请证明", invitationProof);
                 AddPrimary("发送验证邮件", AccountPanelAction.StartRegistration);
                 AddNavigation("已有账号，去登录", AccountPanelAction.OpenLogin);
+                if (state.CanReplaceRegistration) AddNavigation("确认清除旧继续信息，改用新邀请", AccountPanelAction.UseNewInvitation);
                 break;
             case AccountPanelPage.Mail:
                 AddNote("请打开邮件中的验证链接。发信请求受理、邮件投递和邮箱验证是不同状态；验证后刷新继续。");
                 AddPrimary("刷新验证状态", AccountPanelAction.RefreshRegistration);
                 AddNavigation("重新发送验证邮件", AccountPanelAction.ResendRegistration);
+                if (state.CanReplaceRegistration) AddNavigation("确认清除旧继续信息，改用新邀请", AccountPanelAction.UseNewInvitation);
                 break;
             case AccountPanelPage.CompleteRegistration:
                 AddNote("设置 12–128 位密码。完成注册将沿用本机已应用的外观，随后按标准流程登录。");

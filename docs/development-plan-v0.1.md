@@ -1,6 +1,6 @@
 # Dango 分阶段开发计划 v0.1
 
-> 2026-10-09 B5 交互候选：已完成[账号／配置／房间可点击方案](planning/2026-10-09-backend-b5-interaction-proposal.md)及[局部浏览器检查](verification/2026-10-09-email-backend-b5-preview.md)，等待用户确认居中浮层或右侧面板及入口流程。正式 Windows 接入、真实服务闭环与人工验收未完成；本次没有数据库、真实发信、合并、推送、安装或部署操作。
+> 2026-10-09 B5A Windows 账号候选：用户已选择居中浮层，按[增量计划](planning/2026-10-09-backend-b5-account-execution.md)实现邮箱账号、注册恢复、受控 Cookie／CSRF、Windows 凭据边界及显式本机／账号配置选择。Client 静态 134／134、Desktop 受影响去重 102 项通过，Release 零警告／错误；宽窄离屏布局检查通过，见[B5A 记录](verification/2026-10-09-email-backend-b5a.md)。真实账号客户端集成已按[精确数据计划](planning/2026-10-09-backend-b5a-local-data-plan.md)准备，尚未授权／执行；系统凭据实写、Windows 人工、房间 HTTP／Hub／租约及完整 B5 未验收。本次没有数据库、真实发信、main 合并、推送、安装或部署操作。
 
 > 2026-10-09 邮箱后端首期：按[设计](planning/2026-10-08-email-backend-design-proposal.md)与[实施计划](planning/2026-10-08-email-backend-implementation-plan.md)推进 B0–B5，五项质量要求已加入 AGENTS.md。B0–B2 已实现候选，B3 房间管理已通过 105 项真实集成门禁；B4 正式准入／租约／Hub／通知候选已实现，用户按[精确计划](planning/2026-10-09-backend-b4-local-data-plan.md)授权后已应用两个前向迁移，修复实际时间精度与锁冲突问题，最终真实 B1–B4 PostgreSQL／HTTPS／SignalR LongPolling 回归 168／168、Server 无数据库 186／186 通过。证据见[B0](verification/2026-10-08-email-backend-foundation.md)、[B1](verification/2026-10-08-email-backend-b1.md)、[B2](verification/2026-10-09-email-backend-b2.md)、[B3](verification/2026-10-09-email-backend-b3.md)及[B4](verification/2026-10-09-email-backend-b4.md)。B2／B4 客户端人工、B5 界面、真实发信、备份还原、正式 WebSocket／长期 worker 及完整 Phase 3／M7 未验收；合并、推送与部署另行授权。
 
