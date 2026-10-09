@@ -28,7 +28,7 @@ public sealed class AdmissionPolicyTests
     public void PublicCodeDigestMatchesCanonical32ByteAccountProofAndNeverAcceptsWhitespace()
     {
         var code = B1InputTests.NewProof();
-        Assert.AreEqual(AccountInput.Digest(code), RoomAdmissionPolicy.CodeDigest(code));
+        Assert.IsTrue(string.Equals(AccountInput.Digest(code), RoomAdmissionPolicy.CodeDigest(code), StringComparison.Ordinal));
         foreach (var invalid in new string?[] { null, code + " ", " " + code, code[..42], code + "=", new('!', 43) })
             Assert.ThrowsExactly<AccountFault>(() => RoomAdmissionPolicy.CodeDigest(invalid));
     }

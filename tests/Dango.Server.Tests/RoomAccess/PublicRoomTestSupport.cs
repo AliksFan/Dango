@@ -96,7 +96,8 @@ internal static class PublicRoomTestSupport
     public static Task<string> GraphAsync(FormalTestFixture fixture, Guid[] rooms, Guid[] pets) => fixture.InScopeAsync(async services =>
     {
         var db = services.GetRequiredService<DangoDbContext>();
-        return JsonSerializer.Serialize(new
+        // Compare every saved fact without printing credentials if an assertion fails.
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new
         {
             Rooms = await db.Rooms.AsNoTracking().Where(r => rooms.Contains(r.Id)).OrderBy(r => r.Id).ToArrayAsync(),
             Members = await db.RoomMemberships.AsNoTracking().Where(m => rooms.Contains(m.RoomId)).OrderBy(m => m.RoomId).ThenBy(m => m.UserId).ToArrayAsync(),
@@ -106,7 +107,7 @@ internal static class PublicRoomTestSupport
             Credentials = await db.PublicRoomCredentials.AsNoTracking().Where(c => rooms.Contains(c.RoomId)).OrderBy(c => c.Id).ToArrayAsync(),
             Audits = await db.RoomOperationAudits.AsNoTracking().Where(a => rooms.Contains(a.RoomId)).OrderBy(a => a.Id).ToArrayAsync(),
             Events = await db.RoomDomainEvents.AsNoTracking().Where(e => rooms.Contains(e.RoomId)).OrderBy(e => e.Id).ToArrayAsync()
-        });
+        })));
     });
 
     public static async Task FaultAsync(string code, int status, Func<Task> action)

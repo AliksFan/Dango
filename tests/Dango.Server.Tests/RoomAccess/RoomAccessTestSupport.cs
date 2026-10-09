@@ -47,10 +47,14 @@ internal static class RoomAccessTestSupport
             var now = services.GetRequiredService<TimeProvider>().GetUtcNow();
             db.PublicRoomCredentials.Add(new PublicRoomCredential
             {
-                Id = Guid.NewGuid(), RoomId = roomId, Generation = room.AdmissionGeneration,
+                Id = Guid.NewGuid(),
+                RoomId = roomId,
+                Generation = room.AdmissionGeneration,
                 RecoveryEpoch = services.GetRequiredService<AccountEnvironment>().RecoveryEpoch,
-                CodeDigest = AccountInput.Digest(code), ProtectedCode = "fictional-credential-fixture",
-                CreatedAt = now, ExpiresAt = now.AddSeconds(lifetimeSeconds)
+                CodeDigest = AccountInput.Digest(code),
+                ProtectedCode = "fictional-credential-fixture",
+                CreatedAt = now,
+                ExpiresAt = now.AddSeconds(lifetimeSeconds)
             });
             await db.SaveChangesAsync();
         });
@@ -75,7 +79,8 @@ internal static class RoomAccessTestSupport
         var roomIds = rooms.Select(r => r.Id).ToArray();
         var events = await db.RoomDomainEvents.AsNoTracking().Where(e => roomIds.Contains(e.RoomId)).OrderBy(e => e.Id).ToArrayAsync();
         var receipts = await db.RoomOperationAudits.AsNoTracking().Where(a => roomIds.Contains(a.RoomId) || users.Contains(a.ActorUserId ?? Guid.Empty)).OrderBy(a => a.Id).ToArrayAsync();
-        return JsonSerializer.Serialize(new { pets, states, leases, rooms, events, receipts });
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            JsonSerializer.SerializeToUtf8Bytes(new { pets, states, leases, rooms, events, receipts })));
     });
     public static async Task FaultAsync(string code, int status, Func<Task> action)
     {
