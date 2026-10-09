@@ -73,7 +73,7 @@ Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](d
 ## 当前文档
 
 - [配饰账号保存与展示审核设计](docs/planning/2026-10-09-accessory-cloud-storage-design.md)：本地自由佩戴、账号私有备份、过审后对外展示，以及图片去重、权限和回收原则已确认；具体额度与审核执行待细化，服务端功能未实施。
-- [官方预设家具方向与物理小样方案](docs/planning/2026-10-09-official-furniture-design.md)：先做项目提供的家具，自定义家具模块暂缓；第一批单件静态平台与独立单人验收窗口设计已通过，[实施计划](docs/planning/2026-10-09-static-platform-implementation-plan.md)已形成，编码尚未授权或开始。圆球、蹦床和窗帘仍为后续候选。
+- [官方预设家具方向与物理小样方案](docs/planning/2026-10-09-official-furniture-design.md)：先做项目提供的家具，自定义家具模块暂缓；第一批单件静态平台与独立单人验收窗口已按获批的 [F0–F4 实施计划](docs/planning/2026-10-09-static-platform-implementation-plan.md)完成编码，自动门禁与本机真实输入检查通过，规定的运行观察通过，人工验收待完成。详见[验证记录](docs/verification/2026-10-09-static-platform-prototype.md)。圆球、蹦床和窗帘仍为后续候选。
 - [AI Agent 工作区规则](AGENTS.md)：项目红线、验证门禁、Git 权限与文档同步规则。
 - [开发环境](docs/development-environment.md)：.NET SDK 锁定、Windows/PowerShell 工具要求与环境核验命令。
 - [产品企划概要 v0.1](docs/product-brief-v0.1.md)：定位、用户、价值、市场参照与长期方向。

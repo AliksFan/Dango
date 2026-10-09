@@ -37,5 +37,12 @@ DANGO_API int dango_physics_world_set_horizontal_bounds(void* handle, float left
 DANGO_API int dango_physics_world_clear_horizontal_bounds(void* handle);
 DANGO_API int dango_physics_world_translate_horizontal(void* handle, float translation);
 DANGO_API int dango_physics_world_destroy(void* handle);
+// Optional ABI-1 capability. A single static rectangle with one active Dango.
+DANGO_API int dango_physics_world_set_static_platform(void* handle,
+    float center_x,float center_y,float width,float height,float friction);
+DANGO_API int dango_physics_world_clear_static_platform(void* handle);
+// Six floats: enabled, touching, supported, outward normal X/Y, signed gap.
+DANGO_API int dango_physics_world_get_static_platform_contact(void* handle,int entity_id,float* values,int capacity);
+DANGO_API int dango_physics_get_allocated_bytes(void);
 
 #endif

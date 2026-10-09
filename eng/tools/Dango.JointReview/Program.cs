@@ -223,6 +223,16 @@ internal static class Program
     {
         try
         {
+            if (args.Length == 2 && args[0] == "--static-platform")
+            {
+                var platformApp = new Application(); var window = new StaticPlatformWindow(args[1]);
+                platformApp.Run(window); return window.ExitCode;
+            }
+            if (args.Length == 3 && args[0] == "--static-platform-smoke")
+            {
+                var platformApp = new Application(); var window = new StaticPlatformWindow(args[1], args[2]);
+                platformApp.Run(window); return window.ExitCode;
+            }
             if (args.Length == 2 && args[0] == "--hat-motion-review")
             {
                 var hatApp = new Application(); hatApp.Run(new HatMotionWindow(args[1])); return 0;

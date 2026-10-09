@@ -94,6 +94,8 @@ public sealed class DangoPhysicsWorld : IDisposable
 
     public double PreviewJumpSpeedScale { get; private set; } = 1;
 
+    public DangoStaticPlatformDefinition? StaticPlatform { get; private set; }
+
     public static DangoPhysicsWorld Create(
         string nativeLibraryPath,
         int capacity = DangoPhysicsDefaults.MaximumBodyCount,
@@ -187,6 +189,44 @@ public sealed class DangoPhysicsWorld : IDisposable
         LastErrorCode = 0;
     }
 
+    public void SetStaticPlatform(DangoStaticPlatformDefinition definition)
+    {
+        VerifyAccess();
+        ArgumentNullException.ThrowIfNull(definition);
+        definition.Validate();
+        if (StaticPlatform is not null && StaticPlatform != definition)
+            throw Map(-410, "已有静态平台；请先清除或重置验收场景。");
+        var call = api.SetStaticPlatform ?? throw MissingLocalExport("dango_physics_world_set_static_platform");
+        _ = api.ClearStaticPlatform ?? throw MissingLocalExport("dango_physics_world_clear_static_platform");
+        _ = api.ReadStaticPlatformContact ?? throw MissingLocalExport("dango_physics_world_get_static_platform_contact");
+        var error = call(world, (float)definition.CenterX, (float)definition.CenterY,
+            (float)definition.Width, (float)definition.Height, (float)definition.Friction);
+        if (error != 0) throw Map(error, "设置静态平台失败；原场景保持不变。");
+        StaticPlatform = definition;
+    }
+
+    public void ClearStaticPlatform()
+    {
+        VerifyAccess();
+        var call = api.ClearStaticPlatform ?? throw MissingLocalExport("dango_physics_world_clear_static_platform");
+        var error = call(world);
+        if (error != 0) throw Map(error, "清除静态平台失败。");
+        StaticPlatform = null;
+    }
+
+    public DangoStaticPlatformContact ReadStaticPlatformContact(DangoEntityId entityId)
+    {
+        VerifyAccess();
+        if (!entities.ContainsKey(entityId)) throw Map(-412, "实体标识无效或已过期。");
+        var call = api.ReadStaticPlatformContact ?? throw MissingLocalExport("dango_physics_world_get_static_platform_contact");
+        var values = new float[6];
+        var error = call(world, entityId.Value, values, values.Length);
+        if (error != 0) throw Map(error, "读取平台接触失败。");
+        if (values.Any(value => !float.IsFinite(value)))
+            throw new DangoPhysicsException(DangoPhysicsFailureKind.NativeFailure, "平台接触包含非有限值。");
+        return new(values[0] != 0, values[1] != 0, values[2] != 0, values[3], values[4], values[5]);
+    }
+
     /// <summary>
     /// Opt-in transient single-body editor launch speed. Default worlds do not
     /// require this optional export, and restoring 1 is allowed after a fault.
@@ -250,6 +290,7 @@ public sealed class DangoPhysicsWorld : IDisposable
         var error = api.Destroy(handle);
         api.Dispose();
         entities.Clear();
+        StaticPlatform = null;
         if (error != 0) throw Map(error, "释放物理世界失败。");
         GC.SuppressFinalize(this);
     }
@@ -288,16 +329,23 @@ public sealed class DangoPhysicsWorld : IDisposable
         internal readonly ResetDelegate? ClearHorizontalBounds;
         internal readonly TranslateHorizontalDelegate? TranslateHorizontal;
         internal readonly TranslateHorizontalDelegate? SetPreviewJumpSpeedScale;
+        internal readonly StaticPlatformDelegate? SetStaticPlatform;
+        internal readonly ResetDelegate? ClearStaticPlatform;
+        internal readonly PlatformContactDelegate? ReadStaticPlatformContact;
 
         private NativeApi(nint library, CreateDelegate create, AddDelegate add, RemoveDelegate remove,
             StepDelegate step, ResetDelegate reset, DestroyDelegate destroy,
             HorizontalBoundsDelegate? setHorizontalBounds, ResetDelegate? clearHorizontalBounds,
-            TranslateHorizontalDelegate? translateHorizontal, TranslateHorizontalDelegate? setPreviewJumpSpeedScale)
+            TranslateHorizontalDelegate? translateHorizontal, TranslateHorizontalDelegate? setPreviewJumpSpeedScale,
+            StaticPlatformDelegate? setStaticPlatform, ResetDelegate? clearStaticPlatform, PlatformContactDelegate? readStaticPlatformContact)
         {
             this.library = library; Create = create; Add = add; Remove = remove; Step = step; Reset = reset; Destroy = destroy;
             SetHorizontalBounds = setHorizontalBounds; ClearHorizontalBounds = clearHorizontalBounds;
             TranslateHorizontal = translateHorizontal;
             SetPreviewJumpSpeedScale = setPreviewJumpSpeedScale;
+            SetStaticPlatform = setStaticPlatform;
+            ClearStaticPlatform = clearStaticPlatform;
+            ReadStaticPlatformContact = readStaticPlatformContact;
         }
 
         internal static NativeApi Load(string path)
@@ -318,7 +366,10 @@ public sealed class DangoPhysicsWorld : IDisposable
                     GetOptional<HorizontalBoundsDelegate>(library, "dango_physics_world_set_horizontal_bounds"),
                     GetOptional<ResetDelegate>(library, "dango_physics_world_clear_horizontal_bounds"),
                     GetOptional<TranslateHorizontalDelegate>(library, "dango_physics_world_translate_horizontal"),
-                    GetOptional<TranslateHorizontalDelegate>(library, "dango_physics_world_set_preview_jump_speed_scale"));
+                    GetOptional<TranslateHorizontalDelegate>(library, "dango_physics_world_set_preview_jump_speed_scale"),
+                    GetOptional<StaticPlatformDelegate>(library, "dango_physics_world_set_static_platform"),
+                    GetOptional<ResetDelegate>(library, "dango_physics_world_clear_static_platform"),
+                    GetOptional<PlatformContactDelegate>(library, "dango_physics_world_get_static_platform_contact"));
             }
             catch
             {
@@ -355,6 +406,10 @@ public sealed class DangoPhysicsWorld : IDisposable
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int DestroyDelegate(nint handle);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int HorizontalBoundsDelegate(nint handle, float left, float right);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int TranslateHorizontalDelegate(nint handle, float translation);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int StaticPlatformDelegate(
+            nint handle, float centerX, float centerY, float width, float height, float friction);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int PlatformContactDelegate(
+            nint handle, int entityId, [Out] float[] values, int capacity);
     }
 
     [StructLayout(LayoutKind.Sequential)]

@@ -5,6 +5,7 @@
 #include "dango_self_physics_internal.h"
 #include "dango_physics_module.h"
 #include "dango_display_contact.h"
+#include "dango_static_platform.h"
 
 typedef struct collision_review
 {
@@ -19,7 +20,45 @@ typedef struct collision_review
     bool horizontal_bounds_enabled;
     float horizontal_left, horizontal_right;
     float preview_jump_speed_scale;
+    bool platform_enabled;
+    dango_static_platform platform;
+    float platform_contacts[DANGO_PHYSICS_MAX_BODIES][6];
+    float platform_snapshot[DANGO_PHYSICS_MAX_BODIES][6];
+#ifdef DANGO_STATIC_PLATFORM_CONTRACT_TESTS
+    int test_platform_collapse_substep;
+#endif
 } collision_review;
+
+static bool collision_platform_floor(const collision_review* p,const dango_self_soft_body* body)
+{
+    for (int n=0;n<body->node_count;++n)
+    {
+        b2Vec2 position=b2Body_GetPosition(body->node_body_ids[n]);
+        if ((!p->horizontal_bounds_enabled || (position.x>=p->horizontal_left && position.x<=p->horizontal_right)) &&
+            position.y-p->config.node_radius<=p->config.ground_height+.035f) return true;
+    }
+    return false;
+}
+
+static bool collision_platform_refresh(collision_review* p,int slot)
+{
+    if (!p->platform_enabled) return true;
+    dango_self_soft_body* body=p->bodies[slot];
+    display_mesh mesh;
+    if (!display_build(body,p->config.node_radius,&mesh)) return false;
+    dango_platform_contact contact=platform_separation(&mesh,&p->platform);
+    if (!isfinite(contact.gap)) return false;
+    b2Vec2 core=b2Body_GetPosition(body->core_body_id);
+    b2Vec2 velocity=b2Body_GetLinearVelocity(body->core_body_id);
+    bool support=platform_support_eligible(&contact,core.y,velocity.y,&p->platform);
+    float* values=p->platform_contacts[slot];
+    values[0]=1; values[1]=contact.gap<=.008f ? 1.0f : 0.0f; values[2]=support ? 1.0f : 0.0f;
+    values[3]=contact.normal.x; values[4]=contact.normal.y; values[5]=contact.gap;
+    // Only the real floor and top-facing platform contact provide ground
+    // control. Raw wall contacts cannot grant launch eligibility.
+    body->grounded=collision_platform_floor(p,body) || support;
+    return true;
+}
 
 DANGO_API void dango_collision_test_interaction_flags(void* handle,int flags)
 {
@@ -228,13 +267,15 @@ static void collision_damp(collision_review* p,int r,float dt,const float* contr
         if (n<16 && positions[n].y-p->config.node_radius<=p->config.ground_height+.001f) ground=true;
     }
     bool active=control[0]!=0 || control[1]!=0 || control[2]!=0 || control[3]!=0;
+    if (p->platform_enabled && p->platform_contacts[r][2]!=0) ground=true;
     passive_spin(positions,velocities,masses,dt,ground,active);
     if (ground && !active)
     {
         float mass=0,horizontal=0;
         for (int n=0;n<17;++n) { mass+=masses[n]; horizontal+=masses[n]*velocities[n].x; }
         // Finite dry friction on whole-body translation; no position anchor or vertical braking.
-        float delta=b2ClampFloat(horizontal/mass,-35*dt,35*dt);
+        float friction_scale=p->platform_enabled && p->platform_contacts[r][2]!=0 ? p->platform.friction/.72f : 1.0f;
+        float delta=b2ClampFloat(horizontal/mass,-35*friction_scale*dt,35*friction_scale*dt);
         for (int n=0;n<17;++n) velocities[n].x=(velocities[n].x-delta)*expf(-60*dt);
     }
     for (int n=0;n<17;++n) b2Body_SetLinearVelocity(display_id(p->bodies[r],n),velocities[n]);
@@ -311,6 +352,11 @@ static int collision_read(collision_review* p, float* output)
             row+34,row+35,row+36,row+32,row+33,row+37,&grounded,&selected);
         if (error) return error;
         if (p->horizontal_bounds_enabled) contacts=collision_local_floor_contacts(p,p->bodies[r],&grounded);
+        if (p->platform_enabled)
+        {
+            if (!collision_platform_refresh(p,r)) return -402;
+            grounded=p->bodies[r]->grounded ? 1 : 0;
+        }
         row[38]=(float)contacts; row[39]=(float)grounded; row[40]=(float)selected; row[41]=(float)points;
     }
     return 0;
@@ -360,6 +406,7 @@ DANGO_API int dango_collision_step(void* handle, float dt, const float* controls
         for (int i=0;i<6;++i) if (!isfinite(c[i])) return -400;
         if (fabsf(c[0])>1 || c[1]<0 || c[1]>1 || (c[2]!=0 && c[2]!=1) || (c[3]!=0 && c[3]!=1)) return -400;
     }
+    int safe_platform_contact_steps=p->contact_steps;
     if (!p->error)
     {
         int small_steps=(int)ceilf(dt*(p->disable_damping_for_test ? 240.0f : 960.0f));
@@ -375,6 +422,15 @@ DANGO_API int dango_collision_step(void* handle, float dt, const float* controls
                 if (!p->active[r]) continue;
                 const float* c=controls+6*r;
                 dango_self_soft_body* body=p->bodies[r];
+#ifdef DANGO_STATIC_PLATFORM_CONTRACT_TESTS
+                if (p->platform_enabled && p->test_platform_collapse_substep>0 && sub==p->test_platform_collapse_substep)
+                {
+                    p->test_platform_collapse_substep=0;
+                    b2Vec2 core=b2Body_GetPosition(body->core_body_id);
+                    for (int n=0;n<16;++n) b2Body_SetTransform(body->node_body_ids[n],core,b2Rot_identity);
+                }
+#endif
+                if (p->platform_enabled && !collision_platform_refresh(p,r)) { p->error=-402; break; }
                 bool idle=c[0]==0 && c[1]==0 && c[2]==0 && c[3]==0;
                 float friction=!p->disable_damping_for_test && idle ? 16.0f : p->config.friction;
                 for (int n=0;n<16;++n) b2Shape_SetFriction(body->node_shape_ids[n],friction);
@@ -393,11 +449,23 @@ DANGO_API int dango_collision_step(void* handle, float dt, const float* controls
                     collision_launch(p,r,!body->grounded && supported[r]>=0,supported[r]);
                 }
             }
+            if (p->error) break;
             b2World_Step(p->bodies[0]->world_id,small_dt,1);
             for (int r=0;r<p->capacity;++r)
                 if (p->active[r])
                 if (!dango_self_solve_constraints(p->bodies[r],&p->config)) p->error=-91;
             if (p->error) break;
+            if (p->platform_enabled)
+            {
+                for (int r=0;r<p->capacity;++r) if (p->active[r])
+                {
+                    int touched=0;
+                    if (!platform_contact_solve(p->bodies[r],&p->config,&p->platform,&touched) ||
+                        !collision_platform_refresh(p,r)) { p->error=-402; break; }
+                    p->contact_steps+=touched;
+                }
+                if (p->error) break;
+            }
             if (p->count>=2 && !p->disable_contact_for_test)
             {
                 int touched=0;
@@ -426,8 +494,13 @@ DANGO_API int dango_collision_step(void* handle, float dt, const float* controls
         }
         float candidate[DANGO_PHYSICS_MAX_BODIES*42]={0};
         if (!p->error) p->error=collision_read(p,candidate);
-        if (!p->error) memcpy(p->snapshot,candidate,sizeof candidate);
+        if (!p->error)
+        {
+            memcpy(p->snapshot,candidate,sizeof candidate);
+            if (p->platform_enabled) memcpy(p->platform_snapshot,p->platform_contacts,sizeof p->platform_snapshot);
+        }
     }
+    if (p->platform_enabled && p->error) p->contact_steps=safe_platform_contact_steps;
     memcpy(output,p->snapshot,(size_t)p->capacity*42*sizeof(float)); *contact_steps=p->contact_steps;
     return p->error;
 }
@@ -470,6 +543,7 @@ DANGO_API int dango_physics_world_add(void* handle,float anchor_x,float anchor_y
     collision_review* p=handle;
     if (!p || !entity_id || !isfinite(anchor_x) || !isfinite(anchor_y)) return -410;
     if (p->preview_jump_speed_scale!=1.0f && p->count!=0) return -410;
+    if (p->platform_enabled && (p->error || p->count!=0)) return -410;
     if (p->count>=p->capacity) return -411;
     int slot=-1;
     for (int i=0;i<p->capacity;++i) if (!p->active[i]) { slot=i; break; }
@@ -488,6 +562,16 @@ DANGO_API int dango_physics_world_add(void* handle,float anchor_x,float anchor_y
         return -401;
     }
     dango_self_initialize_at(p->bodies[slot],&p->config,anchor_x,anchor_y);
+    if (p->platform_enabled)
+    {
+        display_mesh mesh;
+        if (!display_build(p->bodies[slot],p->config.node_radius,&mesh) ||
+            platform_separation(&mesh,&p->platform).gap<0)
+        {
+            dango_self_destroy_rig(p->bodies[slot]);
+            return -410;
+        }
+    }
     p->active[slot]=1; p->entity_ids[slot]=p->next_entity_id++;
     p->anchors[2*slot]=anchor_x; p->anchors[2*slot+1]=anchor_y; ++p->count;
     memset(p->snapshot+42*slot,0,42*sizeof(float));
@@ -498,6 +582,7 @@ DANGO_API int dango_physics_world_add(void* handle,float anchor_x,float anchor_y
         return error;
     }
     *entity_id=p->entity_ids[slot];
+    if (p->platform_enabled) memcpy(p->platform_snapshot,p->platform_contacts,sizeof p->platform_snapshot);
     return 0;
 }
 
@@ -505,12 +590,15 @@ DANGO_API int dango_physics_world_remove(void* handle,int entity_id)
 {
     collision_review* p=handle;
     if (!p || entity_id<=0) return -410;
+    if (p->platform_enabled && p->error) return -410;
     int slot=-1;
     for (int i=0;i<p->capacity;++i) if (p->active[i] && p->entity_ids[i]==entity_id) { slot=i; break; }
     if (slot<0) return -412;
     dango_self_destroy_rig(p->bodies[slot]);
     p->active[slot]=0; p->entity_ids[slot]=0; --p->count;
     memset(p->snapshot+42*slot,0,42*sizeof(float));
+    memset(p->platform_contacts[slot],0,sizeof p->platform_contacts[slot]);
+    memset(p->platform_snapshot[slot],0,sizeof p->platform_snapshot[slot]);
     return 0;
 }
 
@@ -559,6 +647,23 @@ DANGO_API int dango_physics_world_reset(void* handle)
         dango_self_create_rig(p->bodies[slot],&p->config);
         if (!collision_rig_valid(p->bodies[slot])) return -401;
         dango_self_initialize_at(p->bodies[slot],&p->config,p->anchors[2*slot],p->anchors[2*slot+1]);
+    }
+    if (p->platform_enabled)
+    {
+        p->error=0; p->contact_steps=0;
+        float candidate[DANGO_PHYSICS_MAX_BODIES*42]={0};
+        for (int r=0;r<p->capacity;++r) if (p->active[r])
+        {
+            int touched=0;
+            if (!platform_contact_solve(p->bodies[r],&p->config,&p->platform,&touched)) { p->error=-402; return p->error; }
+        }
+        p->error=collision_read(p,candidate);
+        if (!p->error)
+        {
+            memcpy(p->snapshot,candidate,sizeof candidate);
+            memcpy(p->platform_snapshot,p->platform_contacts,sizeof p->platform_snapshot);
+        }
+        return p->error;
     }
     p->error=0; p->contact_steps=0; memset(p->snapshot,0,sizeof p->snapshot);
     return collision_read(p,p->snapshot);
@@ -659,6 +764,7 @@ DANGO_API int dango_physics_world_translate_horizontal(void* handle,float transl
 {
     collision_review* p=handle;
     if (!p || p->error || !isfinite(translation) || fabsf(translation)>1024) return -410;
+    if (p->platform_enabled) return -410;
     if (translation==0) return 0;
     if (fabsf(b2Body_GetPosition(p->bodies[0]->ground_body_id).x+translation)>1024 ||
         (p->horizontal_bounds_enabled && (fabsf(p->horizontal_left+translation)>1024 ||
@@ -697,3 +803,113 @@ DANGO_API int dango_physics_world_destroy(void* handle)
     free(p->bodies[0]); free(p);
     return 0;
 }
+
+DANGO_API int dango_physics_world_set_static_platform(void* handle,
+    float center_x,float center_y,float width,float height,float friction)
+{
+    collision_review* p=handle;
+    dango_static_platform definition={center_x,center_y,width,height,friction};
+    if (!p || p->error || p->count>1 || !platform_valid(&definition)) return -410;
+    if (p->platform_enabled)
+        return p->platform.x==definition.x && p->platform.y==definition.y &&
+            p->platform.width==definition.width && p->platform.height==definition.height &&
+            p->platform.friction==definition.friction ? 0 : -410;
+    for (int r=0;r<p->capacity;++r) if (p->active[r])
+    {
+        display_mesh mesh;
+        if (!display_build(p->bodies[r],p->config.node_radius,&mesh) || platform_separation(&mesh,&definition).gap<0) return -410;
+    }
+    p->platform=definition; p->platform_enabled=true;
+    for (int r=0;r<p->capacity;++r) if (p->active[r])
+        if (!collision_platform_refresh(p,r)) { p->platform_enabled=false; return -410; }
+    memcpy(p->platform_snapshot,p->platform_contacts,sizeof p->platform_snapshot);
+    return 0;
+}
+
+DANGO_API int dango_physics_world_clear_static_platform(void* handle)
+{
+    collision_review* p=handle;
+    if (!p || p->error) return -410;
+    if (p->platform_enabled)
+        for (int r=0;r<p->capacity;++r) if (p->active[r])
+            p->bodies[r]->grounded=collision_platform_floor(p,p->bodies[r]);
+    p->platform_enabled=false; memset(&p->platform,0,sizeof p->platform);
+    memset(p->platform_contacts,0,sizeof p->platform_contacts);
+    memset(p->platform_snapshot,0,sizeof p->platform_snapshot);
+    return 0;
+}
+
+DANGO_API int dango_physics_world_get_static_platform_contact(void* handle,int entity_id,float* values,int capacity)
+{
+    collision_review* p=handle;
+    if (!p || !values || capacity<6) return -410;
+    for (int r=0;r<p->capacity;++r) if (p->active[r] && p->entity_ids[r]==entity_id)
+    {
+        memcpy(values,p->platform_snapshot[r],6*sizeof(float)); return 0;
+    }
+    return -412;
+}
+
+DANGO_API int dango_physics_get_allocated_bytes(void) { return b2GetByteCount(); }
+
+#ifdef DANGO_STATIC_PLATFORM_CONTRACT_TESTS
+int dango_static_platform_contract_tests(void)
+{
+    dango_static_platform p={0,1,4,.3f,.72f};
+    dango_platform_contact top={.normal={0,1},.gap=.001f,.sample=0};
+    int failures=0;
+    if (!platform_support_eligible(&top,2,.499999f,&p)) ++failures;
+    if (platform_support_eligible(&top,2,.5f,&p)) ++failures;
+    if (platform_support_eligible(&top,2,.500001f,&p)) ++failures;
+    top.normal=(b2Vec2){1,0};
+    if (platform_support_eligible(&top,2,0,&p)) ++failures;
+    top.normal=(b2Vec2){0,-1};
+    if (platform_support_eligible(&top,0,0,&p)) ++failures;
+    top.normal=(b2Vec2){0,1}; top.gap=.009f;
+    if (platform_support_eligible(&top,2,0,&p)) ++failures;
+    return failures;
+}
+
+int dango_static_platform_failure_tests(void)
+{
+    const dango_self_physics_config config={
+        .node_count=16,.substep_count=4,.radial_rest_length=.68f,.radial_minimum_ratio=.65f,.radial_maximum_ratio=1.22f,
+        .perimeter_minimum_ratio=.73f,.perimeter_maximum_ratio=1.07f,.radial_hertz=5.2f,.perimeter_hertz=20.1f,
+        .radial_damping=1.85f,.perimeter_damping=1.85f,.area_strength=4.8f,.ground_deformation_strength=3.5f,
+        .repulsion_distance=.09f,.repulsion_strength=.3f,.repulsion_maximum_force=3.5f,.core_exclusion_ratio=.25f,
+        .angle_strength=10,.local_angle_balance_strength=1.7f,.top_inward_force=.5f,.gravity=9.8f,.core_mass=.12f,.node_mass=.015f,
+        .drop_height=.42f,.ground_height=-.72f,.node_radius=.045f,.friction=.72f,.restitution=.02f,.contact_hertz=28,
+        .linear_damping=1.8f,.drag_stiffness=10,.drag_damping=2.2f,.drag_maximum_force=8,.horizontal_force=2.4f,
+        .maximum_horizontal_speed=3.2f,.air_control_ratio=.35f,.downward_force=2.2f,.jump_impulse=.42f,
+        .jump_cooldown_seconds=.45f,.maximum_speed=12,.minimum_area=.42f
+    };
+    int failures=0,initial_bytes=b2GetByteCount(),id=0,state_id=0,count=0,contacts=0,error=0;
+    float controls[6]={0},states[42]={0},safe[42],safe_contact[6],contact[6];
+    void* handle=NULL;
+    if (dango_physics_world_create(&config,1,&handle)!=0) return 1;
+    if (dango_physics_world_set_static_platform(handle,0,1,4,.3f,.72f)!=0 ||
+        dango_physics_world_add(handle,0,2.5f,&id)!=0) { dango_physics_world_destroy(handle); return 1; }
+    for (int step=0;step<240;++step)
+        if (dango_physics_world_step(handle,1.0f/60,&id,controls,1,&state_id,states,42,&count,&contacts,&error)!=0 || error) ++failures;
+    memcpy(safe,states,sizeof safe);
+    dango_physics_world_get_static_platform_contact(handle,id,safe_contact,6);
+    int safe_contacts=contacts;
+    collision_review* world=handle;
+    world->test_platform_collapse_substep=4; // Corrupt real geometry after four actual supported substeps.
+    if (dango_physics_world_step(handle,1.0f/60,&id,controls,1,&state_id,states,42,&count,&contacts,&error)!=0 || error!=-402) ++failures;
+    if (state_id!=id || count!=1 || contacts!=safe_contacts || memcmp(states,safe,sizeof safe)) ++failures;
+    dango_physics_world_get_static_platform_contact(handle,id,contact,6);
+    if (memcmp(contact,safe_contact,sizeof contact)) ++failures;
+    if (dango_physics_world_remove(handle,id)!=-410 || dango_physics_world_clear_static_platform(handle)!=-410 ||
+        dango_physics_world_set_static_platform(handle,0,1,4,.3f,.72f)!=-410) ++failures;
+    if (dango_physics_world_step(handle,1.0f/60,&id,controls,1,&state_id,states,42,&count,&contacts,&error)!=0 ||
+        error!=-402 || memcmp(states,safe,sizeof safe) || contacts!=safe_contacts) ++failures;
+    if (dango_physics_world_reset(handle)!=0) ++failures;
+    for (int step=0;step<240;++step)
+        if (dango_physics_world_step(handle,1.0f/60,&id,controls,1,&state_id,states,42,&count,&contacts,&error)!=0 || error) ++failures;
+    dango_physics_world_get_static_platform_contact(handle,id,contact,6);
+    if (state_id!=id || !contact[0] || !contact[2]) ++failures;
+    if (dango_physics_world_destroy(handle)!=0 || b2GetByteCount()!=initial_bytes) ++failures;
+    return failures;
+}
+#endif

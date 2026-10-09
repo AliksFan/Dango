@@ -13,6 +13,8 @@ internal static class PhysicsTestLibraries
     }
     internal static string Unified => Environment.GetEnvironmentVariable("DANGO_PHYSICS_MODULE_PATH") ??
         Path.Combine(Root, "artifacts/native-spike/physics-module-unified-build/Release/dango_physics_module.dll");
-    internal static string AcceptedThree => Path.Combine(Root,
+    internal static string AcceptedThree => Environment.GetEnvironmentVariable("DANGO_PHYSICS_ACCEPTED_THREE_PATH") ?? Path.Combine(Root,
         "artifacts/native-spike/physics-three-preview-build/Release/dango_physics_three_preview.dll");
+    internal static string StaticPlatformBaseline => Environment.GetEnvironmentVariable("DANGO_STATIC_PLATFORM_BASELINE_PATH") ??
+        throw new InvalidOperationException("Set DANGO_STATIC_PLATFORM_BASELINE_PATH to the read-only accepted module, independently of the candidate.");
 }
