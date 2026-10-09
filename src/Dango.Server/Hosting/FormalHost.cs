@@ -10,6 +10,7 @@ using Dango.Server.Email;
 using Dango.Server.Persistence;
 using Dango.Server.Persistence.Entities;
 using Dango.Server.Pets;
+using Dango.Server.Rooms.Management;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -27,7 +28,8 @@ public static class FormalHost
     public const string SessionClaim = "dango_session";
 
     public static WebApplication Create(FormalServerOptions options, AccountEnvironment environment,
-        X509Certificate2 certificate, Action<IServiceCollection>? configure = null, bool enableEmailWorker = true)
+        X509Certificate2 certificate, Action<IServiceCollection>? configure = null, bool enableEmailWorker = true,
+        bool enableRoomExpiryWorker = false)
     {
         if (environment.RecoveryEpoch == Guid.Empty) throw new InvalidOperationException("recovery_epoch_required");
         if (!FormalServerOptions.TryCreate(options.DatabaseName, options.ConnectionString, options.KeyDirectory,
@@ -78,6 +80,10 @@ public static class FormalHost
         builder.Services.AddScoped<CredentialService>();
         builder.Services.AddSingleton<IPetConfigurationCheckpoint, PetConfigurationCheckpoint>();
         builder.Services.AddScoped<PetConfigurationService>();
+        builder.Services.AddSingleton<IRoomManagementCheckpoint, RoomManagementCheckpoint>();
+        builder.Services.AddScoped<RoomManagementService>();
+        builder.Services.AddScoped<RoomExpiryService>();
+        if (enableRoomExpiryWorker) builder.Services.AddHostedService<RoomExpiryWorker>();
         builder.Services.AddAntiforgery(csrf =>
         {
             csrf.HeaderName = "X-CSRF-TOKEN";
@@ -167,6 +173,7 @@ public static class FormalHost
                 ? Results.Json(new { code = "database_migration_required" }, statusCode: 503)
                 : Results.Ok(new { status = "ready" }));
         AccountEndpoints.Map(app);
+        RoomManagementEndpoints.Map(app);
         // Explicitly no prototype /room Hub or pipe admission exists on this host.
         return app;
     }

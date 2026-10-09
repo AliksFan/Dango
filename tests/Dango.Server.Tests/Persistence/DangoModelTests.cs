@@ -51,6 +51,7 @@ public sealed class DangoModelTests
         Assert.Contains("appearanceSchemaVersion", sql);
         Assert.Contains("ck_rooms_capacity", sql);
         Assert.Contains("ck_rooms_lifecycle", sql);
+        Assert.Contains("ck_rooms_template", sql);
         Assert.Contains("INTERVAL '168 hours'", sql);
         Assert.Contains("ck_pet_room_presence", sql);
         Assert.Contains("'-Infinity'::double precision", sql);
@@ -77,6 +78,8 @@ public sealed class DangoModelTests
         Assert.Contains("ck_pet_room_presence", sql);
         Assert.Contains("BEGIN", sql);
         Assert.DoesNotContain("fictional_secret_marker", sql);
+        Assert.Contains("UPDATE dango.rooms SET template_id = 'desktop-pet-default' WHERE kind = 0", sql);
+        Assert.Contains("WHERE status IN (1, 2)", sql);
     }
 
     [TestMethod]

@@ -48,9 +48,15 @@ public sealed class PostgresFoundationTests
         // Only after verifying database, version and physical cluster may this opt-in gate write.
         await using var context = new DangoDbContext(DangoDatabaseOptions.Create(connectionString));
         var pending = (await context.Database.GetPendingMigrationsAsync()).ToArray();
-        if (pending.Any(m => m != "20261008074701_InitialAccountRoomFoundation")
-            && Environment.GetEnvironmentVariable("DANGO_BACKEND_B1_TEST_APPROVED") != "1")
-            Assert.Inconclusive("B1 forward migration requires its separate precise authorization.");
+        foreach (var migration in pending)
+        {
+            if (migration == "20261008074701_InitialAccountRoomFoundation") continue;
+            if (migration == "20261008085521_AccountLifecycle"
+                && Environment.GetEnvironmentVariable("DANGO_BACKEND_B1_TEST_APPROVED") == "1") continue;
+            if (migration == "20261009031410_RoomManagement"
+                && Environment.GetEnvironmentVariable("DANGO_BACKEND_B3_TEST_APPROVED") == "1") continue;
+            Assert.Inconclusive("Each additional migration requires its own precise stage authorization.");
+        }
         await context.Database.MigrateAsync();
     }
 
@@ -75,7 +81,7 @@ public sealed class PostgresFoundationTests
             ("email", fixture.Email.ToLowerInvariant()), ("normalized", fixture.Email.ToUpperInvariant()));
         await fixture.Reject("INSERT INTO dango.pets (id, user_id, configuration, configuration_version, created_at) VALUES (@id, @owner, @configuration::jsonb, 1, @now)",
             "23505", "ux_pets_user_id", ("id", Guid.NewGuid()), ("owner", fixture.UserId), ("configuration", Configuration), ("now", DateTimeOffset.UtcNow));
-        await fixture.Reject("INSERT INTO dango.rooms (id, owner_id, kind, status, name, capacity, version, created_at) VALUES (@id, @owner, 0, 0, 'fictional room', 2, 1, @now)",
+        await fixture.Reject("INSERT INTO dango.rooms (id, owner_id, kind, status, name, capacity, version, created_at, template_id) VALUES (@id, @owner, 0, 0, 'fictional room', 2, 1, @now, 'desktop-pet-default')",
             "23505", "ux_rooms_desktop_owner", ("id", Guid.NewGuid()), ("owner", fixture.UserId), ("now", DateTimeOffset.UtcNow));
     }
 
@@ -185,7 +191,7 @@ public sealed class PostgresFoundationTests
                     ("id", fixture.UserId), ("now", DateTimeOffset.UtcNow), ("email", fixture.Email), ("normalized", fixture.Email.ToUpperInvariant()));
                 await fixture.Execute("INSERT INTO dango.pets (id, user_id, configuration, configuration_version, created_at) VALUES (@id, @owner, @configuration::jsonb, 1, @now)",
                     ("id", fixture.PetId), ("owner", fixture.UserId), ("configuration", Configuration), ("now", DateTimeOffset.UtcNow));
-                await fixture.Execute("INSERT INTO dango.rooms (id, owner_id, kind, status, name, capacity, version, created_at) VALUES (@id, @owner, 0, 0, 'fictional desktop room', 2, 1, @now)",
+                await fixture.Execute("INSERT INTO dango.rooms (id, owner_id, kind, status, name, capacity, version, created_at, template_id) VALUES (@id, @owner, 0, 0, 'fictional desktop room', 2, 1, @now, 'desktop-pet-default')",
                     ("id", fixture.RoomId), ("owner", fixture.UserId), ("now", DateTimeOffset.UtcNow));
                 await fixture.Execute("INSERT INTO dango.room_memberships (room_id, user_id, role) VALUES (@room, @owner, 0)", ("room", fixture.RoomId), ("owner", fixture.UserId));
                 await fixture.Execute("INSERT INTO dango.pet_room_states (pet_id, room_id, position_x, position_y, is_sleeping, version, control_generation) VALUES (@pet, @room, 0.5, 0.5, false, 1, 0)",

@@ -35,6 +35,13 @@ public static class FormalEntry
                         || reader.GetInt32(2) is < 180000 or >= 190000)
                         throw new AccountFault("maintenance_database_target_invalid");
                 }
+                if (Read("EXPECTED_MIGRATION") is { Length: > 0 } expectedMigration)
+                {
+                    var pending = (await db.Database.GetPendingMigrationsAsync()).ToArray();
+                    if (!db.Database.GetMigrations().Contains(expectedMigration, StringComparer.Ordinal)
+                        || pending.Length > 1 || (pending.Length == 1 && pending[0] != expectedMigration))
+                        throw new AccountFault("maintenance_migration_target_invalid");
+                }
                 await db.Database.MigrateAsync();
                 Console.WriteLine("formal_migration_applied");
                 return 0;
@@ -75,7 +82,7 @@ public static class FormalEntry
             await using var app = FormalHost.Create(options!, environment, certificate, services =>
             {
                 if (smtp is not null) services.AddSingleton<IEmailSender>(new MailKitEmailSender(smtp));
-            });
+            }, enableRoomExpiryWorker: RoomMaintenanceOptions.ExpiryEnabled(Read("ROOM_EXPIRY_ENABLED")));
             // Readiness is a gate for all requests, not a startup side effect.
             await using (var scope = app.Services.CreateAsyncScope())
             {
