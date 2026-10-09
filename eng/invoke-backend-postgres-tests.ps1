@@ -9,6 +9,7 @@ param(
     [switch]$B3,
     [switch]$B4,
     [switch]$B5A,
+    [switch]$B5B,
     [string]$TestFilter,
     [switch]$ExecuteApprovedPlan
 )
@@ -24,9 +25,12 @@ if ($B3 -and ($B1 -or $B2 -or $Initialize -or $CreateDatabase)) { throw 'backend
 if ($B3 -and $RunName -ne 'run20261008b0') { throw 'backend_b3_target_not_approved' }
 if ($B4 -and ($B1 -or $B2 -or $B3 -or $Initialize -or $CreateDatabase)) { throw 'backend_b4_existing_target_only' }
 if ($B4 -and $RunName -ne 'run20261008b0') { throw 'backend_b4_target_not_approved' }
-if ($B5A -and ($B1 -or $B2 -or $B3 -or $B4 -or $Initialize -or $CreateDatabase)) { throw 'backend_b5a_existing_target_only' }
+if ($B5A -and ($B1 -or $B2 -or $B3 -or $B4 -or $B5B -or $Initialize -or $CreateDatabase)) { throw 'backend_b5a_existing_target_only' }
 if ($B5A -and $RunName -ne 'run20261008b0') { throw 'backend_b5a_target_not_approved' }
 if ($B5A -and $TestFilter -and ($TestFilter.Length -gt 512 -or $TestFilter -notmatch '^FullyQualifiedName(?:~|=)[A-Za-z0-9_.]+$')) { throw 'backend_b5a_filter_invalid' }
+if ($B5B -and ($B1 -or $B2 -or $B3 -or $B4 -or $B5A -or $Initialize -or $CreateDatabase)) { throw 'backend_b5b_existing_target_only' }
+if ($B5B -and $RunName -ne 'run20261008b0') { throw 'backend_b5b_target_not_approved' }
+if ($B5B -and $TestFilter -and ($TestFilter.Length -gt 512 -or $TestFilter -notmatch '^FullyQualifiedName(?:~|=)[A-Za-z0-9_.]+$')) { throw 'backend_b5b_filter_invalid' }
 $taskRepoDirectory = Split-Path -Parent $PSScriptRoot
 $taskStateBase = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Dango\BackendDevelopment'
 $taskStateDirectory = [IO.Path]::GetFullPath((Join-Path $taskStateBase $RunName))
@@ -44,7 +48,7 @@ for ($taskAncestor = [IO.DirectoryInfo]::new($taskDataDirectory); $null -ne $tas
     if ($taskAncestor.Exists -and ($taskAncestor.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'backend_test_reparse_target_rejected' }
 }
 if (-not $ExecuteApprovedPlan) {
-    [pscustomobject]@{ RunName=$RunName; DataDirectory=$taskDataDirectory; Database=$taskDatabaseName; Initialize=[bool]$Initialize; CreateDatabase=[bool]$CreateDatabase; B1=[bool]$B1; B2=[bool]$B2; B3=[bool]$B3; B4=[bool]$B4; B5A=[bool]$B5A; Writes=$(if ($B5A) { 'only B5A fictional account, registration, session and own pet configuration tests; existing schema and keys; no migration, SMTP, WinCred, deletion or restore' } elseif ($B4) { 'only RoomAccess and RoomAccessIntegrity forward migrations; fictional B1-B4 regressions; scoped lease/outbox work and permanent expiry only for generated targets; no reset or restore' } elseif ($B3) { 'only RoomManagement forward migration and fictional tests; permanent expiry only for exact B3-generated room IDs; no reset or restore' } elseif ($B2) { 'fictional tests only; existing schema; no migration, reset, deletion or restore' } else { 'explicit forward migration and fictional tests; no reset, deletion or restore' }) }
+    [pscustomobject]@{ RunName=$RunName; DataDirectory=$taskDataDirectory; Database=$taskDatabaseName; Initialize=[bool]$Initialize; CreateDatabase=[bool]$CreateDatabase; B1=[bool]$B1; B2=[bool]$B2; B3=[bool]$B3; B4=[bool]$B4; B5A=[bool]$B5A; B5B=[bool]$B5B; Writes=$(if ($B5B) { 'only B5B fictional account/session/room operations and scoped own pet/code/lease fixtures; existing schema and keys; no migration, SMTP, WinCred, data deletion, restore or expiry' } elseif ($B5A) { 'only B5A fictional account, registration, session and own pet configuration tests; existing schema and keys; no migration, SMTP, WinCred, deletion or restore' } elseif ($B4) { 'only RoomAccess and RoomAccessIntegrity forward migrations; fictional B1-B4 regressions; scoped lease/outbox work and permanent expiry only for generated targets; no reset or restore' } elseif ($B3) { 'only RoomManagement forward migration and fictional tests; permanent expiry only for exact B3-generated room IDs; no reset or restore' } elseif ($B2) { 'fictional tests only; existing schema; no migration, reset, deletion or restore' } else { 'explicit forward migration and fictional tests; no reset, deletion or restore' }) }
     return
 }
 
@@ -80,18 +84,18 @@ function Invoke-TaskProcess {
 $taskVersion = & (Join-Path $taskBinaryDirectory 'postgres.exe') --version
 if ($LASTEXITCODE -ne 0 -or $taskVersion -notmatch 'PostgreSQL\) 18\.') { throw 'backend_test_postgres18_required' }
 
-if ($B5A) {
-    # B5A cannot create cluster credentials, keys or a recovery epoch, even accidentally.
+if ($B5A -or $B5B) {
+    # Client integration stages cannot create cluster credentials, keys or a recovery epoch.
     foreach ($taskRequiredFile in @($taskStateFile, $taskCredentialFile, (Join-Path $taskStateDirectory 'b1test-state.json'))) {
-        if (-not (Test-Path -LiteralPath $taskRequiredFile -PathType Leaf)) { throw 'backend_b5a_existing_state_required' }
+        if (-not (Test-Path -LiteralPath $taskRequiredFile -PathType Leaf)) { throw 'backend_client_existing_state_required' }
         if ((Get-Item -LiteralPath $taskRequiredFile).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'backend_test_reparse_target_rejected' }
     }
     $taskExistingKeyDirectory = Join-Path $taskStateDirectory 'b1tests-keys'
     if (-not (Test-Path -LiteralPath $taskDataDirectory -PathType Container) -or
-        -not (Test-Path -LiteralPath $taskExistingKeyDirectory -PathType Container)) { throw 'backend_b5a_existing_target_required' }
+        -not (Test-Path -LiteralPath $taskExistingKeyDirectory -PathType Container)) { throw 'backend_client_existing_target_required' }
     if ((Get-Item -LiteralPath $taskExistingKeyDirectory).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'backend_test_reparse_target_rejected' }
     $taskExistingEpochState = Get-Content -LiteralPath (Join-Path $taskStateDirectory 'b1test-state.json') -Raw | ConvertFrom-Json
-    if ($taskExistingEpochState.Version -ne 1 -or [Guid]::Parse($taskExistingEpochState.RecoveryEpoch) -eq [Guid]::Empty) { throw 'backend_b5a_epoch_invalid' }
+    if ($taskExistingEpochState.Version -ne 1 -or [Guid]::Parse($taskExistingEpochState.RecoveryEpoch) -eq [Guid]::Empty) { throw 'backend_client_epoch_invalid' }
 }
 
 if ($Initialize) {
@@ -145,28 +149,29 @@ try {
         [void](Invoke-TaskProcess (Join-Path $taskBinaryDirectory 'createdb.exe') @('-h', '127.0.0.1', '-p', "$taskPort", '-U', $taskOwnerName, $taskDatabaseName) @{ PGPASSWORD=$taskPassword })
     }
     $taskConnection = "Host=127.0.0.1;Port=$taskPort;Database=$taskDatabaseName;Username=$taskOwnerName;Password=$taskPassword;Include Error Detail=false"
-    $taskResultsBase = if ($B5A) { 'artifacts/backend-b5a/postgres-tests' } else { 'artifacts/backend-foundation/postgres-tests' }
+    $taskResultsBase = if ($B5B) { 'artifacts/backend-b5b/postgres-tests' } elseif ($B5A) { 'artifacts/backend-b5a/postgres-tests' } else { 'artifacts/backend-foundation/postgres-tests' }
     $taskResultsDirectory = Join-Path $taskResultsBase ([DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss-fffffff'))
     # Stage permission cannot leak in from the parent shell or another previous test run.
     $taskTestEnvironment = @{
         DANGO_BACKEND_TEST_CONNECTION=$taskConnection; DANGO_BACKEND_TEST_DATA_DIRECTORY=$taskDataDirectory
-        DANGO_BACKEND_B1_TEST_APPROVED='0'; DANGO_BACKEND_B3_TEST_APPROVED='0'; DANGO_BACKEND_B4_TEST_APPROVED='0'; DANGO_BACKEND_B5A_TEST_APPROVED='0'
+        DANGO_BACKEND_B1_TEST_APPROVED='0'; DANGO_BACKEND_B3_TEST_APPROVED='0'; DANGO_BACKEND_B4_TEST_APPROVED='0'; DANGO_BACKEND_B5A_TEST_APPROVED='0'; DANGO_BACKEND_B5B_TEST_APPROVED='0'
     }
-    if ($B1 -or $B2 -or $B3 -or $B4 -or $B5A) {
+    if ($B1 -or $B2 -or $B3 -or $B4 -or $B5A -or $B5B) {
         $taskB1StateFile = Join-Path $taskStateDirectory 'b1test-state.json'
         if (Test-Path -LiteralPath $taskB1StateFile) {
             $taskB1State = Get-Content -LiteralPath $taskB1StateFile -Raw | ConvertFrom-Json
             $taskB1Epoch = [Guid]::Parse($taskB1State.RecoveryEpoch)
         } else {
-            if ($B2 -or $B3 -or $B4 -or $B5A) { throw 'backend_existing_epoch_required' }
+            if ($B2 -or $B3 -or $B4 -or $B5A -or $B5B) { throw 'backend_existing_epoch_required' }
             $taskB1Epoch = [Guid]::NewGuid()
             [IO.File]::WriteAllText($taskB1StateFile, (@{ RecoveryEpoch=$taskB1Epoch.ToString('D'); Version=1 } | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
         }
         if ($taskB1Epoch -eq [Guid]::Empty) { throw 'backend_b1_epoch_invalid' }
         $taskB1KeyDirectory = Join-Path $taskStateDirectory 'b1tests-keys'
-        if (($B2 -or $B3 -or $B4 -or $B5A) -and -not (Test-Path -LiteralPath $taskB1KeyDirectory -PathType Container)) { throw 'backend_existing_keys_required' }
-        if (-not $B5A) { $taskTestEnvironment.DANGO_BACKEND_B1_TEST_APPROVED = '1' }
+        if (($B2 -or $B3 -or $B4 -or $B5A -or $B5B) -and -not (Test-Path -LiteralPath $taskB1KeyDirectory -PathType Container)) { throw 'backend_existing_keys_required' }
+        if (-not ($B5A -or $B5B)) { $taskTestEnvironment.DANGO_BACKEND_B1_TEST_APPROVED = '1' }
         if ($B5A) { $taskTestEnvironment.DANGO_BACKEND_B5A_TEST_APPROVED = '1' }
+        if ($B5B) { $taskTestEnvironment.DANGO_BACKEND_B5B_TEST_APPROVED = '1' }
         $taskTestEnvironment.DANGO_BACKEND_B1_RECOVERY_EPOCH = $taskB1Epoch.ToString('D')
         $taskTestEnvironment.DANGO_BACKEND_B1_KEY_DIRECTORY = $taskB1KeyDirectory
         # B2 uses existing tables only; fixture validation rejects any pending migration.
@@ -188,7 +193,7 @@ try {
             [void](Invoke-TaskProcess 'dotnet' @('src/Dango.Server/bin/Release/net10.0/Dango.Server.dll', '--formal-migrate') $taskMigrationEnvironment)
         }
     }
-    $taskBaseAllowedFilter = 'TestCategory=PostgresIntegration&TestCategory!=BackendB5AIntegration'
+    $taskBaseAllowedFilter = 'TestCategory=PostgresIntegration&TestCategory!=BackendB5AIntegration&TestCategory!=BackendB5BIntegration'
     $taskTestFilter = if ($TestFilter) { "($taskBaseAllowedFilter)&($TestFilter)" } elseif ($B2 -or $B3 -or $B4) { "$taskBaseAllowedFilter&FullyQualifiedName!~PostgresFoundationTests" } else { $taskBaseAllowedFilter }
     if ($B4) {
         # A requested subset can narrow B4, never re-enable B0 schema/probe writes.
@@ -199,6 +204,11 @@ try {
         # Extra filters may narrow B5A, never opt into B0/B1/B3/B4 data operations.
         $taskB5AAllowedFilter = 'TestCategory=PostgresIntegration&TestCategory=BackendB5AIntegration&FullyQualifiedName~Dango.Server.Tests.Accounts.AccountClientHttpsIntegrationTests'
         $taskTestFilter = if ($TestFilter) { "($taskB5AAllowedFilter)&($TestFilter)" } else { $taskB5AAllowedFilter }
+    }
+    if ($B5B) {
+        # Extra filters may narrow B5B; no earlier-stage tests or resource writes are enabled.
+        $taskB5BAllowedFilter = 'TestCategory=PostgresIntegration&TestCategory=BackendB5BIntegration&FullyQualifiedName~Dango.Server.Tests.RoomManagement.RoomClientHttpsIntegrationTests'
+        $taskTestFilter = if ($TestFilter) { "($taskB5BAllowedFilter)&($TestFilter)" } else { $taskB5BAllowedFilter }
     }
     [void](Invoke-TaskProcess 'dotnet' @('test', 'tests/Dango.Server.Tests/Dango.Server.Tests.csproj', '-c', 'Release', '--no-build', '--no-restore', '--filter', $taskTestFilter, '--logger', 'trx;LogFileName=backend-postgres.trx', '--results-directory', $taskResultsDirectory) $taskTestEnvironment)
 } finally {
