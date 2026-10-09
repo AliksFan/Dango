@@ -26,6 +26,7 @@ public sealed class RoomAccessContext(Guid? actorId, Guid? sessionId, AccountPet
     public Dictionary<Guid, PersistentRoom> Rooms { get; } = rooms;
     public List<RoomDeviceLease> Leases { get; } = leases;
     public Guid? RequiredLeaseAtCommit { get; set; }
+    public Guid? RequiredCredentialAtCommit { get; set; }
     public PersistentRoom Room(Guid id) => Rooms.TryGetValue(id, out var room) ? room : throw new AccountFault("room_not_found", 404);
 }
 
@@ -100,6 +101,15 @@ public static class RoomAccessPersistence
                 {
                     var effective = await EffectiveLeasesAsync(db, context, environment, clock, ct);
                     if (!effective.Any(lease => lease.Id == required)) throw new AccountFault("room_lease_expired", 409);
+                }
+                if (context.RequiredCredentialAtCommit is { } credentialId)
+                {
+                    var credential = await db.PublicRoomCredentials.AsNoTracking().SingleOrDefaultAsync(c => c.Id == credentialId, ct);
+                    if (credential is null || credential.RevokedAt is not null || credential.ExpiresAt <= clock.GetUtcNow()
+                        || credential.RecoveryEpoch != environment.RecoveryEpoch
+                        || context.Room(credential.RoomId).Status != PersistentRoomStatus.Active
+                        || credential.Generation != context.Room(credential.RoomId).AdmissionGeneration)
+                        throw new AccountFault("room_code_invalid", 403);
                 }
                 await transaction.CommitAsync(ct);
                 return result;
