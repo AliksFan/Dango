@@ -10,6 +10,21 @@ public sealed class RoomLeaseMaintenanceService(DangoDbContext db, AccountEnviro
 {
     public async Task<RoomLeaseSweepResult> RunBatchAsync(int limit, IReadOnlyCollection<Guid>? permittedPetIds, CancellationToken ct, Guid? afterPetId = null)
     {
+        var ids = await CandidatesQuery(limit, permittedPetIds, afterPetId).ToArrayAsync(ct);
+        var changed = 0; var failed = 0;
+        var service = new RoomAdmissionService(db, environment, clock, checkpoint);
+        foreach (var id in ids.Take(limit))
+        {
+            ct.ThrowIfCancellationRequested();
+            try { if (await service.ReconcilePetAsync(id, ct)) changed++; }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch { failed++; }
+        }
+        return new(Math.Min(ids.Length, limit), changed, failed, ids.Length > limit ? ids[limit - 1] : null);
+    }
+
+    internal IQueryable<Guid> CandidatesQuery(int limit, IReadOnlyCollection<Guid>? permittedPetIds, Guid? afterPetId)
+    {
         RoomAdmissionPolicy.Batch(limit, permittedPetIds);
         var now = clock.GetUtcNow();
         var due = from lease in db.RoomDeviceLeases.AsNoTracking()
@@ -22,16 +37,6 @@ public sealed class RoomLeaseMaintenanceService(DangoDbContext db, AccountEnviro
         if (permittedPetIds is not null) due = due.Where(id => permittedPetIds.Contains(id));
         if (afterPetId == Guid.Empty) throw new AccountFault("room_cursor_invalid");
         if (afterPetId is not null) due = due.Where(id => id.CompareTo(afterPetId.Value) > 0);
-        var ids = await due.Distinct().Order().Take(limit + 1).ToArrayAsync(ct);
-        var changed = 0; var failed = 0;
-        var service = new RoomAdmissionService(db, environment, clock, checkpoint);
-        foreach (var id in ids.Take(limit))
-        {
-            ct.ThrowIfCancellationRequested();
-            try { if (await service.ReconcilePetAsync(id, ct)) changed++; }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-            catch { failed++; }
-        }
-        return new(Math.Min(ids.Length, limit), changed, failed, ids.Length > limit ? ids[limit - 1] : null);
+        return due.Distinct().Order().Take(limit + 1);
     }
 }

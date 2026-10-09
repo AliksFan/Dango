@@ -45,15 +45,16 @@ public sealed class RoomAdmissionService(DangoDbContext db, AccountEnvironment e
             if (replay is not null) return replay;
             RoomAdmissionPolicy.RequireAssignment(context.State, request.ExpectedRoomId, request.ExpectedAssignmentVersion);
             var target = await AuthorizeTargetAsync(context, roomId, request, ct);
+            var physical = await db.PetRoomStates.AsNoTracking().Where(s => s.RoomId == roomId).OrderBy(s => s.PetId)
+                .Select(s => s.PetId).Take(13).ToArrayAsync(ct);
+            if (physical.Length > 12) throw new AccountFault("room_occupancy_invalid", 503);
             if (target.Kind == PersistentRoomKind.PublicShared)
             {
-                var physical = await db.PetRoomStates.AsNoTracking().Where(s => s.RoomId == roomId).OrderBy(s => s.PetId)
-                    .Select(s => s.PetId).Take(13).ToArrayAsync(ct);
-                if (physical.Length > 12) throw new AccountFault("room_occupancy_invalid", 503);
                 var occupancy = await OccupantsAsync(target, ct);
                 if (context.State.RoomId != roomId && physical.Length >= target.Capacity)
                     throw new AccountFault(occupancy.Length < physical.Length ? "room_presence_retry" : "room_full", 409);
             }
+            else if (context.State.RoomId != roomId && physical.Length >= target.Capacity) throw new AccountFault("room_full", 409);
             var sourceId = context.State.RoomId;
             await ReconcileAsync(context, ct);
             var now = clock.GetUtcNow();
