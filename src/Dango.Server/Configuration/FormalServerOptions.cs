@@ -6,12 +6,13 @@ namespace Dango.Server.Configuration;
 // Configuration is supplied outside the repository; it is never an API input or a log payload.
 public sealed class FormalServerOptions
 {
-    private FormalServerOptions(string databaseName, string connectionString, string keyDirectory, Uri endpoint)
+    private FormalServerOptions(string databaseName, string connectionString, string keyDirectory, Uri endpoint, string? accessoryBlobDirectory)
     {
         DatabaseName = databaseName;
         ConnectionString = connectionString;
         KeyDirectory = keyDirectory;
         Endpoint = endpoint;
+        AccessoryBlobDirectory = accessoryBlobDirectory;
     }
 
     public string DatabaseName { get; }
@@ -19,11 +20,12 @@ public sealed class FormalServerOptions
     public string ConnectionString { get; }
     public string KeyDirectory { get; }
     public Uri Endpoint { get; }
+    public string? AccessoryBlobDirectory { get; }
     public override string ToString() => "FormalServerOptions [redacted]";
 
     public static bool TryCreate(
         string? databaseName, string? connectionString, string? keyDirectory, string? endpoint,
-        string repositoryDirectory, out FormalServerOptions? options, out string errorCode)
+        string repositoryDirectory, out FormalServerOptions? options, out string errorCode, string? accessoryBlobDirectory = null)
     {
         options = null;
         errorCode = "formal_configuration_missing";
@@ -64,6 +66,25 @@ public sealed class FormalServerOptions
         catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException)
         { return false; }
 
+        string? blobPath = null;
+        if (accessoryBlobDirectory is not null)
+        {
+            errorCode = "formal_accessory_directory_invalid";
+            try
+            {
+                if (!Path.IsPathFullyQualified(accessoryBlobDirectory)) return false;
+                blobPath = Path.GetFullPath(accessoryBlobDirectory);
+                if (!Directory.Exists(blobPath) || Within(blobPath, repositoryDirectory) || Within(repositoryDirectory, blobPath)
+                    || Within(blobPath, keyPath) || Within(keyPath, blobPath)
+                    || string.Equals(Path.TrimEndingDirectorySeparator(blobPath), Path.GetPathRoot(blobPath), StringComparison.OrdinalIgnoreCase))
+                    return false;
+                for (DirectoryInfo? directory = new(blobPath); directory is not null; directory = directory.Parent)
+                    if (directory.Exists && (directory.Attributes & FileAttributes.ReparsePoint) != 0) return false;
+            }
+            catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or NotSupportedException)
+            { return false; }
+        }
+
         database.Pooling = true;
         database.MinPoolSize = 0;
         database.MaxPoolSize = 32;
@@ -73,7 +94,7 @@ public sealed class FormalServerOptions
         database.LogParameters = false;
         database.ApplicationName = "DangoFormalServer";
         database.Timezone = "UTC";
-        options = new FormalServerOptions(databaseName, database.ConnectionString, keyPath, address);
+        options = new FormalServerOptions(databaseName, database.ConnectionString, keyPath, address, blobPath);
         errorCode = string.Empty;
         return true;
     }
