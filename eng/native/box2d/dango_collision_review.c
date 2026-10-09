@@ -18,6 +18,7 @@ typedef struct collision_review
     b2ShapeId horizontal_walls[2];
     bool horizontal_bounds_enabled;
     float horizontal_left, horizontal_right;
+    float preview_jump_speed_scale;
 } collision_review;
 
 DANGO_API void dango_collision_test_interaction_flags(void* handle,int flags)
@@ -52,6 +53,9 @@ static int collision_support_slot(collision_review* p,int r)
 static void collision_launch(collision_review* p,int r,bool supported,int other)
 {
     float impulse=0,other_mass=0,speed=supported ? 6.0f : 7.7f;
+    // A single-body editor may opt into a lower real launch. The default
+    // branch retains the accepted arithmetic and every ordinary-world bit.
+    if (p->preview_jump_speed_scale!=1.0f) speed*=p->preview_jump_speed_scale;
     b2Vec2 direction={0,1},point={0}; float weights[17]={0},weight_sum=0;
     if (supported)
     {
@@ -318,6 +322,7 @@ DANGO_API int dango_collision_create(const dango_self_physics_config* config, in
     *handle=NULL;
     collision_review* p=calloc(1,sizeof *p); if (!p) return -401;
     p->config=*config; p->count=count; p->capacity=count; p->next_entity_id=1;
+    p->preview_jump_speed_scale=1.0f;
     void* first=NULL;
     int error=dango_box2d_self_soft_body_create(config,&first);
     if (error) { free(p); return error; }
@@ -453,6 +458,7 @@ DANGO_API int dango_physics_world_create(const dango_self_physics_config* config
     *handle=NULL;
     collision_review* p=calloc(1,sizeof *p); if (!p) return -401;
     p->config=*config; p->capacity=capacity; p->next_entity_id=1;
+    p->preview_jump_speed_scale=1.0f;
     int error=dango_self_world_create(config,&p->bodies[0]);
     if (error) { free(p); return error; }
     *handle=p;
@@ -463,6 +469,7 @@ DANGO_API int dango_physics_world_add(void* handle,float anchor_x,float anchor_y
 {
     collision_review* p=handle;
     if (!p || !entity_id || !isfinite(anchor_x) || !isfinite(anchor_y)) return -410;
+    if (p->preview_jump_speed_scale!=1.0f && p->count!=0) return -410;
     if (p->count>=p->capacity) return -411;
     int slot=-1;
     for (int i=0;i<p->capacity;++i) if (!p->active[i]) { slot=i; break; }
@@ -555,6 +562,18 @@ DANGO_API int dango_physics_world_reset(void* handle)
     }
     p->error=0; p->contact_steps=0; memset(p->snapshot,0,sizeof p->snapshot);
     return collision_read(p,p->snapshot);
+}
+
+// Additive ABI-1 capability. This changes only future launch impulses, never
+// the existing rig, current velocities, cooldown, configuration or step count.
+// Restoring the default remains legal after a latched fault for host cleanup.
+DANGO_API int dango_physics_world_set_preview_jump_speed_scale(void* handle,float scale)
+{
+    collision_review* p=handle;
+    if (!p || !isfinite(scale) || scale<.1f || scale>1.0f ||
+        (scale!=1.0f && (p->error || p->count!=1))) return -410;
+    p->preview_jump_speed_scale=scale;
+    return 0;
 }
 
 // Opt-in local scene geometry. Existing worlds retain their original floor and

@@ -8,6 +8,7 @@ using Dango.Desktop.DesktopHost.StandardWindow;
 using Dango.Desktop.DesktopHost.WorkerW;
 using Dango.Desktop.Rendering.Visuals;
 using Dango.Desktop.Verification;
+using Dango.Desktop.Accessories;
 
 namespace Dango.Desktop.AppShell;
 
@@ -23,6 +24,7 @@ internal sealed partial class DangoApplicationHost : IDisposable
     private readonly ApplicationSettingsSession settings;
     private readonly string settingsPath;
     private readonly AppearanceSettingsSession appearance;
+    private readonly AccessorySettingsSession accessories;
     private readonly bool eyeHatReview;
     private readonly bool porchReview;
     private readonly bool faceReview;
@@ -85,6 +87,8 @@ internal sealed partial class DangoApplicationHost : IDisposable
         desktopHost.SetDebugSkeletonVisible(uiMode == ApplicationUiMode.DeveloperReview && initial.ShowDebugSkeleton);
         desktopHost.SetInteractionEnabled(initial.InteractionEnabled);
         stackedRuntime.TryApplyHatPreset(firstReviewRun && eyeHatReview ? "top-hat" : initial.HatPresetId);
+        accessories = new AccessorySettingsSession(Path.GetDirectoryName(Path.GetFullPath(settingsPath))!, initial.HatPresetId);
+        if (uiMode == ApplicationUiMode.Product) stackedRuntime.BindAccessories(accessories);
         if (firstReviewRun || initial.DisplayMode == DesktopDisplayMode.Window) desktopHost.SetMode(DesktopDisplayMode.Window);
         geometrySaveTimer.Tick += (_, _) => { geometrySaveTimer.Stop(); SaveSettings(); };
         sceneWindow.SizeChanged += (_, _) => ScheduleSave();
@@ -201,6 +205,7 @@ internal sealed partial class DangoApplicationHost : IDisposable
         if (uiMode == ApplicationUiMode.Product)
         {
             controlCenterWindow.ProductHome.BindAppearance(appearance);
+            controlCenterWindow.ProductHome.BindAccessories(accessories);
             controlCenterWindow.ProductHome.BindLiveScene(sceneSession, stackedRuntime);
             controlCenterWindow.ProductHome.SetPorchReviewMode(porchReview);
             if (!porchReview && !faceReview) BindLocalRoom(controlCenterWindow);

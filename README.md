@@ -2,6 +2,8 @@
 
 `Dango` 是一个多人联机桌面宠物项目的开发代号。
 
+2026-10-09 DIY 配饰第一版：用户确认当前设计收口、人工验收通过，并授权合并至本地 main。包含透明图创建与编辑、多件图层、柔性／翻折、形变与连接行程上限、旋转／重力及本地保存重载，见[验收记录](docs/verification/2026-10-09-accessory-material-v5.md#2026-10-09-第一版人工通过与本地整合授权)。已完成本地 main 整合，保留现有桌宠房间成果，见[整合记录](docs/verification/2026-10-09-accessory-v1-main-integration.md)；分享和配饰间挂接继续后置，历史自动差异与其它专项边界保留。未授权推送、更新日常安装、部署或替换正式 DLL。
+
 2026-10-07 普通房窗口：用户通过现有窗口体验，已按授权将 `codex/local-room-implementation@4bbd2bb` 快进合入本地 main，包含两层初始场景、玩法／抚摸、滚轮视距、三种镜头模式和纵向中线修订、Esc 菜单及首页往返。沿用最终受影响测试69/69和隔离 Release 构建证据，15项真实前台右键自动门禁仍未验证；详见[验收与整合记录](docs/verification/2026-10-06-window-camera-modes.md#2026-10-07-用户人工通过与本地-main-整合)。壁纸代码和入口保留，壁纸层继续搁置、未验收，待桌宠房间充分测试后再回来排查。未推送、更新日常安装或部署；完整 Windows／正式房间／多人阶段仍开放。下方状态保留各自历史范围。
 
 2026-10-06 捏脸独立本地整合：按用户选择剥离普通房依赖，已将验证后的捏脸／首页成果快进合入本地 main。Release 构建 0 警告／0 错误，受影响测试 370/370、零跳过，普通房代码与历史未带入；具体范围、失败修复及原人工验收边界见[整合记录](docs/verification/2026-10-06-face-only-local-main-integration.md)。原候选现场和受保护 DLL 保留，未推送、更新日常安装或部署；完整 Windows／多人阶段与其它 DPI 专项仍开放。
@@ -89,6 +91,10 @@ Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](d
 - [本地桌面安装说明](docs/local-desktop-install.md)：固定目录安装、启动、更新、状态检查与回退的日常操作。
 - [Windows 本地收口设计与实施计划](docs/planning/2026-10-03-windows-local-closeout.md)及[验证记录](docs/verification/2026-10-03-windows-local-closeout.md)：同屏两缩放单机候选已获人工确认，后续分别授权的日常更新和本地整合已完成；自动差异与未验证项保留，推送另行批准。
 - [帽子轨道分配优化](docs/phase-1-hat-track-allocation-design.md)及[实施计划](docs/phase-1-hat-track-allocation-plan.md)：已批准的局部优化与等价、分配、真实宿主性能验收顺序。
+- [DIY 配饰设计](docs/planning/2026-10-07-accessory-diy-design.md)、[分步实施计划](docs/planning/2026-10-07-accessory-diy-plan.md)及[第一版 main 整合](docs/verification/2026-10-09-accessory-v1-main-integration.md)：Windows 本地导入、编辑、多件图层、单支点、柔性／翻折和保存重载已获第一版人工确认；历次失败与未验证边界保留，分享及配饰间挂接为后续候选。
+- [DIY 配饰第二轮界面与实时预览验证](docs/verification/2026-10-08-accessory-ui-refinement.md)：团子左侧分组图标、四列素材库、创建与取消边界、真实按键控制及滚动原点自由地面的候选；历次失败与修复分开记录，最终门禁及人工验收状态以报告为准。
+- [DIY 配饰第四轮修订验证](docs/verification/2026-10-08-accessory-ui-v4.md)：四图标、标题省略、图片上限／压缩提示及持续移动修复；输出等价、性能红灯和候选验收状态分别记录。
+- [DIY 配饰第五轮材料与行程验证](docs/verification/2026-10-09-accessory-material-v5.md)：扩大柔软度及弱连接端点，新增可选翻折、图片形变上限和连接径向行程上限；失败反例、保存重载及候选验收状态分别记录。
 - [可复用团子物理模块](docs/phase-1-physics-module.md)：项目内 native/.NET 模块、固定配置、API、构建、显示适配与当前验收边界。
 - [Phase 1 桌面生命感原型详细设计](docs/phase-1-desktop-life-prototype-design.md)：已批准的桌面宿主对比、场景与资产边界、性能门槛和分层验收。
 - [Phase 1 实施计划](docs/phase-1-implementation-plan.md)：已批准的 P0-000 环境准备、P0-001 工作区脚手架与 P1 系列顺序任务；P1-002A 在 P1-003 前实现控制中心和图形化验收入口。

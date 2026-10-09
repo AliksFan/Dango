@@ -70,10 +70,12 @@ public partial class ProductHomeView
         BoundRuntime = runtime;
         PetShadow.Visibility = Visibility.Collapsed;
         liveScheduler = new HostFrameScheduler(runtime, PrepareLiveFrame, CreateLiveInput, ApplyLiveFrame);
+        liveScheduler.CallbackCompleted += PresentAccessoryPreview;
         if (appearanceSession is not null) runtime.SetAppearance(appearanceSession.DraftAppearance);
         else { standaloneDraft = runtime.EffectiveAppearance; runtime.SetAppearance(standaloneDraft); }
         RefreshAppearanceControls();
         PetPreview.ToolTip = "同一只实时物理团子";
+        if (IsAccessoryPreview) ChangeLiveSurface();
         RefreshLiveSceneOwnership();
     }
 
@@ -121,22 +123,36 @@ public partial class ProductHomeView
         BoundSceneSession!.AttachSurface(surface, Environment.TickCount64);
         BoundRuntime.SetViewport(surface);
         BoundRuntime.Start();
+        if (IsAccessoryPreview) liveSurfaceNeedsAlignment = liveSurfacePlacementPending = true;
         BoundRuntime.AttachQuietIdleHost(this, true);
         BoundRuntime.UpdateWanderScreenWidth(this, IsInPorch ? PorchScene.ViewportWorldWidth : null);
         visualAnchor = null;
         shadowGroundCenterY = null;
         groundedVisualOffset = null;
+        ResetAccessoryPresentation();
+        liveScheduler!.CallbackCompleted -= PresentAccessoryPreview;
+        liveScheduler.CallbackCompleted += PresentAccessoryPreview;
         liveScheduler!.Start();
     }
 
     private void StopLiveScene()
     {
         var mayStopRuntime = liveScheduler?.OwnsRuntime == true || BoundRuntime?.FrameDriver is null;
+        if (mayStopRuntime && BoundRuntime is { PreviewJumpSpeedScale: not 1 })
+        {
+            try { BoundRuntime.SetPreviewJumpSpeedScale(1); }
+            catch (Dango.Physics.DangoPhysicsException error)
+            {
+                liveSurfacePhysicsError = error;
+                ShowLiveSurfaceUnavailable("配饰预览物理模块不可用 · 请返回设置重试");
+            }
+        }
         liveScheduler?.Stop();
         porchFrameHealthy = false;
         if (porchConfirmation is not null) System.Windows.Media.CompositionTarget.Rendering -= porchConfirmation;
         porchConfirmation = null;
         liveIntent = DirectionalControlIntent.None;
+        ResetAccessoryPresentation();
         visualAnchor = null;
         shadowGroundCenterY = null;
         groundedVisualOffset = null;
@@ -149,10 +165,11 @@ public partial class ProductHomeView
         var runtime = BoundRuntime;
         if (!IsVisible || IsSettingsOpen || !OwnsLiveFrameDriver || !runtime!.IsRunning || BoundSceneSession?.Controller is null)
             return false;
+        if (liveSurfacePlacementPending) ResetAccessoryPresentation();
         PrepareRequestedLiveSurface();
         if (!TryAlignLiveSurface()) return false;
         runtime.SetDirectionalControl(liveSurfaceNeedsAlignment ? DirectionalControlIntent.None : liveIntent);
-        runtime.UpdateQuietIdleHost(this, true);
+        runtime.UpdateQuietIdleHost(this, !IsAccessoryPreview);
         return true;
     }
 
@@ -170,7 +187,9 @@ public partial class ProductHomeView
         if (frame.Bodies.Count == 0 || !frame.Bodies[0].IsVisible || frame.ConstraintsReleased || BoundRuntime.LastError is not null ||
             frame.Bodies[0].FallbackReason != PhysicsPresentationFallbackReason.None)
         {
+            ResetAccessoryPresentation();
             LiveDangoVisual.Visibility = LiveDangoHat.Visibility = Visibility.Collapsed;
+            Dango.Desktop.Accessories.AccessoryHostBinding.Hide(LiveDangoVisual);
             PetShadow.Visibility = Visibility.Collapsed;
             PorchScene.ShowUnavailable();
             LiveSceneStatusText.Text = "团子暂不可用 · 请在设置中重试";
@@ -188,10 +207,15 @@ public partial class ProductHomeView
             var now = Environment.TickCount64;
             PorchScene.ApplyFrame(frame, BoundRuntime, now - lastPorchFrame, ReduceMotion || !SystemParameters.ClientAreaAnimation);
             lastPorchFrame = now;
-            LiveSceneStatusText.Visibility = Visibility.Collapsed;
+            UpdateAccessoryPresentationStatus();
             porchFrameHealthy = PorchScene.IsVisible && PorchScene.ActualWidth > 0 && PorchScene.ActualHeight > 0 &&
                 PorchScene.LiveBody.IsVisible && PorchScene.LiveBody.LastContourFailure == DangoContourFailure.None;
             ConfirmHealthyPorchFrame();
+            return;
+        }
+        if (IsAccessoryPreview)
+        {
+            ApplyAccessoryPreviewFrame(frame);
             return;
         }
         var bounds = DangoHostFrameBinding.Bounds(frame, 0);
@@ -212,7 +236,8 @@ public partial class ProductHomeView
             new LogicalVector(-bounds.X + dx, -bounds.Y + dy),
             appearance: BoundRuntime.DisplayHatAppearance,
             hatSize: BoundRuntime.DisplayHatSize,
-            bodyFillOverride: BoundRuntime.BodyPreviewFill, eyeFillOverride: BoundRuntime.EyePreviewFill, appearanceEntity: BoundRuntime.AppearanceEntity);
+            bodyFillOverride: BoundRuntime.BodyPreviewFill, eyeFillOverride: BoundRuntime.EyePreviewFill, appearanceEntity: BoundRuntime.AppearanceEntity,
+            runtime: BoundRuntime);
         if (grounded && LiveDangoVisual.RenderedBodyBottom is { } bodyBottom && PetPreview.Width > 0)
         {
             // Align the rendered contour, rather than its larger preview box,
@@ -223,6 +248,7 @@ public partial class ProductHomeView
         }
         System.Windows.Controls.Canvas.SetTop(LiveDangoVisual, dy + (groundedVisualOffset ?? 0));
         System.Windows.Controls.Canvas.SetTop(LiveDangoHat, dy + (groundedVisualOffset ?? 0));
+        Dango.Desktop.Accessories.AccessoryHostBinding.Position(LiveDangoVisual, dx, dy + (groundedVisualOffset ?? 0));
         var lift = shadowGroundCenterY is { } floor
             ? Math.Clamp((floor - bounds.Center.Y) * .4 / 42, 0, 1) : 0;
         PetShadowScale.ScaleX = 1 - .32 * lift;
@@ -230,7 +256,7 @@ public partial class ProductHomeView
         PetShadow.Opacity = .17 - .09 * lift;
         PetShadow.Visibility = shadowGroundCenterY.HasValue && LiveDangoVisual.LastContourFailure == DangoContourFailure.None
             ? Visibility.Visible : Visibility.Collapsed;
-        LiveSceneStatusText.Visibility = Visibility.Collapsed;
+        UpdateAccessoryPresentationStatus();
     }
 
     private void ConfirmHealthyPorchFrame()
@@ -266,7 +292,10 @@ public partial class ProductHomeView
     private bool SetLiveDirectionalKey(Key key, bool down, bool repeat)
     {
         if (liveScheduler?.OwnsRuntime != true) return false;
-        if (!IsInPorch && key is (Key.A or Key.D)) return false;
+        if (!IsInPorch && !IsAccessoryPreview && key is (Key.A or Key.D)) return false;
+        // W is reserved inside the accessory preview; it must not navigate or
+        // change a Space jump that is already being held.
+        if (IsAccessoryPreview && key == Key.W) return true;
         // A new Space belongs to the button, but release of our already-held
         // jump must still clear intent after focus moves within this view.
         if (key == Key.Space && Keyboard.FocusedElement is System.Windows.Controls.Button && (down || !liveIntent.Jump)) return false;
@@ -290,8 +319,10 @@ public partial class ProductHomeView
 
     private void UpdateLiveMovementMode()
     {
+        ResetAccessoryPresentation();
         if (!OwnsLiveFrameDriver) return;
         BoundRuntime!.UpdateWanderScreenWidth(this, IsInPorch ? PorchScene.ViewportWorldWidth : null);
+        BoundRuntime.UpdateQuietIdleHost(this, !IsAccessoryPreview);
         visualAnchor = null;
         shadowGroundCenterY = null;
         groundedVisualOffset = null;
@@ -300,6 +331,7 @@ public partial class ProductHomeView
 
     private void OnStageMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if ((ReferenceEquals(e.OriginalSource, Stage) || IsInPorch) && !IsEditing && !IsSettingsOpen) Stage.Focus();
+        if (!IsSettingsOpen && (ReferenceEquals(e.OriginalSource, Stage) || IsInPorch ||
+            IsAccessoryPreview && e.OriginalSource is DependencyObject source && Presence.IsAncestorOf(source))) Stage.Focus();
     }
 }

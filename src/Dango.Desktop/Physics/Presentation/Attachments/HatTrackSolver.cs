@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace Dango.Desktop.Physics.Presentation.Attachments;
 
 public sealed record HatContactPose(AttachmentPoint Center, double Angle, double S, double ContactWidth,
@@ -121,6 +123,9 @@ public sealed class HatTrackSolver
         return InRange(s) && Evaluate(s, workspace, false, [], out pose, out _);
     }
 
+    // Each native step runs this fitting kernel hundreds of times. Begin with
+    // optimized code so cold walking does not wait for tier promotion.
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private bool Evaluate(double s, in HatFitWorkspace workspace, bool legalityOnly,
         Span<AttachmentPoint> fitting, out HatFitValues pose, out int sampleCount)
     {

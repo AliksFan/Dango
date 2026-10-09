@@ -184,15 +184,17 @@ public static class FaceLayoutSolver
     private static bool IsSafe(AttachmentShapeGeometry shape, IReadOnlyList<AttachmentPoint> outline)
     {
         const double margin = 1d / 160 + EyeOutline.ChordError + AttachmentShapeGeometry.MaximumChordError;
+        var edges = shape.BoundaryEdges;
         foreach (var point in outline)
         {
             var inside = false;
-            for (var i = 0; i < shape.Boundary.Count; i++)
+            for (var i = 0; i < edges.Length; i++)
             {
-                var a = shape.Boundary[i]; var b = shape.Boundary[(i + 1) % shape.Boundary.Count];
+                ref readonly var segment = ref edges[i];
+                var a = segment.Start; var b = segment.End;
                 if ((a.Y > point.Y) != (b.Y > point.Y) && point.X < (b.X - a.X) * (point.Y - a.Y) / (b.Y - a.Y) + a.X) inside = !inside;
-                var edge = b - a;
-                var lengthSquared = edge.Dot(edge);
+                var edge = segment.Delta;
+                var lengthSquared = segment.LengthSquared;
                 var t = lengthSquared == 0 ? 0 : Math.Clamp((point - a).Dot(edge) / lengthSquared, 0, 1);
                 var difference = point - (a + edge * t);
                 if (difference.Dot(difference) < margin * margin) return false;

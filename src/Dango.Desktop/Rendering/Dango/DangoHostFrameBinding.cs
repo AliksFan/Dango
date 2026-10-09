@@ -3,6 +3,7 @@ using System.Windows.Media;
 using Dango.Core.Coordinates;
 using Dango.Desktop.Physics.Presentation;
 using Dango.Physics;
+using Dango.Desktop.Accessories;
 using Canvas = System.Windows.Controls.Canvas;
 using Color = System.Windows.Media.Color;
 
@@ -28,14 +29,24 @@ internal static class DangoHostFrameBinding
 
     public static void Apply(DeformableDangoVisual body, DangoHatVisual hat,
         StackedPhysicsPresentationFrame frame, int index, LogicalVector translation = default,
-        HatAppearance appearance = HatAppearance.Sprout, double hatSize = 1, System.Windows.Media.Brush? bodyFillOverride = null, System.Windows.Media.Brush? eyeFillOverride = null, DangoEntityId? appearanceEntity = null)
+        HatAppearance appearance = HatAppearance.Sprout, double hatSize = 1, System.Windows.Media.Brush? bodyFillOverride = null, System.Windows.Media.Brush? eyeFillOverride = null, DangoEntityId? appearanceEntity = null,
+        StackedDangoSceneRuntime? runtime = null)
     {
         var active = index < frame.Bodies.Count;
-        body.Visibility = hat.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+        var suppressLegacyHat = active && runtime is { AccessoriesEnabled: true } && body.Parent is Canvas &&
+            (runtime.AppearanceEntity is null ? index == 0 :
+                index < frame.EntityIds.Count && frame.EntityIds[index] == runtime.AppearanceEntity);
+        body.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+        hat.Visibility = active && !suppressLegacyHat ? Visibility.Visible : Visibility.Collapsed;
         body.Tag = active && index < frame.EntityIds.Count ? frame.EntityIds[index] : null;
-        if (!active) return;
-        body.Appearance = hat.Appearance = appearance;
-        body.HatSize = hat.HatSize = hatSize;
+        if (!active) { AccessoryHostBinding.Hide(body); return; }
+        body.Appearance = appearance;
+        body.HatSize = hatSize;
+        if (!suppressLegacyHat)
+        {
+            hat.Appearance = appearance;
+            hat.HatSize = hatSize;
+        }
         var bounds = Bounds(frame, index).Translate(translation);
         Canvas.SetLeft(body, bounds.X); Canvas.SetTop(body, bounds.Y);
         Canvas.SetLeft(hat, bounds.X); Canvas.SetTop(hat, bounds.Y);
@@ -46,7 +57,10 @@ internal static class DangoHostFrameBinding
         var gait = frame.Gait is { } candidate && index < frame.EntityIds.Count &&
             candidate.Matches(frame.Bodies[index], frame.EntityIds[index]) ? candidate : null;
         body.ApplyFrame(frame.Bodies[index], gait);
-        hat.ApplyFrame(frame.Bodies[index], gait);
+        // Accessory layers replace only this Canvas host's customized legacy
+        // visual. Runtime Hat/Gait state still advances and restores on this frame.
+        if (!suppressLegacyHat) hat.ApplyFrame(frame.Bodies[index], gait);
+        AccessoryHostBinding.Apply(body, hat, frame, index, translation, runtime);
     }
 
     private static readonly SolidColorBrush DefaultEyeFill = CreateBrush(0x2B, 0x20, 0x1E);

@@ -153,7 +153,7 @@ public sealed class HomePresentationLayoutTests
     }
 
     [STATestMethod]
-    public void FaceUsesADangoBrandIconAndOtherHomeStatesRestoreTheTextBrand()
+    public void EditorsUseTheirBrandIconsAndClosingRestoresTheTextBrand()
     {
         var home = new ProductHomeView { ReduceMotion = true };
         var size = new Size(960, 540);
@@ -172,8 +172,19 @@ public sealed class HomePresentationLayoutTests
         AssertNoOverlap(Bounds(home, "FaceBrandIcon"), Bounds(home, "ToolsNavigation"), "brand and home navigation");
         home.ShowEditor(HomeEditor.Wardrobe);
         Layout(home, size);
+        Assert.AreEqual(Visibility.Collapsed, brand.Visibility);
+        Assert.AreEqual(Visibility.Collapsed, icon.Visibility);
+        var accessoryIcon = Element<FrameworkElement>(home, "AccessoryBrandIcon");
+        Assert.AreEqual(Visibility.Visible, accessoryIcon.Visibility);
+        Assert.IsTrue(accessoryIcon.ActualWidth > 0 && accessoryIcon.ActualHeight > 0);
+        Assert.IsTrue(Descendants<Shape>(accessoryIcon).Any());
+        Assert.IsFalse(accessoryIcon.IsHitTestVisible);
+        AssertNoOverlap(Bounds(home, "AccessoryBrandIcon"), Bounds(home, "ToolsNavigation"), "wardrobe brand and home navigation");
+        home.CloseEditor();
+        Layout(home, size);
         Assert.AreEqual(Visibility.Visible, brand.Visibility);
         Assert.AreEqual(Visibility.Collapsed, icon.Visibility);
+        Assert.AreEqual(Visibility.Collapsed, accessoryIcon.Visibility);
     }
 
     [STATestMethod]

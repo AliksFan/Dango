@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using Dango.Core.Coordinates;
+using Dango.Desktop.Accessories;
 using Dango.Desktop.DesktopHost.Win32;
 using Dango.Desktop.Physics.Presentation;
 using Dango.Desktop.Rendering.Visuals;
@@ -135,7 +136,8 @@ internal sealed class DesktopPetDangoWindow : Window
             if (!ReferenceEquals(scene.LastAppliedFrame, frame)) { LastFrameRejection = "scene frame changed"; return false; }
             if (frame.Bodies.Count != 1 || frame.ConstraintsReleased) { LastFrameRejection = "invalid physical frame"; return false; }
             DangoHostFrameBinding.Apply(body, hat, frame, 0, new(0, runtime.NeutralBodyGroundOffset),
-                runtime.DisplayHatAppearance, runtime.DisplayHatSize, runtime.BodyPreviewFill, runtime.EyePreviewFill, runtime.AppearanceEntity);
+                runtime.DisplayHatAppearance, runtime.DisplayHatSize, runtime.BodyPreviewFill, runtime.EyePreviewFill,
+                runtime.AppearanceEntity, runtime);
             if (body.LastContourFailure != DangoContourFailure.None)
             { LastFrameRejection = $"contour rejected: {body.LastContourFailure}"; return false; }
             if (observe)
@@ -151,6 +153,7 @@ internal sealed class DesktopPetDangoWindow : Window
             canvas.Arrange(new(0, 0, Math.Max(1, Width), Math.Max(1, Height)));
             UpdateLayout();
             var paths = PaintedPaths(canvas).ToArray();
+            var accessories = PaintedAccessories(canvas).ToArray();
             var painted = Rect.Empty;
             foreach (var path in paths)
             {
@@ -162,6 +165,20 @@ internal sealed class DesktopPetDangoWindow : Window
             { LastFrameRejection = "painted path bounds unavailable"; return false; }
             scene.SetDesktopPetPaintedWorldBounds(frame, new(painted.X - 2, painted.Y - 2, painted.Width + 4, painted.Height + 4));
             if (scene.PetScreenBounds is not { } bounds) { LastFrameRejection = "pet screen bounds unavailable"; return false; }
+            // The scene's footprint also constrains body dragging. Keep that
+            // existing Path contract independent from the pictures, and expand
+            // only this display window. Bitmap capacity may contain transparent
+            // reserve space, so measure the current material mesh instead.
+            if (accessories.Length > 0)
+            {
+                var display = painted;
+                foreach (var accessory in accessories)
+                    display.Union(accessory.TransformToAncestor(canvas).TransformBounds(accessory.Frame!.Bounds));
+                var displayOffset = scene.PresentationOffset;
+                var first = scene.RoomToScene(new(display.X - 2 + displayOffset.X, display.Y - 2 + displayOffset.Y));
+                var last = scene.RoomToScene(new(display.Right + 2 + displayOffset.X, display.Bottom + 2 + displayOffset.Y));
+                bounds = new(first.X, first.Y, last.X - first.X, last.Y - first.Y);
+            }
             if (observe)
             {
                 var finished = Stopwatch.GetTimestamp();
@@ -207,7 +224,7 @@ internal sealed class DesktopPetDangoWindow : Window
                 timing = timing with { SecondLayoutMilliseconds = Stopwatch.GetElapsedTime(stage, finished).TotalMilliseconds };
                 stage = finished;
             }
-            UpdateNativeRegion(dpi, paths);
+            UpdateNativeRegion(dpi, paths, accessories);
             if (observe)
             {
                 var finished = Stopwatch.GetTimestamp();
@@ -256,7 +273,14 @@ internal sealed class DesktopPetDangoWindow : Window
             foreach (var child in PaintedPaths(VisualTreeHelper.GetChild(visual, i))) yield return child;
     }
 
-    private void UpdateNativeRegion(DpiScale dpi, IReadOnlyList<Path> paths)
+    private static IEnumerable<AccessoryMeshVisual> PaintedAccessories(DependencyObject visual)
+    {
+        if (visual is AccessoryMeshVisual { IsVisible: true, Frame: not null } accessory) yield return accessory;
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(visual); i++)
+            foreach (var child in PaintedAccessories(VisualTreeHelper.GetChild(visual, i))) yield return child;
+    }
+
+    private void UpdateNativeRegion(DpiScale dpi, IReadOnlyList<Path> paths, IReadOnlyList<AccessoryMeshVisual> accessories)
     {
         var polygons = new List<NativeMethods.NativePoint[]>();
         foreach (var path in paths)
@@ -283,6 +307,24 @@ internal sealed class DesktopPetDangoWindow : Window
                     };
                 }).ToArray());
             }
+        }
+        // Window regions clip painting as well as native input. Include the
+        // current picture bounds without adding them to scene.IsPetHit or the
+        // body pointer guard; the existing HTTRANSPARENT path remains in force.
+        // One conservative quad per picture avoids per-triangle GDI objects.
+        foreach (var accessory in accessories)
+        {
+            var bounds = accessory.Frame!.Bounds;
+            var transform = accessory.TransformToAncestor(this);
+            polygons.Add(new[] { bounds.TopLeft, bounds.TopRight, bounds.BottomRight, bounds.BottomLeft }.Select(point =>
+            {
+                var transformed = transform.Transform(point);
+                return new NativeMethods.NativePoint
+                {
+                    X = (int)Math.Round(transformed.X * dpi.DpiScaleX),
+                    Y = (int)Math.Round(transformed.Y * dpi.DpiScaleY),
+                };
+            }).ToArray());
         }
         if (!polygons.Any(polygon => polygon.Length >= 3))
             throw new InvalidOperationException("独立团子层没有可呈现的健康轮廓。");

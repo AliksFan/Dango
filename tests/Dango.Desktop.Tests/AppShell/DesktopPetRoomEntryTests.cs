@@ -15,6 +15,7 @@ public sealed class DesktopPetRoomEntryTests
     [DataRow("--porch-scene-review")]
     [DataRow("--local-room-review")]
     [DataRow("--face-review")]
+    [DataRow("--accessory-review")]
     public void DesktopPetReviewCannotShareAStartupWithAnotherReview(string other)
     {
         App.ValidateIsolatedReviewSelection(["--desktop-pet-room-review"]);

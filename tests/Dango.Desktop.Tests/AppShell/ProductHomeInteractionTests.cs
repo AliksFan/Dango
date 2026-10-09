@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -6,6 +7,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
+using Dango.Desktop.Accessories;
 using Dango.Desktop.Verification;
 
 namespace Dango.Desktop.Tests.AppShell;
@@ -20,6 +22,8 @@ public sealed class ProductHomeInteractionTests
     public void HomeKeepsNavigationFixedAndMirrorsFaceAndWardrobePanels(int width)
     {
         var home = new ProductHomeView { ReduceMotion = true };
+        var accessoryRoot = Path.Combine(TestRepository.Root, "artifacts", "home-interaction", "accessories", Guid.NewGuid().ToString("N"));
+        var accessorySession = new AccessorySettingsSession(accessoryRoot); home.BindAccessories(accessorySession);
         Layout(home, width);
         Assert.AreEqual(Visibility.Hidden, Element<UIElement>(home, "EditorPanel").Visibility);
         Assert.IsFalse(Element<UIElement>(home, "EditorPanel").IsEnabled);
@@ -68,7 +72,22 @@ public sealed class ProductHomeInteractionTests
         Assert.IsTrue(wardrobePanel.Right + 4 < wardrobePet.Left,
             "Wardrobe options must mirror the face composition.");
         Assert.AreEqual(petBefore.Top, wardrobePet.Top, .1);
-        Assert.IsFalse(Element<Button>(home, "CreateButton").IsEnabled);
+        var accessoryEditor = Element<StackPanel>(home, "WardrobeOptions").Children.OfType<AccessoryEditorPanel>().Single();
+        var accessoryButtons = Descendants<Button>(Element<ContentControl>(home, "AccessoryActionToolsSlot")).ToArray();
+        Assert.IsTrue(accessoryButtons.Single(button => AutomationProperties.GetName(button) == "创建新配饰").IsEnabled,
+            "Creating a new accessory must expose the real transparent PNG selection action.");
+        accessoryEditor.SetBodyAnchor(new Point(.25, .4));
+        var editedAccessoryId = accessoryEditor.SelectedItem!.Id;
+        Assert.IsTrue(accessorySession.IsDirty);
+        Assert.IsFalse(File.Exists(AccessorySettingsStore.GetManifestPath(accessoryRoot)), "Editing must only preview before applying.");
+        Descendants<Button>(Element<ContentControl>(home, "AccessorySaveActionsSlot"))
+            .Single(button => AutomationProperties.GetName(button) == "应用")
+            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.IsFalse(accessorySession.IsDirty);
+        var reloadedAccessories = new AccessorySettingsSession(accessoryRoot).SavedConfiguration.Items;
+        Assert.HasCount(3, reloadedAccessories, "Applying one edit must preserve all three existing built-in library entries.");
+        Assert.AreEqual(.25, reloadedAccessories.Single(item => item.Id == editedAccessoryId).BodyAnchorX);
+        Assert.AreEqual(.4, reloadedAccessories.Single(item => item.Id == editedAccessoryId).BodyAnchorY);
         SaveImage(home, width, "wardrobe");
         Click(home, "CloseEditorButton");
         Layout(home, width);
@@ -217,6 +236,72 @@ public sealed class ProductHomeInteractionTests
     }
 
     [STATestMethod]
+    public void WardrobeControlKeysDoNotNavigateAndEscapeCancelsWhileOtherHomeShortcutsRemain()
+    {
+        var root = Path.Combine(TestRepository.Root, "artifacts", "home-ui", "fictional-keyboard-" + Guid.NewGuid().ToString("N"));
+        var session = new AccessorySettingsSession(root);
+        Assert.IsTrue(session.TrySave());
+        var saved = session.SavedConfiguration;
+        var savedBytes = File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root));
+        var home = new ProductHomeView { ReduceMotion = true };
+        home.BindAccessories(session);
+        var window = new Window { Content = home, Width = 1024, Height = 640, Left = -10000, Top = -10000, ShowInTaskbar = false };
+        try
+        {
+            window.Show();
+            Pump(50);
+            Assert.IsTrue(RaiseKey(home, window, Key.D, Keyboard.PreviewKeyDownEvent).Handled);
+            Assert.AreEqual(HomeEditor.Face, home.SelectedEditor, "Closed home retains D as the face shortcut.");
+            Assert.IsTrue(RaiseKey(home, window, Key.A, Keyboard.PreviewKeyDownEvent).Handled);
+            Assert.AreEqual(HomeEditor.Wardrobe, home.SelectedEditor, "A outside wardrobe retains the wardrobe shortcut.");
+            var panel = Element<StackPanel>(home, "WardrobeOptions").Children.OfType<AccessoryEditorPanel>().Single();
+            panel.SetBodyAnchor(new Point(.34, .59));
+            var draft = session.DraftConfiguration;
+
+            foreach (var key in new[] { Key.A, Key.D, Key.W, Key.S, Key.Space })
+            {
+                RaiseKey(home, window, key, Keyboard.PreviewKeyDownEvent);
+                RaiseKey(home, window, key, Keyboard.PreviewKeyUpEvent);
+                Assert.IsTrue(home.IsEditing, key + " must remain within wardrobe control.");
+                Assert.AreEqual(HomeEditor.Wardrobe, home.SelectedEditor, key + " must not switch the accessory preview to face.");
+                Assert.IsFalse(home.IsInPorch, "W in the wardrobe must not enter the porch.");
+                Assert.AreEqual(draft, session.DraftConfiguration, "Gameplay key routing must not reset accessory parameters.");
+            }
+
+            Assert.IsTrue(panel.SelectSection(AccessoryEditorSection.Placement));
+            Pump(20);
+            var name = Descendants<TextBox>(panel).Single(input => AutomationProperties.GetName(input) == "配饰名称");
+            Assert.IsTrue(name.Focus(), "The editable field must own actual WPF focus.");
+            foreach (var key in new[] { Key.A, Key.D, Key.W, Key.S, Key.Space })
+            {
+                RaiseKey(home, window, key, Keyboard.PreviewKeyDownEvent);
+                RaiseKey(home, window, key, Keyboard.PreviewKeyUpEvent);
+                Assert.IsTrue(name.IsKeyboardFocused, "Editor input must preserve field focus rather than route into gameplay or navigation.");
+                Assert.IsTrue(home.IsEditing);
+                Assert.AreEqual(HomeEditor.Wardrobe, home.SelectedEditor);
+                Assert.IsFalse(home.IsInPorch);
+                Assert.AreEqual(draft, session.DraftConfiguration);
+            }
+
+            name.Text = "虚构未保存名称";
+            Assert.IsTrue(RaiseKey(home, window, Key.Escape, Keyboard.PreviewKeyDownEvent).Handled);
+            Assert.IsFalse(home.IsEditing);
+            Assert.AreEqual(saved, session.DraftConfiguration, "Esc must cancel all unsaved accessory parameters and buffered field text.");
+            CollectionAssert.AreEqual(savedBytes, File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root)));
+            Assert.IsTrue(Element<FrameworkElement>(home, "Stage").IsKeyboardFocused);
+            Assert.IsTrue(RaiseKey(home, window, Key.D, Keyboard.PreviewKeyDownEvent).Handled);
+            Assert.AreEqual(HomeEditor.Face, home.SelectedEditor, "Closing wardrobe must restore the home D shortcut.");
+            Assert.IsTrue(RaiseKey(home, window, Key.A, Keyboard.PreviewKeyDownEvent).Handled);
+            Assert.AreEqual(HomeEditor.Wardrobe, home.SelectedEditor);
+            Assert.IsTrue(panel.SelectSection(AccessoryEditorSection.Placement));
+            Assert.AreEqual(saved.Items.Single(item => item.Id == panel.SelectedItem!.Id).Name, name.Text,
+                "Reopening the editor must not resurrect canceled buffered text.");
+            Assert.AreEqual(saved, session.DraftConfiguration);
+        }
+        finally { window.Close(); }
+    }
+
+    [STATestMethod]
     public void EscapeInFocusedSettingsDiagnosticsDoesNotNavigateHome()
     {
         var home = new ProductHomeView { ReduceMotion = true };
@@ -283,7 +368,19 @@ public sealed class ProductHomeInteractionTests
 
     private static T Element<T>(FrameworkElement root, string name) where T : class =>
         root.FindName(name) as T ?? throw new AssertFailedException($"Missing {name}");
+    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        if (root is T match) yield return match;
+        foreach (var child in LogicalTreeHelper.GetChildren(root).OfType<DependencyObject>())
+            foreach (var nested in Descendants<T>(child)) yield return nested;
+    }
     private static void Click(FrameworkElement root, string name) => Element<Button>(root, name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+    private static KeyEventArgs RaiseKey(ProductHomeView home, Window window, Key key, RoutedEvent routedEvent)
+    {
+        var input = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(window)!, 0, key) { RoutedEvent = routedEvent };
+        home.RaiseEvent(input);
+        return input;
+    }
     private static Rect Bounds(FrameworkElement root, string name)
     {
         var element = Element<FrameworkElement>(root, name);
