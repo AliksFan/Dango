@@ -11,6 +11,17 @@ namespace Dango.Server.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropIndex(name: "ix_rooms_recovery_due", schema: "dango", table: "rooms");
+            migrationBuilder.AddColumn<string>(name: "template_id", schema: "dango", table: "rooms",
+                type: "character varying(32)", maxLength: 32, nullable: false, defaultValue: "ordinary-default");
+            migrationBuilder.AddColumn<int>(name: "template_version", schema: "dango", table: "rooms",
+                type: "integer", nullable: false, defaultValue: 1);
+            migrationBuilder.Sql("UPDATE dango.rooms SET template_id = 'desktop-pet-default' WHERE kind = 0;");
+            migrationBuilder.AddCheckConstraint(name: "ck_rooms_template", schema: "dango", table: "rooms",
+                sql: "template_version = 1 AND ((kind = 0 AND template_id = 'desktop-pet-default') OR (kind IN (1, 2) AND template_id = 'ordinary-default'))");
+            migrationBuilder.CreateIndex(name: "ix_rooms_recovery_due", schema: "dango", table: "rooms",
+                columns: new[] { "recover_until", "id" }, filter: "status IN (1, 2)");
+
             migrationBuilder.CreateTable(
                 name: "audit_logs",
                 schema: "dango",
@@ -85,6 +96,13 @@ namespace Dango.Server.Persistence.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropIndex(name: "ix_rooms_recovery_due", schema: "dango", table: "rooms");
+            migrationBuilder.DropCheckConstraint(name: "ck_rooms_template", schema: "dango", table: "rooms");
+            migrationBuilder.DropColumn(name: "template_id", schema: "dango", table: "rooms");
+            migrationBuilder.DropColumn(name: "template_version", schema: "dango", table: "rooms");
+            migrationBuilder.CreateIndex(name: "ix_rooms_recovery_due", schema: "dango", table: "rooms",
+                columns: new[] { "recover_until", "id" }, filter: "status = 1");
+
             migrationBuilder.DropTable(
                 name: "audit_logs",
                 schema: "dango");

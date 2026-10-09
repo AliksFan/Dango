@@ -30,6 +30,8 @@ public sealed class PersistentRoom
     public PersistentRoomStatus Status { get; set; }
     public string Name { get; set; } = string.Empty;
     public int Capacity { get; set; }
+    public string TemplateId { get; set; } = "ordinary-default";
+    public int TemplateVersion { get; set; } = 1;
     public long Version { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? DissolvedAt { get; set; }

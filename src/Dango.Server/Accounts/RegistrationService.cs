@@ -165,6 +165,8 @@ public sealed class RegistrationService(DangoDbContext db, UserManager<DangoUser
             Status = PersistentRoomStatus.Active,
             Name = "桌宠房间",
             Capacity = 2,
+            TemplateId = "desktop-pet-default",
+            TemplateVersion = 1,
             Version = 1,
             CreatedAt = now
         };
