@@ -23,6 +23,149 @@ namespace Dango.Server.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Dango.Server.Persistence.Entities.AccessoryAssetReference", b =>
+                {
+                    b.Property<Guid>("PetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("pet_id");
+
+                    b.Property<string>("AssetId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("asset_id");
+
+                    b.Property<bool>("IsCurrent")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_current");
+
+                    b.Property<DateTimeOffset>("LeaseUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lease_until");
+
+                    b.HasKey("PetId", "AssetId");
+
+                    b.HasIndex("PetId", "LeaseUntil")
+                        .HasDatabaseName("ix_accessory_references_pet_staging")
+                        .HasFilter("NOT is_current");
+
+                    b.HasIndex("AssetId", "IsCurrent", "LeaseUntil")
+                        .HasDatabaseName("ix_accessory_references_blob_retention");
+
+                    b.ToTable("accessory_asset_references", "dango");
+                });
+
+            modelBuilder.Entity("Dango.Server.Persistence.Entities.AccessoryBlob", b =>
+                {
+                    b.Property<string>("AssetId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("asset_id");
+
+                    b.Property<long>("ByteLength")
+                        .HasColumnType("bigint")
+                        .HasColumnName("byte_length");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("NormalizationVersion")
+                        .HasColumnType("integer")
+                        .HasColumnName("normalization_version");
+
+                    b.Property<int>("PixelHeight")
+                        .HasColumnType("integer")
+                        .HasColumnName("pixel_height");
+
+                    b.Property<int>("PixelWidth")
+                        .HasColumnType("integer")
+                        .HasColumnName("pixel_width");
+
+                    b.HasKey("AssetId");
+
+                    b.ToTable("accessory_blobs", "dango", t =>
+                        {
+                            t.HasCheckConstraint("ck_accessory_blob_hash", "asset_id ~ '^[0-9a-f]{64}$'");
+
+                            t.HasCheckConstraint("ck_accessory_blob_image", "pixel_width BETWEEN 1 AND 4096 AND pixel_height BETWEEN 1 AND 4096 AND pixel_width::bigint * pixel_height <= 16000000 AND byte_length BETWEEN 1 AND 33554432 AND normalization_version = 1");
+                        });
+                });
+
+            modelBuilder.Entity("Dango.Server.Persistence.Entities.AccessoryCommitReceipt", b =>
+                {
+                    b.Property<Guid>("PetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("pet_id");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("OutfitJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("outfit_json");
+
+                    b.Property<string>("RequestDigest")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("request_digest");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint")
+                        .HasColumnName("revision");
+
+                    b.HasKey("PetId", "IdempotencyKey");
+
+                    b.HasIndex("PetId", "CreatedAt")
+                        .HasDatabaseName("ix_accessory_receipts_pet_created");
+
+                    b.ToTable("accessory_commit_receipts", "dango", t =>
+                        {
+                            t.HasCheckConstraint("ck_accessory_receipt_key", "idempotency_key ~ '^[0-9a-f]{32}$' AND request_digest ~ '^[0-9a-f]{64}$'");
+
+                            t.HasCheckConstraint("ck_accessory_receipt_recipe", "COALESCE((jsonb_typeof(outfit_json) = 'object' AND outfit_json -> 'schemaVersion' = '1'::jsonb AND jsonb_typeof(outfit_json -> 'items') = 'array' AND jsonb_array_length(outfit_json -> 'items') <= 8 AND octet_length(outfit_json::text) <= 32768), FALSE)");
+
+                            t.HasCheckConstraint("ck_accessory_receipt_revision", "revision >= 1");
+                        });
+                });
+
+            modelBuilder.Entity("Dango.Server.Persistence.Entities.AccessoryCurrentOutfit", b =>
+                {
+                    b.Property<Guid>("PetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("pet_id");
+
+                    b.Property<string>("OutfitJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("outfit_json");
+
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("revision");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("PetId");
+
+                    b.ToTable("accessory_current_outfits", "dango", t =>
+                        {
+                            t.HasCheckConstraint("ck_accessory_outfit_recipe", "COALESCE((jsonb_typeof(outfit_json) = 'object' AND outfit_json -> 'schemaVersion' = '1'::jsonb AND jsonb_typeof(outfit_json -> 'items') = 'array' AND jsonb_array_length(outfit_json -> 'items') <= 8 AND octet_length(outfit_json::text) <= 32768), FALSE)");
+
+                            t.HasCheckConstraint("ck_accessory_outfit_revision", "revision >= 1");
+                        });
+                });
+
             modelBuilder.Entity("Dango.Server.Persistence.Entities.AccountPet", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1064,6 +1207,39 @@ namespace Dango.Server.Persistence.Migrations
                     b.HasKey("UserId", "LoginProvider", "Name");
 
                     b.ToTable("user_tokens", "dango");
+                });
+
+            modelBuilder.Entity("Dango.Server.Persistence.Entities.AccessoryAssetReference", b =>
+                {
+                    b.HasOne("Dango.Server.Persistence.Entities.AccessoryBlob", null)
+                        .WithMany()
+                        .HasForeignKey("AssetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Dango.Server.Persistence.Entities.AccountPet", null)
+                        .WithMany()
+                        .HasForeignKey("PetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dango.Server.Persistence.Entities.AccessoryCommitReceipt", b =>
+                {
+                    b.HasOne("Dango.Server.Persistence.Entities.AccountPet", null)
+                        .WithMany()
+                        .HasForeignKey("PetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Dango.Server.Persistence.Entities.AccessoryCurrentOutfit", b =>
+                {
+                    b.HasOne("Dango.Server.Persistence.Entities.AccountPet", null)
+                        .WithOne()
+                        .HasForeignKey("Dango.Server.Persistence.Entities.AccessoryCurrentOutfit", "PetId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Dango.Server.Persistence.Entities.AccountPet", b =>
