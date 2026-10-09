@@ -27,9 +27,12 @@ public sealed partial class DangoDbContext
             entity.HasIndex(lease => new { lease.PetId, lease.Id }).HasDatabaseName("ix_leases_pet");
             entity.HasIndex(lease => new { lease.ExpiresAt, lease.Id }).HasFilter("revoked_at IS NULL")
                 .HasDatabaseName("ix_leases_due");
-            entity.HasOne<AccountPet>().WithMany().HasForeignKey(lease => lease.PetId);
+            entity.HasAlternateKey(lease => new { lease.PetId, lease.Id });
+            entity.HasOne<AccountPet>().WithMany().HasForeignKey(lease => new { lease.PetId, lease.UserId })
+                .HasPrincipalKey(pet => new { pet.Id, pet.UserId });
             entity.HasOne<DangoUser>().WithMany().HasForeignKey(lease => lease.UserId);
-            entity.HasOne<AuthSession>().WithMany().HasForeignKey(lease => lease.SessionId);
+            entity.HasOne<AuthSession>().WithMany().HasForeignKey(lease => new { lease.SessionId, lease.UserId })
+                .HasPrincipalKey(session => new { session.Id, session.UserId });
             entity.HasOne<PersistentRoom>().WithMany().HasForeignKey(lease => lease.RoomId);
         });
         builder.Entity<PublicRoomCredential>(entity =>
@@ -37,6 +40,7 @@ public sealed partial class DangoDbContext
             entity.ToTable("public_room_credentials", table =>
             {
                 table.HasCheckConstraint("ck_public_code", "generation >= 1 AND code_digest ~ '^[A-F0-9]{64}$' AND length(protected_code) BETWEEN 1 AND 2048");
+                table.HasCheckConstraint("ck_public_code_epoch", "recovery_epoch <> '00000000-0000-0000-0000-000000000000'::uuid");
                 table.HasCheckConstraint("ck_public_code_lifetime", "expires_at > created_at AND expires_at <= created_at + INTERVAL '168 hours'");
             });
             entity.HasKey(code => code.Id);
@@ -54,6 +58,9 @@ public sealed partial class DangoDbContext
             entity.HasOne<PersistentRoom>().WithMany().HasForeignKey(ban => ban.RoomId);
             entity.HasOne<DangoUser>().WithMany().HasForeignKey(ban => ban.UserId);
         });
-        builder.Entity<PetRoomState>().HasOne<RoomDeviceLease>().WithMany().HasForeignKey(state => state.ControlLeaseId);
+        builder.Entity<PetRoomState>().HasOne<RoomDeviceLease>().WithMany().HasForeignKey(state => new { state.PetId, state.ControlLeaseId })
+            .HasPrincipalKey(lease => new { lease.PetId, lease.Id });
+        builder.Entity<PetRoomState>().ToTable("pet_room_states", table => table.HasCheckConstraint("ck_pet_room_control",
+            "control_lease_id IS NULL OR (room_id IS NOT NULL AND NOT is_sleeping)"));
     }
 }

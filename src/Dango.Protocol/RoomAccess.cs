@@ -22,7 +22,7 @@ public sealed record RoomLeaseView(Guid LeaseId, Guid InstanceId, string DeviceK
 public sealed record PersonalRoomSnapshot(int SchemaVersion, Guid UserId, Guid PetId, Guid? RoomId,
     string? RoomKind, long AssignmentVersion, long ControlGeneration, Guid? ControlLeaseId, bool IsSleeping,
     RoomLeaseView[] Leases, DateTimeOffset ServerTime);
-public sealed record RoomOccupantView(Guid PetId, long ConfigurationVersion, JsonElement Configuration,
+public sealed record RoomOccupantView(Guid PetId, Guid UserId, long ConfigurationVersion, JsonElement Configuration,
     double PositionX, double PositionY, bool IsSleeping, long AssignmentVersion);
 public sealed record SharedRoomSnapshot(int SchemaVersion, Guid RoomId, long RoomVersion, string Kind,
     string Name, int Capacity, string TemplateId, int TemplateVersion, RoomOccupantView[] Occupants,
