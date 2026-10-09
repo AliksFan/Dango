@@ -1,6 +1,6 @@
 # 官方圆球独立单人窗口实施计划
 
-日期：2026-10-09。依据已批准的[圆球设计](2026-10-09-official-round-ball-design.md)和“持续推进直到需要人工协助/验收”授权。本计划补充技术准入之后的执行顺序，不另行扩大产品范围。当前状态：等待[技术准入](2026-10-09-round-ball-admission-plan.md)全部通过；不能从本计划推定算法或窗口已通过。
+日期：2026-10-09。依据已批准的[圆球设计](2026-10-09-official-round-ball-design.md)和“持续推进直到需要人工协助/验收”授权。本计划补充技术准入之后的执行顺序，不另行扩大产品范围。当前状态：[隔离技术准入已通过](../verification/2026-10-09-round-ball-admission.md)，[ADR 0006](../adr/0006-native-round-ball-display-metric.md)已接受；[W0–W4 的合同、真实窗口和新候选十分钟观察已完成](../verification/2026-10-10-round-ball-window.md)，人工造型／手感尚未验收。
 
 ## 进入条件与合同
 

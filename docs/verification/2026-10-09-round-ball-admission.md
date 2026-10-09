@@ -1,6 +1,6 @@
 # 官方圆球隔离准入记录
 
-日期：2026-10-09。状态：隔离技术准入通过；正式可选 API、完整窗口及人工验收继续实施。
+日期：2026-10-09。状态：隔离技术准入通过；后续[正式可选 API、真实窗口与新候选十分钟观察已完成](2026-10-10-round-ball-window.md)，人工造型／手感待验收。
 
 范围依据[已批准设计](../planning/2026-10-09-official-round-ball-design.md)、[冻结准入计划](../planning/2026-10-09-round-ball-admission-plan.md)与[后续窗口计划](../planning/2026-10-09-round-ball-window-plan.md)。用户授权持续推进至需要人工协助／验收。通过本记录最终门禁后，[ADR 0006](../adr/0006-native-round-ball-display-metric.md)记录本批技术选择。
 
