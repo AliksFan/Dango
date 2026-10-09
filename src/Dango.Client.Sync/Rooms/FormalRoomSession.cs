@@ -16,6 +16,7 @@ public sealed class FormalRoomSession : IAsyncDisposable
     private readonly Func<IFormalRoomConnection> connectionFactory;
     private readonly TimeProvider clock;
     private readonly HashSet<Task> background = [];
+    private readonly HashSet<Task> cleanupTasks = [];
     private CancellationTokenSource lifetime = new();
     private Transport? transport;
     private PendingCommand? pending;
@@ -30,6 +31,7 @@ public sealed class FormalRoomSession : IAsyncDisposable
     private bool noticePending;
     private bool autoRecoveryAllowed = true;
     private bool requiresReconciliation;
+    private Task? disposeDrain;
 
     public FormalRoomSession(IRoomAccessClient client, Guid instanceId, TimeProvider? timeProvider = null,
         Func<IFormalRoomConnection>? connectionFactory = null)
@@ -58,7 +60,7 @@ public sealed class FormalRoomSession : IAsyncDisposable
         FormalRoomOperation.Enter, async (e, token) =>
         {
             if (roomId == Guid.Empty) throw Rejected("room_invalid");
-            var personal = await ReadPersonalAsync(e, token);
+            var personal = (await ReadPersonalAsync(e, token)).Snapshot;
             return new(FormalRoomOperation.Enter, roomId, new RoomEnterRequest(Guid.NewGuid(), current.InstanceId,
                 "desktop", personal.RoomId, personal.AssignmentVersion, code), null, null);
         }, ct);
@@ -69,8 +71,9 @@ public sealed class FormalRoomSession : IAsyncDisposable
     public Task EndCurrentLeaseAsync(CancellationToken ct = default) => NewMutationAsync(FormalRoomOperation.EndLease,
         async (e, token) =>
         {
-            var personal = await ReadPersonalAsync(e, token);
-            var lease = OwnLease(personal) ?? throw Rejected("room_reentry_required");
+            var observed = await ReadPersonalAsync(e, token);
+            var personal = observed.Snapshot;
+            var lease = OwnLease(personal, observed.StartedAt) ?? throw Rejected("room_reentry_required");
             return new(FormalRoomOperation.EndLease, personal.RoomId, null, null,
                 new RoomLeaseEndRequest(Guid.NewGuid(), lease.LeaseId, current.InstanceId));
         }, ct);
@@ -112,13 +115,31 @@ public sealed class FormalRoomSession : IAsyncDisposable
 
     public Task SuspendAsync(CancellationToken ct = default) => InvalidateAsync(false, false, ct);
     public Task ResetAsync(CancellationToken ct = default) => InvalidateAsync(true, false, ct);
-    public async ValueTask DisposeAsync() => await InvalidateAsync(true, true, CancellationToken.None);
+    public ValueTask DisposeAsync()
+    {
+        lock (sync)
+        {
+            if (disposeDrain is not null) return new(disposeDrain);
+            // Install the shared drain before cancellation/publication can reenter Dispose.
+            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            disposeDrain = completion.Task;
+            _ = CompleteDisposeAsync(InvalidateAsync(true, true, CancellationToken.None), completion);
+            return new(disposeDrain);
+        }
+    }
+
+    private static async Task CompleteDisposeAsync(Task cleanup, TaskCompletionSource completion)
+    {
+        try { await cleanup; completion.TrySetResult(); }
+        catch (Exception error) { completion.TrySetException(error); }
+    }
 
     private Task ControlMutationAsync(FormalRoomOperation action, CancellationToken ct) => NewMutationAsync(action,
         async (e, token) =>
         {
-            var personal = await ReadPersonalAsync(e, token);
-            var lease = OwnLease(personal) ?? throw Rejected("room_reentry_required");
+            var observed = await ReadPersonalAsync(e, token);
+            var personal = observed.Snapshot;
+            var lease = OwnLease(personal, observed.StartedAt) ?? throw Rejected("room_reentry_required");
             if (personal.RoomId is not { } room) throw Rejected("room_reentry_required");
             if (action == FormalRoomOperation.Leave && (!lease.Controls || personal.ControlLeaseId != lease.LeaseId))
                 throw Rejected("room_control_required");
@@ -197,8 +218,10 @@ public sealed class FormalRoomSession : IAsyncDisposable
 
     private async Task ReconcileAsync(long e, bool freshTransport, CancellationToken ct)
     {
-        var personal = await ReadPersonalAsync(e, ct);
-        if (personal.RoomId is null || OwnLease(personal) is null)
+        var observed = await ReadPersonalAsync(e, ct);
+        var personal = observed.Snapshot;
+        var observedAt = observed.StartedAt;
+        if (personal.RoomId is null || OwnLease(personal, observedAt) is null)
         {
             await DetachAsync(); Check(e, ct);
             lock (sync)
@@ -212,7 +235,8 @@ public sealed class FormalRoomSession : IAsyncDisposable
         }
         for (var attempt = 0; attempt < 2; attempt++)
         {
-            var lease = OwnLease(personal)!;
+            var lease = OwnLease(personal, observedAt);
+            if (lease is null) break;
             Transport? owner;
             lock (sync) owner = transport;
             if (freshTransport || owner is null || owner.Unusable || owner.LeaseId != lease.LeaseId || owner.RoomId != personal.RoomId)
@@ -234,20 +258,28 @@ public sealed class FormalRoomSession : IAsyncDisposable
             }
             var shared = await owner.Connection.SnapshotAsync(personal.RoomId!.Value, new(lease.LeaseId, current.InstanceId), ct);
             CheckTransport(e, owner, ct);
+            var finalStartedAt = clock.GetTimestamp();
             var final = await owner.Connection.PersonalAsync(ct); ValidatePersonal(final); CheckTransport(e, owner, ct);
-            if (!SameAuthority(personal, final) || OwnLease(final)?.LeaseId != lease.LeaseId
+            var finalLease = OwnLease(final, finalStartedAt);
+            if (!SameAuthority(personal, final) || finalLease?.LeaseId != lease.LeaseId
                 || shared.RoomId != final.RoomId || shared.Kind != final.RoomKind || !shared.Occupants.Any(p => p.PetId == client.PetId
                     && p.UserId == client.UserId && p.AssignmentVersion == final.AssignmentVersion))
             {
-                personal = final; freshTransport = true;
-                if (personal.RoomId is null || OwnLease(personal) is null) break;
+                personal = final; observedAt = finalStartedAt; freshTransport = true;
+                if (personal.RoomId is null || OwnLease(personal, observedAt) is null) break;
                 continue;
             }
             lock (sync)
             {
                 CheckTransport(e, owner, ct);
+                var remaining = LeaseRemaining(final, finalLease!, finalStartedAt);
+                if (remaining <= TimeSpan.Zero)
+                {
+                    personal = final; observedAt = finalStartedAt;
+                    break;
+                }
                 requiresReconciliation = false;
-                personalTimestamp = clock.GetTimestamp();
+                personalTimestamp = finalStartedAt;
                 var previous = current.PresentationToken;
                 var presentation = previous is not null && previous.Epoch == e && previous.TransportGeneration == owner.Generation
                     && previous.LeaseId == lease.LeaseId && previous.RoomId == shared.RoomId
@@ -255,40 +287,59 @@ public sealed class FormalRoomSession : IAsyncDisposable
                     && previous.RoomVersion == shared.RoomVersion ? previous : new FormalRoomPresentationToken(e, owner.Generation,
                         lease.LeaseId, shared.RoomId, final.AssignmentVersion, final.ControlGeneration, shared.RoomVersion);
                 var presented = ReferenceEquals(previous, presentation) && current.Presented;
-                PublishLocked(current with { Phase = presented ? FormalRoomSessionPhase.Presented : FormalRoomSessionPhase.AwaitingPresentation,
-                    Personal = final, Shared = shared, ServerAttached = true,
-                    Role = final.ControlLeaseId == lease.LeaseId && OwnLease(final)!.Controls ? FormalRoomRole.Control : FormalRoomRole.Observe,
-                    PresentationToken = presentation, Pending = PendingView(), FailureCode = null });
                 StartHeartbeatLocked(owner, e);
                 owner.DeadlineTimer?.Dispose();
                 var deadlineGeneration = ++owner.DeadlineGeneration;
+                remaining = LeaseRemaining(final, finalLease!, finalStartedAt);
+                if (remaining <= TimeSpan.Zero)
+                {
+                    personal = final; observedAt = finalStartedAt;
+                    break;
+                }
                 owner.DeadlineTimer = clock.CreateTimer(_ => OnLeaseDeadline(owner, e, deadlineGeneration), null,
-                    OwnLease(final)!.ExpiresAt - final.ServerTime, Timeout.InfiniteTimeSpan);
+                    remaining, Timeout.InfiniteTimeSpan);
+                if (LeaseRemaining(final, finalLease!, finalStartedAt) <= TimeSpan.Zero || owner.Unusable)
+                {
+                    personal = final; observedAt = finalStartedAt;
+                    break;
+                }
+                PublishLocked(current with { Phase = presented ? FormalRoomSessionPhase.Presented : FormalRoomSessionPhase.AwaitingPresentation,
+                    Personal = final, Shared = shared, ServerAttached = true,
+                    Role = final.ControlLeaseId == lease.LeaseId && finalLease!.Controls ? FormalRoomRole.Control : FormalRoomRole.Observe,
+                    PresentationToken = presentation, Pending = PendingView(), FailureCode = null });
             }
             return;
         }
         await DetachAsync(); Check(e, ct);
-        lock (sync) PublishLocked(current with { Personal = personal, Shared = null, ServerAttached = false,
-            Role = FormalRoomRole.None, PresentationToken = null, Pending = PendingView(),
-            Phase = OwnLease(personal) is null ? FormalRoomSessionPhase.ReentryRequired : FormalRoomSessionPhase.Conflict,
-            FailureCode = "room_assignment_changed" });
+        lock (sync)
+        {
+            personalTimestamp = observedAt;
+            var noLease = OwnLease(personal, observedAt) is null;
+            if (noLease) requiresReconciliation = false;
+            PublishLocked(current with { Personal = personal, Shared = null, ServerAttached = false,
+                Role = FormalRoomRole.None, PresentationToken = null, Pending = PendingView(),
+                Phase = noLease ? FormalRoomSessionPhase.ReentryRequired : FormalRoomSessionPhase.Conflict,
+                FailureCode = noLease ? "room_lease_expired" : "room_assignment_changed" });
+        }
     }
 
-    private async Task<PersonalRoomSnapshot> ReadPersonalAsync(long e, CancellationToken ct)
+    private async Task<ObservedPersonal> ReadPersonalAsync(long e, CancellationToken ct)
     {
+        var startedAt = clock.GetTimestamp();
         var personal = await client.PersonalAsync(ct); ValidatePersonal(personal); Check(e, ct);
         lock (sync)
         {
-            personalTimestamp = clock.GetTimestamp();
             var changed = current.Personal is not { } old || !SameAuthority(old, personal)
-                || OwnLease(old)?.LeaseId != OwnLease(personal)?.LeaseId;
+                || OwnLease(old)?.LeaseId != OwnLease(personal, startedAt)?.LeaseId
+                || current.ServerAttached && OwnLease(personal, startedAt) is null;
+            personalTimestamp = startedAt;
             PublishLocked(current with { Personal = personal, Pending = PendingView(),
                 Phase = changed ? FormalRoomSessionPhase.Reading : current.Phase,
                 ServerAttached = !changed && current.ServerAttached,
                 Role = changed ? FormalRoomRole.None : current.Role,
                 Shared = changed ? null : current.Shared, PresentationToken = changed ? null : current.PresentationToken });
         }
-        return personal;
+        return new(personal, startedAt);
     }
 
     private void ValidatePersonal(PersonalRoomSnapshot personal)
@@ -299,15 +350,19 @@ public sealed class FormalRoomSession : IAsyncDisposable
             throw new RoomAccessClientException(RoomAccessFailure.InvalidResponse, "remote_response_invalid");
     }
 
-    private RoomLeaseView? OwnLease(PersonalRoomSnapshot personal) => personal.RoomId is null ? null :
-        personal.Leases.SingleOrDefault(l => l.InstanceId == current.InstanceId && l.ExpiresAt > personal.ServerTime);
+    private RoomLeaseView? OwnLease(PersonalRoomSnapshot personal) => OwnLease(personal, personalTimestamp);
+    private RoomLeaseView? OwnLease(PersonalRoomSnapshot personal, long startedAt) => personal.RoomId is null ? null :
+        personal.Leases.SingleOrDefault(l => l.InstanceId == current.InstanceId && LeaseRemaining(personal, l, startedAt) > TimeSpan.Zero);
+    // ServerTime was sampled after request dispatch. Deduct the entire monotonic request
+    // duration, including transit, conservatively; receipt time would extend authority.
+    private TimeSpan LeaseRemaining(PersonalRoomSnapshot personal, RoomLeaseView lease, long startedAt) =>
+        lease.ExpiresAt - personal.ServerTime - clock.GetElapsedTime(startedAt);
     private static bool SameAuthority(PersonalRoomSnapshot a, PersonalRoomSnapshot b) => a.RoomId == b.RoomId
         && a.AssignmentVersion == b.AssignmentVersion && a.ControlGeneration == b.ControlGeneration && a.ControlLeaseId == b.ControlLeaseId;
 
     private bool ValidPresentationLocked(FormalRoomPresentationToken token) => !reset && !disposed && current.ServerAttached
         && ReferenceEquals(token, current.PresentationToken) && token.Epoch == epoch && transport?.Generation == token.TransportGeneration
-        && current.Personal is { } personal && OwnLease(personal) is { } lease && lease.LeaseId == token.LeaseId
-        && lease.ExpiresAt - personal.ServerTime > clock.GetElapsedTime(personalTimestamp);
+        && current.Personal is { } personal && OwnLease(personal) is { } lease && lease.LeaseId == token.LeaseId;
 
     private void StartHeartbeatLocked(Transport owner, long e)
     {
@@ -459,7 +514,12 @@ public sealed class FormalRoomSession : IAsyncDisposable
         }
         await DetachAsync();
         await operationGate.WaitAsync(ct); operationGate.Release();
-        await Task.WhenAll(jobs);
+        Task[] cleanups;
+        lock (sync) cleanups = cleanupTasks.ToArray();
+        // Preserve the pre-cancellation worker snapshot so a concurrent explicit Resume
+        // cannot make Suspend wait for its new heartbeat. Cleanup is registered atomically
+        // with detachment and collected again after the operation gate has drained.
+        await Task.WhenAll(jobs.Concat(cleanups));
         if (dispose) lifetime.Dispose();
     }
 
@@ -470,10 +530,18 @@ public sealed class FormalRoomSession : IAsyncDisposable
             var owner = transport;
             if (owner is null) return Task.CompletedTask;
             transport = null;
+            owner.Unusable = true;
             owner.Connection.Closed -= owner.Closed; owner.Connection.RoomChanged -= owner.Notice;
             owner.DeadlineTimer?.Dispose();
             owner.Lifetime.Cancel();
-            return CleanupAsync(owner);
+            if (current.ServerAttached) PublishLocked(current with { ServerAttached = false, Role = FormalRoomRole.None,
+                Shared = null, PresentationToken = null, Phase = current.Phase is FormalRoomSessionPhase.Presented
+                    or FormalRoomSessionPhase.AwaitingPresentation ? FormalRoomSessionPhase.Connecting : current.Phase });
+            var cleanup = CleanupAsync(owner);
+            cleanupTasks.Add(cleanup);
+            _ = cleanup.ContinueWith(completed => { lock (sync) cleanupTasks.Remove(completed); },
+                CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            return cleanup;
         }
     }
 
@@ -524,6 +592,7 @@ public sealed class FormalRoomSession : IAsyncDisposable
     private sealed record PendingCommand(FormalRoomOperation Action, Guid? RoomId, RoomEnterRequest? Enter,
         RoomControlRequest? Control, RoomLeaseEndRequest? End)
     { public Guid RequestId => Enter?.RequestId ?? Control?.RequestId ?? End!.RequestId; }
+    private sealed record ObservedPersonal(PersonalRoomSnapshot Snapshot, long StartedAt);
     private sealed class Transport(IFormalRoomConnection connection, long generation, Guid leaseId, Guid roomId,
         Action closed, Action<RoomChangeNotice> notice)
     {

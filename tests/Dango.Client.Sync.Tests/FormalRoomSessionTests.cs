@@ -400,6 +400,124 @@ public sealed class FormalRoomSessionTests
         Assert.AreEqual(0, client.Enters.Count); Assert.AreEqual(0, client.Controls.Count);
     }
 
+    [TestMethod]
+    public async Task FinalPersonalResponseCannotAttachOrConfirmWhenRttConsumedItsLeaseDeadline()
+    {
+        var client = new Receiver(); client.Assign();
+        client.ConfigureConnection = connection => connection.PersonalHook = () =>
+        {
+            var response = client.Personal with { ServerTime = client.Personal.ServerTime.AddSeconds(29) };
+            client.Clock.Milliseconds += 5000;
+            return response;
+        };
+        await using var session = client.Session();
+        await session.ResumeAsync();
+        Assert.IsFalse(session.Current.ServerAttached, "One server second cannot survive five seconds of response delay.");
+        Assert.AreEqual(FormalRoomRole.None, session.Current.Role);
+        Assert.IsNull(session.Current.PresentationToken);
+        Assert.IsFalse(session.Current.Presented);
+        Assert.IsTrue(client.Connections.All(connection => connection.Stopped));
+    }
+
+    [TestMethod]
+    public async Task DisposeAndRepeatedDisposeDrainCleanupAlreadyStartedBySuspend()
+    {
+        var client = new Receiver(); client.Assign();
+        var stopStarted = Signal(); var release = Signal();
+        client.ConfigureConnection = connection => connection.StopHook = async () =>
+        { stopStarted.TrySetResult(); await release.Task; };
+        var session = client.Session(); await session.ResumeAsync();
+        var suspend = session.SuspendAsync(); await stopStarted.Task;
+        var dispose = session.DisposeAsync().AsTask();
+        var repeated = session.DisposeAsync().AsTask();
+        var drained = !dispose.IsCompleted && !repeated.IsCompleted;
+        release.TrySetResult();
+        await Task.WhenAll(suspend, dispose, repeated);
+        Assert.IsTrue(drained, "All Dispose calls must join the already detached delayed transport cleanup.");
+        Assert.IsTrue(client.Connections.Single().Disposed);
+        Assert.AreEqual(FormalRoomSessionPhase.Disposed, session.Current.Phase);
+    }
+
+    [TestMethod]
+    public async Task InitialPersonalResponseWhoseRttConsumesDeadlineNeverStartsTransport()
+    {
+        var client = new Receiver(); client.Assign();
+        client.PersonalHook = () =>
+        {
+            client.Clock.Milliseconds += 5000;
+            return Task.FromResult(client.Personal with { ServerTime = client.Personal.ServerTime.AddSeconds(29) });
+        };
+        await using var session = client.Session(); await session.ResumeAsync();
+        Assert.AreEqual(FormalRoomSessionPhase.ReentryRequired, session.Current.Phase);
+        Assert.IsFalse(session.Current.ServerAttached);
+        Assert.AreEqual(0, client.Connections.Count);
+    }
+
+    [TestMethod]
+    public async Task DeadlineTimerAndTokenDeductFullFinalPersonalRtt()
+    {
+        var client = new Receiver(); client.Assign();
+        client.ConfigureConnection = connection =>
+        {
+            connection.SnapshotHook = () =>
+            { client.Clock.Milliseconds += 2000; return Task.FromResult(client.Shared()); };
+            connection.PersonalHook = () =>
+            {
+                client.Clock.Milliseconds += 5000;
+                return client.Personal with { ServerTime = client.Personal.ServerTime.AddSeconds(20) };
+            };
+        };
+        await using var session = client.Session(); await session.ResumeAsync();
+        var expiry = await client.Clock.TimerAsync(TimeSpan.FromSeconds(5));
+        Assert.AreEqual(7000L, client.Clock.Milliseconds);
+        var token = session.Current.PresentationToken!;
+        Assert.IsTrue(session.ConfirmPresentationReady(token));
+        client.Clock.Milliseconds = 11000;
+        Assert.IsTrue(session.ConfirmPresentationReady(token));
+        client.Clock.Milliseconds = 12000;
+        Assert.IsFalse(session.ConfirmPresentationReady(token), "Expiry is based on request dispatch, not response arrival.");
+        expiry.Fire();
+        Assert.IsFalse(session.Current.ServerAttached);
+    }
+
+    [TestMethod]
+    public async Task ExpiredFreshReadRevokesPublishedAuthorityBeforeSlowTransportCleanup()
+    {
+        var client = new Receiver(); client.Assign();
+        var stopStarted = Signal(); var release = Signal();
+        client.ConfigureConnection = connection => connection.StopHook = async () =>
+        { stopStarted.TrySetResult(); await release.Task; };
+        await using var session = client.Session(); await session.ResumeAsync();
+        client.PersonalHook = () =>
+        {
+            client.Clock.Milliseconds += 31000;
+            return Task.FromResult(client.Personal);
+        };
+        var refresh = session.RefreshAsync(); await stopStarted.Task;
+        var revoked = !session.Current.ServerAttached && session.Current.Role == FormalRoomRole.None;
+        release.TrySetResult(); await refresh;
+        Assert.IsTrue(revoked, "Consumed authority must be revoked before awaiting StopAsync.");
+        Assert.AreEqual(FormalRoomSessionPhase.ReentryRequired, session.Current.Phase);
+    }
+
+    [TestMethod]
+    public async Task ResetDrainsCleanupAlreadyDetachedBySuspend()
+    {
+        var client = new Receiver(); client.Assign();
+        var started = Signal(); var release = Signal();
+        client.ConfigureConnection = connection => connection.StopHook = async () =>
+        { started.TrySetResult(); await release.Task; };
+        await using var session = client.Session(); await session.ResumeAsync();
+        var suspend = session.SuspendAsync(); await started.Task;
+        var reset = session.ResetAsync();
+        var stillDraining = !reset.IsCompleted;
+        release.TrySetResult(); await Task.WhenAll(suspend, reset);
+        Assert.IsTrue(stillDraining);
+        Assert.IsTrue(client.Connections.Single().Disposed);
+        Assert.AreEqual(FormalRoomSessionPhase.Reset, session.Current.Phase);
+        Assert.AreEqual(Guid.Empty, session.Current.UserId);
+    }
+
     private static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
     private static RoomAccessClientException Unavailable() => new(RoomAccessFailure.Unavailable, "service_unavailable");
     private static Task NextState(FormalRoomSession session, Func<FormalRoomSessionState, bool> predicate)
@@ -477,8 +595,9 @@ public sealed class FormalRoomSessionTests
         public Func<Task<SharedRoomSnapshot>>? SnapshotHook { get; set; }
         public Action? AttachHook { get; set; }
         public Func<PersonalRoomSnapshot>? PersonalHook { get; set; }
+        public Func<Task>? StopHook { get; set; }
         public Task StartAsync(CancellationToken ct) { Calls.Add("start"); return Task.CompletedTask; }
-        public Task StopAsync(CancellationToken ct) { Stopped = true; return Task.CompletedTask; }
+        public Task StopAsync(CancellationToken ct) { Stopped = true; return StopHook?.Invoke() ?? Task.CompletedTask; }
         public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }
         public Task<RoomAccessResult> AttachAsync(RoomLeaseRequest request, CancellationToken ct)
         { Calls.Add("attach"); Assert.AreEqual(client.InstanceId, request.InstanceId); Assert.AreEqual(client.Personal.Leases.Single().LeaseId, request.LeaseId); AttachHook?.Invoke(); return Task.FromResult(client.Receipt("attached")); }
