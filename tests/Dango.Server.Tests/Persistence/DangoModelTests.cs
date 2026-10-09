@@ -65,9 +65,10 @@ public sealed class DangoModelTests
     {
         using var context = new DangoDbContextFactory().CreateDbContext([]);
         var migrations = context.GetService<IMigrationsAssembly>();
-        Assert.HasCount(2, migrations.Migrations);
+        Assert.HasCount(3, migrations.Migrations);
         Assert.Contains("20261008074701_InitialAccountRoomFoundation", migrations.Migrations.Keys.ToArray());
         Assert.IsTrue(migrations.Migrations.Keys.Any(key => key.EndsWith("_AccountLifecycle", StringComparison.Ordinal)));
+        Assert.IsTrue(migrations.Migrations.Keys.Any(key => key.EndsWith("_RoomManagement", StringComparison.Ordinal)));
         Assert.IsNotNull(migrations.ModelSnapshot);
         Assert.IsFalse(context.Database.HasPendingModelChanges());
         var sql = context.GetService<IMigrator>().GenerateScript(options: MigrationsSqlGenerationOptions.Idempotent);
@@ -76,6 +77,26 @@ public sealed class DangoModelTests
         Assert.Contains("ck_pet_room_presence", sql);
         Assert.Contains("BEGIN", sql);
         Assert.DoesNotContain("fictional_secret_marker", sql);
+    }
+
+    [TestMethod]
+    public void RoomReceiptsAndOutboxAreUniqueDurableAndRemainAfterRoomDeletion()
+    {
+        using var context = new DangoDbContextFactory().CreateDbContext([]);
+        foreach (var type in new[] { typeof(RoomOperationAudit), typeof(RoomDomainEvent) })
+            Assert.IsFalse(context.Model.FindEntityType(type)!.GetForeignKeys().Any(), "Deletion must retain stable audit/event identifiers.");
+        var audit = context.Model.FindEntityType(typeof(RoomOperationAudit))!;
+        var request = audit.GetIndexes().Single(index => index.GetDatabaseName() == "ux_room_audit_request");
+        Assert.IsTrue(request.IsUnique);
+        CollectionAssert.AreEqual(new[] { "ActorUserId", "RequestId" }, request.Properties.Select(property => property.Name).ToArray());
+        Assert.AreEqual("request_id IS NOT NULL", request.GetFilter());
+        var outbox = context.Model.FindEntityType(typeof(RoomDomainEvent))!;
+        Assert.IsTrue(outbox.GetIndexes().Single(index => index.GetDatabaseName() == "ux_room_outbox_version").IsUnique);
+        Assert.AreEqual("published_at IS NULL", outbox.GetIndexes().Single(index => index.GetDatabaseName() == "ix_room_outbox_pending").GetFilter());
+        var sql = context.Database.GenerateCreateScript();
+        Assert.Contains("request_hash IS NOT NULL", sql);
+        Assert.Contains("ck_room_audit_request", sql);
+        Assert.Contains("ck_room_outbox_event", sql);
     }
 
     private static IIndex AssertUnique<TEntity>(IModel model, string name, string property)
