@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using Dango.Server.Accounts;
+using Dango.Server.Accessories;
 using Dango.Server.Configuration;
 using Dango.Server.Email;
 using Dango.Server.Persistence;
@@ -35,7 +36,7 @@ public static class FormalHost
     {
         if (environment.RecoveryEpoch == Guid.Empty) throw new InvalidOperationException("recovery_epoch_required");
         if (!FormalServerOptions.TryCreate(options.DatabaseName, options.ConnectionString, options.KeyDirectory,
-            options.Endpoint.AbsoluteUri, FormalDeploymentPaths.ProtectedRoot(), out _, out var configurationError))
+            options.Endpoint.AbsoluteUri, FormalDeploymentPaths.ProtectedRoot(), out _, out var configurationError, options.AccessoryBlobDirectory))
             throw new InvalidOperationException(configurationError);
         FormalKeyDirectory.Protect(options.KeyDirectory);
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = [] });
@@ -82,6 +83,10 @@ public static class FormalHost
         builder.Services.AddScoped<CredentialService>();
         builder.Services.AddSingleton<IPetConfigurationCheckpoint, PetConfigurationCheckpoint>();
         builder.Services.AddScoped<PetConfigurationService>();
+        builder.Services.AddSingleton<AccessoryStorage>();
+        builder.Services.AddSingleton<AccessoryUploadGate>();
+        builder.Services.AddSingleton<IAccessoryCheckpoint, AccessoryCheckpoint>();
+        builder.Services.AddScoped<AccessoryAccountService>();
         builder.Services.AddSingleton<IRoomManagementCheckpoint, RoomManagementCheckpoint>();
         builder.Services.AddScoped<RoomManagementService>();
         builder.Services.AddScoped<RoomExpiryService>();
@@ -200,6 +205,7 @@ public static class FormalHost
                 ? Results.Json(new { code = "database_migration_required" }, statusCode: 503)
                 : Results.Ok(new { status = "ready" }));
         AccountEndpoints.Map(app);
+        AccessoryEndpoints.Map(app);
         RoomManagementEndpoints.Map(app);
         RoomAccessEndpoints.Map(app);
         // Explicitly no prototype /room Hub or pipe admission exists on this host.
