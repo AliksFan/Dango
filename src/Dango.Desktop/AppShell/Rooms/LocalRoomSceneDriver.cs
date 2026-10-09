@@ -50,6 +50,9 @@ internal sealed class LocalRoomSceneDriver : IDisposable
         $"SafeBounds={(view?.DesktopPetPresentationEnabled == true ? view.DesktopPetSafeWorldBounds : activeSurface)}; " +
         $"NativeBody={runtime.LastPhysicsFrame?.Bodies.FirstOrDefault()}; Cancel={lastPointerCancellation}";
     internal void ResetEntryPosition() => resumeX = LocalRoomSceneView.WorldWidth / 2;
+    internal void RestoreEntryPosition(double? centerX) => resumeX = centerX ?? double.NaN;
+    internal double? CaptureStableCenterX() => OwnsRuntime && readySent && !IsPointerActive && runtime.LastError is null &&
+        runtime.CurrentSelectedCenter is { } center && double.IsFinite(center.X) ? center.X : null;
     internal LocalRoomSceneDriver(DesktopSceneSession session, StackedDangoSceneRuntime runtime,
         IHostFrameSource? frameSource = null, Func<long>? timestamp = null, long frequency = 0)
     {
@@ -79,6 +82,11 @@ internal sealed class LocalRoomSceneDriver : IDisposable
         {
             session.AttachSurface(activeSurface, Environment.TickCount64);
             var bounds = session.Controller!.Snapshot.Dango.VisualBounds;
+            // Saved coordinates belong to this room. A changed desktop surface gets a safe central entry.
+            var left = target.DesktopPetPresentationEnabled ? activeSurface.X : LocalRoomSceneView.SideBoundaryInset;
+            var right = target.DesktopPetPresentationEnabled ? activeSurface.Right : activeSurface.Right - LocalRoomSceneView.SideBoundaryInset;
+            if (!double.IsFinite(resumeX) || resumeX < left + bounds.Width / 2 || resumeX > right - bounds.Width / 2)
+                resumeX = (left + right) / 2;
             session.Controller.MoveTo(new(resumeX - bounds.Width / 2, activeSurface.Bottom - bounds.Height));
             runtime.SetViewport(activeSurface);
             alignmentPending = true;

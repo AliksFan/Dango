@@ -9,6 +9,7 @@ using Dango.Server.Configuration;
 using Dango.Server.Email;
 using Dango.Server.Persistence;
 using Dango.Server.Persistence.Entities;
+using Dango.Server.Pets;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -75,6 +76,8 @@ public static class FormalHost
         builder.Services.AddScoped<RegistrationService>();
         builder.Services.AddScoped<SessionService>();
         builder.Services.AddScoped<CredentialService>();
+        builder.Services.AddSingleton<IPetConfigurationCheckpoint, PetConfigurationCheckpoint>();
+        builder.Services.AddScoped<PetConfigurationService>();
         builder.Services.AddAntiforgery(csrf =>
         {
             csrf.HeaderName = "X-CSRF-TOKEN";

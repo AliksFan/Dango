@@ -133,6 +133,18 @@ public sealed class PetConfigurationJournalTests
         new(new Uri("https://formal.example.invalid/"), new(exists, raw, PetConfigurationChoiceTests.Configuration()),
             new PetConfigurationSnapshot(Guid.NewGuid(), Guid.NewGuid(), 7, PetConfigurationChoiceTests.Configuration("#000000")), DateTimeOffset.UtcNow, choice);
 
+    [TestMethod]
+    [DataRow("local_configuration_changed")]
+    [DataRow("local_configuration_unavailable")]
+    public async Task DesktopControlledFailureCodesRemainReadableWithoutPublishingArbitraryErrors(string code)
+    {
+        var journal = new PetConfigurationFileJournal(NewDirectory());
+        var id = await journal.SaveOriginalsAsync(Originals(true, [], PetConfigurationChoice.Cloud), default);
+        await journal.WriteReceiptAsync(id, new(PetConfigurationChoice.Cloud, PetChoiceOutcome.Failed,
+            DateTimeOffset.UtcNow, null, code), default);
+        Assert.AreEqual(code, (await journal.LoadReceiptAsync(id))!.FailureCode);
+    }
+
     private static async Task FaultAsync(string code, Func<Task> action)
     {
         var error = await Assert.ThrowsExactlyAsync<PetConfigurationChoiceException>(action);

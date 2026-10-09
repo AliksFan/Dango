@@ -172,6 +172,107 @@ public sealed class PetConfigurationChoiceTests
     }
 
     [TestMethod]
+    [DataRow("local_configuration_changed")]
+    [DataRow("local_configuration_unavailable")]
+    [DataRow("local_configuration_invalid")]
+    [DataRow("local_unsaved_changes")]
+    [DataRow("raw_conflict")]
+    [DataRow("io")]
+    [DataRow("denied")]
+    public async Task LostCommittedResponseThenLocalFailureKeepsUnknownAndStopsFurtherUpdates(string failure)
+    {
+        var setup = Setup();
+        var review = await setup.Coordinator.BeginAsync();
+        setup.Remote.Update = (_, configuration) =>
+        {
+            setup.Remote.Current = setup.Remote.Current with { ConfigurationVersion = 2, Configuration = configuration };
+            if (failure == "raw_conflict")
+                setup.Local.Current = Local(configuration, "externally changed raw bytes");
+            else
+                setup.Local.CaptureFailure = failure switch
+                {
+                    "io" => new IOException("Controlled local failure."),
+                    "denied" => new UnauthorizedAccessException("Controlled local failure."),
+                    _ => new PetConfigurationChoiceException(failure)
+                };
+            throw new PetConfigurationHttpException(PetHttpFailure.Unavailable, "cloud_outcome_unknown");
+        };
+
+        var result = await setup.Coordinator.ChooseAsync(review, PetConfigurationChoice.Local);
+
+        Assert.AreEqual(2L, setup.Remote.Current.ConfigurationVersion, "The first request committed before its response was lost.");
+        Assert.AreEqual(PetChoiceOutcome.OutcomeUnknown, result.Outcome);
+        Assert.AreEqual("cloud_outcome_unknown", result.FailureCode);
+        Assert.IsNull(result.ObservedCloud);
+        Assert.AreEqual(1, setup.Remote.ExpectedVersions.Count, "A changed or unreadable local original must block another PATCH.");
+        Assert.AreEqual(0, setup.Local.Applies);
+        Assert.IsTrue(review.Originals.Local.SameOriginal(setup.Journal.Archives.Single()));
+        Assert.IsTrue(result.ReceiptSaved);
+        Assert.AreEqual(PetChoiceOutcome.OutcomeUnknown, setup.Journal.Receipt!.Outcome);
+        Assert.AreEqual("cloud_outcome_unknown", setup.Journal.Receipt.FailureCode);
+    }
+
+    [TestMethod]
+    [DataRow(PetHttpFailure.Authentication, "authentication_required")]
+    [DataRow(PetHttpFailure.Rejected, "remote_request_rejected")]
+    public async Task DefiniteRejectionOnlyMeansFailedBeforeAnyUncertainUpdate(PetHttpFailure failure, string code)
+    {
+        foreach (var responseLost in new[] { false, true })
+        {
+            var setup = Setup();
+            var review = await setup.Coordinator.BeginAsync();
+            setup.Remote.Update = (_, configuration) =>
+            {
+                if (responseLost && setup.Remote.ExpectedVersions.Count == 1)
+                {
+                    setup.Remote.Current = setup.Remote.Current with { ConfigurationVersion = 2, Configuration = configuration };
+                    throw new PetConfigurationHttpException(PetHttpFailure.Unavailable, "cloud_outcome_unknown");
+                }
+                throw new PetConfigurationHttpException(failure, code);
+            };
+
+            var result = await setup.Coordinator.ChooseAsync(review, PetConfigurationChoice.Local);
+
+            var expectedOutcome = responseLost ? PetChoiceOutcome.OutcomeUnknown : PetChoiceOutcome.Failed;
+            var expectedCode = responseLost ? "cloud_outcome_unknown" : code;
+            Assert.AreEqual(expectedOutcome, result.Outcome);
+            Assert.AreEqual(expectedCode, result.FailureCode);
+            Assert.AreEqual(expectedOutcome, setup.Journal.Receipt!.Outcome);
+            Assert.AreEqual(expectedCode, setup.Journal.Receipt.FailureCode);
+            Assert.AreEqual(responseLost ? 2 : 1, setup.Remote.ExpectedVersions.Count);
+            Assert.AreEqual(responseLost ? 2L : 1L, setup.Remote.Current.ConfigurationVersion);
+        }
+    }
+
+    [TestMethod]
+    [DataRow(PetHttpFailure.Unavailable, "cloud_outcome_unknown")]
+    [DataRow(PetHttpFailure.Authentication, "authentication_required")]
+    [DataRow(PetHttpFailure.InvalidResponse, "remote_response_invalid")]
+    public async Task LostCommittedResponseThenConflictWithUnreadableCloudKeepsUnknown(PetHttpFailure failure, string code)
+    {
+        var setup = Setup();
+        var review = await setup.Coordinator.BeginAsync();
+        setup.Remote.Update = (_, configuration) =>
+        {
+            if (setup.Remote.ExpectedVersions.Count == 1)
+            {
+                setup.Remote.Current = setup.Remote.Current with { ConfigurationVersion = 2, Configuration = configuration };
+                throw new PetConfigurationHttpException(PetHttpFailure.Unavailable, "cloud_outcome_unknown");
+            }
+            setup.Remote.BeforeRead = () => throw new PetConfigurationHttpException(failure, code);
+            throw new PetConfigurationHttpException(PetHttpFailure.Conflict, "pet_configuration_conflict");
+        };
+
+        var result = await setup.Coordinator.ChooseAsync(review, PetConfigurationChoice.Local);
+
+        Assert.AreEqual(PetChoiceOutcome.OutcomeUnknown, result.Outcome);
+        Assert.AreEqual("cloud_outcome_unknown", result.FailureCode);
+        Assert.AreEqual(PetChoiceOutcome.OutcomeUnknown, setup.Journal.Receipt!.Outcome);
+        Assert.IsNull(setup.Journal.Receipt.ObservedCloudVersion);
+        CollectionAssert.AreEqual(new long[] { 1, 1 }, setup.Remote.ExpectedVersions);
+    }
+
+    [TestMethod]
     public async Task FailedResponsesHaveBoundedRetriesAndRecreatedCoordinatorDoesNotAutoPatch()
     {
         var setup = Setup();
@@ -238,11 +339,13 @@ public sealed class PetConfigurationChoiceTests
     {
         public LocalPetConfigurationSnapshot Current { get; set; } = current;
         public bool Dirty { get; set; }
+        public Exception? CaptureFailure { get; set; }
         public int Applies { get; private set; }
         public Task<LocalPetConfigurationSnapshot> CaptureAsync(CancellationToken ct)
         {
             events.Add("capture");
             if (Dirty) throw new PetConfigurationChoiceException("local_unsaved_changes");
+            if (CaptureFailure is not null) throw CaptureFailure;
             return Task.FromResult(Current);
         }
         public Task ApplyAsync(LocalPetConfigurationSnapshot expected, JsonElement configuration, CancellationToken ct)

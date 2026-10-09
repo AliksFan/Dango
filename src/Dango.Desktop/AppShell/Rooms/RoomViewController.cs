@@ -1,4 +1,5 @@
 using Dango.Core.Coordinates;
+using Dango.Desktop.AppShell.Persistence;
 
 namespace Dango.Desktop.AppShell.Rooms;
 
@@ -51,6 +52,7 @@ internal sealed class RoomViewController
     private double cameraTarget;
     private double cameraVelocityY;
     private double cameraTargetY;
+    private LocalRoomCameraSaveData? pendingSaveRestore;
 
     internal RoomViewController(double worldWidth = 2160, double worldHeight = 360, double standardScale = 1.4)
     {
@@ -75,6 +77,36 @@ internal sealed class RoomViewController
     internal RoomViewPreset Preset { get; private set; } = RoomViewPreset.Standard;
     internal double ZoomPercent => Scale / StandardScale * 100;
     internal RoomProjection Projection { get; private set; }
+
+    internal LocalRoomCameraSaveData CaptureSaveData() => new(
+        CameraMode switch { RoomCameraMode.Follow => "follow", RoomCameraMode.EdgeFollow => "edgeFollow", _ => "manual" },
+        Preset switch { RoomViewPreset.Standard => "standard", RoomViewPreset.Near => "near", RoomViewPreset.Whole => "whole", _ => "custom" },
+        Math.Min(requestedPercent, 130), CameraMode == RoomCameraMode.Manual ? CameraX : 0, CameraMode == RoomCameraMode.Manual ? CameraY : 0);
+
+    internal void RestoreSaveData(LocalRoomCameraSaveData saved)
+    {
+        CameraMode = saved.Mode switch
+        {
+            "follow" => RoomCameraMode.Follow,
+            "edgeFollow" => RoomCameraMode.EdgeFollow,
+            "manual" => RoomCameraMode.Manual,
+            _ => throw new ArgumentOutOfRangeException(nameof(saved))
+        };
+        Preset = saved.Preset switch
+        {
+            "standard" => RoomViewPreset.Standard,
+            "near" => RoomViewPreset.Near,
+            "whole" => RoomViewPreset.Whole,
+            "custom" => RoomViewPreset.Custom,
+            _ => throw new ArgumentOutOfRangeException(nameof(saved))
+        };
+        RequirePositive(saved.RequestedZoomPercent, nameof(saved));
+        RequireFinite(saved.ManualX, nameof(saved)); RequireFinite(saved.ManualY, nameof(saved));
+        requestedPercent = saved.RequestedZoomPercent;
+        pendingSaveRestore = saved;
+        Recalculate();
+        ResetMotion();
+    }
 
     // Other hosts retain their accepted legacy camera unless explicitly opted in.
     internal void EnableWindowCamera()
@@ -200,6 +232,17 @@ internal sealed class RoomViewController
         if (windowCameraEnabled)
         {
             UpdateWindowCamera(firstPet, elapsedMs, reduceMotion, advanceVertical, bodyWorldBottom);
+            if (pendingSaveRestore is { } saved)
+            {
+                // First layout and the first healthy focus establish clamps before restoring the manual anchor.
+                if (CameraMode == RoomCameraMode.Manual)
+                {
+                    CameraX = WholeWorldVisible ? 0 : Math.Clamp(saved.ManualX, 0, WorldWidth - width / Scale);
+                    CameraY = ClampCameraY(saved.ManualY);
+                }
+                pendingSaveRestore = null;
+                ResetMotion();
+            }
             ApplyProjection();
             return Projection;
         }

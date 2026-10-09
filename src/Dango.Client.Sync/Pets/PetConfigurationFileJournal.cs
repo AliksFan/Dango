@@ -19,7 +19,7 @@ public sealed class PetConfigurationFileJournal : IPetConfigurationJournal
     private static readonly HashSet<string> ReceiptFailureCodes = new(StringComparer.Ordinal)
     {
         "pet_configuration_conflict", "pet_binding_changed", "local_unsaved_changes", "local_configuration_invalid",
-        "local_configuration_conflict", "local_configuration_write_failed", "local_storage_failed",
+        "local_configuration_conflict", "local_configuration_write_failed", "local_configuration_changed", "local_configuration_unavailable", "local_storage_failed",
         "authentication_required", "remote_request_rejected", "remote_response_invalid", "cloud_outcome_unknown",
         "expected_version_invalid", "configuration_choice_invalid", "server_origin_invalid"
     };

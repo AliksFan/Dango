@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using System.Text.Json;
 using Dango.Server.Accounts;
+using Dango.Protocol;
+using Dango.Server.Pets;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 
@@ -62,6 +64,10 @@ public static class AccountEndpoints
             return Results.Ok(new { status = "signed_out" });
         }).RequireAuthorization();
         api.MapGet("/me", (HttpContext ctx) => Results.Ok(new { userId = FormalHost.UserId(ctx) })).RequireAuthorization();
+        api.MapGet("/me/pet", async (HttpContext ctx, PetConfigurationService service, CancellationToken ct) =>
+            Results.Ok(await service.GetAsync(FormalHost.UserId(ctx), FormalHost.SessionId(ctx), ct))).RequireAuthorization();
+        api.MapPatch("/me/pet/configuration", async (PetConfigurationUpdate update, HttpContext ctx, PetConfigurationService service, CancellationToken ct) =>
+            Results.Ok(await service.UpdateAsync(FormalHost.UserId(ctx), FormalHost.SessionId(ctx), update, ct))).RequireAuthorization();
         api.MapGet("/me/sessions", async (HttpContext ctx, SessionService service, CancellationToken ct) =>
             Results.Ok(await service.ListAsync(FormalHost.UserId(ctx), ct))).RequireAuthorization();
         api.MapDelete("/me/sessions/{id:guid}", async (Guid id, HttpContext ctx, SessionService service, CancellationToken ct) =>

@@ -73,6 +73,12 @@ internal sealed class FormalTestFixture : IAsyncDisposable
     {
         Assert.IsTrue(started);
         cookies = new CookieContainer();
+        return new HttpClient(CreatePinnedHandler(cookies)) { BaseAddress = Endpoint, Timeout = TimeSpan.FromSeconds(20) };
+    }
+
+    internal HttpClientHandler CreatePinnedHandler(CookieContainer cookies)
+    {
+        Assert.IsTrue(started);
         var handler = new HttpClientHandler
         {
             CookieContainer = cookies,
@@ -80,7 +86,7 @@ internal sealed class FormalTestFixture : IAsyncDisposable
             ServerCertificateCustomValidationCallback = (_, supplied, _, _) => supplied is not null
                 && CryptographicOperations.FixedTimeEquals(supplied.RawData, certificate.RawData)
         };
-        return new HttpClient(handler) { BaseAddress = Endpoint, Timeout = TimeSpan.FromSeconds(20) };
+        return handler;
     }
 
     public async Task<T> InScopeAsync<T>(Func<IServiceProvider, Task<T>> work)

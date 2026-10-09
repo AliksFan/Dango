@@ -128,33 +128,41 @@ public sealed class PetConfigurationChoiceCoordinator(IRemotePetConfigurationCli
 
     private async Task<PetConfigurationChoiceResult> UpdateAsync(Guid id, PetConfigurationOriginals originals, CancellationToken ct)
     {
-        for (var attempt = 0; attempt < 2; attempt++)
+        var outcomeUncertain = false;
+        try
         {
-            // The local file may change during archive/network I/O. Never upload a stale selection.
-            if (!originals.Local.SameOriginal(await local.CaptureAsync(ct)))
-                throw new PetConfigurationChoiceException("local_configuration_conflict");
-            try
+            for (var attempt = 0; attempt < 2; attempt++)
             {
-                var updated = Validate(await remote.UpdateAsync(originals.Cloud.ConfigurationVersion, originals.Local.NormalizedConfiguration, ct));
-                if (updated.ConfigurationVersion != originals.Cloud.ConfigurationVersion + 1
-                    || !AppearanceContract.Equivalent(updated.Configuration, originals.Local.NormalizedConfiguration))
-                    return new(id, PetChoiceOutcome.OutcomeUnknown, null, "remote_response_invalid");
-                return new(id, PetChoiceOutcome.CloudUpdated, updated);
+                // The local file may change during archive/network I/O. Never upload a stale selection.
+                if (!originals.Local.SameOriginal(await local.CaptureAsync(ct)))
+                    throw new PetConfigurationChoiceException("local_configuration_conflict");
+                try
+                {
+                    var updated = Validate(await remote.UpdateAsync(originals.Cloud.ConfigurationVersion, originals.Local.NormalizedConfiguration, ct));
+                    if (updated.ConfigurationVersion != originals.Cloud.ConfigurationVersion + 1
+                        || !AppearanceContract.Equivalent(updated.Configuration, originals.Local.NormalizedConfiguration))
+                        return new(id, PetChoiceOutcome.OutcomeUnknown, null, "remote_response_invalid");
+                    return new(id, PetChoiceOutcome.CloudUpdated, updated);
+                }
+                catch (PetConfigurationHttpException fault) when (fault.Failure == PetHttpFailure.Conflict)
+                {
+                    var observed = Validate(await remote.ReadAsync(ct));
+                    return AppearanceContract.Equivalent(observed.Configuration, originals.Local.NormalizedConfiguration)
+                        ? new(id, PetChoiceOutcome.TargetSatisfied, observed)
+                        : new(id, PetChoiceOutcome.Conflict, observed, "pet_configuration_conflict");
+                }
+                catch (PetConfigurationHttpException fault) when (fault.Failure == PetHttpFailure.Unavailable)
+                {
+                    outcomeUncertain = true;
+                    if (attempt == 1) return new(id, PetChoiceOutcome.OutcomeUnknown, null, "cloud_outcome_unknown");
+                }
+                catch (PetConfigurationChoiceException fault) when (fault.Code is "remote_response_invalid" or "pet_binding_changed")
+                { return new(id, PetChoiceOutcome.OutcomeUnknown, null, fault.Code); }
             }
-            catch (PetConfigurationHttpException fault) when (fault.Failure == PetHttpFailure.Conflict)
-            {
-                var observed = Validate(await remote.ReadAsync(ct));
-                return AppearanceContract.Equivalent(observed.Configuration, originals.Local.NormalizedConfiguration)
-                    ? new(id, PetChoiceOutcome.TargetSatisfied, observed)
-                    : new(id, PetChoiceOutcome.Conflict, observed, "pet_configuration_conflict");
-            }
-            catch (PetConfigurationHttpException fault) when (fault.Failure == PetHttpFailure.Unavailable)
-            {
-                if (attempt == 1) return new(id, PetChoiceOutcome.OutcomeUnknown, null, "cloud_outcome_unknown");
-            }
-            catch (PetConfigurationChoiceException fault) when (fault.Code is "remote_response_invalid" or "pet_binding_changed")
-            { return new(id, PetChoiceOutcome.OutcomeUnknown, null, fault.Code); }
         }
+        // Later local/read/rejection failures cannot prove that an earlier unacknowledged PATCH did not commit.
+        catch (Exception error) when (outcomeUncertain && (error is PetConfigurationChoiceException or IOException or UnauthorizedAccessException))
+        { return new(id, PetChoiceOutcome.OutcomeUnknown, null, "cloud_outcome_unknown"); }
         throw new InvalidOperationException("The bounded update attempt budget was exhausted.");
     }
 

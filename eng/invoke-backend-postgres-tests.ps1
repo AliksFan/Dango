@@ -5,6 +5,8 @@ param(
     [switch]$Initialize,
     [switch]$CreateDatabase,
     [switch]$B1,
+    [switch]$B2,
+    [string]$TestFilter,
     [switch]$ExecuteApprovedPlan
 )
 
@@ -14,6 +16,7 @@ Set-StrictMode -Version Latest
 # This tool is limited to a fictional, explicitly approved cluster. B1 requires separate authorization.
 if (-not $IsWindows) { throw 'backend_test_windows_required' }
 if ($RunName -notmatch '^run[a-z0-9]{1,40}$') { throw 'backend_test_run_name_invalid' }
+if ($B2 -and ($B1 -or $Initialize -or $CreateDatabase)) { throw 'backend_b2_existing_target_only' }
 $taskRepoDirectory = Split-Path -Parent $PSScriptRoot
 $taskStateBase = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Dango\BackendDevelopment'
 $taskStateDirectory = [IO.Path]::GetFullPath((Join-Path $taskStateBase $RunName))
@@ -31,7 +34,7 @@ for ($taskAncestor = [IO.DirectoryInfo]::new($taskDataDirectory); $null -ne $tas
     if ($taskAncestor.Exists -and ($taskAncestor.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'backend_test_reparse_target_rejected' }
 }
 if (-not $ExecuteApprovedPlan) {
-    [pscustomobject]@{ RunName=$RunName; DataDirectory=$taskDataDirectory; Database=$taskDatabaseName; Initialize=[bool]$Initialize; CreateDatabase=[bool]$CreateDatabase; B1=[bool]$B1; Writes='explicit forward migration and fictional tests; no reset, deletion or restore' }
+    [pscustomobject]@{ RunName=$RunName; DataDirectory=$taskDataDirectory; Database=$taskDatabaseName; Initialize=[bool]$Initialize; CreateDatabase=[bool]$CreateDatabase; B1=[bool]$B1; B2=[bool]$B2; Writes=$(if ($B2) { 'fictional tests only; existing schema; no migration, reset, deletion or restore' } else { 'explicit forward migration and fictional tests; no reset, deletion or restore' }) }
     return
 }
 
@@ -120,28 +123,33 @@ try {
     $taskConnection = "Host=127.0.0.1;Port=$taskPort;Database=$taskDatabaseName;Username=$taskOwnerName;Password=$taskPassword;Include Error Detail=false"
     $taskResultsDirectory = Join-Path 'artifacts/backend-foundation/postgres-tests' ([DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss-fffffff'))
     $taskTestEnvironment = @{ DANGO_BACKEND_TEST_CONNECTION=$taskConnection; DANGO_BACKEND_TEST_DATA_DIRECTORY=$taskDataDirectory }
-    if ($B1) {
+    if ($B1 -or $B2) {
         $taskB1StateFile = Join-Path $taskStateDirectory 'b1test-state.json'
         if (Test-Path -LiteralPath $taskB1StateFile) {
             $taskB1State = Get-Content -LiteralPath $taskB1StateFile -Raw | ConvertFrom-Json
             $taskB1Epoch = [Guid]::Parse($taskB1State.RecoveryEpoch)
         } else {
+            if ($B2) { throw 'backend_b2_existing_epoch_required' }
             $taskB1Epoch = [Guid]::NewGuid()
             [IO.File]::WriteAllText($taskB1StateFile, (@{ RecoveryEpoch=$taskB1Epoch.ToString('D'); Version=1 } | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
         }
         if ($taskB1Epoch -eq [Guid]::Empty) { throw 'backend_b1_epoch_invalid' }
         $taskB1KeyDirectory = Join-Path $taskStateDirectory 'b1tests-keys'
+        if ($B2 -and -not (Test-Path -LiteralPath $taskB1KeyDirectory -PathType Container)) { throw 'backend_b2_existing_keys_required' }
         $taskTestEnvironment.DANGO_BACKEND_B1_TEST_APPROVED = '1'
         $taskTestEnvironment.DANGO_BACKEND_B1_RECOVERY_EPOCH = $taskB1Epoch.ToString('D')
         $taskTestEnvironment.DANGO_BACKEND_B1_KEY_DIRECTORY = $taskB1KeyDirectory
-        # Migration occurs explicitly before tests, whose fixtures never alter the schema.
-        [void](Invoke-TaskProcess 'dotnet' @('src/Dango.Server/bin/Release/net10.0/Dango.Server.dll', '--formal-migrate') @{
-            DANGO_DATABASE=$taskDatabaseName; DANGO_CONNECTION_STRING=$taskConnection; DANGO_KEYS_DIRECTORY=$taskB1KeyDirectory
-            DANGO_ENDPOINT=('https://127.0.0.1:' + $taskState.Port); DANGO_RECOVERY_EPOCH=$taskB1Epoch.ToString('D')
-            DANGO_EXPECTED_DATA_DIRECTORY=$taskDataDirectory
-        })
+        # B2 uses existing tables only; fixture validation rejects any pending migration.
+        if ($B1) {
+            [void](Invoke-TaskProcess 'dotnet' @('src/Dango.Server/bin/Release/net10.0/Dango.Server.dll', '--formal-migrate') @{
+                DANGO_DATABASE=$taskDatabaseName; DANGO_CONNECTION_STRING=$taskConnection; DANGO_KEYS_DIRECTORY=$taskB1KeyDirectory
+                DANGO_ENDPOINT=('https://127.0.0.1:' + $taskState.Port); DANGO_RECOVERY_EPOCH=$taskB1Epoch.ToString('D')
+                DANGO_EXPECTED_DATA_DIRECTORY=$taskDataDirectory
+            })
+        }
     }
-    [void](Invoke-TaskProcess 'dotnet' @('test', 'tests/Dango.Server.Tests/Dango.Server.Tests.csproj', '-c', 'Release', '--no-build', '--no-restore', '--filter', 'TestCategory=PostgresIntegration', '--logger', 'trx;LogFileName=backend-postgres.trx', '--results-directory', $taskResultsDirectory) $taskTestEnvironment)
+    $taskTestFilter = if ($TestFilter) { $TestFilter } elseif ($B2) { 'TestCategory=PostgresIntegration&FullyQualifiedName!~PostgresFoundationTests' } else { 'TestCategory=PostgresIntegration' }
+    [void](Invoke-TaskProcess 'dotnet' @('test', 'tests/Dango.Server.Tests/Dango.Server.Tests.csproj', '-c', 'Release', '--no-build', '--no-restore', '--filter', $taskTestFilter, '--logger', 'trx;LogFileName=backend-postgres.trx', '--results-directory', $taskResultsDirectory) $taskTestEnvironment)
 } finally {
     if ($taskStartAttempted) {
         $taskPidFile = Join-Path $taskDataDirectory 'postmaster.pid'
