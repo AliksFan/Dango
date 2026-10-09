@@ -35,6 +35,7 @@ internal static class RoomExpiryTestSupport
         Guid? id = null) => fixture.InScopeAsync(async services =>
         {
             var db = services.GetRequiredService<DangoDbContext>();
+            await using var transaction = await db.Database.BeginTransactionAsync();
             var roomId = id ?? Guid.NewGuid();
             db.Rooms.Add(new()
             {
@@ -53,6 +54,7 @@ internal static class RoomExpiryTestSupport
             RoomPersistenceOperations.Append(db, roomId, 4, status == PersistentRoomStatus.Active ? "created" : "dissolved",
                 deadline.AddHours(-168), owner.UserId, Guid.NewGuid(), new string('A', 64));
             await db.SaveChangesAsync();
+            await transaction.CommitAsync();
             return roomId;
         });
 
