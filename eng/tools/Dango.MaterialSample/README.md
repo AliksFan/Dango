@@ -84,7 +84,27 @@
 
 实际结果文件为 `idle-before.json`、`idle-native-baseline.json`、`idle-native-area-reaction.json`、`idle-native-no-local-balance.json`、`idle-native-cached-range.json` 和 `idle-render-*-v2.json`，均在忽略目录 `artifacts/round-material/`。Release 构建及差异检查通过；managed、native 诊断和绘制测量均验证了拒绝覆写既有报告，原报告 hash 不变。所有诊断进程已结束，没有端口或持久数据操作，当前及正式 DLL hash 不变。此次没有修复长期漂移，也没有关闭物理阶段。
 
-下一项建议是独立守恒材料候选，详见[候选方案](../../../docs/planning/2026-10-09-round-material-stability-candidate.md)。该方案尚未实施；继续保留现有扁形、近圆、松手恢复、甩动及长期稳定门槛，不能以冻结身体或增加落地塑形力补偿失败。
+用户批准下一步后，先实施[候选方案](../../../docs/planning/2026-10-09-round-material-stability-candidate.md)第 1 项独立算法夹具，见下节。新力尚未接入物理候选；继续保留现有扁形、近圆、松手恢复、甩动及长期稳定门槛，不能以冻结身体或增加落地塑形力补偿失败。
+
+## 独立材料算法夹具
+
+`dango_material_forces.h/.c` 仅由新增 `dango_material_force_tests` 可执行目标编译；没有接入 bridge、正式 DLL 或已通过的小样 DLL。它计算 double 精度的候选材料能量与负梯度，当前只提供数学证据。
+
+- 面积压缩：`E_A = 0.5 × s / (A0 × g0) × max(A0-A,0)^2`，`g0 = r × sin(2π/n)`；`A` 是 CCW 多边形面积，`r` 为固定自然半径。梯度使用 `.5 × (y_next-y_prev, x_prev-x_next)`，不给 core 追加补偿力。`s` 的单位为力，能量单位为力乘长度；自然正多边形的梯度幅值用 `g0` 归一化，在压缩正多边形半径 `R` 下节点力为旧压力的 `R/r` 倍，并不精确复刻原算法。
+- 弯曲：`E_B = 0.5 × k × Σ(t_next-t_i)^2`，`t_i = atan2(cross(e,f),dot(e,f))` 是有符号转角，使用原始相邻转角差。`k` 为能量系数，尚未映射到小样的原局部角度力强度。力包含角度对三节点位置的全部梯度。
+- 每个材料项的整组力按同一比例限幅。限幅后验证合力／力矩闭合，不声称仍是原能量梯度，也不要求含阻尼系统总机械能恒定。
+- 输入必须为简单 CCW 轮廓，允许温和凹角；节点数 3～64。短边小于等于包围盒对角线的 `1e-10`，面积小于等于该尺度平方的 `1e-12`、反向转角距 `±π` 小于等于 `1e-10` 弧度，以及自交／自触均明确拒绝。反向角 cut 只由弯曲项检查。非法、非有限或数值表示范围失败返回错误码、能量为 NaN、有效非别名输出力清零；调用方不得将其当作零力成功。全部输入／输出存储（含标量）须互不重叠。限幅接口允许 1～64 个力，失败时保留原组并返回 NaN 比例。
+
+判据在实现前写入候选计划：合力／力矩相对门槛 `1e-11` 加 double 舍入底限；梯度每分量误差不超过 `1e-8 + 3e-7 × max(|解析值|, |数值差分|)`。Release `/W4 /WX` 构建零警告、零错误；正常套件退出 0。实际覆盖：
+
+- 12 种非均匀／不对称／温和凹形轮廓（大小 80／100／120%，原位置及平移旋转版本），分别检查面积和弯曲，共 24 组主要夹具。独立公式核对能量，再检查负梯度差分及合力／力矩。最大记录归一化合力为 `7.64279199e-17`，力矩为 `4.21918762e-17`；最大梯度绝对差为 `1.7510331e-8`，逐分量通过上述合成门槛。
+- 平移／旋转及自然尺度协变；3／8／16／64 节点正多边形；未压缩与面积激活边界；零刚度；非法参数、空指针、直接别名、非有限、短边、零面积、反向绕序、自交、自触、反向角 cut；极值面积系数及真实面积下溢均拒绝，失败输出满足约定。
+- 整组限幅的零／启用／未触限模式，共同尺度、节点力上限及闭合全部通过；一般 1／2／3／16／64 个力组和错误后原组不变均通过。能量梯度只验证未限幅力。
+- 四个负例单独实测退出 1，正常套件也确认拒绝。旧面积／角度负例直接编译并调用未改动 bridge 的实际静态函数，截获施力而不步进世界；旧面积合力为 `2.1038613`（相对总施力 `0.0641478739`），旧角度合力为 0、节点均值处力矩为 `0.0157821182`（相对施力乘轮廓尺度 `0.00510727556`），拒绝量远大于 float 舍入噪声。逐点独立限幅和反向梯度也被拒绝。
+
+首轮测试误把只属于弯曲的反向角 cut 拒绝条件用于面积项，因此失败；修正为该简单 CCW 轮廓面积成功／弯曲失败，并新增真正的非相邻自触负例，没有改动门槛。自审还补充了非空输出时的独立非法节点数检查，避免空指针错误掩盖缺失的节点数校验。首轮失败记录为 `material-forces-step1-first-run.log`；最终正常结果为 `material-forces-step1-final-v2.log`；四个真实失败模式为 `material-forces-step1-negative-{area,bending,point-cap,sign}.log`，均在忽略的 `artifacts/round-material/`，保存时拒绝覆写。独立只读审查通过。
+
+此项完成算法夹具验证，未运行新材料的实际世界轨迹、WPF 绘制、甩动或人工验收。旧长期稳定门禁仍失败，两份受保护 DLL hash 保持上文值；已认可小样外形和操作没有切换。没有端口、持久数据操作或残留测试进程。下一项先单独替换面积力，记录完整默认静置轨迹，再决定弯曲项的真实试验；夹具通过不证明漂移已修复。
 
 ## 运行
 
@@ -102,6 +122,19 @@ dotnet artifacts/round-material/idle-diagnostic-app/Dango.MaterialSample.dll <id
 省略 `-NativeModulePath` 时启动脚本使用已构建的 `native-drag-final` 隔离 DLL。`--verify` 和 `--verify-drag` 写完整结果，任一必过项失败则退出 1；`--probe-drag` 仅复现默认候选 `ground-swing`，不代替完整矩阵。`--snapshot` 渲染真实落地帧，并且绘制失败不能生成成功快照。
 
 原生诊断按上述固定源码在新隔离构建目录构建 target `dango_material_idle_diagnostics`。执行 `dango_material_idle_diagnostics.exe <new-report.json> baseline` 跑原版／候选；`area-reaction`、`no-local-balance`、`cached-range` 分别只跑对应单变量候选。这些模式是明确诊断变体，不是材料预设或生产功能。诊断报告路径必须是新文件，不能用返回 0 冒充全部门槛通过。
+
+独立材料夹具使用同一固定源码，在新目录配置 CMake 后只构建 target `dango_material_force_tests`，不构建或替换 DLL。此次隔离目录为 `artifacts/round-material/native-material-forces-step1`：
+
+```powershell
+cmake --build artifacts/round-material/native-material-forces-step1 --config Release --target dango_material_force_tests
+artifacts/round-material/native-material-forces-step1/Release/dango_material_force_tests.exe
+artifacts/round-material/native-material-forces-step1/Release/dango_material_force_tests.exe --negative-area
+artifacts/round-material/native-material-forces-step1/Release/dango_material_force_tests.exe --negative-bending
+artifacts/round-material/native-material-forces-step1/Release/dango_material_force_tests.exe --negative-point-cap
+artifacts/round-material/native-material-forces-step1/Release/dango_material_force_tests.exe --negative-sign
+```
+
+正常命令必过项失败则退出 1；四个负例命令在错误实现被真实门禁拒绝时退出 1，若未被拒绝反而退出 0。不可把负例的退出 1 当成新算法失败；正常套件会将负例未被拒绝视为失败。
 
 `--calibrate` 执行有限频率／面积扫描；`--calibrate-stability`、`--calibrate-forces`、`--calibrate-damping` 分别探索频率、局部平滑和阻尼的稳定性。探索命令退出 0 仅表示报告成功生成；每行明确记录是否通过、已检查帧数，出现不匹配或漂移即停止该候选。不可把探索命令退出码称作门禁通过。
 
