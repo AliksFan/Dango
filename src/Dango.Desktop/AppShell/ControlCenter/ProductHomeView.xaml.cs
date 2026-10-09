@@ -61,11 +61,12 @@ public partial class ProductHomeView : UserControl
         AppearanceColorPicker = ShowAppearanceColorPicker;
         InitializeComponent();
         InitializeAccessories();
+        AccountContent.Requested += OnUnboundAccountAction;
         InitializePorchNavigation();
         RefreshAppearanceControls();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
-        IsVisibleChanged += (_, _) => { if (!IsVisible) CancelAppearancePreview(); RefreshLiveSceneOwnership(); };
+        IsVisibleChanged += (_, _) => { if (!IsVisible) { CancelAppearancePreview(); CloseAccountPanel(); } RefreshLiveSceneOwnership(); };
         IsKeyboardFocusWithinChanged += (_, e) =>
         {
             if (e.NewValue is false) ClearLiveDirectionalInput();
@@ -170,6 +171,7 @@ public partial class ProductHomeView : UserControl
 
     public void RestoreKeyboardFocus()
     {
+        if (IsAccountPanelOpen) { AccountContent.MoveFocus(new(FocusNavigationDirection.First)); return; }
         if (IsSettingsOpen) Keyboard.Focus(BackFromSettingsButton);
         else Keyboard.Focus(Stage);
     }
@@ -329,6 +331,12 @@ public partial class ProductHomeView : UserControl
     }
     private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        if (IsAccountPanelOpen)
+        {
+            ClearLiveDirectionalInput();
+            if (e.Key == Key.Escape) { CloseAccountPanel(); e.Handled = true; }
+            return;
+        }
         if (IsAccessoryPreview && IsKeyboardFocusWithin && Keyboard.Modifiers == ModifierKeys.None && e.Key == Key.Escape)
         {
             if (!e.IsRepeat) CloseEditor();
@@ -383,6 +391,7 @@ public partial class ProductHomeView : UserControl
 
     private void OnPreviewKeyUp(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        if (IsAccountPanelOpen) { ClearLiveDirectionalInput(); return; }
         if (IsAccessoryPreview)
         {
             e.Handled = SetLiveDirectionalKey(e.Key, false, false);
@@ -431,12 +440,13 @@ public partial class ProductHomeView : UserControl
         RefreshLiveSceneOwnership();
         Dispatcher.BeginInvoke(() =>
         {
-            if (IsLoaded && IsVisible && !IsSettingsOpen && !IsInPorch) Stage.Focus();
+            if (IsLoaded && IsVisible && !IsSettingsOpen && !IsInPorch && !IsAccountPanelOpen) Stage.Focus();
         }, System.Windows.Threading.DispatcherPriority.Input);
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        CloseAccountPanel();
         CancelAppearancePreview();
         SystemParameters.StaticPropertyChanged -= OnSystemPreferenceChanged;
         DetachLiveFocusSafety();
@@ -472,6 +482,7 @@ public partial class ProductHomeView : UserControl
         Resources["HomeSoft"] = contrast ? Background : Brush("#F3EFE8");
         Resources["HomeAccent"] = contrast ? System.Windows.SystemColors.HighlightBrush : Brush("#885E3E");
         Resources["HomeSelected"] = contrast ? System.Windows.SystemColors.HighlightBrush : Brush("#EFE3D4");
+        Resources["HomeScrim"] = contrast ? Background : Brush("#52443D34");
         PorchScene.InvalidateVisual();
         UpdateLauncherSelection();
         RefreshAppearanceControls();
@@ -744,7 +755,7 @@ public partial class ProductHomeView : UserControl
         TopNavigation.IsHitTestVisible = !IsInPorch;
         HomeFooter.IsHitTestVisible = !IsInPorch;
         Launchers.IsEnabled = !IsInPorch && !IsEditing;
-        TopNavigation.IsEnabled = HomeFooter.IsEnabled = !IsInPorch;
+        TopNavigation.IsEnabled = HomeFooter.IsEnabled = !IsInPorch && !IsAccountPanelOpen;
         EditorPanel.IsEnabled = EditorPanel.IsHitTestVisible = IsEditing;
         FaceEditorTools.IsEnabled = FaceEditorTools.IsHitTestVisible = faceEditing;
         AccessoryEditorTools.IsEnabled = AccessoryEditorTools.IsHitTestVisible = accessoryEditing;

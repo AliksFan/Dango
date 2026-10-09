@@ -9,6 +9,9 @@
 > 2026-10-08 DIY 配饰第三轮反馈：`codex/accessory-diy` 候选已加入右侧创建／复制／双重确认删除图标、四列已佩戴／未佩戴分区、双击／右键佩戴与层内拖动排序，增强材料端点并修复超尺寸导入闪退。W 不跳，仅 Space 真实低跳，纵向镜头固定；退出恢复普通跳跃。Release／静态门禁、最终功能 277/277、物理 52/52、隔离性能 4/4 通过，新窗口已打开且原数据保留；初始测试红灯和性能波动如实保留，见[第三轮验证](verification/2026-10-08-accessory-ui-v3.md)。人工验收尚未完成；未合并 main、推送、安装、部署或替换正式 DLL。
 
 > 2026-10-07 DIY 配饰：用户批准[设计](planning/2026-10-07-accessory-diy-design.md)和 A0–A4 [实施范围](planning/2026-10-07-accessory-diy-plan.md)，并明确“通过，开始实施”。独立分支 `codex/accessory-diy` 已实现完整 Windows 本地导入／编辑／多件佩戴／形变／保存重载和现有宿主接线；图像柔软度独立于连接弹性和旋转，配饰不参与碰撞。专项自动／实时路径和真实进程重启通过，隔离验收窗口已打开；整体回归差异和 DPI 未验证矩阵见[实施验证](verification/2026-10-07-accessory-diy-implementation.md)，人工验收尚未完成。配饰间挂接仅为后续候选；本次未授权合并 main、推送、安装或部署。
+> 2026-10-09 B5A Windows 账号候选：用户已选择居中浮层，按[增量计划](planning/2026-10-09-backend-b5-account-execution.md)实现邮箱账号、注册恢复、受控 Cookie／CSRF、Windows 凭据边界及显式本机／账号配置选择。Client 静态 134／134、Desktop 受影响去重 102 项通过，Release 零警告／错误；宽窄离屏布局检查通过。用户另行批准[精确数据计划](planning/2026-10-09-backend-b5a-local-data-plan.md)后，首轮正式客户端→HTTPS→PostgreSQL 5／5 通过，见[B5A 记录](verification/2026-10-09-email-backend-b5a.md)。本次临时实例／宿主已退出，数据、密钥及恢复代际保留，没有迁移、SMTP、WinCred、main 合并、推送、安装或部署。系统凭据实写、Windows 人工、房间 HTTP／Hub／租约及完整 B5 未验收。
+
+> 2026-10-09 邮箱后端首期：按[设计](planning/2026-10-08-email-backend-design-proposal.md)与[实施计划](planning/2026-10-08-email-backend-implementation-plan.md)推进 B0–B5，五项质量要求已加入 AGENTS.md。B0–B2 已实现候选，B3 房间管理已通过 105 项真实集成门禁；B4 正式准入／租约／Hub／通知候选已实现，用户按[精确计划](planning/2026-10-09-backend-b4-local-data-plan.md)授权后已应用两个前向迁移，修复实际时间精度与锁冲突问题，最终真实 B1–B4 PostgreSQL／HTTPS／SignalR LongPolling 回归 168／168、Server 无数据库 186／186 通过。证据见[B0](verification/2026-10-08-email-backend-foundation.md)、[B1](verification/2026-10-08-email-backend-b1.md)、[B2](verification/2026-10-09-email-backend-b2.md)、[B3](verification/2026-10-09-email-backend-b3.md)及[B4](verification/2026-10-09-email-backend-b4.md)。B2／B4 客户端人工、B5 界面、真实发信、备份还原、正式 WebSocket／长期 worker 及完整 Phase 3／M7 未验收；合并、推送与部署另行授权。
 
 > 2026-10-08 桌宠房间本地 main 整合：用户在人工通过后明确授权合并，已将 `codex/desktop-pet-layered@d090005` 从 `main@8ff78e0` 快进合入本地 `main`，无冲突；合并后的实现与已验 r2 候选一致，受保护 DLL hash 不变。沿用功能／回归 114＋58 项与人工验收证据，不重新宣称自动性能通过。详见[本地合并记录](verification/2026-10-07-desktop-pet-room-feedback.md#2026-10-08-用户授权与本地-main-合并)。未推送、更新日常安装、部署或关闭完整阶段；下方未合并状态保留为各次交付时的历史快照。
 
@@ -133,7 +136,7 @@
 | Phase 0 | 工作区与技术基线 | 如何让后续开发可重复、可验证、可治理？ | 已验收 |
 | Phase 1 | 桌面生命感原型 | 团子能否自然、稳定且不打扰地生活在 Windows 桌面？ | 实施中 |
 | Phase 2 | 共享房间同步原型 | 多台电脑能否可信地看到同一房间和同一批团子？ | Phase 2A 同机 M0–M6 已完成并获人工确认；M7 与完整 Phase 2 未验收，非正式房间 |
-| Phase 3 | 社交领域闭环 | 好友、情侣、桌宠房间、共同房间和权限能否形成完整闭环？ | 未开始 |
+| Phase 3 | 社交领域闭环 | 好友、情侣、桌宠房间、共同房间和权限能否形成完整闭环？ | 实施中：本地邮箱后端 B0–B4 已实现候选，B1–B4 自动集成 168／168 通过；B5、客户端人工及运维专项未验收，好友／情侣后置，完整阶段未验收 |
 | Phase 4 | 首版内容整合 | 原型和领域功能能否组成可持续使用的作品？ | 未开始 |
 | Phase 5 | 封闭测试与发布准备 | 系统能否全天稳定支持约 200 人并安全交付？ | 未开始 |
 

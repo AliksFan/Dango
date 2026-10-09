@@ -13,6 +13,8 @@ public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
+        if (args.Length == 1 && args[0] is "--formal" or "--formal-migrate" or "--formal-invite" or "--formal-invite-revoke")
+            return await Hosting.FormalEntry.RunAsync(args[0]);
         // Handles are not credentials. Bootstrap secrets exist only in inherited anonymous pipes and memory.
         if (args.Length != 4 || args[0] != "--bootstrap-pipe" || args[2] != "--control-pipe") return 2;
         try

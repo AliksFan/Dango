@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:visuals="clr-namespace:Dango.Desktop.Rendering.Visuals"
              xmlns:rooms="clr-namespace:Dango.Desktop.AppShell.Rooms"
+             xmlns:local="clr-namespace:Dango.Desktop.AppShell.ControlCenter"
              xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
              Background="#FDFCF9" Foreground="#443D34" FontSize="14"
              FontFamily="Segoe UI, Microsoft YaHei" UseLayoutRounding="True"
@@ -16,6 +17,7 @@
         <SolidColorBrush x:Key="HomeSoft" Color="#F3EFE8" />
         <SolidColorBrush x:Key="HomeAccent" Color="#885E3E" />
         <SolidColorBrush x:Key="HomeSelected" Color="#EFE3D4" />
+        <SolidColorBrush x:Key="HomeScrim" Color="#52443D34" />
         <Style x:Key="ShortcutKeycap" TargetType="Border">
             <Setter Property="Width" Value="22" />
             <Setter Property="Height" Value="22" />
@@ -208,7 +210,7 @@
                         shell:WindowChrome.IsHitTestVisibleInChrome="True" />
                 <Button x:Name="SettingsButton" Content="设置" Style="{StaticResource ToolButton}" Click="OnSettingsClick" AutomationProperties.Name="设置"
                         shell:WindowChrome.IsHitTestVisibleInChrome="True" />
-                <Button Content="登录" Style="{StaticResource ToolButton}" IsEnabled="False" ToolTip="登录 · 未开发" AutomationProperties.Name="登录，未开发"
+                <Button x:Name="AccountButton" Content="登录" Style="{StaticResource ToolButton}" Click="OnAccountClick" ToolTip="邮箱登录" AutomationProperties.Name="邮箱账号"
                         shell:WindowChrome.IsHitTestVisibleInChrome="True" />
             </StackPanel>
         </Grid>
@@ -484,6 +486,9 @@
                     </StackPanel>
                     <Button x:Name="BackFromPorchButton" Content="首页 ↗" HorizontalAlignment="Right" VerticalAlignment="Top" BorderBrush="Transparent"
                             Padding="8,4" MinHeight="30" Click="OnBackFromPorchClick" AutomationProperties.Name="返回我的团子" ToolTip="Esc · 返回首页" />
+                    <Button x:Name="PorchAccountButton" Content="在线账号" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                            Margin="12" Padding="12,8" Click="OnAccountClick" AutomationProperties.Name="在线账号入口"
+                            ToolTip="邮箱账号与外观配置；房间目录随后接入" />
                 </Grid>
                 <TextBlock x:Name="RoomAwayNotice" Grid.ColumnSpan="3" Grid.RowSpan="2"
                            Text="团子去玩拉！回来才能换衣服哦" Visibility="Collapsed"
@@ -610,5 +615,10 @@
             <Button x:Name="NoticeButton" Visibility="Collapsed" Style="{StaticResource ToolButton}" FontSize="12"
                     Content="需要处理 · 查看" HorizontalAlignment="Left" Click="OnNoticeClick" />
         </StackPanel>
+        <Border x:Name="AccountOverlay" Grid.RowSpan="4" Visibility="Collapsed" Panel.ZIndex="20"
+                Background="{DynamicResource HomeScrim}" Padding="16" KeyboardNavigation.TabNavigation="Cycle">
+            <local:AccountPanelView x:Name="AccountContent" MaxWidth="560" HorizontalAlignment="Stretch"
+                                    VerticalAlignment="Center" />
+        </Border>
     </Grid>
 </UserControl>

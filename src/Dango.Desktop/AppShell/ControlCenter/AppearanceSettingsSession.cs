@@ -107,6 +107,15 @@ public sealed class AppearanceSettingsSession
         }
     }
 
+    internal void AcceptExternalSave(DangoAppearanceConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        if (IsDirty || IsWriteProtected) throw new InvalidOperationException("local_unsaved_changes");
+        SavedAppearance = DraftAppearance = configuration;
+        pendingSave = false;
+        StatusMessage = "已采用所选外观并保存到本机。";
+    }
+
     public bool TryRecoverAndSave()
     {
         if (!IsWriteProtected) return TrySave();

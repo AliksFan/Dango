@@ -28,7 +28,27 @@ public partial class ProductHomeView
     internal DesktopSceneSession? BoundSceneSession { get; private set; }
     internal StackedDangoSceneRuntime? BoundRuntime { get; private set; }
     internal bool OwnsLiveFrameDriver => liveScheduler?.OwnsRuntime == true;
-    internal void ReleaseLiveScene() => StopLiveScene();
+    internal void ReleaseLiveScene()
+    {
+        // Terminal host disposal differs from a temporary Unloaded/hide. WPF
+        // may still deliver visibility and unload events after runtime disposal.
+        StopLiveScene();
+        liveSceneSuspended = true;
+        porchReturnGeneration = 0;
+        HealthyPorchFrameReady = null;
+        appearanceGeneration++;
+        transitionVersion++;
+        appearanceComparisonChannels = default;
+        appearanceSleeping = false;
+        DetachLiveFocusSafety();
+        SystemParameters.StaticPropertyChanged -= OnSystemPreferenceChanged;
+        Loaded -= OnLoaded;
+        Unloaded -= OnUnloaded;
+        liveScheduler = null;
+        BoundRuntime = null;
+        BoundSceneSession = null;
+        appearanceSession = null;
+    }
 
     internal void SuspendForRoom()
     {
@@ -168,7 +188,7 @@ public partial class ProductHomeView
         if (liveSurfacePlacementPending) ResetAccessoryPresentation();
         PrepareRequestedLiveSurface();
         if (!TryAlignLiveSurface()) return false;
-        runtime.SetDirectionalControl(liveSurfaceNeedsAlignment ? DirectionalControlIntent.None : liveIntent);
+        runtime.SetDirectionalControl(liveSurfaceNeedsAlignment || IsAccountPanelOpen ? DirectionalControlIntent.None : liveIntent);
         runtime.UpdateQuietIdleHost(this, !IsAccessoryPreview);
         return true;
     }
@@ -331,7 +351,7 @@ public partial class ProductHomeView
 
     private void OnStageMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (!IsSettingsOpen && (ReferenceEquals(e.OriginalSource, Stage) || IsInPorch ||
+        if (!IsSettingsOpen && !IsAccountPanelOpen && (!IsEditing || IsAccessoryPreview) && (ReferenceEquals(e.OriginalSource, Stage) || IsInPorch ||
             IsAccessoryPreview && e.OriginalSource is DependencyObject source && Presence.IsAncestorOf(source))) Stage.Focus();
     }
 }

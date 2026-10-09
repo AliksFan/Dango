@@ -3,6 +3,7 @@ using System.Text.Json;
 using Dango.Desktop.Physics.Presentation.Attachments;
 using Dango.Desktop.Rendering.Visuals;
 using Dango.Desktop.Verification;
+using Dango.Desktop.AppShell.Persistence;
 
 namespace Dango.Desktop.AppShell.ControlCenter;
 
@@ -47,7 +48,7 @@ public sealed class AppearanceSettingsStore
     private readonly IAtomicTextWriter writer;
 
     public AppearanceSettingsStore(IAtomicTextWriter? writer = null) =>
-        this.writer = writer ?? new AtomicTextFileWriter();
+        this.writer = writer ?? new DurableAtomicTextWriter();
 
     public void Save(string path, AppearanceSettings settings)
     {
@@ -72,7 +73,24 @@ public sealed class AppearanceSettingsStore
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         try
         {
-            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            var snapshot = DurableAtomicTextWriter.Capture(path);
+            return snapshot.Exists ? Parse(snapshot.Bytes) : new(AppearanceSettings.CreateDefault(), null);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            return SafeDefault($"外观设置无法读取，已使用安全默认外观（{exception.GetType().Name}）。");
+        }
+    }
+
+    public AppearanceSettingsLoadResult Parse(ReadOnlyMemory<byte> bytes)
+    {
+        try
+        {
+            // Match the bounded capture used by configuration association; parse exactly the archived bytes.
+            if (bytes.Length > 65536) throw new InvalidDataException("appearance_file_too_large");
+            // Preserve File.ReadAllText's existing UTF-8/16/32 BOM compatibility while archiving raw bytes.
+            using var reader = new StreamReader(new MemoryStream(bytes.ToArray()), detectEncodingFromByteOrderMarks: true);
+            using var document = JsonDocument.Parse(reader.ReadToEnd());
             if (document.RootElement.ValueKind != JsonValueKind.Object)
                 return SafeDefault("外观设置不是对象，已使用安全默认外观。");
 

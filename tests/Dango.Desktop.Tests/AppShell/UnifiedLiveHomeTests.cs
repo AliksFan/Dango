@@ -10,6 +10,7 @@ using Dango.Core.Animation;
 using Dango.Core.Coordinates;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
+using Dango.Desktop.AppShell.Rooms;
 using Dango.Desktop.DesktopHost;
 using Dango.Desktop.Physics.Presentation;
 using Dango.Desktop.Rendering.Visuals;
@@ -107,8 +108,12 @@ public sealed class UnifiedLiveHomeTests
             var enabled = Descendants<Button>(porch).Where(button => button.IsEnabled).ToArray();
             Assert.IsTrue(enabled.All(button =>
                     button.Name == "BackFromPorchButton" ||
+                    button.Name == "PorchAccountButton" ||
                     AutomationProperties.GetName(button).Contains("返回", StringComparison.Ordinal)),
                 "Until room permissions exist, no sample door may act like an enterable room.");
+            Element<Button>(home, "PorchAccountButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.IsTrue(home.IsAccountPanelOpen, "The independent account entry opens a form, without entering a room.");
+            Assert.IsFalse(Element<PorchSceneView>(home, "PorchScene").CanEnterRoom);
         }
         finally { window.Close(); }
     }

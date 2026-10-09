@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using Dango.Desktop.AppShell.ControlCenter;
+using Dango.Desktop.AppShell.Persistence;
 using Dango.Desktop.AppShell.Tray;
 using Dango.Desktop.DesktopHost;
 using Dango.Desktop.DesktopHost.StandardWindow;
@@ -78,6 +79,8 @@ internal sealed partial class DangoApplicationHost : IDisposable
         var firstReviewRun = uiMode == ApplicationUiMode.DeveloperReview && !File.Exists(settingsPath);
         settings = new ApplicationSettingsSession(settingsPath, settingsStore);
         appearance = new AppearanceSettingsSession(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(settingsPath))!, "appearance.json"));
+        localRooms = new LocalRoomSaveSession(new DangoUserDataPaths(settingsPath).LocalRoomSavePath);
+        roomSaveTimer.Tick += (_, _) => SaveLocalRoomCheckpoint();
         stackedRuntime.SetAppearance(appearance.SavedAppearance);
         var initial = settings.Current;
         sceneWindow.RestorePlacement(initial.SceneWindow);
@@ -158,11 +161,20 @@ internal sealed partial class DangoApplicationHost : IDisposable
         if (System.Windows.MessageBox.Show("退出后桌面团子、控制中心和托盘都会关闭。是否退出 Dango？",
             "退出 Dango", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         geometrySaveTimer.Stop();
+        roomSaveTimer.Stop();
         while (!SaveSettings())
         {
             var answer = System.Windows.MessageBox.Show(settings.StatusMessage + "\n\n是：重试保存；否：不保存退出；取消：继续使用。",
                 "设置未保存", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
-            if (answer == MessageBoxResult.Cancel) return;
+            if (answer == MessageBoxResult.Cancel) { roomSaveTimer.Start(); return; }
+            if (answer == MessageBoxResult.No) break;
+        }
+        SaveLocalRoomCheckpoint();
+        while (localRoomDriver is not null && localRooms.HasPendingSave && !localRooms.TrySave())
+        {
+            var answer = System.Windows.MessageBox.Show(localRooms.StatusMessage + "\n\n是：重试保存；否：不保存退出；取消：继续使用。",
+                "房间未保存", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+            if (answer == MessageBoxResult.Cancel) { roomSaveTimer.Start(); return; }
             if (answer == MessageBoxResult.No) break;
         }
         exitSettingsHandled = true;
@@ -174,9 +186,12 @@ internal sealed partial class DangoApplicationHost : IDisposable
     {
         if (disposed) return;
         geometrySaveTimer.Stop();
-        if (!exitSettingsHandled) SaveSettings();
+        roomSaveTimer.Stop();
+        if (!exitSettingsHandled) { SaveLocalRoomCheckpoint(); SaveSettings(); }
         controlCenterWindow?.ProductHome.CancelAppearancePreview();
         disposed = true;
+        accountController?.Dispose();
+        accountController = null;
         DisposeLocalRoom();
         trayIcon?.Dispose();
         trayIcon = null;
@@ -209,6 +224,7 @@ internal sealed partial class DangoApplicationHost : IDisposable
             controlCenterWindow.ProductHome.BindLiveScene(sceneSession, stackedRuntime);
             controlCenterWindow.ProductHome.SetPorchReviewMode(porchReview);
             if (!porchReview && !faceReview) BindLocalRoom(controlCenterWindow);
+            if (!porchReview && !faceReview) BindAccounts(controlCenterWindow);
             if (porchReview) controlCenterWindow.Title = "Dango · 门廊 E1 场景预览";
         }
         controlCenterWindow.OverviewPresented += () =>
