@@ -6,8 +6,9 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
-using Dango.Desktop.Physics.Presentation;
+using Dango.Desktop.Physics.Presentation.Attachments;
 using Dango.Desktop.Rendering.Visuals;
+using Dango.Core.Animation;
 using Dango.Physics.Configuration;
 
 namespace Dango.MaterialSample;
@@ -20,7 +21,7 @@ internal sealed class MaterialWindow : Window, IDisposable
     private readonly Slider size = MakeSlider(80, 120, 100);
     private readonly Slider softness = MakeSlider(0, 100, 50);
     private readonly Slider settling = MakeSlider(0, 100, 90);
-    private readonly SceneView[] scenes = [new(), new()];
+    private readonly SceneView[] scenes = [new(productionMapping: true), new(productionMapping: false)];
     private readonly TextBlock[] metrics = [new(), new()];
     private readonly DispatcherTimer timer = new() { Interval = MaterialSession.FixedStep };
     private readonly ToggleButton squeeze = new() { Content = "持续下压", Margin = new(4), Padding = new(12, 6, 12, 6) };
@@ -46,7 +47,7 @@ internal sealed class MaterialWindow : Window, IDisposable
         AddTop(heading);
         AddTop(new TextBlock
         {
-            Text = "拖动团子后松开，观察恢复；两侧使用真实物理和同一等比例显示。参数修改后，按“应用参数并下落”。",
+            Text = "左侧保留原版的身体显示比例，右侧落地形状由材料产生。拖动后松开可观察回圆；修改参数后按“应用参数并下落”。",
             TextWrapping = TextWrapping.Wrap, Foreground = Brushes.DimGray, Margin = new(20, 0, 20, 12),
         });
         var sliders = new Grid { Margin = new(20, 0, 20, 10) };
@@ -74,7 +75,7 @@ internal sealed class MaterialWindow : Window, IDisposable
         {
             size.Value = 100; softness.Value = 50; settling.Value = 90; Reset(0);
         });
-        var skeleton = new CheckBox { Content = "显示骨架", IsChecked = true, Margin = new(12, 8, 4, 4) };
+        var skeleton = new CheckBox { Content = "显示骨架", IsChecked = false, Margin = new(12, 8, 4, 4) };
         skeleton.Click += (_, _) =>
         {
             foreach (var scene in scenes) { scene.Skeleton = skeleton.IsChecked == true; scene.InvalidateVisual(); }
@@ -88,7 +89,7 @@ internal sealed class MaterialWindow : Window, IDisposable
             var panel = new DockPanel { Margin = new(4), Background = new SolidColorBrush(Color.FromRgb(248, 248, 246)) };
             var label = new TextBlock
             {
-                Text = i == 0 ? "现有模型 · 原参数对照" : "圆形自然态候选 · 当前材料参数",
+                Text = i == 0 ? "原版对照 · 原物理与原身体比例" : "材料候选 · 默认落地对齐参考图",
                 FontSize = 16, FontWeight = FontWeights.SemiBold, Margin = new(14, 12, 14, 6),
             };
             DockPanel.SetDock(label, Dock.Top); panel.Children.Add(label);
@@ -159,15 +160,17 @@ internal sealed class MaterialWindow : Window, IDisposable
                 var state = sessions[i].Step(jump, squeeze.IsChecked == true,
                     view.Dragging, view.DragTarget.X, view.DragTarget.Y);
                 var shape = ShapeMetrics.Measure(state);
-                metrics[i].Text = $"{(state.IsGrounded ? "已接地" : "离地")}  ·  宽高比 {shape.Aspect:F3}  ·  径向差 {shape.RadialSpread:P1}\n" +
-                    $"圆度 {shape.Circularity:F3}  ·  {(shape.IsRound ? "接近圆形" : "形变中")}  ·  帧 {sessions[i].Frames}";
+                var bounds = SampleGeometry.Create(state, i == 0).Bounds;
+                var renderedAspect = bounds.Width / bounds.Height;
+                metrics[i].Text = $"{(state.IsGrounded ? "已接地" : "离地")}  ·  身体显示宽高比 {renderedAspect:F3}\n" +
+                    $"骨架径向差 {shape.RadialSpread:P1}  ·  {(Math.Abs(renderedAspect - 1) <= .04 && shape.IsRound ? "显示接近圆形" : "形变中")}  ·  帧 {sessions[i].Frames}";
                 view.InvalidateVisual();
             }
             jump = false;
             status.Foreground = Brushes.DimGray;
             status.Text = pending ? "参数尚未应用；正在显示上次应用的物理。按“应用参数并下落”查看实际变化。" : spawnHeight > 0
                 ? "高处自由落体：镜头跟随身体；松手后不再施加拖动力。两侧是独立单体对照世界。"
-                : "候选已关闭顶部内收和接地外扩。柔软度影响受压，晃动抑制影响恢复过程；当前范围属于材料实验。";
+                : "默认落地目标宽高比约 1.498；软硬与大小会改变落地形态。眼睛和芽为基础装饰，身体来自真实模拟。";
         }
         catch (Exception error)
         {
@@ -213,8 +216,10 @@ internal sealed class MaterialWindow : Window, IDisposable
 internal sealed class SceneView : FrameworkElement
 {
     private const double Scale = 105;
+    private readonly bool productionMapping;
+    private double ScaleY => productionMapping ? Scale * 58 / 72 : Scale;
     internal MaterialSession? Session { get; set; }
-    internal bool Skeleton { get; set; } = true;
+    internal bool Skeleton { get; set; }
     internal bool AllowDrag { get; set; }
     internal event Action<string>? RenderFailed;
     internal bool Dragging { get; private set; }
@@ -223,11 +228,12 @@ internal sealed class SceneView : FrameworkElement
     private Vector hitOffset;
 
     private double OriginY => Session?.State is { CoreY: > 1.9f } state
-        ? state.CoreY * Scale + ActualHeight * .38
-        : ActualHeight - 36 + (Session?.Configuration.GroundHeight ?? -.72) * Scale;
+        ? state.CoreY * ScaleY + ActualHeight * .38
+        : ActualHeight - 36 + (Session?.Configuration.GroundHeight ?? -.72) * ScaleY;
 
-    internal SceneView()
+    internal SceneView(bool productionMapping)
     {
+        this.productionMapping = productionMapping;
         ClipToBounds = true; Cursor = Cursors.Hand;
         MouseLeftButtonDown += (_, e) =>
         {
@@ -240,7 +246,7 @@ internal sealed class SceneView : FrameworkElement
         LostMouseCapture += (_, _) => Dragging = false;
     }
 
-    private void UpdateDrag(Point point) => DragTarget = new((point.X - ActualWidth / 2) / Scale, (OriginY - point.Y) / Scale);
+    private void UpdateDrag(Point point) => DragTarget = new((point.X - ActualWidth / 2) / Scale, (OriginY - point.Y) / ScaleY);
 
     internal void StopDrag() { Dragging = false; if (IsMouseCaptured) ReleaseMouseCapture(); }
 
@@ -249,36 +255,46 @@ internal sealed class SceneView : FrameworkElement
         base.OnRender(drawing);
         drawing.DrawRectangle(Brushes.Transparent, null, new Rect(RenderSize));
         if (Session?.State is not { } state) return;
-        var groundY = OriginY - Session.Configuration.GroundHeight * Scale;
+        var groundY = OriginY - Session.Configuration.GroundHeight * ScaleY;
         drawing.DrawLine(new Pen(Brushes.LightGray, 2), new(12, groundY), new(ActualWidth - 12, groundY));
-        var center = new Point(ActualWidth / 2 + state.CoreX * Scale, OriginY - state.CoreY * Scale);
-        var contour = Enumerable.Range(0, state.PointCount)
-            .Select(i => new PresentationPoint(state.Contour[2 * i], state.Contour[2 * i + 1])).ToArray();
-        // The production mapper uses .45 and .483333 factors. Cancel both explicitly,
-        // giving each world unit the same pixel length on X and Y, without rescaling state.
-        var width = Scale / .45; var height = Scale / .48333333333333334;
-        var result = DangoStreamGeometryFactory.TryCreate(contour, width, height);
-        if (!result.Succeeded)
+        var center = new Point(ActualWidth / 2 + state.CoreX * Scale, OriginY - state.CoreY * ScaleY);
+        Geometry geometry;
+        try { geometry = SampleGeometry.Create(state, productionMapping, productionMapping ? Scale / 72 : Scale); }
+        catch (Exception error)
         {
-            RenderFailed?.Invoke($"真实轮廓绘制停止：{result.Failure}。请显式重新下落。");
+            RenderFailed?.Invoke($"真实轮廓绘制停止：{error.Message}。请显式重新下落。");
             return;
         }
-        hitOffset = new(center.X - width / 2, center.Y - height * .55);
-        hitGeometry = result.Geometry;
+        hitOffset = new(center.X, center.Y);
+        hitGeometry = geometry;
         drawing.PushTransform(new TranslateTransform(hitOffset.X, hitOffset.Y));
-        drawing.DrawGeometry(new SolidColorBrush(Color.FromRgb(255, 232, 194)), null, result.Geometry);
-        drawing.Pop();
-        var eyeY = center.Y - state.CentroidY * Scale;
-        var eyeOffset = Math.Min(.20, ShapeMetrics.Measure(state).Width * .16) * Scale;
+        drawing.DrawGeometry(new SolidColorBrush(Color.FromRgb(245, 213, 165)), null, geometry);
+        var bounds = geometry.Bounds;
+        var bodySize = Session.Configuration.RadialRestLength / DangoPhysicsDefaults.Current.RadialRestLength;
+        var decorationZoom = Scale / 72 * bodySize;
+        var eyeY = bounds.Top + bounds.Height * .5158;
+        var eyeCenter = (bounds.Left + bounds.Right) / 2;
         var eyeBrush = new SolidColorBrush(Color.FromRgb(43, 32, 30));
-        drawing.DrawEllipse(eyeBrush, null, new(center.X + state.CentroidX * Scale - eyeOffset, eyeY), 5, 5);
-        drawing.DrawEllipse(eyeBrush, null, new(center.X + state.CentroidX * Scale + eyeOffset, eyeY), 5, 5);
+        foreach (var side in new[] { -1, 1 })
+        {
+            var eye = AttachmentGeometryFactory.CreateEye(new(new(0, 0), .075, .075, 0, 1, EyeShape.Round, 0, true));
+            drawing.PushTransform(new TranslateTransform(eyeCenter + side * 19 * decorationZoom, eyeY));
+            drawing.PushTransform(new ScaleTransform(decorationZoom, decorationZoom));
+            drawing.PushTransform(new TranslateTransform(-80, -66));
+            drawing.DrawGeometry(eyeBrush, null, eye);
+            drawing.Pop(); drawing.Pop(); drawing.Pop();
+        }
+        drawing.PushTransform(new TranslateTransform(eyeCenter, bounds.Top + bounds.Height * .09));
+        drawing.PushTransform(new ScaleTransform(decorationZoom * 1.35, decorationZoom * 1.35));
+        drawing.PushTransform(new TranslateTransform(-80, -66));
+        drawing.DrawDrawing(AttachmentGeometryFactory.CreateStaticHat(new HatVisualPose(new(0, 0), 0, 0)));
+        drawing.Pop(); drawing.Pop(); drawing.Pop(); drawing.Pop();
         if (!Skeleton) return;
         var bone = new Pen(new SolidColorBrush(Color.FromArgb(110, 120, 115, 100)), 1);
         var node = new SolidColorBrush(Color.FromArgb(150, 100, 140, 120));
-        for (var i = 0; i < contour.Length; i++)
+        for (var i = 0; i < state.PointCount; i++)
         {
-            var p = new Point(center.X + contour[i].X * Scale, center.Y - contour[i].Y * Scale);
+            var p = new Point(center.X + state.Contour[2 * i] * Scale, center.Y - state.Contour[2 * i + 1] * ScaleY);
             drawing.DrawLine(bone, center, p); drawing.DrawEllipse(node, null, p, 2.4, 2.4);
         }
         drawing.DrawEllipse(Brushes.Gray, null, center, 3, 3);

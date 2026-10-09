@@ -12,7 +12,10 @@ internal sealed record MaterialControls(double SizePercent = 100, double Softnes
         Check(SizePercent, 80, 120); Check(Softness, 0, 100);
         Check(Settling, 0, 100);
         var scale = SizePercent / 100;
-        var frequencyScale = Softness <= 50 ? 1.2 - Softness * .004 : 1 - (Softness - 50) * .009;
+        // Independent frequencies: softer spokes allow flattening while the perimeter
+        // keeps the crown smooth. The midpoint was calibrated against the approved silhouette.
+        var radialScale = Softness <= 50 ? .55 - Softness * .004 : .35 - (Softness - 50) * .002;
+        var perimeterScale = Softness <= 50 ? .90 - Softness * .003 : .75 - (Softness - 50) * .004;
         var original = DangoPhysicsDefaults.Current;
         var result = original with
         {
@@ -25,8 +28,8 @@ internal sealed record MaterialControls(double SizePercent = 100, double Softnes
             // Keep a constant 2D density in this isolated size experiment.
             CoreMass = original.CoreMass * scale * scale,
             NodeMass = original.NodeMass * scale * scale,
-            RadialElasticity = original.RadialElasticity * frequencyScale,
-            PerimeterElasticity = original.PerimeterElasticity * frequencyScale,
+            RadialElasticity = original.RadialElasticity * radialScale,
+            PerimeterElasticity = original.PerimeterElasticity * perimeterScale,
             RadialDamping = .5 + .015 * Settling,
             PerimeterDamping = .5 + .015 * Settling,
         };
