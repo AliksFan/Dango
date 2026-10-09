@@ -1,6 +1,6 @@
 # 邮箱后端首期实施计划
 
-日期：2026-10-08；2026-10-09 更新。状态：用户已同意开始，B0 配置／模型／初始迁移与 B1 正式服务入口、邀请邮箱账号已实现；B2 本人配置接口、显式选择编排与本地存档候选已实现，自动验证包含明确未执行项，人工待验收；B3 房间管理候选实现及静态门禁已完成，新增迁移／精确到期清理等待单独数据授权。详见[B0 验证](../verification/2026-10-08-email-backend-foundation.md)、[B1 验证](../verification/2026-10-08-email-backend-b1.md)、[B2 验证](../verification/2026-10-09-email-backend-b2.md)与[B3 验证](../verification/2026-10-09-email-backend-b3.md)；B4 正式准入／Hub、B5 登录／选择界面、完整首期、真实 SMTP／客户端人工与 Phase 3 尚未验收。
+日期：2026-10-08；2026-10-09 更新。状态：用户已同意开始，B0 配置／模型／初始迁移与 B1 正式服务入口、邀请邮箱账号已实现；B2 本人配置接口、显式选择编排与本地存档候选已实现，自动验证包含明确未执行项，人工待验收；B3 房间管理候选实现、静态及真实 PostgreSQL／HTTPS 门禁已完成，用户单独批准后应用精确迁移并执行限定到期清理，105 项集成通过。详见[B0 验证](../verification/2026-10-08-email-backend-foundation.md)、[B1 验证](../verification/2026-10-08-email-backend-b1.md)、[B2 验证](../verification/2026-10-09-email-backend-b2.md)与[B3 验证](../verification/2026-10-09-email-backend-b3.md)；B4 正式准入／Hub、B5 登录／选择界面、完整首期、真实 SMTP／客户端人工与 Phase 3 尚未验收。
 
 依据：[首期设计](2026-10-08-email-backend-design-proposal.md)、[ADR 0002](../adr/0002-server-foundation-and-scaling.md)、[ADR 0006](../adr/0006-email-accounts-and-persistent-room-state.md)与[工作流](../development-workflow-v0.1.md)。用户新增五项必查已记录于根级规则。
 
