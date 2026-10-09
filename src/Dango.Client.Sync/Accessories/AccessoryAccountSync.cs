@@ -161,7 +161,7 @@ public sealed class AccessoryAccountSync : IAsyncDisposable
             if (resolution.Kind == AccessoryCommitResolutionKind.Committed)
             {
                 ValidateReceipt(attempt.Request, resolution.StoredOutfit);
-                AcceptCommit(session, attempt, resolution.StoredOutfit!);
+                if (!AcceptCommit(session, attempt, resolution.StoredOutfit!)) return AccessoryCommitResolutionKind.Unknown;
             }
             else
             {
@@ -183,7 +183,9 @@ public sealed class AccessoryAccountSync : IAsyncDisposable
                     }
                 }
             }
-            return resolution.Kind;
+            // Receipt validation may overlap account detachment. A receipt for an older attachment
+            // must not appear to the caller as a success for whichever account is now active.
+            return IsCurrentThreadSafe(session) ? resolution.Kind : AccessoryCommitResolutionKind.Unknown;
         }
         catch (Exception)
         {
@@ -441,11 +443,11 @@ public sealed class AccessoryAccountSync : IAsyncDisposable
         }
     }
 
-    private void AcceptCommit(Session session, CommitAttempt attempt, StoredAccessoryOutfit stored)
+    private bool AcceptCommit(Session session, CommitAttempt attempt, StoredAccessoryOutfit stored)
     {
         lock (_gate)
         {
-            if (!IsCurrent(session)) return;
+            if (!IsCurrent(session)) return false;
             session.ServerRevision = stored.Revision;
             session.LastBackedUpVersion = attempt.Source.LocalCommitVersion;
             session.UnknownAttempt = null;
@@ -453,6 +455,7 @@ public sealed class AccessoryAccountSync : IAsyncDisposable
             session.ActiveSnapshot = null;
             session.State = session.LatestSnapshot is null ? AccessorySyncState.BackedUp : AccessorySyncState.Queued;
             session.ErrorCode = null;
+            return true;
         }
     }
 
