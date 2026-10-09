@@ -10,6 +10,7 @@ param(
     [switch]$B4,
     [switch]$B5A,
     [switch]$B5B,
+    [switch]$B5C,
     [string]$TestFilter,
     [switch]$ExecuteApprovedPlan
 )
@@ -25,12 +26,15 @@ if ($B3 -and ($B1 -or $B2 -or $Initialize -or $CreateDatabase)) { throw 'backend
 if ($B3 -and $RunName -ne 'run20261008b0') { throw 'backend_b3_target_not_approved' }
 if ($B4 -and ($B1 -or $B2 -or $B3 -or $Initialize -or $CreateDatabase)) { throw 'backend_b4_existing_target_only' }
 if ($B4 -and $RunName -ne 'run20261008b0') { throw 'backend_b4_target_not_approved' }
-if ($B5A -and ($B1 -or $B2 -or $B3 -or $B4 -or $B5B -or $Initialize -or $CreateDatabase)) { throw 'backend_b5a_existing_target_only' }
+if ($B5A -and ($B1 -or $B2 -or $B3 -or $B4 -or $B5B -or $B5C -or $Initialize -or $CreateDatabase)) { throw 'backend_b5a_existing_target_only' }
 if ($B5A -and $RunName -ne 'run20261008b0') { throw 'backend_b5a_target_not_approved' }
 if ($B5A -and $TestFilter -and ($TestFilter.Length -gt 512 -or $TestFilter -notmatch '^FullyQualifiedName(?:~|=)[A-Za-z0-9_.]+$')) { throw 'backend_b5a_filter_invalid' }
-if ($B5B -and ($B1 -or $B2 -or $B3 -or $B4 -or $B5A -or $Initialize -or $CreateDatabase)) { throw 'backend_b5b_existing_target_only' }
+if ($B5B -and ($B1 -or $B2 -or $B3 -or $B4 -or $B5A -or $B5C -or $Initialize -or $CreateDatabase)) { throw 'backend_b5b_existing_target_only' }
 if ($B5B -and $RunName -ne 'run20261008b0') { throw 'backend_b5b_target_not_approved' }
 if ($B5B -and $TestFilter -and ($TestFilter.Length -gt 512 -or $TestFilter -notmatch '^FullyQualifiedName(?:~|=)[A-Za-z0-9_.]+$')) { throw 'backend_b5b_filter_invalid' }
+if ($B5C -and ($B1 -or $B2 -or $B3 -or $B4 -or $B5A -or $B5B -or $Initialize -or $CreateDatabase)) { throw 'backend_b5c_existing_target_only' }
+if ($B5C -and $RunName -ne 'run20261008b0') { throw 'backend_b5c_target_not_approved' }
+if ($B5C -and $TestFilter -and ($TestFilter.Length -gt 512 -or $TestFilter -notmatch '^FullyQualifiedName(?:~|=)[A-Za-z0-9_.]+$')) { throw 'backend_b5c_filter_invalid' }
 $taskRepoDirectory = Split-Path -Parent $PSScriptRoot
 $taskStateBase = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Dango\BackendDevelopment'
 $taskStateDirectory = [IO.Path]::GetFullPath((Join-Path $taskStateBase $RunName))
@@ -48,6 +52,10 @@ for ($taskAncestor = [IO.DirectoryInfo]::new($taskDataDirectory); $null -ne $tas
     if ($taskAncestor.Exists -and ($taskAncestor.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'backend_test_reparse_target_rejected' }
 }
 if (-not $ExecuteApprovedPlan) {
+    if ($B5C) {
+        [pscustomobject]@{ RunName=$RunName; DataDirectory=$taskDataDirectory; Database=$taskDatabaseName; B5C=$true; Writes='only six approved B5C fictional account/session/room/lease/code cases; one exact generated outbox event; existing schema/keys/epoch; no migration, SMTP, WinCred, deletion, restore, expiry or whole-database worker' }
+        return
+    }
     [pscustomobject]@{ RunName=$RunName; DataDirectory=$taskDataDirectory; Database=$taskDatabaseName; Initialize=[bool]$Initialize; CreateDatabase=[bool]$CreateDatabase; B1=[bool]$B1; B2=[bool]$B2; B3=[bool]$B3; B4=[bool]$B4; B5A=[bool]$B5A; B5B=[bool]$B5B; Writes=$(if ($B5B) { 'only B5B fictional account/session/room operations and scoped own pet/code/lease fixtures; existing schema and keys; no migration, SMTP, WinCred, data deletion, restore or expiry' } elseif ($B5A) { 'only B5A fictional account, registration, session and own pet configuration tests; existing schema and keys; no migration, SMTP, WinCred, deletion or restore' } elseif ($B4) { 'only RoomAccess and RoomAccessIntegrity forward migrations; fictional B1-B4 regressions; scoped lease/outbox work and permanent expiry only for generated targets; no reset or restore' } elseif ($B3) { 'only RoomManagement forward migration and fictional tests; permanent expiry only for exact B3-generated room IDs; no reset or restore' } elseif ($B2) { 'fictional tests only; existing schema; no migration, reset, deletion or restore' } else { 'explicit forward migration and fictional tests; no reset, deletion or restore' }) }
     return
 }
@@ -84,7 +92,7 @@ function Invoke-TaskProcess {
 $taskVersion = & (Join-Path $taskBinaryDirectory 'postgres.exe') --version
 if ($LASTEXITCODE -ne 0 -or $taskVersion -notmatch 'PostgreSQL\) 18\.') { throw 'backend_test_postgres18_required' }
 
-if ($B5A -or $B5B) {
+if ($B5A -or $B5B -or $B5C) {
     # Client integration stages cannot create cluster credentials, keys or a recovery epoch.
     foreach ($taskRequiredFile in @($taskStateFile, $taskCredentialFile, (Join-Path $taskStateDirectory 'b1test-state.json'))) {
         if (-not (Test-Path -LiteralPath $taskRequiredFile -PathType Leaf)) { throw 'backend_client_existing_state_required' }
@@ -141,6 +149,7 @@ if ((Invoke-TaskProcess $taskControlExecutable @('status', '-D', $taskDataDirect
 $taskStartAttempted = $false
 $taskStartedPid = 0
 $taskStartTime = [DateTime]::UtcNow
+$taskB5CResultsDirectory = $null
 try {
     $taskStartAttempted = $true
     [void](Invoke-TaskProcess $taskControlExecutable @('start', '-D', $taskDataDirectory, '-l', (Join-Path $taskStateDirectory 'postgres.log'), '-o', "-h 127.0.0.1 -p $taskPort -c timezone=UTC -c max_connections=32 -c data_directory=`"$taskDataDirectory`"", '-w'))
@@ -149,29 +158,35 @@ try {
         [void](Invoke-TaskProcess (Join-Path $taskBinaryDirectory 'createdb.exe') @('-h', '127.0.0.1', '-p', "$taskPort", '-U', $taskOwnerName, $taskDatabaseName) @{ PGPASSWORD=$taskPassword })
     }
     $taskConnection = "Host=127.0.0.1;Port=$taskPort;Database=$taskDatabaseName;Username=$taskOwnerName;Password=$taskPassword;Include Error Detail=false"
-    $taskResultsBase = if ($B5B) { 'artifacts/backend-b5b/postgres-tests' } elseif ($B5A) { 'artifacts/backend-b5a/postgres-tests' } else { 'artifacts/backend-foundation/postgres-tests' }
+    $taskResultsBase = if ($B5C) { 'artifacts/backend-b5c/postgres-tests' } elseif ($B5B) { 'artifacts/backend-b5b/postgres-tests' } elseif ($B5A) { 'artifacts/backend-b5a/postgres-tests' } else { 'artifacts/backend-foundation/postgres-tests' }
     $taskResultsDirectory = Join-Path $taskResultsBase ([DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss-fffffff'))
     # Stage permission cannot leak in from the parent shell or another previous test run.
     $taskTestEnvironment = @{
         DANGO_BACKEND_TEST_CONNECTION=$taskConnection; DANGO_BACKEND_TEST_DATA_DIRECTORY=$taskDataDirectory
-        DANGO_BACKEND_B1_TEST_APPROVED='0'; DANGO_BACKEND_B3_TEST_APPROVED='0'; DANGO_BACKEND_B4_TEST_APPROVED='0'; DANGO_BACKEND_B5A_TEST_APPROVED='0'; DANGO_BACKEND_B5B_TEST_APPROVED='0'
+        DANGO_BACKEND_B1_TEST_APPROVED='0'; DANGO_BACKEND_B3_TEST_APPROVED='0'; DANGO_BACKEND_B4_TEST_APPROVED='0'; DANGO_BACKEND_B5A_TEST_APPROVED='0'; DANGO_BACKEND_B5B_TEST_APPROVED='0'; DANGO_BACKEND_B5C_TEST_APPROVED='0'; DANGO_BACKEND_B5C_RESOURCE_DIRECTORY=''
     }
-    if ($B1 -or $B2 -or $B3 -or $B4 -or $B5A -or $B5B) {
+    if ($B1 -or $B2 -or $B3 -or $B4 -or $B5A -or $B5B -or $B5C) {
         $taskB1StateFile = Join-Path $taskStateDirectory 'b1test-state.json'
         if (Test-Path -LiteralPath $taskB1StateFile) {
             $taskB1State = Get-Content -LiteralPath $taskB1StateFile -Raw | ConvertFrom-Json
             $taskB1Epoch = [Guid]::Parse($taskB1State.RecoveryEpoch)
         } else {
-            if ($B2 -or $B3 -or $B4 -or $B5A -or $B5B) { throw 'backend_existing_epoch_required' }
+            if ($B2 -or $B3 -or $B4 -or $B5A -or $B5B -or $B5C) { throw 'backend_existing_epoch_required' }
             $taskB1Epoch = [Guid]::NewGuid()
             [IO.File]::WriteAllText($taskB1StateFile, (@{ RecoveryEpoch=$taskB1Epoch.ToString('D'); Version=1 } | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
         }
         if ($taskB1Epoch -eq [Guid]::Empty) { throw 'backend_b1_epoch_invalid' }
         $taskB1KeyDirectory = Join-Path $taskStateDirectory 'b1tests-keys'
-        if (($B2 -or $B3 -or $B4 -or $B5A -or $B5B) -and -not (Test-Path -LiteralPath $taskB1KeyDirectory -PathType Container)) { throw 'backend_existing_keys_required' }
-        if (-not ($B5A -or $B5B)) { $taskTestEnvironment.DANGO_BACKEND_B1_TEST_APPROVED = '1' }
+        if (($B2 -or $B3 -or $B4 -or $B5A -or $B5B -or $B5C) -and -not (Test-Path -LiteralPath $taskB1KeyDirectory -PathType Container)) { throw 'backend_existing_keys_required' }
+        if (-not ($B5A -or $B5B -or $B5C)) { $taskTestEnvironment.DANGO_BACKEND_B1_TEST_APPROVED = '1' }
         if ($B5A) { $taskTestEnvironment.DANGO_BACKEND_B5A_TEST_APPROVED = '1' }
         if ($B5B) { $taskTestEnvironment.DANGO_BACKEND_B5B_TEST_APPROVED = '1' }
+        if ($B5C) {
+            $taskTestEnvironment.DANGO_BACKEND_B5C_TEST_APPROVED = '1'
+            $taskTestEnvironment.DANGO_BACKEND_B5C_RESOURCE_DIRECTORY = [IO.Path]::GetFullPath((Join-Path $taskRepoDirectory $taskResultsDirectory))
+            [void][IO.Directory]::CreateDirectory($taskTestEnvironment.DANGO_BACKEND_B5C_RESOURCE_DIRECTORY)
+            $taskB5CResultsDirectory = $taskTestEnvironment.DANGO_BACKEND_B5C_RESOURCE_DIRECTORY
+        }
         $taskTestEnvironment.DANGO_BACKEND_B1_RECOVERY_EPOCH = $taskB1Epoch.ToString('D')
         $taskTestEnvironment.DANGO_BACKEND_B1_KEY_DIRECTORY = $taskB1KeyDirectory
         # B2 uses existing tables only; fixture validation rejects any pending migration.
@@ -193,7 +208,7 @@ try {
             [void](Invoke-TaskProcess 'dotnet' @('src/Dango.Server/bin/Release/net10.0/Dango.Server.dll', '--formal-migrate') $taskMigrationEnvironment)
         }
     }
-    $taskBaseAllowedFilter = 'TestCategory=PostgresIntegration&TestCategory!=BackendB5AIntegration&TestCategory!=BackendB5BIntegration'
+    $taskBaseAllowedFilter = 'TestCategory=PostgresIntegration&TestCategory!=BackendB5AIntegration&TestCategory!=BackendB5BIntegration&TestCategory!=BackendB5CIntegration'
     $taskTestFilter = if ($TestFilter) { "($taskBaseAllowedFilter)&($TestFilter)" } elseif ($B2 -or $B3 -or $B4) { "$taskBaseAllowedFilter&FullyQualifiedName!~PostgresFoundationTests" } else { $taskBaseAllowedFilter }
     if ($B4) {
         # A requested subset can narrow B4, never re-enable B0 schema/probe writes.
@@ -209,6 +224,11 @@ try {
         # Extra filters may narrow B5B; no earlier-stage tests or resource writes are enabled.
         $taskB5BAllowedFilter = 'TestCategory=PostgresIntegration&TestCategory=BackendB5BIntegration&FullyQualifiedName~Dango.Server.Tests.RoomManagement.RoomClientHttpsIntegrationTests'
         $taskTestFilter = if ($TestFilter) { "($taskB5BAllowedFilter)&($TestFilter)" } else { $taskB5BAllowedFilter }
+    }
+    if ($B5C) {
+        # B5C is independently approved; extra filters can only narrow this six-case class.
+        $taskB5CAllowedFilter = 'TestCategory=PostgresIntegration&TestCategory=BackendB5CIntegration&FullyQualifiedName~Dango.Server.Tests.RoomManagement.FormalRoomSessionHttpsIntegrationTests.'
+        $taskTestFilter = if ($TestFilter) { "($taskB5CAllowedFilter)&($TestFilter)" } else { $taskB5CAllowedFilter }
     }
     [void](Invoke-TaskProcess 'dotnet' @('test', 'tests/Dango.Server.Tests/Dango.Server.Tests.csproj', '-c', 'Release', '--no-build', '--no-restore', '--filter', $taskTestFilter, '--logger', 'trx;LogFileName=backend-postgres.trx', '--results-directory', $taskResultsDirectory) $taskTestEnvironment)
 } finally {
@@ -230,5 +250,20 @@ try {
     }
     $taskPassword = $null
     $taskConnection = $null
+    if ($B5C -and $taskB5CResultsDirectory) {
+        $taskFixtureReceipts = @(Get-ChildItem -LiteralPath $taskB5CResultsDirectory -Filter 'fixture-*.json' -File | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json })
+        $taskListeningPorts = @([Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners() | ForEach-Object { $_.Port })
+        $taskPidPresent = $taskStartedPid -gt 0 -and $null -ne (Get-Process -Id $taskStartedPid -ErrorAction SilentlyContinue)
+        $taskReceipt = [pscustomobject]@{
+            Version=1; Stage='B5C'; Database=$taskDatabaseName; DatabasePort=$taskPort; StartedPid=$taskStartedPid
+            FullSuiteRequested=(-not [bool]$TestFilter); FullSuiteFixtureCount=6
+            DatabaseProcessPresent=$taskPidPresent; DatabaseListenerPresent=($taskListeningPorts -contains $taskPort)
+            PostmasterPidFilePresent=(Test-Path -LiteralPath (Join-Path $taskDataDirectory 'postmaster.pid'))
+            Fixtures=@($taskFixtureReceipts | ForEach-Object { [pscustomobject]@{ Port=$_.Port; ProcessId=$_.ProcessId; ProcessPresent=($null -ne (Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue)); Started=$_.Started; Stopped=$_.Stopped; Disposed=$_.Disposed; ListenerPresent=($taskListeningPorts -contains $_.Port) } })
+            DataRetained=(Test-Path -LiteralPath $taskDataDirectory); CredentialsRetained=(Test-Path -LiteralPath $taskCredentialFile)
+            KeysRetained=(Test-Path -LiteralPath (Join-Path $taskStateDirectory 'b1tests-keys')); EpochRetained=(Test-Path -LiteralPath (Join-Path $taskStateDirectory 'b1test-state.json'))
+        }
+        [IO.File]::WriteAllText((Join-Path $taskB5CResultsDirectory 'resource-receipt.json'), ($taskReceipt | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
+    }
     Write-Host "Retained approved cluster: $taskDataDirectory; database=$taskDatabaseName; port=$taskPort; started_pid=$taskStartedPid"
 }
