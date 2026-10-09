@@ -456,9 +456,9 @@
                     </StackPanel>
                     <Button x:Name="BackFromPorchButton" Content="首页 ↗" HorizontalAlignment="Right" VerticalAlignment="Top" BorderBrush="Transparent"
                             Padding="8,4" MinHeight="30" Click="OnBackFromPorchClick" AutomationProperties.Name="返回我的团子" ToolTip="Esc · 返回首页" />
-                    <Button x:Name="PorchAccountButton" Content="在线账号" HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                            Margin="12" Padding="12,8" Click="OnAccountClick" AutomationProperties.Name="在线账号入口"
-                            ToolTip="邮箱账号与外观配置；房间目录随后接入" />
+                    <Button x:Name="PorchAccountButton" Content="在线房间目录" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                            Margin="12" Padding="12,8" Click="OnRoomDirectoryClick" AutomationProperties.Name="在线房间目录入口"
+                            ToolTip="登录后管理本人房间；在线场景进入随后接入" />
                 </Grid>
                 <TextBlock x:Name="RoomAwayNotice" Grid.ColumnSpan="3" Grid.RowSpan="2"
                            Text="团子去玩拉！回来才能换衣服哦" Visibility="Collapsed"
@@ -587,8 +587,10 @@
         </StackPanel>
         <Border x:Name="AccountOverlay" Grid.RowSpan="4" Visibility="Collapsed" Panel.ZIndex="20"
                 Background="{DynamicResource HomeScrim}" Padding="16" KeyboardNavigation.TabNavigation="Cycle">
-            <local:AccountPanelView x:Name="AccountContent" MaxWidth="560" HorizontalAlignment="Stretch"
-                                    VerticalAlignment="Center" />
+            <Grid VerticalAlignment="Center" MaxWidth="560">
+                <local:AccountPanelView x:Name="AccountContent" HorizontalAlignment="Stretch" />
+                <local:RoomPanelView x:Name="RoomContent" Visibility="Collapsed" HorizontalAlignment="Stretch" />
+            </Grid>
         </Border>
     </Grid>
 </UserControl>

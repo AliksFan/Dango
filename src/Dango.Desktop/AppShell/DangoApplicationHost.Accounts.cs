@@ -7,6 +7,7 @@ namespace Dango.Desktop.AppShell;
 internal sealed partial class DangoApplicationHost
 {
     private DesktopAccountController? accountController;
+    private DesktopRoomController? roomController;
 
     private void BindAccounts(ControlCenterWindow window)
     {
@@ -21,7 +22,21 @@ internal sealed partial class DangoApplicationHost
             origin = candidate;
         accountController = new(home.AccountPanel, origin, new WindowsAccountSecretStore(),
             CreatePetConfigurationCoordinator, repository.CaptureAsync, home.HideAccountPanel,
-            (signedIn, ready) => { home.SetAccountStatus(signedIn, ready); home.RefreshAccountAppearance(); });
+            (signedIn, ready) =>
+            {
+                if (!signedIn) roomController?.Reset();
+                home.SetAccountStatus(signedIn, ready); home.RefreshAccountAppearance();
+            });
+        roomController = new(home.RoomPanel, () => accountController.RoomClient, home.HideAccountPanel,
+            home.ShowAccountPanel, rejected => { accountController.RejectRoomAuthentication(rejected); home.ShowAccountPanel(); });
+        void OpenRooms()
+        {
+            if (!accountController.IsLoggedIn) { home.ShowAccountPanel(); return; }
+            home.ShowRoomPanel(); roomController.Open();
+        }
+        home.RoomDirectoryRequested += OpenRooms;
+        accountController.RoomsRequested += OpenRooms;
+        home.RoomPanelClosed += roomController.Close;
         home.AccountRequested += accountController.Open;
         home.AccountPanelClosed += accountController.Close;
     }

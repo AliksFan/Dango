@@ -10,6 +10,8 @@ B5 已开始：完成[账号／配置／房间候选](2026-10-09-backend-b5-inte
 
 ## 1. 起点、范围与所有权
 
+B5B 按[房间增量计划](2026-10-09-backend-b5b-room-execution.md)实现 Windows 目录与 CRUD 候选，Client 静态 244／244、Desktop 受影响去重 72 项、Release 与宽窄离屏检查通过，见[B5B 记录](../verification/2026-10-09-email-backend-b5b.md)。四项真实客户端 HTTPS／数据库门禁与[新精确数据计划](2026-10-09-backend-b5b-local-data-plan.md)已准备、未授权／未执行；Hub／租约、进程级原请求恢复及 Windows 人工仍未验证。没有 main 合并、推送、安装或部署。
+
 从 `main@1c47930` 的隔离任务分支 `codex/email-backend-design` 开始，保留已有 Phase 2A 管道原型和测试合同；正式入口显式选择模式，不共用匿名原型的入场票据、身份或内存快照。好友、情侣、桌宠第二席及私密非房主准入后置；注册邀请不授予房间权限。
 
 根代理拥有入口、项目依赖、DbContext／迁移、共享合同与基线文档；B4 两个隔离 Worktree 分别实现准入租约与公共码管理，另有只读审查。各代理拥有明确模块文件，模型和迁移由根集中集成，不同时写同一分支或 ModelSnapshot。

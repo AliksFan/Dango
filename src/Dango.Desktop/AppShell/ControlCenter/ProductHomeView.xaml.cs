@@ -61,6 +61,7 @@ public partial class ProductHomeView : UserControl
         AppearanceColorPicker = ShowAppearanceColorPicker;
         InitializeComponent();
         AccountContent.Requested += OnUnboundAccountAction;
+        RoomContent.Requested += request => { if (request.Action == RoomPanelAction.Close && RoomDirectoryRequested is null) CloseAccountPanel(); };
         InitializePorchNavigation();
         RefreshAppearanceControls();
         Loaded += OnLoaded;
@@ -166,7 +167,7 @@ public partial class ProductHomeView : UserControl
 
     public void RestoreKeyboardFocus()
     {
-        if (IsAccountPanelOpen) { AccountContent.MoveFocus(new(FocusNavigationDirection.First)); return; }
+        if (IsAccountPanelOpen) { (IsRoomPanelOpen ? (UIElement)RoomContent : AccountContent).MoveFocus(new(FocusNavigationDirection.First)); return; }
         if (IsSettingsOpen) Keyboard.Focus(BackFromSettingsButton);
         else Keyboard.Focus(Stage);
     }

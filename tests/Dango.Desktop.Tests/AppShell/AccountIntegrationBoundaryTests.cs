@@ -338,6 +338,38 @@ public sealed class AccountIntegrationBoundaryTests
         }, local.CaptureAsync, () => { }, (_, _) => { },
         (origin, store) => FormalAccountClient.ForTesting(origin, receiver(), new CookieContainer(), store));
 
+    [STATestMethod]
+    public void RoomManagementDoesNotRequireAppearanceChoiceAndObsoleteBindingCannotClearReplacementAccount()
+    {
+        WithDispatcher(() =>
+        {
+            var view = new AccountPanelView(); var receiver = new Receiver(); var roomsRequested = 0;
+            using var controller = Controller(view, new Local(), () => receiver);
+            controller.RoomsRequested += () => roomsRequested++;
+            controller.Open(); Login(view, "rooms@dango.invalid");
+            PumpUntil(() => view.FindName("AccountCloudChoice") is not null);
+            Assert.IsFalse(controller.ConfigurationReady);
+            Assert.IsNotNull(controller.RoomClient);
+            var old = controller.RoomClient;
+            ButtonNamed(view, "我的房间").RaiseEvent(new(Button.ClickEvent));
+            Assert.AreEqual(1, roomsRequested);
+            controller.Close(); controller.Open();
+            ButtonNamed(view, "退出登录").RaiseEvent(new(Button.ClickEvent));
+            PumpUntil(() => !controller.IsLoggedIn && Field<Button>(view, "AccountPrimary").IsEnabled);
+            Assert.IsNull(controller.RoomClient);
+            Login(view, "replacement@dango.invalid");
+            PumpUntil(() => view.FindName("AccountCloudChoice") is not null);
+            var current = controller.RoomClient!;
+            Assert.AreNotSame(old, current);
+            controller.RejectRoomAuthentication(old!);
+            Assert.IsTrue(controller.IsLoggedIn);
+            Assert.AreSame(current, controller.RoomClient);
+            controller.RejectRoomAuthentication(current);
+            Assert.IsFalse(controller.IsLoggedIn);
+            Assert.IsNull(controller.RoomClient);
+        });
+    }
+
     private static void Login(AccountPanelView view, string email)
     {
         Field<TextBox>(view, "AccountEmail").Text = email;

@@ -26,7 +26,7 @@ public enum AccountPanelAction
 {
     Login, Logout, StartRegistration, RefreshRegistration, ResendRegistration, CompleteRegistration,
     RequestPasswordReset, AdoptLocal, AdoptCloud, RefreshConfigurations, OpenLogin, OpenRegister,
-    OpenPasswordReset, OpenConfiguration, UseNewInvitation, Close
+    OpenPasswordReset, OpenConfiguration, UseNewInvitation, Close, OpenRooms
 }
 
 /// <summary>Presentation state contains no passwords, invitation proofs, or session credentials.</summary>
@@ -158,10 +158,12 @@ public sealed class AccountPanelView : UserControl
             case AccountPanelPage.Account:
                 AddNote("账号已登录。在线房间需要先明确选择配置来源；退出登录会保留已经应用的本机外观。");
                 AddPrimary("查看并选择配置", AccountPanelAction.OpenConfiguration);
+                AddNavigation("我的房间", AccountPanelAction.OpenRooms);
                 AddNavigation("退出登录", AccountPanelAction.Logout);
                 break;
             case AccountPanelPage.ConfigurationChoice:
                 AddConfigurationChoice();
+                AddNavigation("我的房间", AccountPanelAction.OpenRooms);
                 break;
         }
         AddNavigation("继续本地游玩", AccountPanelAction.Close, allowBusy: true);

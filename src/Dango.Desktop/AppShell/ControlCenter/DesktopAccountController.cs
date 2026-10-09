@@ -1,6 +1,7 @@
 using System.IO;
 using Dango.Client.Sync.Accounts;
 using Dango.Client.Sync.Pets;
+using Dango.Client.Sync.Rooms;
 
 namespace Dango.Desktop.AppShell.ControlCenter;
 
@@ -17,6 +18,7 @@ internal sealed class DesktopAccountController : IDisposable
     private readonly Action<bool, bool> changed;
     private FormalAccountClient? client;
     private AccountIdentity? identity;
+    private IRoomManagementClient? rooms;
     private RegistrationAttempt? registration;
     private PetConfigurationChoiceCoordinator? choice;
     private PetConfigurationReview? review;
@@ -41,6 +43,15 @@ internal sealed class DesktopAccountController : IDisposable
 
     internal bool IsLoggedIn => identity is not null;
     internal bool ConfigurationReady => configurationReady;
+    internal IRoomManagementClient? RoomClient => identity is null ? null : rooms;
+    internal event Action? RoomsRequested;
+
+    internal void RejectRoomAuthentication(IRoomManagementClient rejected)
+    {
+        if (disposed || !ReferenceEquals(rejected, rooms) || client is null) return;
+        ClearAuthentication(client);
+        Show(AccountPanelPage.Login, "会话已失效，请重新登录。本机外观保留。");
+    }
 
     internal void Open()
     {
@@ -82,6 +93,8 @@ internal sealed class DesktopAccountController : IDisposable
         if (disposed) return;
         if (action == AccountPanelAction.Close) { Close(); return; }
         if (busy || !opened) return;
+        if (action == AccountPanelAction.OpenRooms && identity is not null)
+        { RoomsRequested?.Invoke(); return; }
         if (action is AccountPanelAction.OpenLogin or AccountPanelAction.OpenRegister or AccountPanelAction.OpenPasswordReset)
         {
             Show(action == AccountPanelAction.OpenLogin ? AccountPanelPage.Login : action == AccountPanelAction.OpenRegister
@@ -103,7 +116,7 @@ internal sealed class DesktopAccountController : IDisposable
             var cleanupRetry = rememberedCleanupNeeded;
             // Logout can itself be cancelled while queued behind an older request.
             rememberedCleanupNeeded = true;
-            Invalidate(); client = null; identity = null; choice = null; review = null;
+            Invalidate(); client = null; identity = null; rooms = null; choice = null; review = null;
             configurationReady = false; restored = true; changed(false, false);
             try
             {
@@ -222,6 +235,7 @@ internal sealed class DesktopAccountController : IDisposable
     {
         rememberedCleanupNeeded = false;
         identity = account; configurationReady = false;
+        rooms = active.CreateRoomManagementClient(account);
         choice = createChoice(active.CreatePetClient(account));
         changed(true, false);
         Show(AccountPanelPage.Account, "已登录。采用外观前请先比较本机与账号配置。");
@@ -296,7 +310,7 @@ internal sealed class DesktopAccountController : IDisposable
                     Show(AccountPanelPage.Login, LogoutFailureMessage((AccountClientException)ex));
                 }
                 else if (!logout && registration is not null && ex is AccountClientException
-                    { Code: "invitation_invalid" or "registration_expired" or "registration_proof_invalid" or "registration_result_expired" or "registration_conflict" })
+                { Code: "invitation_invalid" or "registration_expired" or "registration_proof_invalid" or "registration_result_expired" or "registration_conflict" })
                 {
                     registrationRejected = true;
                     Show(AccountPanelPage.Register, "旧注册请求已过期或被明确拒绝。可确认清除本机继续信息并改用新邀请；这不会取消服务器已有请求。");
@@ -327,7 +341,7 @@ internal sealed class DesktopAccountController : IDisposable
     private string? lastMessage;
     private void ClearAuthentication(FormalAccountClient active)
     {
-        active.Dispose(); client = null; identity = null; choice = null; review = null;
+        active.Dispose(); client = null; identity = null; rooms = null; choice = null; review = null;
         restored = false; configurationReady = false; changed(false, false);
     }
     private void Show(AccountPanelPage target, string? message = null, bool unavailable = false)
