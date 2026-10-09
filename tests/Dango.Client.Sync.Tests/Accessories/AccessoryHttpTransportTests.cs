@@ -148,6 +148,52 @@ public sealed class AccessoryHttpTransportTests
     }
 
     [TestMethod]
+    [DataRow(true, 429, "accessory_upload_busy")]
+    [DataRow(false, 408, "accessory_body_timeout")]
+    public async Task ExplicitFormalBusyAndBodyDeadlineResponsesAreDefinitiveRejections(bool upload, int status, string code)
+    {
+        using var setup = new Setup(); await setup.LoginAsync();
+        setup.Handler.Override = record => record.Method == (upload ? HttpMethod.Post : HttpMethod.Put)
+            ? ErrorResponse(code, (HttpStatusCode)status) : null;
+        var transport = setup.Client.CreateAccessoryTransport(setup.Scope);
+        var failure = await Assert.ThrowsExactlyAsync<AccessoryAccountTransportException>(async () =>
+        {
+            if (upload) await transport.UploadAssetAsync(setup.Scope, Image(), default);
+            else await transport.CommitOutfitAsync(setup.Scope, new(0, new string('a', 32), AccessoryOutfitManifest.Empty), default);
+        });
+        Assert.AreEqual(AccessoryTransportFailure.Rejected, failure.Failure);
+        Assert.IsNotNull(setup.Client.CurrentIdentity);
+    }
+
+    [TestMethod]
+    [DataRow("{\"code\":\"accessory_body_timeout\"}")]
+    [DataRow("{\"code\":\"accessory_body_timeout\",\"correlationId\":\"fictional-correlation\",\"message\":\"fictional-secret\"}")]
+    public async Task MalformedBodyDeadlineEnvelopeCannotProveCommitDidNotWrite(string raw)
+    {
+        using var setup = new Setup(); await setup.LoginAsync();
+        setup.Handler.Override = record => record.Method == HttpMethod.Put ? RawJson(raw, HttpStatusCode.RequestTimeout) : null;
+        await using var sync = new AccessoryAccountSync(new EmptyRepository());
+        sync.AttachAccount(setup.Scope, setup.Client.CreateAccessoryTransport(setup.Scope), 0);
+        sync.QueueLocalCommit(new(AccessoryOutfitManifest.Empty, [], 1));
+        await Until(() => sync.SafeDiagnostics.State == AccessorySyncState.OutcomeUnknown);
+        Assert.IsFalse(sync.RetryLatestBackup());
+    }
+
+    [TestMethod]
+    public async Task TransportTimeoutAfterDispatchCannotBecomeAnExplicitServerBodyRejection()
+    {
+        using var setup = new Setup(); await setup.LoginAsync();
+        setup.Handler.Override = record => record.Method == HttpMethod.Put ? throw new TaskCanceledException("fictional transport timeout") : null;
+        await using var sync = new AccessoryAccountSync(new EmptyRepository());
+        sync.AttachAccount(setup.Scope, setup.Client.CreateAccessoryTransport(setup.Scope), 0);
+        sync.QueueLocalCommit(new(AccessoryOutfitManifest.Empty, [], 1));
+        await Until(() => sync.SafeDiagnostics.State == AccessorySyncState.OutcomeUnknown);
+        Assert.IsNull(sync.SafeDiagnostics.LastBackedUpLocalVersion);
+        Assert.IsFalse(sync.RetryLatestBackup());
+        Assert.AreEqual(1, setup.Handler.Requests.Count(record => record.Method == HttpMethod.Put));
+    }
+
+    [TestMethod]
     [DataRow("{\"code\":\"authentication_required\"}")]
     [DataRow("{\"code\":\"authentication_required\",\"correlationId\":null}")]
     [DataRow("{\"code\":false,\"correlationId\":\"fictional-correlation\"}")]

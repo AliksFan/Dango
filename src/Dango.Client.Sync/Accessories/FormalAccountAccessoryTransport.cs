@@ -48,7 +48,8 @@ public sealed partial class FormalAccountClient
             "accessory_revision_conflict", "accessory_idempotency_conflict", "accessory_body_too_large",
             "accessory_asset_unavailable", "accessory_staging_limit", "accessory_storage_unavailable",
             "accessory_request_invalid", "accessory_image_invalid", "accessory_source_digest_invalid",
-            "accessory_revision_exhausted", "accessory_asset_dimensions_invalid", "accessory_content_type_invalid"
+            "accessory_revision_exhausted", "accessory_asset_dimensions_invalid", "accessory_content_type_invalid",
+            "accessory_upload_busy", "accessory_body_timeout"
         };
 
         public Uri ServiceOrigin { get; } = owner.Origin;
