@@ -100,6 +100,8 @@ Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](d
 
 ## 当前调研
 
+- [B5C 正式连接／租约增量](docs/planning/2026-10-09-backend-b5c-session-execution.md)、[候选验证](docs/verification/2026-10-09-email-backend-b5c.md)与[精确数据计划](docs/planning/2026-10-09-backend-b5c-local-data-plan.md)：客户端与居中状态浮层已接入，静态与离屏通过；六项真实数据测试尚待新授权。正式移动／动作与多人呈现仍未接入，完整 B5 未验收。
+
 - [Windows 客户端技术栈专项调研](docs/research/2026-08-31-windows-client-stack-comparison.md)：比较 .NET/WPF、Godot、Avalonia、Tauri、Electron、Unity 和 WinUI 3，推荐结论已经批准并记录为 [ADR 0001](docs/adr/0001-windows-client-foundation.md)。
 - [服务端技术栈专项调研](docs/research/2026-08-31-server-stack-comparison.md)：比较 ASP.NET Core、Go、Node.js 和 Rust；推荐结论与扩展边界已经批准并记录为 [ADR 0002](docs/adr/0002-server-foundation-and-scaling.md)。
 - [动画与渲染管线专项调研](docs/research/2026-09-01-animation-rendering-pipeline-comparison.md)：比较逐帧、分层位图、骨骼网格、矢量和程序化动画，以及 WPF、SkiaSharp、Direct2D 和 Godot 渲染路径；推荐结论已经批准并记录为 [ADR 0003](docs/adr/0003-animation-assets-and-rendering-validation.md)。
