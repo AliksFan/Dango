@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text;
 using Dango.Protocol.Accessories;
 
 namespace Dango.Protocol.Tests;
@@ -114,5 +115,28 @@ public sealed class AccessoryOutfitTests
         var itemJson = JsonSerializer.Serialize(Item());
         var json = "{\"SchemaVersion\":1,\"Items\":[" + itemJson[..^1] + ",\"IsEquipped\":false}]}";
         Assert.ThrowsExactly<JsonException>(() => JsonSerializer.Deserialize<AccessoryOutfitManifest>(json));
+    }
+
+    [TestMethod]
+    public void CompleteWireRecipeRoundTripsAndRejectsDuplicateOrMissingParameters()
+    {
+        var original = Manifest(Item() with { Layer = AccessoryOutfitLayer.Behind, AllowFolding = true });
+        var json = AccessoryOutfitJson.Serialize(original);
+        Assert.AreEqual(original, AccessoryOutfitJson.Deserialize(Encoding.UTF8.GetBytes(json)));
+        Assert.ThrowsExactly<InvalidDataException>(() => AccessoryOutfitJson.Deserialize(
+            Encoding.UTF8.GetBytes(json.Replace("\"schemaVersion\":1", "\"schemaVersion\":1,\"schemaVersion\":1", StringComparison.Ordinal))));
+        Assert.ThrowsExactly<InvalidDataException>(() => AccessoryOutfitJson.Deserialize(
+            Encoding.UTF8.GetBytes(json.Replace("\"allowFolding\":true,", "", StringComparison.Ordinal))));
+        Assert.ThrowsExactly<InvalidDataException>(() => AccessoryOutfitJson.Deserialize(
+            Encoding.UTF8.GetBytes(json.Replace("\"order\":0", "\"order\":0,\"order\":1", StringComparison.Ordinal))));
+        Assert.ThrowsExactly<JsonException>(() => AccessoryOutfitJson.Deserialize(
+            Encoding.UTF8.GetBytes(json.Replace("\"layer\":\"behind\"", "\"layer\":0", StringComparison.Ordinal))));
+    }
+
+    [TestMethod]
+    public void WireManifestHasAByteBudgetBeforeParsing()
+    {
+        Assert.ThrowsExactly<InvalidDataException>(() => AccessoryOutfitJson.Deserialize(new byte[AccessoryOutfitJson.MaximumManifestBytes + 1]));
+        Assert.ThrowsExactly<InvalidDataException>(() => AccessoryOutfitJson.Deserialize(ReadOnlyMemory<byte>.Empty));
     }
 }
