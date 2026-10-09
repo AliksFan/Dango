@@ -25,11 +25,25 @@ public sealed class AccessoryAccountSyncTests
         sync.AttachAccount(Scope(), transport, 6);
         var item = Item(image, "first") with
         {
-            Layer = AccessoryOutfitLayer.Behind, Order = 4, SizePercent = 153, BaseAngleDegrees = -21,
-            ImagePivotX = .1, ImagePivotY = .2, BodyAnchorX = .3, BodyAnchorY = .4,
-            Softness = 54, AllowFolding = true, MaxDeformationPercent = 129,
-            ConnectionStrength = 34, MaxConnectionTravelPercent = 145, RotationDamping = 23,
-            LockRotation = false, ReturnStrength = 46, MaxSwingDegrees = 165, LimitSwing = false, GravityInfluence = 88
+            Layer = AccessoryOutfitLayer.Behind,
+            Order = 4,
+            SizePercent = 153,
+            BaseAngleDegrees = -21,
+            ImagePivotX = .1,
+            ImagePivotY = .2,
+            BodyAnchorX = .3,
+            BodyAnchorY = .4,
+            Softness = 54,
+            AllowFolding = true,
+            MaxDeformationPercent = 129,
+            ConnectionStrength = 34,
+            MaxConnectionTravelPercent = 145,
+            RotationDamping = 23,
+            LockRotation = false,
+            ReturnStrength = 46,
+            MaxSwingDegrees = 165,
+            LimitSwing = false,
+            GravityInfluence = 88
         };
         sync.QueueLocalCommit(new(new(1, [item, item with { Id = "second", Order = 5 }]), [image], 1));
         await Until(() => sync.SafeDiagnostics.State == AccessorySyncState.BackedUp);

@@ -78,11 +78,25 @@ public sealed class AccessoryAccountLocalRepositoryTests
     {
         var item = new AccessoryItem("fictional-equipped", "虚构配饰", "builtin-top-hat", 64, 64)
         {
-            Layer = AccessoryLayer.Behind, Order = 32, SizePercent = 371, BaseAngleDegrees = -159,
-            ImagePivotX = .17, ImagePivotY = .61, BodyAnchorX = .78, BodyAnchorY = .23,
-            Softness = 93, AllowFolding = true, MaxDeformationPercent = 187, ConnectionStrength = 27,
-            MaxConnectionTravelPercent = 183, RotationDamping = 81, LockRotation = false,
-            ReturnStrength = 7, MaxSwingDegrees = 167, LimitSwing = false, GravityInfluence = 73,
+            Layer = AccessoryLayer.Behind,
+            Order = 32,
+            SizePercent = 371,
+            BaseAngleDegrees = -159,
+            ImagePivotX = .17,
+            ImagePivotY = .61,
+            BodyAnchorX = .78,
+            BodyAnchorY = .23,
+            Softness = 93,
+            AllowFolding = true,
+            MaxDeformationPercent = 187,
+            ConnectionStrength = 27,
+            MaxConnectionTravelPercent = 183,
+            RotationDamping = 81,
+            LockRotation = false,
+            ReturnStrength = 7,
+            MaxSwingDegrees = 167,
+            LimitSwing = false,
+            GravityInfluence = 73,
         };
         var old = new AccessoryItem("fictional-previous", "之前佩戴", "builtin-sprout", 64, 64);
         var library = new AccessoryItem("fictional-library", "未佩戴库", "builtin-bowler", 64, 64) { IsEquipped = false };

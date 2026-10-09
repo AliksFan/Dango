@@ -93,8 +93,10 @@ public sealed class AccessoryAssetTests
 
     [TestMethod]
     public void NonconsecutiveIdatIsRejected()
-    { Reject(PngFixture.Assemble(PngFixture.Header(1, 1), PngFixture.Compress([0, 100, 0, 0, 100]), afterData:
-        [PngFixture.Chunk("tEXt", "comment\0test"u8), PngFixture.Chunk("IDAT", [])])); }
+    {
+        Reject(PngFixture.Assemble(PngFixture.Header(1, 1), PngFixture.Compress([0, 100, 0, 0, 100]), afterData:
+        [PngFixture.Chunk("tEXt", "comment\0test"u8), PngFixture.Chunk("IDAT", [])]));
+    }
 
     [TestMethod]
     public void EmptyAndExcessEncodedBytesAreRejected()

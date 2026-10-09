@@ -13,7 +13,8 @@ public sealed class FileAccessoryReviewRepository
     private const int MaximumReviewRecords = 10_000;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false) }
     };
@@ -97,8 +98,12 @@ public sealed class FileAccessoryReviewRepository
         if (!AccessoryImageReview.IsTransition(existing.Status, nextStatus)) throw new InvalidOperationException("Review decision does not apply to the current state.");
         var atUtc = DateTimeOffset.UtcNow;
         if (atUtc < existing.History[^1].AtUtc) atUtc = existing.History[^1].AtUtc;
-        var updated = existing with { Revision = existing.Revision + 1, Status = nextStatus,
-            History = Array.AsReadOnly(existing.History.Append(new(existing.Revision + 1, nextStatus, atUtc, reason)).ToArray()) };
+        var updated = existing with
+        {
+            Revision = existing.Revision + 1,
+            Status = nextStatus,
+            History = Array.AsReadOnly(existing.History.Append(new(existing.Revision + 1, nextStatus, atUtc, reason)).ToArray())
+        };
         await WriteAsync(updated, cancellationToken); return updated;
     }
 

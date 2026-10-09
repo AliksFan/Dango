@@ -17,11 +17,25 @@ public sealed class AccessoryOutfitTests
         Assert.HasCount(0, AccessoryOutfitManifest.Empty.Items);
         var original = Manifest(Enumerable.Range(0, 8).Select(index => Item("item-" + index) with
         {
-            Layer = AccessoryOutfitLayer.Behind, Order = index, SizePercent = 400,
-            BaseAngleDegrees = -180, ImagePivotX = 0, ImagePivotY = 1, BodyAnchorX = 1, BodyAnchorY = 0,
-            Softness = 100, AllowFolding = true, MaxDeformationPercent = 200, ConnectionStrength = 0,
-            MaxConnectionTravelPercent = 200, RotationDamping = 0, LockRotation = false, ReturnStrength = 0,
-            MaxSwingDegrees = 180, LimitSwing = false, GravityInfluence = 100,
+            Layer = AccessoryOutfitLayer.Behind,
+            Order = index,
+            SizePercent = 400,
+            BaseAngleDegrees = -180,
+            ImagePivotX = 0,
+            ImagePivotY = 1,
+            BodyAnchorX = 1,
+            BodyAnchorY = 0,
+            Softness = 100,
+            AllowFolding = true,
+            MaxDeformationPercent = 200,
+            ConnectionStrength = 0,
+            MaxConnectionTravelPercent = 200,
+            RotationDamping = 0,
+            LockRotation = false,
+            ReturnStrength = 0,
+            MaxSwingDegrees = 180,
+            LimitSwing = false,
+            GravityInfluence = 100,
         }).ToArray());
         Assert.AreEqual(original, JsonSerializer.Deserialize<AccessoryOutfitManifest>(JsonSerializer.Serialize(original)));
     }
