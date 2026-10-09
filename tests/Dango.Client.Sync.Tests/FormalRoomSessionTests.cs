@@ -375,6 +375,31 @@ public sealed class FormalRoomSessionTests
         Assert.AreEqual(1, client.Enters.Count);
     }
 
+    [TestMethod]
+    [DataRow("expired")]
+    [DataRow("removed")]
+    [DataRow("ban_set")]
+    [DataRow("ban_removed")]
+    public async Task RealModerationAndExpiryNoticesRereadAuthorityWithoutGrantingAccess(string eventType)
+    {
+        var client = new Receiver(); client.Assign();
+        await using var session = client.Session(); await session.ResumeAsync();
+        _ = await client.Clock.TimerAsync(TimeSpan.FromSeconds(10));
+        _ = await client.Clock.TimerAsync(TimeSpan.FromSeconds(30));
+        var connection = client.Connections.Single();
+        var originalRoom = client.Personal.RoomId!.Value;
+        client.Clear();
+        connection.Notify(new(Guid.NewGuid(), originalRoom, 9, eventType));
+        Assert.IsTrue(session.Current.ServerAttached, "A notice must trigger a read, not directly change authority.");
+        var timer = await client.Clock.TimerAsync(TimeSpan.FromSeconds(1));
+        var revoked = NextState(session, state => state.Phase == FormalRoomSessionPhase.ReentryRequired);
+        timer.Fire(); await revoked;
+        Assert.IsFalse(session.Current.ServerAttached);
+        Assert.AreEqual(FormalRoomRole.None, session.Current.Role);
+        Assert.IsNull(session.Current.Personal!.RoomId);
+        Assert.AreEqual(0, client.Enters.Count); Assert.AreEqual(0, client.Controls.Count);
+    }
+
     private static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
     private static RoomAccessClientException Unavailable() => new(RoomAccessFailure.Unavailable, "service_unavailable");
     private static Task NextState(FormalRoomSession session, Func<FormalRoomSessionState, bool> predicate)

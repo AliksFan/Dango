@@ -8,7 +8,8 @@ public sealed class FormalRoomSession : IAsyncDisposable
 {
     private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(10);
     private static readonly HashSet<string> NoticeTypes = new(StringComparer.Ordinal)
-        { "created", "updated", "dissolved", "restored", "entered", "left", "control", "lease_ended", "offline", "code_reset" };
+        { "created", "updated", "dissolved", "restored", "expired", "entered", "left", "control",
+            "lease_ended", "offline", "code_reset", "removed", "ban_set", "ban_removed" };
     private readonly object sync = new();
     private readonly SemaphoreSlim operationGate = new(1, 1);
     private readonly IRoomAccessClient client;
