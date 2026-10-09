@@ -29,6 +29,10 @@ public static class PublicRoomAccessPolicy
         if (hours is < 1 or > 168) throw new AccountFault("room_code_lifetime_invalid");
     }
 
+    // PostgreSQL timestamps retain microseconds; use that precision before creating receipts.
+    public static DateTimeOffset CredentialTime(DateTimeOffset value) =>
+        new(value.UtcTicks - value.UtcTicks % TimeSpan.TicksPerMicrosecond, TimeSpan.Zero);
+
     public static void ExpectedVersion(PersistentRoom room, long expectedVersion)
     {
         if (expectedVersion < 1) throw new AccountFault("room_version_invalid");
