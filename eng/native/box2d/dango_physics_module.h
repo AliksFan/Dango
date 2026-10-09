@@ -2,6 +2,7 @@
 #define DANGO_PHYSICS_MODULE_H
 
 #include "dango_self_physics_internal.h"
+#include "dango_round_ball_types.h"
 
 #define DANGO_PHYSICS_MODULE_ABI_VERSION 1
 #define DANGO_PHYSICS_MAX_BODIES 3
@@ -44,5 +45,12 @@ DANGO_API int dango_physics_world_clear_static_platform(void* handle);
 // Six floats: enabled, touching, supported, outward normal X/Y, signed gap.
 DANGO_API int dango_physics_world_get_static_platform_contact(void* handle,int entity_id,float* values,int capacity);
 DANGO_API int dango_physics_get_allocated_bytes(void);
+
+// Optional round-ball ABI. Get checks exact frame_size before any output write.
+DANGO_API int dango_physics_get_round_ball_abi_version(void);
+DANGO_API int dango_physics_get_round_ball_frame_size(void);
+DANGO_API int dango_physics_world_add_round_ball(void* handle,const dango_ball_definition* definition,int* ball_id);
+DANGO_API int dango_physics_world_remove_round_ball(void* handle,int ball_id);
+DANGO_API int dango_physics_world_get_round_ball_frame(void* handle,dango_round_ball_frame* frame,int frame_size);
 
 #endif

@@ -67,7 +67,7 @@ public sealed class DangoPhysicsException : InvalidOperationException
     public int NativeErrorCode { get; }
 }
 
-public sealed class DangoPhysicsWorld : IDisposable
+public sealed partial class DangoPhysicsWorld : IDisposable
 {
     public const string NativeLibraryFileName = "dango_physics_module.dll";
     public const int NativeAbiVersion = 1;
@@ -315,7 +315,7 @@ public sealed class DangoPhysicsWorld : IDisposable
         _ => new(DangoPhysicsFailureKind.NativeFailure, message, error),
     };
 
-    private sealed class NativeApi : IDisposable
+    private sealed partial class NativeApi : IDisposable
     {
         internal const int StateFloatCount = 42;
         private nint library;

@@ -3,7 +3,7 @@
 
 #include <math.h>
 #include <stdbool.h>
-#include <stdint.h>
+#include "dango_round_ball_types.h"
 
 #ifndef DANGO_ROUND_BALL_TEST_VARIANT
 #define DANGO_ROUND_BALL_TEST_VARIANT 0
@@ -12,30 +12,6 @@
 /* Internal admission contract. All lengths/ball velocities are in q=T p,
    T=diag(4/3,1), never DIP. The original Dango coordinates remain p. */
 typedef struct dango_ball_vec { double x,y; } dango_ball_vec;
-typedef struct dango_ball_definition
-{
-    double x,y,radius,mass,floor_friction,dango_friction,floor_restitution,dango_restitution;
-} dango_ball_definition;
-typedef struct dango_ball_state
-{
-    int id,enabled,sleeping;
-    uint64_t scene_revision,step,integrations;
-    double x,y,vx,vy,angle,omega;
-} dango_ball_state;
-typedef struct dango_ball_contact
-{
-    int object_id,touching,sample;
-    uint64_t scene_revision,step;
-    double fraction,nx,ny,gap,normal_impulse,tangent_impulse;
-    double normal_speed_before,tangent_speed_before;
-    double ball_speed_before;
-} dango_ball_contact;
-typedef struct dango_ball_snapshot
-{
-    uint64_t scene_revision,step;
-    dango_ball_state ball;
-    dango_ball_contact dango_contact,floor_contact;
-} dango_ball_snapshot;
 typedef struct dango_ball_geometry
 {
     double core[2],nodes[32],node_radius,ball_x,ball_y,ball_radius;
