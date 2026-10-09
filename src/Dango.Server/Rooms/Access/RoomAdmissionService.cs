@@ -57,6 +57,10 @@ public sealed class RoomAdmissionService(DangoDbContext db, AccountEnvironment e
             var sourceId = context.State.RoomId;
             await ReconcileAsync(context, ct);
             var now = clock.GetUtcNow();
+            var observers = sourceId != roomId
+                ? (await EffectiveAsync(context, ct)).Where(l => !(l.SessionId == sessionId && l.InstanceId == request.InstanceId)
+                    && (target.Kind != PersistentRoomKind.DesktopPet || l.DeviceKind == "desktop")).ToArray() : [];
+            if (observers.Length >= RoomAccessPersistence.MaximumDevices) throw new AccountFault("room_device_limit", 409);
             if (sourceId != roomId)
             {
                 foreach (var lease in context.Leases.Where(l => l.RevokedAt == null)) RoomAccessPersistence.EndLease(lease, now);
@@ -70,6 +74,19 @@ public sealed class RoomAdmissionService(DangoDbContext db, AccountEnvironment e
             // Persist old instance revocation before inserting its replacement under the partial unique index.
             await db.SaveChangesAsync(ct);
             await checkpoint.ReachedAsync("after_old_leases", context.Pet.Id, ct);
+            now = clock.GetUtcNow();
+            foreach (var observer in observers.Where(l => l.ExpiresAt > now))
+            {
+                // Copy the old absolute deadline, never the old ID or transport. Other valid
+                // devices recover their replacement lease via personal snapshot and attach.
+                var replacement = new RoomDeviceLease
+                {
+                    Id = Guid.NewGuid(), PetId = context.Pet.Id, UserId = observer.UserId, SessionId = observer.SessionId,
+                    InstanceId = observer.InstanceId, DeviceKind = observer.DeviceKind, RoomId = roomId,
+                    CreatedAt = now, LastSeenAt = now, ExpiresAt = observer.ExpiresAt
+                };
+                context.Leases.Add(replacement); db.RoomDeviceLeases.Add(replacement);
+            }
             var fresh = new RoomDeviceLease
             {
                 Id = Guid.NewGuid(), PetId = context.Pet.Id, UserId = userId, SessionId = sessionId, InstanceId = request.InstanceId,
