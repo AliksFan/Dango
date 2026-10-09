@@ -28,7 +28,27 @@ public partial class ProductHomeView
     internal DesktopSceneSession? BoundSceneSession { get; private set; }
     internal StackedDangoSceneRuntime? BoundRuntime { get; private set; }
     internal bool OwnsLiveFrameDriver => liveScheduler?.OwnsRuntime == true;
-    internal void ReleaseLiveScene() => StopLiveScene();
+    internal void ReleaseLiveScene()
+    {
+        // Terminal host disposal differs from a temporary Unloaded/hide. WPF
+        // may still deliver visibility and unload events after runtime disposal.
+        StopLiveScene();
+        liveSceneSuspended = true;
+        porchReturnGeneration = 0;
+        HealthyPorchFrameReady = null;
+        appearanceGeneration++;
+        transitionVersion++;
+        appearanceComparisonChannels = default;
+        appearanceSleeping = false;
+        DetachLiveFocusSafety();
+        SystemParameters.StaticPropertyChanged -= OnSystemPreferenceChanged;
+        Loaded -= OnLoaded;
+        Unloaded -= OnUnloaded;
+        liveScheduler = null;
+        BoundRuntime = null;
+        BoundSceneSession = null;
+        appearanceSession = null;
+    }
 
     internal void SuspendForRoom()
     {
