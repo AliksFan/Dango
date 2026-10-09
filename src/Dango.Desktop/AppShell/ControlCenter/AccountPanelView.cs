@@ -50,6 +50,7 @@ public sealed class AccountPanelView : UserControl
     private AccountPanelState state = new(AccountPanelPage.Login);
     private AccountPanelAction? primaryAction;
     private PetConfigurationChoice? choice;
+    private UserControl? accessoryAccountContent;
 
     public AccountPanelView()
     {
@@ -96,6 +97,13 @@ public sealed class AccountPanelView : UserControl
     public string InvitationId => invitationId.Text.Trim();
     public string InvitationProof => invitationProof.Password;
     public bool RememberLogin => rememberLogin.IsChecked == true;
+
+    internal void BindAccessoryAccountContent(UserControl content)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        accessoryAccountContent = content;
+        Apply(state);
+    }
 
     public void ClearSecrets()
     {
@@ -164,6 +172,8 @@ public sealed class AccountPanelView : UserControl
                 AddConfigurationChoice();
                 break;
         }
+        if (state.Page is AccountPanelPage.Account or AccountPanelPage.ConfigurationChoice && accessoryAccountContent is not null)
+            body.Children.Add(accessoryAccountContent);
         AddNavigation("继续本地游玩", AccountPanelAction.Close, allowBusy: true);
         if (pageChanged) ((ScrollViewer)FindName("AccountScroll")).ScrollToTop();
     }

@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media.Imaging;
 using System.Windows.Media;
 using Dango.Client.Sync.Pets;
 using Dango.Desktop.AppShell.ControlCenter;
@@ -157,6 +158,63 @@ public sealed class AccountPanelViewTests
         parent.Resources["HomeInk"] = System.Windows.Media.Brushes.Black;
         Assert.AreSame(System.Windows.Media.Brushes.White, ((Border)view.Content).Background);
         Assert.AreSame(System.Windows.Media.Brushes.Black, Element<PasswordBox>(view, "AccountPassword").Foreground);
+    }
+
+    [STATestMethod]
+    [DataRow(AccountPanelPage.Account)]
+    [DataRow(AccountPanelPage.ConfigurationChoice)]
+    public void AccessorySectionFitsNarrowPanelAndScrollsEveryActionIntoViewWithoutChangingBodyChoice(AccountPanelPage page)
+    {
+        var view = new AccountPanelView(); var accessory = new AccessoryAccountPanelView();
+        view.Resources["HomeSoft"] = Brushes.FloralWhite;
+        view.Resources["HomeInk"] = Brushes.Black;
+        view.Resources["HomeMuted"] = Brushes.DimGray;
+        view.Resources["HomeLine"] = Brushes.DarkGray;
+        view.Resources["HomeAccent"] = Brushes.DarkOrange;
+        view.BindAccessoryAccountContent(accessory);
+        var review = Review();
+        view.Apply(new(page, Review: review));
+        var accountActions = new List<AccountPanelAction>(); var accessoryActions = new List<AccessoryAccountAction>();
+        view.Requested += accountActions.Add; accessory.Requested += accessoryActions.Add;
+        if (page == AccountPanelPage.ConfigurationChoice) Element<RadioButton>(view, "AccountCloudChoice").IsChecked = true;
+        accessory.Apply(new("本机穿搭已保存，账号保存结果尚未确认。请核对保存结果；身体外观的来源选择保持独立。", true,
+            CanBackup: true, CanRestore: true, CanRefresh: true, CanRetry: true, CanReconcile: true));
+        var size = new Size(336, 360);
+        view.Measure(size); view.Arrange(new Rect(size)); view.UpdateLayout();
+        var scroll = Element<ScrollViewer>(view, "AccountScroll");
+        Assert.AreEqual(0, scroll.ScrollableWidth, .1);
+        Assert.IsTrue(scroll.ScrollableHeight > 0, "The added section must use the existing account scroll surface.");
+        foreach (var button in Descendants(accessory).OfType<Button>())
+        {
+            var bounds = button.TransformToAncestor(view).TransformBounds(new Rect(button.RenderSize));
+            Assert.IsTrue(bounds.Left >= -1 && bounds.Right <= size.Width + 1, $"Accessory action exceeds narrow width: {bounds}.");
+            var inBody = button.TransformToAncestor((FrameworkElement)scroll.Content).TransformBounds(new Rect(button.RenderSize));
+            scroll.ScrollToVerticalOffset(inBody.Top); view.UpdateLayout();
+            var visible = button.TransformToAncestor(scroll).TransformBounds(new Rect(button.RenderSize));
+            Assert.IsTrue(visible.Top >= -1 && visible.Bottom <= scroll.ActualHeight + 1, $"Cannot reach action through scrolling: {visible}.");
+            button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        }
+        Assert.AreEqual(5, accessoryActions.Count);
+        Assert.AreEqual(0, accountActions.Count, "Accessory actions must never confirm the appearance source choice.");
+        accessory.Apply(new("账号保存结果尚未确认，请先核对。", true, CanReconcile: true));
+        Assert.IsFalse(((Button)accessory.FindName("AccessoryBackupLocal")).IsEnabled);
+        Assert.IsFalse(((Button)accessory.FindName("AccessoryRestoreAccount")).IsEnabled);
+        if (page == AccountPanelPage.ConfigurationChoice)
+        {
+            Assert.IsTrue(Element<RadioButton>(view, "AccountCloudChoice").IsChecked == true);
+            Assert.IsTrue(Element<Button>(view, "AccountPrimary").IsEnabled);
+        }
+        view.Measure(size); view.Arrange(new Rect(size)); view.UpdateLayout();
+        var output = Path.Combine(AppContext.BaseDirectory, "artifacts", "accessory-c2-layout");
+        Directory.CreateDirectory(output);
+        foreach (var (suffix, offset) in new[] { ("top", 0.0), ("bottom", scroll.ScrollableHeight) })
+        {
+            scroll.ScrollToVerticalOffset(offset); view.UpdateLayout();
+            var bitmap = new RenderTargetBitmap(336, 360, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+            bitmap.Render(view);
+            var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using var file = File.Create(Path.Combine(output, $"{page}-{suffix}.png")); encoder.Save(file);
+        }
     }
 
     private static PetConfigurationReview Review()

@@ -22,6 +22,7 @@ internal sealed partial class DangoApplicationHost
         accountController = new(home.AccountPanel, origin, new WindowsAccountSecretStore(),
             CreatePetConfigurationCoordinator, repository.CaptureAsync, home.HideAccountPanel,
             (signedIn, ready) => { home.SetAccountStatus(signedIn, ready); home.RefreshAccountAppearance(); });
+        BindAccessoryAccounts(home);
         home.AccountRequested += accountController.Open;
         home.AccountPanelClosed += accountController.Close;
     }

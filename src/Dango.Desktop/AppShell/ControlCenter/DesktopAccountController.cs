@@ -4,6 +4,8 @@ using Dango.Client.Sync.Pets;
 
 namespace Dango.Desktop.AppShell.ControlCenter;
 
+internal sealed record AuthenticatedAccountAttachment(FormalAccountClient Client, AccountIdentity Identity, long Generation);
+
 /// <summary>One UI owner; obsolete operations cannot publish identity, configuration or UI state.</summary>
 internal sealed class DesktopAccountController : IDisposable
 {
@@ -22,7 +24,10 @@ internal sealed class DesktopAccountController : IDisposable
     private PetConfigurationReview? review;
     private CancellationTokenSource pending = new();
     private readonly SemaphoreSlim operations = new(1, 1);
+    private Task predecessorDrain = Task.CompletedTask;
     private long generation;
+    private long authenticationGeneration;
+    private Action? authenticationInvalidatedHandler;
     private bool busy, opened, disposed, restored, configurationReady;
     private bool registrationRejected, rememberedCleanupNeeded;
     private AccountPanelPage page = AccountPanelPage.Login;
@@ -41,6 +46,7 @@ internal sealed class DesktopAccountController : IDisposable
 
     internal bool IsLoggedIn => identity is not null;
     internal bool ConfigurationReady => configurationReady;
+    internal event Action<AuthenticatedAccountAttachment?>? AuthenticatedSessionChanged;
 
     internal void Open()
     {
@@ -103,7 +109,9 @@ internal sealed class DesktopAccountController : IDisposable
             var cleanupRetry = rememberedCleanupNeeded;
             // Logout can itself be cancelled while queued behind an older request.
             rememberedCleanupNeeded = true;
-            Invalidate(); client = null; identity = null; choice = null; review = null;
+            Invalidate(); ClearIdentity();
+            if (old is not null) RetireClient(old, dispose: false);
+            client = null; choice = null; review = null;
             configurationReady = false; restored = true; changed(false, false);
             try
             {
@@ -117,7 +125,7 @@ internal sealed class DesktopAccountController : IDisposable
                         : "已退出登录。本机外观保留。");
                 }, logout: true);
             }
-            finally { old?.Dispose(); }
+            finally { if (old is not null) RetireClient(old); }
             return;
         }
         await RunAsync(async (active, ct) =>
@@ -223,6 +231,8 @@ internal sealed class DesktopAccountController : IDisposable
         rememberedCleanupNeeded = false;
         identity = account; configurationReady = false;
         choice = createChoice(active.CreatePetClient(account));
+        authenticationGeneration++;
+        AuthenticatedSessionChanged?.Invoke(new(active, account, authenticationGeneration));
         changed(true, false);
         Show(AccountPanelPage.Account, "已登录。采用外观前请先比较本机与账号配置。");
     }
@@ -267,7 +277,7 @@ internal sealed class DesktopAccountController : IDisposable
     private async Task RunAsync(Func<FormalAccountClient, CancellationToken, Task> operation, bool logout = false)
     {
         if (busy || !opened || disposed || origin is null) return;
-        var current = client ??= createClient(origin, secrets);
+        FormalAccountClient? current = null;
         var epoch = generation;
         var ct = pending.Token;
         busy = true; Show(page);
@@ -277,8 +287,10 @@ internal sealed class DesktopAccountController : IDisposable
             // A replacement client cannot touch the same secure-store slots until the old operation has drained.
             await operations.WaitAsync(ct);
             entered = true;
+            await predecessorDrain.WaitAsync(ct);
             ct.ThrowIfCancellationRequested();
             if (epoch != generation || !opened || disposed) return;
+            current = client ??= CreateClient();
             await operation(current, ct);
         }
         catch (OperationCanceledException) { /* The next open rereads facts; cancellation does not prove a write failed. */ }
@@ -304,7 +316,7 @@ internal sealed class DesktopAccountController : IDisposable
                 else if (!logout && (ex is AccountClientException { Failure: AccountFailure.Authentication }
                     or PetConfigurationHttpException { Failure: PetHttpFailure.Authentication }))
                 {
-                    ClearAuthentication(current);
+                    if (current is not null) ClearAuthentication(current);
                     Show(AccountPanelPage.Login, Message(ex));
                 }
                 else Show(logout ? AccountPanelPage.Login
@@ -327,8 +339,54 @@ internal sealed class DesktopAccountController : IDisposable
     private string? lastMessage;
     private void ClearAuthentication(FormalAccountClient active)
     {
-        active.Dispose(); client = null; identity = null; choice = null; review = null;
+        if (!ReferenceEquals(client, active)) return;
+        ClearIdentity(); RetireClient(active); client = null; choice = null; review = null;
         restored = false; configurationReady = false; changed(false, false);
+    }
+
+    private FormalAccountClient CreateClient()
+    {
+        var created = createClient(origin!, secrets);
+        authenticationInvalidatedHandler = () =>
+        {
+            void InvalidateCurrent()
+            {
+                if (disposed || !ReferenceEquals(client, created) || identity is null || created.CurrentIdentity is not null) return;
+                Invalidate(); ClearAuthentication(created);
+                Show(AccountPanelPage.Login, "会话已失效，请重新登录。本机外观与配饰保留。");
+            }
+            if (panel.Dispatcher.CheckAccess()) InvalidateCurrent();
+            else _ = panel.Dispatcher.BeginInvoke(InvalidateCurrent);
+        };
+        created.AuthenticationInvalidated += authenticationInvalidatedHandler;
+        return created;
+    }
+
+    private void ClearIdentity()
+    {
+        identity = null;
+        authenticationGeneration++;
+        AuthenticatedSessionChanged?.Invoke(null);
+    }
+
+    private void RetireClient(FormalAccountClient active, bool dispose = true)
+    {
+        if (authenticationInvalidatedHandler is not null && ReferenceEquals(client, active))
+        {
+            active.AuthenticationInvalidated -= authenticationInvalidatedHandler;
+            authenticationInvalidatedHandler = null;
+        }
+        if (dispose) active.Dispose();
+        // Auth failure cleanup can outlive panel operations. A replacement must also drain the Formal gate.
+        predecessorDrain = Task.WhenAll(predecessorDrain, active.DrainAsync());
+    }
+
+    internal void InvalidateAuthenticatedSession()
+    {
+        panel.Dispatcher.VerifyAccess();
+        if (disposed || client is null || identity is null) return;
+        Invalidate(); ClearAuthentication(client);
+        Show(AccountPanelPage.Login, "会话已失效，请重新登录。本机外观与配饰保留。");
     }
     private void Show(AccountPanelPage target, string? message = null, bool unavailable = false)
     {
@@ -373,7 +431,7 @@ internal sealed class DesktopAccountController : IDisposable
     {
         if (disposed) return;
         opened = false; Invalidate(); panel.ClearSecrets(); review = null;
-        if (identity is null) { client?.Dispose(); client = null; restored = false; }
+        if (identity is null) { if (client is not null) RetireClient(client); client = null; restored = false; }
         close();
     }
 
@@ -381,6 +439,7 @@ internal sealed class DesktopAccountController : IDisposable
     {
         if (disposed) return;
         disposed = true; opened = false; generation++; pending.Cancel(); pending.Dispose();
-        panel.Requested -= OnRequested; panel.ClearSecrets(); client?.Dispose(); client = null;
+        panel.Requested -= OnRequested; panel.ClearSecrets(); ClearIdentity();
+        if (client is not null) RetireClient(client); client = null;
     }
 }

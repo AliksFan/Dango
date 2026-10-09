@@ -8,9 +8,12 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Dango.Client.Sync.Accounts;
+using Dango.Client.Sync.Accessories;
 using Dango.Client.Sync.Pets;
 using Dango.Desktop.AppShell.ControlCenter;
+using Dango.Desktop.Accessories;
 using Dango.Protocol;
+using Dango.Protocol.Accessories;
 
 namespace Dango.Desktop.Tests.AppShell;
 
@@ -219,6 +222,129 @@ public sealed class AccountIntegrationBoundaryTests
     }
 
     [STATestMethod]
+    public void ClosingSignedInPanelPreservesAccessoryAttachmentButLogoutFencesItImmediately()
+    {
+        WithDispatcher(() =>
+        {
+            var view = new AccountPanelView(); var receiver = new Receiver();
+            using var controller = Controller(view, new Local(), () => receiver);
+            var attachments = new List<AuthenticatedAccountAttachment?>();
+            controller.AuthenticatedSessionChanged += attachments.Add;
+            controller.Open(); Login(view, "fictional-close@dango.invalid");
+            PumpUntil(() => view.FindName("AccountCloudChoice") is not null);
+            var original = attachments.Single()!;
+            controller.Close();
+            Assert.IsTrue(controller.IsLoggedIn);
+            Assert.AreEqual(1, attachments.Count, "Closing the panel is not an account attachment boundary.");
+            Assert.AreEqual(original.Identity, original.Client.CurrentIdentity);
+            controller.Open();
+            ButtonNamed(view, "退出登录").RaiseEvent(new(Button.ClickEvent));
+            Assert.IsFalse(controller.IsLoggedIn, "Logout intent must fence the account before asynchronous cleanup.");
+            Assert.IsNull(attachments.Last());
+        });
+    }
+
+    [STATestMethod]
+    [DataRow(HttpStatusCode.NoContent)]
+    [DataRow(HttpStatusCode.ServiceUnavailable)]
+    public void FormalAccessoryHttpKeepsLocalResultAndContinuesBackupAfterPanelCloseWhenAvailable(HttpStatusCode initialStatus)
+    {
+        WithDispatcher(() =>
+        {
+            var localRoot = Path.Combine(Path.GetTempPath(), "Dango-accessory-closed-panel", Guid.NewGuid().ToString("N"));
+            try
+            {
+                var session = new AccessorySettingsSession(localRoot); Assert.IsTrue(session.TrySave());
+                var view = new AccountPanelView(); var panel = new AccessoryAccountPanelView();
+                var receiver = new Receiver { AccessoryStatus = initialStatus };
+                view.BindAccessoryAccountContent(panel);
+                using var account = Controller(view, new Local(), () => receiver);
+                using var accessory = new AccessoryAccountController(panel, session, () => Assert.Fail("Closing cannot restore."), account.InvalidateAuthenticatedSession);
+                void AttachmentChanged(AuthenticatedAccountAttachment? attachment)
+                {
+                    if (attachment is null) { accessory.Detach(); return; }
+                    var scope = new AccessoryAccountScope(attachment.Identity.UserId.ToString("N"), attachment.Identity.PetId.ToString("N"), attachment.Generation);
+                    accessory.Attach(scope, attachment.Client.CreateAccessoryTransport(scope));
+                }
+                account.AuthenticatedSessionChanged += AttachmentChanged;
+                try
+                {
+                    account.Open(); Login(view, "closed-fictional@dango.invalid");
+                    PumpUntil(() => view.FindName("AccountCloudChoice") is not null && accessory.PendingOperation.IsCompleted);
+                    Assert.AreEqual(0, receiver.AccessoryWrites, "Login cannot upload the existing local outfit.");
+                    Assert.IsTrue(account.IsLoggedIn, "Accessory storage 503 must not be treated as an invalid login.");
+                    if (initialStatus == HttpStatusCode.ServiceUnavailable)
+                    {
+                        StringAssert.Contains(panel.Message, "读取失败");
+                        StringAssert.Contains(panel.Message, "本机穿搭保留");
+                        Assert.IsTrue(((Button)panel.FindName("AccessoryRefreshAccount")).IsEnabled);
+                    }
+                    account.Close();
+                    session.Stage(AccessoryConfiguration.Empty); Assert.IsTrue(session.TrySave());
+                    if (initialStatus == HttpStatusCode.NoContent)
+                    {
+                        PumpUntil(() => accessory.Diagnostics.State == AccessorySyncState.BackedUp);
+                        Assert.AreEqual(1, receiver.AccessoryWrites);
+                        Assert.AreEqual(0L, receiver.LastAccessoryExpectedRevision);
+                        Assert.AreEqual(0, receiver.LastAccessoryItemCount);
+                    }
+                    else Assert.AreEqual(0, receiver.AccessoryWrites, "An unavailable baseline cannot be silently assumed to have revision zero.");
+                    Assert.IsTrue(account.IsLoggedIn);
+                    Assert.AreEqual(AccessoryConfiguration.Empty, new AccessorySettingsSession(localRoot).SavedConfiguration);
+                }
+                finally { account.AuthenticatedSessionChanged -= AttachmentChanged; }
+            }
+            finally { if (Directory.Exists(localRoot)) Directory.Delete(localRoot, recursive: true); }
+        });
+    }
+
+    [STATestMethod]
+    public void BackgroundAuthenticationCleanupDrainsBeforeReplacementUsesTheSameRememberedSecretSlots()
+    {
+        WithDispatcher(() =>
+        {
+            var view = new AccountPanelView(); var store = new MemorySecrets();
+            var old = new Receiver(); var next = new Receiver(); var created = 0;
+            using var controller = new DesktopAccountController(view, Origin, store,
+                remote => new(remote, new Local(), new Journal()), new Local().CaptureAsync,
+                () => { }, (_, _) => { }, (origin, secrets) =>
+                {
+                    var receiver = ++created == 1 ? old : next;
+                    receiver.Cookies = new CookieContainer();
+                    return FormalAccountClient.ForTesting(origin, receiver, receiver.Cookies, secrets);
+                });
+            AuthenticatedAccountAttachment? attached = null;
+            controller.AuthenticatedSessionChanged += value => attached = value;
+            controller.Open(); Field<CheckBox>(view, "AccountRememberLogin").IsChecked = true;
+            Login(view, "old-fictional@dango.invalid");
+            PumpUntil(() => view.FindName("AccountCloudChoice") is not null);
+            Assert.IsTrue(store.HasSession);
+            var current = attached!;
+            var scope = new AccessoryAccountScope(current.Identity.UserId.ToString("N"), current.Identity.PetId.ToString("N"), current.Generation);
+            old.AccessoryStatus = HttpStatusCode.Unauthorized;
+            store.HoldNextDelete = true;
+            var backgroundRead = current.Client.CreateAccessoryTransport(scope).GetCurrentOutfitAsync(scope, CancellationToken.None);
+            PumpUntil(() => store.HeldDeleteStarted && !controller.IsLoggedIn);
+            Assert.IsNull(attached, "The expired attachment must be removed while secret cleanup is still pending.");
+            controller.Close(); controller.Open();
+            var idle = view.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle).Task;
+            PumpUntil(() => idle.IsCompleted);
+            Assert.AreEqual(1, created, "An obsolete background deletion must drain before creating the replacement owner.");
+            Assert.AreEqual(0, next.IdentityReads);
+            store.ReleaseDelete.TrySetResult();
+            PumpUntil(() => Field<Button>(view, "AccountPrimary").IsEnabled);
+            Assert.IsTrue(backgroundRead.IsCompleted);
+            _ = backgroundRead.Exception; // Observe the deliberately failed controlled request.
+            Field<CheckBox>(view, "AccountRememberLogin").IsChecked = true;
+            Login(view, "next-fictional@dango.invalid");
+            PumpUntil(() => view.FindName("AccountCloudChoice") is not null);
+            Assert.IsTrue(controller.IsLoggedIn);
+            Assert.AreEqual(next.UserId, attached!.Identity.UserId);
+            Assert.IsTrue(store.HasSession, "Late cleanup must not delete the replacement remembered session.");
+        });
+    }
+
+    [STATestMethod]
     [DataRow("smtp_accepted", "尚未验证")]
     [DataRow("smtp_not_configured", "没有发送")]
     [DataRow("smtp_permanent", "发送失败")]
@@ -389,6 +515,9 @@ public sealed class AccountIntegrationBoundaryTests
         internal bool DelayLogout, LogoutStarted;
         internal int IdentityReads;
         internal int PetReads, DelayPetReadNumber;
+        internal HttpStatusCode AccessoryStatus = HttpStatusCode.NotFound;
+        internal int AccessoryWrites, LastAccessoryItemCount;
+        internal long LastAccessoryExpectedRevision;
         internal CookieContainer? Cookies;
         internal bool RegisterFlow;
         internal bool RejectRegistration;
@@ -432,6 +561,18 @@ public sealed class AccountIntegrationBoundaryTests
                 return DelayLogout ? await DelayedLogout.Task : Json(new { status = "signed_out" });
             }
             if (path == "/api/v1/me") IdentityReads++;
+            if (path == "/api/v1/me/pet/accessories")
+            {
+                if (request.Method == HttpMethod.Put)
+                {
+                    var body = await request.Content!.ReadFromJsonAsync<JsonElement>(ct);
+                    AccessoryWrites++;
+                    LastAccessoryExpectedRevision = body.GetProperty("expectedRevision").GetInt64();
+                    LastAccessoryItemCount = body.GetProperty("outfit").GetProperty("items").GetArrayLength();
+                    return Json(new { revision = LastAccessoryExpectedRevision + 1, outfit = body.GetProperty("outfit") });
+                }
+                return new(AccessoryStatus) { Content = JsonContent.Create(new { code = "authentication_required", correlationId = "fictional-correlation" }) };
+            }
             if (path == "/api/v1/me/pet" && ++PetReads == DelayPetReadNumber) return await DelayedPet.Task;
             return path switch
             {
@@ -449,9 +590,22 @@ public sealed class AccountIntegrationBoundaryTests
         private readonly Dictionary<string, byte[]> values = [];
         internal bool FailDelete;
         internal int Deletions;
+        internal bool HoldNextDelete, HeldDeleteStarted;
+        internal bool HasSession => values.ContainsKey(AccountSecretSlots.Session);
+        internal TaskCompletionSource ReleaseDelete { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task<byte[]?> ReadAsync(Uri origin, string slot, CancellationToken ct) { ct.ThrowIfCancellationRequested(); return Task.FromResult(values.TryGetValue(slot, out var value) ? value.ToArray() : null); }
         public Task WriteAsync(Uri origin, string slot, byte[] value, CancellationToken ct) { ct.ThrowIfCancellationRequested(); values[slot] = value.ToArray(); return Task.CompletedTask; }
-        public Task DeleteAsync(Uri origin, string slot, CancellationToken ct) { ct.ThrowIfCancellationRequested(); Deletions++; if (FailDelete) throw new System.IO.IOException("fictional storage failure"); values.Remove(slot); return Task.CompletedTask; }
+        public async Task DeleteAsync(Uri origin, string slot, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested(); Deletions++;
+            if (FailDelete) throw new System.IO.IOException("fictional storage failure");
+            if (HoldNextDelete && slot == AccountSecretSlots.Session)
+            {
+                HoldNextDelete = false; HeldDeleteStarted = true;
+                await ReleaseDelete.Task;
+            }
+            values.Remove(slot);
+        }
     }
     private sealed class Local : ILocalPetConfigurationRepository
     {
