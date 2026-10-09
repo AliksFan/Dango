@@ -302,6 +302,32 @@ public sealed class AccessoryAccountSyncTests
     }
 
     [TestMethod]
+    public async Task LateReconciliationForDetachedAccountReturnsUnknownAndCannotReportNewAccountSuccess()
+    {
+        var entered = Completion<bool>();
+        var release = Completion<AccessoryCommitResolution>();
+        var old = new FakeTransport
+        {
+            CommitHandler = (_, _, _) => throw new IOException(),
+            ResolutionHandler = (_, _, _) => { entered.SetResult(true); return release.Task; }
+        };
+        var next = new FakeTransport();
+        await using var sync = new AccessoryAccountSync(new FakeRepository());
+        sync.AttachAccount(Scope("fictional-old"), old, 2);
+        sync.QueueLocalCommit(new(AccessoryOutfitManifest.Empty, [], 1));
+        await Until(() => sync.SafeDiagnostics.State == AccessorySyncState.OutcomeUnknown);
+        var reconcile = sync.ReconcileUnknownCommitAsync();
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        sync.AttachAccount(Scope("fictional-new", 2), next, 10);
+        release.SetResult(new(AccessoryCommitResolutionKind.Committed, new(3, AccessoryOutfitManifest.Empty)));
+        Assert.AreEqual(AccessoryCommitResolutionKind.Unknown, await reconcile);
+        Assert.AreEqual(10L, sync.SafeDiagnostics.ServerRevision);
+        Assert.AreEqual(AccessorySyncState.Idle, sync.SafeDiagnostics.State);
+        Assert.IsNull(sync.SafeDiagnostics.LastBackedUpLocalVersion);
+        Assert.AreEqual(0, next.Commits.Count);
+    }
+
+    [TestMethod]
     public async Task BoundedRequestTimeoutStopsIgnoringTransportAndKeepsCommitOutcomeUnknown()
     {
         var never = Completion<StoredAccessoryOutfit>();
@@ -509,6 +535,7 @@ public sealed class AccessoryAccountSyncTests
         public AccessoryCommitResolution Resolution { get; set; } = new(AccessoryCommitResolutionKind.Unknown);
         public Func<AccessoryAccountScope, AccessoryImageSnapshot, CancellationToken, Task<UploadedAccessoryAsset>>? UploadHandler { get; set; }
         public Func<AccessoryAccountScope, CommitAccessoryOutfitRequest, CancellationToken, Task<StoredAccessoryOutfit>>? CommitHandler { get; set; }
+        public Func<AccessoryAccountScope, string, CancellationToken, Task<AccessoryCommitResolution>>? ResolutionHandler { get; init; }
         public int GetCurrentCount;
 
         public Task<UploadedAccessoryAsset> UploadAssetAsync(AccessoryAccountScope scope, AccessoryImageSnapshot image, CancellationToken cancellationToken)
@@ -539,7 +566,7 @@ public sealed class AccessoryAccountSyncTests
         public Task<AccessoryCommitResolution> ResolveCommitAsync(AccessoryAccountScope scope, string idempotencyKey, CancellationToken cancellationToken)
         {
             ResolvedKeys.Enqueue(idempotencyKey);
-            return Task.FromResult(Resolution);
+            return ResolutionHandler?.Invoke(scope, idempotencyKey, cancellationToken) ?? Task.FromResult(Resolution);
         }
     }
 
