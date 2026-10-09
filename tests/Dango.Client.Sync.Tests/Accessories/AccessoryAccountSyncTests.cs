@@ -261,6 +261,33 @@ public sealed class AccessoryAccountSyncTests
     }
 
     [TestMethod]
+    public async Task NewestQueuedApplyStillRunsWhenAnOlderUploadFails()
+    {
+        var entered = Completion<bool>();
+        var release = Completion<UploadedAccessoryAsset>();
+        var first = Image(1);
+        var latest = Image(2);
+        var transport = new FakeTransport
+        {
+            UploadHandler = (_, image, _) =>
+            {
+                if (image.AssetId != first.AssetId) return Task.FromResult(Mapping(image));
+                entered.SetResult(true);
+                return release.Task;
+            }
+        };
+        await using var sync = new AccessoryAccountSync(new FakeRepository());
+        sync.AttachAccount(Scope(), transport, 0);
+        sync.QueueLocalCommit(Snapshot(first, 1));
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        sync.QueueLocalCommit(Snapshot(latest, 2));
+        release.SetException(new IOException());
+        await Until(() => sync.SafeDiagnostics.LastBackedUpLocalVersion == 2);
+        Assert.AreEqual(2, transport.Uploads.Count); // No automatic retry of the failed first snapshot.
+        Assert.AreEqual(latest.AssetId, transport.Commits.Single().Request.Outfit.Items.Single().AssetId);
+    }
+
+    [TestMethod]
     public async Task NewApplyDuringSentCommitWaitsForItsReceiptAndUsesReturnedRevision()
     {
         var entered = Completion<bool>();
@@ -363,6 +390,20 @@ public sealed class AccessoryAccountSyncTests
         Assert.AreEqual(7L, repository.Active.LocalCommitVersion);
         Assert.AreEqual(12L, sync.SafeDiagnostics.ServerRevision);
         Assert.AreEqual(1, repository.DisposedStages);
+    }
+
+    [TestMethod]
+    public async Task RestoreRejectsOlderThanVerifiedServerRevisionWithoutTouchingLocalState()
+    {
+        var transport = new FakeTransport { Current = new(4, AccessoryOutfitManifest.Empty) };
+        var repository = new FakeRepository();
+        await using var sync = new AccessoryAccountSync(repository);
+        sync.AttachAccount(Scope(), transport, 5);
+        Assert.AreEqual(AccessoryRestoreResult.Failed, await sync.RestoreAsync());
+        Assert.AreEqual(0, repository.StageCount);
+        Assert.AreEqual(0, repository.CommitCount);
+        Assert.AreEqual(5L, sync.SafeDiagnostics.ServerRevision);
+        Assert.AreEqual("stale_account_outfit", sync.SafeDiagnostics.ErrorCode);
     }
 
     [TestMethod]
