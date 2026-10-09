@@ -17,6 +17,7 @@
     <ProjectReference Include="..\..\eng\tools\Dango.GaitSample\Dango.GaitSample.csproj" />
     <ProjectReference Include="..\..\src\Dango.Physics\Dango.Physics.csproj" />
     <ProjectReference Include="..\..\src\Dango.Desktop\Dango.Desktop.csproj" />
+    <ProjectReference Include="..\..\src\Dango.AccessoryAssets\Dango.AccessoryAssets.csproj" />
   </ItemGroup>
 
 </Project>
