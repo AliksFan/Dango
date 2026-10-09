@@ -48,7 +48,7 @@ public sealed class PublicRoomAccessService(DangoDbContext db, AccountEnvironmen
                 PublicRoomAccessPolicy.ExpectedVersion(room, request.ExpectedVersion);
                 if (room.AdmissionGeneration == long.MaxValue) throw new AccountFault("room_admission_generation_exhausted", 409);
                 Guid[] targets = [userId];
-                var now = clock.GetUtcNow();
+                var now = PublicRoomAccessPolicy.CredentialTime(clock.GetUtcNow());
                 // Expired, non-revoked credentials still occupy the partial unique index.
                 await db.PublicRoomCredentials.Where(code => code.RoomId == roomId && code.RevokedAt == null)
                     .ExecuteUpdateAsync(update => update.SetProperty(code => code.RevokedAt, now), ct);
@@ -170,6 +170,9 @@ public sealed class PublicRoomAccessService(DangoDbContext db, AccountEnvironmen
             if (target == Guid.Empty) throw new AccountFault("room_target_not_found", 404);
         }
         catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.LockNotAvailable)
+        { throw new AccountFault("room_moderation_conflict", 409); }
+        catch (InvalidOperationException exception) when (exception.InnerException is PostgresException
+            { SqlState: PostgresErrorCodes.LockNotAvailable })
         { throw new AccountFault("room_moderation_conflict", 409); }
     }
 

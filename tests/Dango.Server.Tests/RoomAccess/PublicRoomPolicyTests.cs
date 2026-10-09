@@ -23,7 +23,8 @@ public sealed class PublicRoomPolicyTests
             Assert.IsTrue(code.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_'));
             var bytes = WebEncoders.Base64UrlDecode(code);
             Assert.AreEqual(32, bytes.Length);
-            Assert.AreEqual(Convert.ToHexString(SHA256.HashData(bytes)), PublicRoomAccessPolicy.CodeDigest(code));
+            Assert.IsTrue(string.Equals(Convert.ToHexString(SHA256.HashData(bytes)),
+                PublicRoomAccessPolicy.CodeDigest(code), StringComparison.Ordinal));
             Assert.AreEqual(64, PublicRoomAccessPolicy.CodeDigest(code).Length);
         }
     }
@@ -54,6 +55,34 @@ public sealed class PublicRoomPolicyTests
     {
         Assert.AreEqual(24, new RoomCodeResetRequest(Guid.NewGuid(), 1).LifetimeHours);
         PublicRoomAccessPolicy.Lifetime(1); PublicRoomAccessPolicy.Lifetime(24); PublicRoomAccessPolicy.Lifetime(168);
+    }
+
+    [TestMethod]
+    [DataRow(0)]
+    [DataRow(1)]
+    [DataRow(9)]
+    public void CredentialTimeAndReceiptMatchStoredUtcMicroseconds(int subMicrosecondTicks)
+    {
+        var storedTime = new DateTimeOffset(2026, 10, 9, 4, 5, 6, TimeSpan.Zero).AddTicks(1_234_560);
+        var input = storedTime.ToOffset(TimeSpan.FromHours(8)).AddTicks(subMicrosecondTicks);
+        var now = PublicRoomAccessPolicy.CredentialTime(input);
+        Assert.AreEqual(storedTime, now); Assert.AreEqual(TimeSpan.Zero, now.Offset);
+        var credential = new PublicRoomCredential
+        {
+            Id = Guid.NewGuid(),
+            RoomId = Guid.NewGuid(),
+            Generation = 2,
+            CreatedAt = now,
+            ExpiresAt = now.AddHours(24)
+        };
+        var receipt = RoomAccessPersistence.Deserialize<PublicRoomCodeReceipt>(
+            RoomAccessPersistence.Serialize(PublicRoomAccessPolicy.Receipt(credential, 3)));
+        Assert.AreEqual(storedTime, credential.CreatedAt);
+        Assert.AreEqual(storedTime.AddHours(24), receipt.ExpiresAt);
+        // The database reload has the stored precision, while the receipt retains its original JSON.
+        credential.ExpiresAt = storedTime.AddHours(24);
+        PublicRoomAccessPolicy.ValidateReceipt(receipt,
+            new() { RoomId = credential.RoomId, AppliedVersion = 3, Operation = "code_reset" }, credential);
     }
 
     [TestMethod]
