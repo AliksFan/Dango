@@ -488,6 +488,20 @@ namespace Dango.Server.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("status");
 
+                    b.Property<string>("TemplateId")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("template_id")
+                        .HasDefaultValue("ordinary-default");
+
+                    b.Property<int>("TemplateVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("template_version")
+                        .HasDefaultValue(1);
+
                     b.Property<long>("Version")
                         .IsConcurrencyToken()
                         .HasColumnType("bigint")
@@ -502,7 +516,7 @@ namespace Dango.Server.Persistence.Migrations
 
                     b.HasIndex("RecoverUntil", "Id")
                         .HasDatabaseName("ix_rooms_recovery_due")
-                        .HasFilter("status = 1");
+                        .HasFilter("status IN (1, 2)");
 
                     b.HasIndex("OwnerId", "Status", "Id")
                         .HasDatabaseName("ix_rooms_owner_status_id");
@@ -516,6 +530,8 @@ namespace Dango.Server.Persistence.Migrations
                             t.HasCheckConstraint("ck_rooms_lifecycle", "(status = 0 AND dissolved_at IS NULL AND recover_until IS NULL) OR (kind <> 0 AND status IN (1, 2) AND dissolved_at IS NOT NULL AND recover_until IS NOT NULL AND recover_until = dissolved_at + INTERVAL '168 hours')");
 
                             t.HasCheckConstraint("ck_rooms_name", "length(btrim(name)) BETWEEN 1 AND 64");
+
+                            t.HasCheckConstraint("ck_rooms_template", "template_version = 1 AND ((kind = 0 AND template_id = 'desktop-pet-default') OR (kind IN (1, 2) AND template_id = 'ordinary-default'))");
 
                             t.HasCheckConstraint("ck_rooms_version", "version >= 1");
                         });

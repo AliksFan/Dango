@@ -56,14 +56,17 @@ public sealed partial class DangoDbContext(DbContextOptions<DangoDbContext> opti
                 table.HasCheckConstraint("ck_rooms_name", "length(btrim(name)) BETWEEN 1 AND 64");
                 table.HasCheckConstraint("ck_rooms_capacity", "(kind = 0 AND capacity = 2) OR (kind IN (1, 2) AND capacity BETWEEN 1 AND 12)");
                 table.HasCheckConstraint("ck_rooms_version", "version >= 1");
+                table.HasCheckConstraint("ck_rooms_template", "template_version = 1 AND ((kind = 0 AND template_id = 'desktop-pet-default') OR (kind IN (1, 2) AND template_id = 'ordinary-default'))");
                 table.HasCheckConstraint("ck_rooms_lifecycle", "(status = 0 AND dissolved_at IS NULL AND recover_until IS NULL) OR (kind <> 0 AND status IN (1, 2) AND dissolved_at IS NOT NULL AND recover_until IS NOT NULL AND recover_until = dissolved_at + INTERVAL '168 hours')");
             });
             entity.HasKey(room => room.Id);
             entity.Property(room => room.Name).HasMaxLength(64).IsRequired();
             entity.Property(room => room.Version).IsConcurrencyToken();
+            entity.Property(room => room.TemplateId).HasMaxLength(32).HasDefaultValue("ordinary-default").IsRequired();
+            entity.Property(room => room.TemplateVersion).HasDefaultValue(1);
             entity.HasIndex(room => room.OwnerId).IsUnique().HasFilter("kind = 0").HasDatabaseName("ux_rooms_desktop_owner");
             entity.HasIndex(room => new { room.OwnerId, room.Status, room.Id }).HasDatabaseName("ix_rooms_owner_status_id");
-            entity.HasIndex(room => new { room.RecoverUntil, room.Id }).HasFilter("status = 1").HasDatabaseName("ix_rooms_recovery_due");
+            entity.HasIndex(room => new { room.RecoverUntil, room.Id }).HasFilter("status IN (1, 2)").HasDatabaseName("ix_rooms_recovery_due");
             entity.HasOne<DangoUser>().WithMany().HasForeignKey(room => room.OwnerId);
         });
 
