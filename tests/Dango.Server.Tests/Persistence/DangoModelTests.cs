@@ -66,7 +66,7 @@ public sealed class DangoModelTests
     {
         using var context = new DangoDbContextFactory().CreateDbContext([]);
         var migrations = context.GetService<IMigrationsAssembly>();
-        Assert.HasCount(4, migrations.Migrations);
+        Assert.HasCount(5, migrations.Migrations);
         Assert.Contains("20261008074701_InitialAccountRoomFoundation", migrations.Migrations.Keys.ToArray());
         Assert.IsTrue(migrations.Migrations.Keys.Any(key => key.EndsWith("_AccountLifecycle", StringComparison.Ordinal)));
         Assert.IsTrue(migrations.Migrations.Keys.Any(key => key.EndsWith("_RoomManagement", StringComparison.Ordinal)));
@@ -81,6 +81,24 @@ public sealed class DangoModelTests
         Assert.DoesNotContain("fictional_secret_marker", sql);
         Assert.Contains("UPDATE dango.rooms SET template_id = 'desktop-pet-default' WHERE kind = 0", sql);
         Assert.Contains("WHERE status IN (1, 2)", sql);
+    }
+
+    [TestMethod]
+    public void LeaseIdentityAndControlOwnershipAreCompositeForeignKeys()
+    {
+        using var context = new DangoDbContextFactory().CreateDbContext([]);
+        var lease = context.Model.FindEntityType(typeof(RoomDeviceLease))!;
+        Assert.IsTrue(lease.GetForeignKeys().Any(fk => fk.PrincipalEntityType.ClrType == typeof(AccountPet)
+            && fk.Properties.Select(p => p.Name).SequenceEqual(new[] { "PetId", "UserId" })));
+        Assert.IsTrue(lease.GetForeignKeys().Any(fk => fk.PrincipalEntityType.ClrType == typeof(AuthSession)
+            && fk.Properties.Select(p => p.Name).SequenceEqual(new[] { "SessionId", "UserId" })));
+        var state = context.Model.FindEntityType(typeof(PetRoomState))!;
+        Assert.IsTrue(state.GetForeignKeys().Any(fk => fk.PrincipalEntityType.ClrType == typeof(RoomDeviceLease)
+            && fk.Properties.Select(p => p.Name).SequenceEqual(new[] { "PetId", "ControlLeaseId" })));
+        var sql = context.Database.GenerateCreateScript();
+        Assert.Contains("ck_pet_room_control", sql);
+        Assert.Contains("ck_public_code_epoch", sql);
+        Assert.Contains("ck_leases_lifetime", sql);
     }
 
     [TestMethod]

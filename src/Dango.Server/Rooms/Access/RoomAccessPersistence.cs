@@ -36,6 +36,7 @@ public static class RoomAccessPersistence
     public static readonly TimeSpan LeaseDuration = TimeSpan.FromSeconds(30);
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
+        PropertyNameCaseInsensitive = false,
         UnmappedMemberHandling = System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow,
         AllowDuplicateProperties = false,
         RespectRequiredConstructorParameters = true,

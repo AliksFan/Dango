@@ -11,6 +11,7 @@ using Dango.Server.Persistence;
 using Dango.Server.Persistence.Entities;
 using Dango.Server.Pets;
 using Dango.Server.Rooms.Management;
+using Dango.Server.Rooms.Access;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -18,6 +19,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 namespace Dango.Server.Hosting;
@@ -29,7 +31,7 @@ public static class FormalHost
 
     public static WebApplication Create(FormalServerOptions options, AccountEnvironment environment,
         X509Certificate2 certificate, Action<IServiceCollection>? configure = null, bool enableEmailWorker = true,
-        bool enableRoomExpiryWorker = false)
+        bool enableRoomExpiryWorker = false, bool enableRoomLiveWorkers = false)
     {
         if (environment.RecoveryEpoch == Guid.Empty) throw new InvalidOperationException("recovery_epoch_required");
         if (!FormalServerOptions.TryCreate(options.DatabaseName, options.ConnectionString, options.KeyDirectory,
@@ -84,6 +86,31 @@ public static class FormalHost
         builder.Services.AddScoped<RoomManagementService>();
         builder.Services.AddScoped<RoomExpiryService>();
         if (enableRoomExpiryWorker) builder.Services.AddHostedService<RoomExpiryWorker>();
+        builder.Services.AddSingleton<IRoomAccessCheckpoint, RoomAccessCheckpoint>();
+        builder.Services.AddScoped<RoomAdmissionService>();
+        builder.Services.AddScoped<RoomLeaseMaintenanceService>();
+        builder.Services.AddSingleton<IPublicRoomCodeProtector, PublicRoomCodeProtector>();
+        builder.Services.AddScoped<PublicRoomAccessService>();
+        builder.Services.AddSingleton<RoomConnectionRegistry>();
+        builder.Services.AddScoped<RoomConnectionAdmission>();
+        builder.Services.AddSingleton<IRoomNoticeSender, RoomNoticeSender>();
+        builder.Services.AddSingleton<IRoomOutboxCheckpoint, RoomOutboxCheckpoint>();
+        builder.Services.AddSingleton<RoomOutboxDispatcher>();
+        builder.Services.AddSignalR().AddHubOptions<FormalRoomHub>(hub =>
+        {
+            hub.MaximumReceiveMessageSize = 8192;
+            hub.MaximumParallelInvocationsPerClient = 1;
+            hub.StreamBufferCapacity = 8;
+            hub.EnableDetailedErrors = false;
+            hub.KeepAliveInterval = TimeSpan.FromSeconds(10);
+            hub.ClientTimeoutInterval = TimeSpan.FromSeconds(45);
+            hub.AddFilter<FormalRoomHubFilter>();
+        }).AddJsonProtocol(json => json.PayloadSerializerOptions = new(RoomAccessPersistence.Json));
+        if (enableRoomLiveWorkers)
+        {
+            builder.Services.AddHostedService<RoomLiveWorker>();
+            builder.Services.AddHostedService<RoomOutboxWorker>();
+        }
         builder.Services.AddAntiforgery(csrf =>
         {
             csrf.HeaderName = "X-CSRF-TOKEN";
@@ -174,6 +201,7 @@ public static class FormalHost
                 : Results.Ok(new { status = "ready" }));
         AccountEndpoints.Map(app);
         RoomManagementEndpoints.Map(app);
+        RoomAccessEndpoints.Map(app);
         // Explicitly no prototype /room Hub or pipe admission exists on this host.
         return app;
     }

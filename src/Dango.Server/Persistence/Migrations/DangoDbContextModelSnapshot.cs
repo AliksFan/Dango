@@ -612,13 +612,15 @@ namespace Dango.Server.Persistence.Migrations
 
                     b.HasKey("PetId");
 
-                    b.HasIndex("ControlLeaseId");
+                    b.HasIndex("PetId", "ControlLeaseId");
 
                     b.HasIndex("RoomId", "PetId")
                         .HasDatabaseName("ix_pet_room_occupancy");
 
                     b.ToTable("pet_room_states", "dango", t =>
                         {
+                            t.HasCheckConstraint("ck_pet_room_control", "control_lease_id IS NULL OR (room_id IS NOT NULL AND NOT is_sleeping)");
+
                             t.HasCheckConstraint("ck_pet_room_presence", "(room_id IS NULL AND position_x IS NULL AND position_y IS NULL AND NOT is_sleeping) OR (room_id IS NOT NULL AND position_x IS NOT NULL AND position_y IS NOT NULL AND position_x > '-Infinity'::double precision AND position_x < 'Infinity'::double precision AND position_y > '-Infinity'::double precision AND position_y < 'Infinity'::double precision)");
 
                             t.HasCheckConstraint("ck_pet_room_versions", "version >= 1 AND control_generation >= 0");
@@ -656,6 +658,10 @@ namespace Dango.Server.Persistence.Migrations
                         .HasColumnType("character varying(2048)")
                         .HasColumnName("protected_code");
 
+                    b.Property<Guid>("RecoveryEpoch")
+                        .HasColumnType("uuid")
+                        .HasColumnName("recovery_epoch");
+
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("revoked_at");
@@ -678,6 +684,8 @@ namespace Dango.Server.Persistence.Migrations
                     b.ToTable("public_room_credentials", "dango", t =>
                         {
                             t.HasCheckConstraint("ck_public_code", "generation >= 1 AND code_digest ~ '^[A-F0-9]{64}$' AND length(protected_code) BETWEEN 1 AND 2048");
+
+                            t.HasCheckConstraint("ck_public_code_epoch", "recovery_epoch <> '00000000-0000-0000-0000-000000000000'::uuid");
 
                             t.HasCheckConstraint("ck_public_code_lifetime", "expires_at > created_at AND expires_at <= created_at + INTERVAL '168 hours'");
                         });
@@ -769,14 +777,16 @@ namespace Dango.Server.Persistence.Migrations
 
                     b.HasIndex("RoomId");
 
-                    b.HasIndex("SessionId");
-
                     b.HasIndex("ExpiresAt", "Id")
                         .HasDatabaseName("ix_leases_due")
                         .HasFilter("revoked_at IS NULL");
 
                     b.HasIndex("PetId", "Id")
                         .HasDatabaseName("ix_leases_pet");
+
+                    b.HasIndex("PetId", "UserId");
+
+                    b.HasIndex("SessionId", "UserId");
 
                     b.HasIndex("UserId", "SessionId", "InstanceId")
                         .IsUnique()
@@ -1146,11 +1156,6 @@ namespace Dango.Server.Persistence.Migrations
 
             modelBuilder.Entity("Dango.Server.Persistence.Entities.PetRoomState", b =>
                 {
-                    b.HasOne("Dango.Server.Persistence.Entities.RoomDeviceLease", null)
-                        .WithMany()
-                        .HasForeignKey("ControlLeaseId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("Dango.Server.Persistence.Entities.AccountPet", null)
                         .WithOne()
                         .HasForeignKey("Dango.Server.Persistence.Entities.PetRoomState", "PetId")
@@ -1160,6 +1165,12 @@ namespace Dango.Server.Persistence.Migrations
                     b.HasOne("Dango.Server.Persistence.Entities.PersistentRoom", null)
                         .WithMany()
                         .HasForeignKey("RoomId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Dango.Server.Persistence.Entities.RoomDeviceLease", null)
+                        .WithMany()
+                        .HasForeignKey("PetId", "ControlLeaseId")
+                        .HasPrincipalKey("PetId", "Id")
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 
@@ -1189,26 +1200,28 @@ namespace Dango.Server.Persistence.Migrations
 
             modelBuilder.Entity("Dango.Server.Persistence.Entities.RoomDeviceLease", b =>
                 {
-                    b.HasOne("Dango.Server.Persistence.Entities.AccountPet", null)
-                        .WithMany()
-                        .HasForeignKey("PetId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("Dango.Server.Persistence.Entities.PersistentRoom", null)
                         .WithMany()
                         .HasForeignKey("RoomId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("Dango.Server.Persistence.Entities.AuthSession", null)
-                        .WithMany()
-                        .HasForeignKey("SessionId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("Dango.Server.Persistence.Entities.DangoUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Dango.Server.Persistence.Entities.AccountPet", null)
+                        .WithMany()
+                        .HasForeignKey("PetId", "UserId")
+                        .HasPrincipalKey("Id", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Dango.Server.Persistence.Entities.AuthSession", null)
+                        .WithMany()
+                        .HasForeignKey("SessionId", "UserId")
+                        .HasPrincipalKey("Id", "UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

@@ -36,7 +36,7 @@ internal sealed class FormalTestFixture : IAsyncDisposable
 
     public static async Task<FormalTestFixture> CreateAsync(bool startHttp = false, IRegistrationCheckpoint? checkpoint = null,
         TimeProvider? clock = null, IEmailSender? sender = null, bool enableEmailWorker = false,
-        AccountEnvironment? environment = null)
+        AccountEnvironment? environment = null, Action<IServiceCollection>? configure = null)
     {
         var target = await ValidateTargetAsync();
         var epochText = Environment.GetEnvironmentVariable("DANGO_BACKEND_B1_RECOVERY_EPOCH");
@@ -55,6 +55,7 @@ internal sealed class FormalTestFixture : IAsyncDisposable
             if (checkpoint is not null) services.Replace(ServiceDescriptor.Singleton(checkpoint));
             if (clock is not null) services.Replace(ServiceDescriptor.Singleton(clock));
             if (sender is not null) services.Replace(ServiceDescriptor.Singleton(sender));
+            configure?.Invoke(services);
         }, enableEmailWorker);
         try
         {

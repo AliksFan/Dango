@@ -42,6 +42,16 @@ public static class FormalEntry
                         || pending.Length > 1 || (pending.Length == 1 && pending[0] != expectedMigration))
                         throw new AccountFault("maintenance_migration_target_invalid");
                 }
+                if (Read("EXPECTED_MIGRATIONS") is { Length: > 0 } expectedMigrationList)
+                {
+                    var expected = expectedMigrationList.Split(',', StringSplitOptions.TrimEntries);
+                    var pending = (await db.Database.GetPendingMigrationsAsync()).ToArray();
+                    var available = db.Database.GetMigrations().ToHashSet(StringComparer.Ordinal);
+                    if (expected.Length is < 1 or > 8 || expected.Distinct(StringComparer.Ordinal).Count() != expected.Length
+                        || expected.Any(id => !available.Contains(id)) || pending.Length > expected.Length
+                        || !pending.SequenceEqual(expected.Skip(expected.Length - pending.Length), StringComparer.Ordinal))
+                        throw new AccountFault("maintenance_migration_target_invalid");
+                }
                 await db.Database.MigrateAsync();
                 Console.WriteLine("formal_migration_applied");
                 return 0;
@@ -82,7 +92,8 @@ public static class FormalEntry
             await using var app = FormalHost.Create(options!, environment, certificate, services =>
             {
                 if (smtp is not null) services.AddSingleton<IEmailSender>(new MailKitEmailSender(smtp));
-            }, enableRoomExpiryWorker: RoomMaintenanceOptions.ExpiryEnabled(Read("ROOM_EXPIRY_ENABLED")));
+            }, enableRoomExpiryWorker: RoomMaintenanceOptions.ExpiryEnabled(Read("ROOM_EXPIRY_ENABLED")),
+                enableRoomLiveWorkers: RoomMaintenanceOptions.LiveEnabled(Read("ROOM_LIVE_WORKERS_ENABLED")));
             // Readiness is a gate for all requests, not a startup side effect.
             await using (var scope = app.Services.CreateAsyncScope())
             {

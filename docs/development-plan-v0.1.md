@@ -1,6 +1,6 @@
 # Dango 分阶段开发计划 v0.1
 
-> 2026-10-09 邮箱后端首期：按[设计](planning/2026-10-08-email-backend-design-proposal.md)与[实施计划](planning/2026-10-08-email-backend-implementation-plan.md)推进 B0–B5，五项质量要求已加入 AGENTS.md。B0 基础、B1 正式 HTTPS／邀请邮箱账号／持久会话／邮件队列及 B2 本人配置接口／选择编排／本地房存档已实现候选；用户已授权独立 PostgreSQL 测试目标，实际门禁及未执行项见[B0](verification/2026-10-08-email-backend-foundation.md)、[B1](verification/2026-10-08-email-backend-b1.md)与[B2](verification/2026-10-09-email-backend-b2.md)。B2 人工、B5 登录／选择界面、真实发信、备份还原、多人和完整 Phase 3／M7 未验收；下一批 B3 房间管理，恢复、推送与部署另行授权。
+> 2026-10-09 邮箱后端首期：按[设计](planning/2026-10-08-email-backend-design-proposal.md)与[实施计划](planning/2026-10-08-email-backend-implementation-plan.md)推进 B0–B5，五项质量要求已加入 AGENTS.md。B0–B2 已实现候选，B3 房间管理已通过 105 项真实集成门禁；B4 正式准入／租约／Hub／通知候选已实现并通过无数据库及回归门禁，真实 B4 数据操作等待[精确计划](planning/2026-10-09-backend-b4-local-data-plan.md)授权。证据见[B0](verification/2026-10-08-email-backend-foundation.md)、[B1](verification/2026-10-08-email-backend-b1.md)、[B2](verification/2026-10-09-email-backend-b2.md)、[B3](verification/2026-10-09-email-backend-b3.md)及[B4](verification/2026-10-09-email-backend-b4.md)。B2 人工、B4 真实集成、B5 界面、真实发信、备份还原及完整 Phase 3／M7 未验收；合并、推送与部署另行授权。
 
 > 2026-10-08 桌宠房间本地 main 整合：用户在人工通过后明确授权合并，已将 `codex/desktop-pet-layered@d090005` 从 `main@8ff78e0` 快进合入本地 `main`，无冲突；合并后的实现与已验 r2 候选一致，受保护 DLL hash 不变。沿用功能／回归 114＋58 项与人工验收证据，不重新宣称自动性能通过。详见[本地合并记录](verification/2026-10-07-desktop-pet-room-feedback.md#2026-10-08-用户授权与本地-main-合并)。未推送、更新日常安装、部署或关闭完整阶段；下方未合并状态保留为各次交付时的历史快照。
 

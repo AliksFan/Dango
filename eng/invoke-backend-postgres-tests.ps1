@@ -7,6 +7,7 @@ param(
     [switch]$B1,
     [switch]$B2,
     [switch]$B3,
+    [switch]$B4,
     [string]$TestFilter,
     [switch]$ExecuteApprovedPlan
 )
@@ -20,6 +21,8 @@ if ($RunName -notmatch '^run[a-z0-9]{1,40}$') { throw 'backend_test_run_name_inv
 if ($B2 -and ($B1 -or $Initialize -or $CreateDatabase)) { throw 'backend_b2_existing_target_only' }
 if ($B3 -and ($B1 -or $B2 -or $Initialize -or $CreateDatabase)) { throw 'backend_b3_existing_target_only' }
 if ($B3 -and $RunName -ne 'run20261008b0') { throw 'backend_b3_target_not_approved' }
+if ($B4 -and ($B1 -or $B2 -or $B3 -or $Initialize -or $CreateDatabase)) { throw 'backend_b4_existing_target_only' }
+if ($B4 -and $RunName -ne 'run20261008b0') { throw 'backend_b4_target_not_approved' }
 $taskRepoDirectory = Split-Path -Parent $PSScriptRoot
 $taskStateBase = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Dango\BackendDevelopment'
 $taskStateDirectory = [IO.Path]::GetFullPath((Join-Path $taskStateBase $RunName))
@@ -37,7 +40,7 @@ for ($taskAncestor = [IO.DirectoryInfo]::new($taskDataDirectory); $null -ne $tas
     if ($taskAncestor.Exists -and ($taskAncestor.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'backend_test_reparse_target_rejected' }
 }
 if (-not $ExecuteApprovedPlan) {
-    [pscustomobject]@{ RunName=$RunName; DataDirectory=$taskDataDirectory; Database=$taskDatabaseName; Initialize=[bool]$Initialize; CreateDatabase=[bool]$CreateDatabase; B1=[bool]$B1; B2=[bool]$B2; B3=[bool]$B3; Writes=$(if ($B3) { 'only RoomManagement forward migration and fictional tests; permanent expiry only for exact B3-generated room IDs; no reset or restore' } elseif ($B2) { 'fictional tests only; existing schema; no migration, reset, deletion or restore' } else { 'explicit forward migration and fictional tests; no reset, deletion or restore' }) }
+    [pscustomobject]@{ RunName=$RunName; DataDirectory=$taskDataDirectory; Database=$taskDatabaseName; Initialize=[bool]$Initialize; CreateDatabase=[bool]$CreateDatabase; B1=[bool]$B1; B2=[bool]$B2; B3=[bool]$B3; B4=[bool]$B4; Writes=$(if ($B4) { 'only RoomAccess and RoomAccessIntegrity forward migrations; fictional B1-B4 regressions; scoped lease/outbox work and permanent expiry only for generated targets; no reset or restore' } elseif ($B3) { 'only RoomManagement forward migration and fictional tests; permanent expiry only for exact B3-generated room IDs; no reset or restore' } elseif ($B2) { 'fictional tests only; existing schema; no migration, reset, deletion or restore' } else { 'explicit forward migration and fictional tests; no reset, deletion or restore' }) }
     return
 }
 
@@ -128,37 +131,49 @@ try {
     # Stage permission cannot leak in from the parent shell or another previous test run.
     $taskTestEnvironment = @{
         DANGO_BACKEND_TEST_CONNECTION=$taskConnection; DANGO_BACKEND_TEST_DATA_DIRECTORY=$taskDataDirectory
-        DANGO_BACKEND_B1_TEST_APPROVED='0'; DANGO_BACKEND_B3_TEST_APPROVED='0'
+        DANGO_BACKEND_B1_TEST_APPROVED='0'; DANGO_BACKEND_B3_TEST_APPROVED='0'; DANGO_BACKEND_B4_TEST_APPROVED='0'
     }
-    if ($B1 -or $B2 -or $B3) {
+    if ($B1 -or $B2 -or $B3 -or $B4) {
         $taskB1StateFile = Join-Path $taskStateDirectory 'b1test-state.json'
         if (Test-Path -LiteralPath $taskB1StateFile) {
             $taskB1State = Get-Content -LiteralPath $taskB1StateFile -Raw | ConvertFrom-Json
             $taskB1Epoch = [Guid]::Parse($taskB1State.RecoveryEpoch)
         } else {
-            if ($B2 -or $B3) { throw 'backend_existing_epoch_required' }
+            if ($B2 -or $B3 -or $B4) { throw 'backend_existing_epoch_required' }
             $taskB1Epoch = [Guid]::NewGuid()
             [IO.File]::WriteAllText($taskB1StateFile, (@{ RecoveryEpoch=$taskB1Epoch.ToString('D'); Version=1 } | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
         }
         if ($taskB1Epoch -eq [Guid]::Empty) { throw 'backend_b1_epoch_invalid' }
         $taskB1KeyDirectory = Join-Path $taskStateDirectory 'b1tests-keys'
-        if (($B2 -or $B3) -and -not (Test-Path -LiteralPath $taskB1KeyDirectory -PathType Container)) { throw 'backend_existing_keys_required' }
+        if (($B2 -or $B3 -or $B4) -and -not (Test-Path -LiteralPath $taskB1KeyDirectory -PathType Container)) { throw 'backend_existing_keys_required' }
         $taskTestEnvironment.DANGO_BACKEND_B1_TEST_APPROVED = '1'
         $taskTestEnvironment.DANGO_BACKEND_B1_RECOVERY_EPOCH = $taskB1Epoch.ToString('D')
         $taskTestEnvironment.DANGO_BACKEND_B1_KEY_DIRECTORY = $taskB1KeyDirectory
         # B2 uses existing tables only; fixture validation rejects any pending migration.
-        if ($B3) { $taskTestEnvironment.DANGO_BACKEND_B3_TEST_APPROVED = '1' }
-        if ($B1 -or $B3) {
+        if ($B3 -or $B4) { $taskTestEnvironment.DANGO_BACKEND_B3_TEST_APPROVED = '1' }
+        if ($B4) { $taskTestEnvironment.DANGO_BACKEND_B4_TEST_APPROVED = '1' }
+        if ($B1 -or $B3 -or $B4) {
             $taskMigrationEnvironment = @{
                 DANGO_DATABASE=$taskDatabaseName; DANGO_CONNECTION_STRING=$taskConnection; DANGO_KEYS_DIRECTORY=$taskB1KeyDirectory
                 DANGO_ENDPOINT=('https://127.0.0.1:' + $taskState.Port); DANGO_RECOVERY_EPOCH=$taskB1Epoch.ToString('D')
                 DANGO_EXPECTED_DATA_DIRECTORY=$taskDataDirectory
             }
-            $taskMigrationEnvironment.DANGO_EXPECTED_MIGRATION = if ($B3) { '20261009031410_RoomManagement' } else { '20261008085521_AccountLifecycle' }
+            if ($B4) {
+                $taskMigrationEnvironment.DANGO_EXPECTED_MIGRATION = ''
+                $taskMigrationEnvironment.DANGO_EXPECTED_MIGRATIONS = '20261009055558_RoomAccess,20261009062701_RoomAccessIntegrity'
+            } else {
+                $taskMigrationEnvironment.DANGO_EXPECTED_MIGRATIONS = ''
+                $taskMigrationEnvironment.DANGO_EXPECTED_MIGRATION = if ($B3) { '20261009031410_RoomManagement' } else { '20261008085521_AccountLifecycle' }
+            }
             [void](Invoke-TaskProcess 'dotnet' @('src/Dango.Server/bin/Release/net10.0/Dango.Server.dll', '--formal-migrate') $taskMigrationEnvironment)
         }
     }
-    $taskTestFilter = if ($TestFilter) { $TestFilter } elseif ($B2 -or $B3) { 'TestCategory=PostgresIntegration&FullyQualifiedName!~PostgresFoundationTests' } else { 'TestCategory=PostgresIntegration' }
+    $taskTestFilter = if ($TestFilter) { $TestFilter } elseif ($B2 -or $B3 -or $B4) { 'TestCategory=PostgresIntegration&FullyQualifiedName!~PostgresFoundationTests' } else { 'TestCategory=PostgresIntegration' }
+    if ($B4) {
+        # A requested subset can narrow B4, never re-enable B0 schema/probe writes.
+        $taskB4AllowedFilter = 'TestCategory=PostgresIntegration&FullyQualifiedName!~PostgresFoundationTests'
+        $taskTestFilter = if ($TestFilter) { "($taskB4AllowedFilter)&($TestFilter)" } else { $taskB4AllowedFilter }
+    }
     [void](Invoke-TaskProcess 'dotnet' @('test', 'tests/Dango.Server.Tests/Dango.Server.Tests.csproj', '-c', 'Release', '--no-build', '--no-restore', '--filter', $taskTestFilter, '--logger', 'trx;LogFileName=backend-postgres.trx', '--results-directory', $taskResultsDirectory) $taskTestEnvironment)
 } finally {
     if ($taskStartAttempted) {

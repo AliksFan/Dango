@@ -92,16 +92,18 @@ public sealed class RoomExpiryService(DangoDbContext db, TimeProvider clock, IRo
         if (room.Version == long.MaxValue) throw new AccountFault("room_version_exhausted", 409);
         var appliedVersion = room.Version + 1;
 
-        await RoomPersistenceOperations.DetachAsync(db, roomId, ct);
+        var targets = await RoomPersistenceOperations.DetachAsync(db, roomId, ct, clock.GetUtcNow());
         await db.SaveChangesAsync(ct);
         await checkpoint.ReachedAsync("expiry_after_detach", roomId, ct);
         // Delete dependants explicitly: every FK is restrictive, and identities must survive.
         await db.RoomMemberships.Where(member => member.RoomId == roomId).ExecuteDeleteAsync(ct);
+        await db.PublicRoomCredentials.Where(code => code.RoomId == roomId).ExecuteDeleteAsync(ct);
+        await db.RoomBans.Where(ban => ban.RoomId == roomId).ExecuteDeleteAsync(ct);
         await checkpoint.ReachedAsync("expiry_after_memberships", roomId, ct);
         db.Rooms.Remove(room);
         await db.SaveChangesAsync(ct);
         await checkpoint.ReachedAsync("expiry_after_room", roomId, ct);
-        RoomPersistenceOperations.Append(db, roomId, appliedVersion, "expired", clock.GetUtcNow());
+        RoomPersistenceOperations.Append(db, roomId, appliedVersion, "expired", clock.GetUtcNow(), targets: targets.Append(ownerId));
         await db.SaveChangesAsync(ct);
         await checkpoint.ReachedAsync("expiry_after_audit", roomId, ct);
         await checkpoint.ReachedAsync("expiry_before_commit", roomId, ct);

@@ -2,13 +2,15 @@
 
 日期：2026-10-08；2026-10-09 更新。状态：用户已同意开始，B0 配置／模型／初始迁移与 B1 正式服务入口、邀请邮箱账号已实现；B2 本人配置接口、显式选择编排与本地存档候选已实现，自动验证包含明确未执行项，人工待验收；B3 房间管理候选实现、静态及真实 PostgreSQL／HTTPS 门禁已完成，用户单独批准后应用精确迁移并执行限定到期清理，105 项集成通过。详见[B0 验证](../verification/2026-10-08-email-backend-foundation.md)、[B1 验证](../verification/2026-10-08-email-backend-b1.md)、[B2 验证](../verification/2026-10-09-email-backend-b2.md)与[B3 验证](../verification/2026-10-09-email-backend-b3.md)；B4 正式准入／Hub、B5 登录／选择界面、完整首期、真实 SMTP／客户端人工与 Phase 3 尚未验收。
 
+B4 正式准入、公共码管理、租约／控制、快照、独立 Hub 和逐收件人 outbox 已实现候选；Server 无数据库 183 项、Protocol 9 项、Client.Sync 77 项通过。源码迁移未应用，真实数据库／正式 Hub 等待[精确数据计划](2026-10-09-backend-b4-local-data-plan.md)授权；见[B4 验证](../verification/2026-10-09-email-backend-b4.md)。
+
 依据：[首期设计](2026-10-08-email-backend-design-proposal.md)、[ADR 0002](../adr/0002-server-foundation-and-scaling.md)、[ADR 0006](../adr/0006-email-accounts-and-persistent-room-state.md)与[工作流](../development-workflow-v0.1.md)。用户新增五项必查已记录于根级规则。
 
 ## 1. 起点、范围与所有权
 
 从 `main@1c47930` 的隔离任务分支 `codex/email-backend-design` 开始，保留已有 Phase 2A 管道原型和测试合同；正式入口显式选择模式，不共用匿名原型的入场票据、身份或内存快照。好友、情侣、桌宠第二席及私密非房主准入后置；注册邀请不授予房间权限。
 
-根代理拥有入口、项目依赖、DbContext／迁移、共享合同与基线文档；本轮其他代理只读审查。后续并行代码任务使用独立 Worktree，各自拥有明确模块文件，模型和迁移由根集中集成，不同时写同一分支或 ModelSnapshot。
+根代理拥有入口、项目依赖、DbContext／迁移、共享合同与基线文档；B4 两个隔离 Worktree 分别实现准入租约与公共码管理，另有只读审查。各代理拥有明确模块文件，模型和迁移由根集中集成，不同时写同一分支或 ModelSnapshot。
 
 当前授权包含首期必要代码、局部门禁和本地可审查成果。既有数据库、精确迁移／虚构种子／还原、真实 SMTP、客户端 UI 交互细节、main 合并、推送、部署与日常安装仍分别处理。既有 Phase 1、M7 等验收状态保持原记录。
 

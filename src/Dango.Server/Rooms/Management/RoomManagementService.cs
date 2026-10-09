@@ -29,7 +29,7 @@ public sealed class RoomManagementService(DangoDbContext db, AccountEnvironment 
             db.Rooms.Add(room);
             await SaveAsync(ct);
             await checkpoint.ReachedAsync("after_room", room.Id, ct);
-            // Public owner identity does not reserve capacity or grant B4 admission.
+            // Public owner management identity does not reserve capacity or create an online lease.
             db.RoomMemberships.Add(new() { RoomId = room.Id, UserId = userId, Role = PersistentRoomRole.Owner });
             await SaveAsync(ct);
             await checkpoint.ReachedAsync("after_membership", room.Id, ct);
@@ -72,7 +72,9 @@ public sealed class RoomManagementService(DangoDbContext db, AccountEnvironment 
             RoomManagementPolicy.Shared(room);
             RoomManagementPolicy.Active(room);
             var version = RoomManagementPolicy.NextVersion(room.Version, request.ExpectedVersion);
-            await RoomPersistenceOperations.DetachAsync(db, roomId, ct);
+            var targets = await RoomPersistenceOperations.DetachAsync(db, roomId, ct, clock.GetUtcNow());
+            if (room.AdmissionGeneration == long.MaxValue) throw new AccountFault("room_admission_version_exhausted", 409);
+            room.AdmissionGeneration++;
             await SaveAsync(ct);
             await checkpoint.ReachedAsync("after_detach", roomId, ct);
             var now = clock.GetUtcNow();
@@ -82,7 +84,7 @@ public sealed class RoomManagementService(DangoDbContext db, AccountEnvironment 
             room.Version = version;
             await SaveAsync(ct);
             await checkpoint.ReachedAsync("after_room", roomId, ct);
-            return new Applied(room);
+            return new Applied(room, Targets: targets);
         }, ct);
     }, ct);
 
@@ -175,7 +177,7 @@ public sealed class RoomManagementService(DangoDbContext db, AccountEnvironment 
             return new(original.RoomId, original.AppliedVersion, original.Operation);
         }
         var applied = await apply();
-        RoomPersistenceOperations.Append(db, applied.Room.Id, applied.Room.Version, operation, clock.GetUtcNow(), userId, requestId, hash);
+        RoomPersistenceOperations.Append(db, applied.Room.Id, applied.Room.Version, operation, clock.GetUtcNow(), userId, requestId, hash, applied.Targets);
         await SaveAsync(ct);
         await checkpoint.ReachedAsync("after_audit", applied.Room.Id, ct);
         await checkpoint.ReachedAsync("before_commit", applied.Room.Id, ct);
@@ -267,6 +269,6 @@ public sealed class RoomManagementService(DangoDbContext db, AccountEnvironment 
 
     private static AccountFault AuthenticationRequired() => new("authentication_required", 401);
     private static AccountFault NotFound() => new("room_not_found", 404);
-    private sealed record Applied(PersistentRoom Room, DateTimeOffset? RestoreUntil = null);
+    private sealed record Applied(PersistentRoom Room, DateTimeOffset? RestoreUntil = null, Guid[]? Targets = null);
     internal sealed record Snapshot(PersistentRoom Room, int ReservedSeats, int Occupancy);
 }
