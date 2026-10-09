@@ -96,7 +96,7 @@ Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](d
 - [Dango 控制中心 UI 设计](docs/phase-1-control-center-ui-design.md)：已批准、完成实现并通过人工验收的正式控制中心、Phase 1 图形化验收入口和未来扩展边界。
 - [架构决策记录](docs/adr/README.md)：已批准的重要技术决策、后果与重新评估条件。
 
-- [B5B Windows 房间目录与管理计划](docs/planning/2026-10-09-backend-b5b-room-execution.md)、[候选验证](docs/verification/2026-10-09-email-backend-b5b.md)与[精确数据计划](docs/planning/2026-10-09-backend-b5b-local-data-plan.md)：正式账号会话绑定的目录与 CRUD 已接入，静态／离屏门禁通过；新的真实 HTTPS／数据库测试待授权，完整 B5 与人工未验收。
+- [B5B Windows 房间目录与管理计划](docs/planning/2026-10-09-backend-b5b-room-execution.md)、[候选验证](docs/verification/2026-10-09-email-backend-b5b.md)与[精确数据计划](docs/planning/2026-10-09-backend-b5b-local-data-plan.md)：正式账号会话绑定的目录与 CRUD 已接入，静态／离屏门禁通过；按新精确授权执行的真实 HTTPS／数据库首轮 4／4 通过，完整 B5 与人工未验收。
 
 ## 当前调研
 

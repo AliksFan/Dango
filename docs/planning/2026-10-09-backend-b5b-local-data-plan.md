@@ -1,6 +1,6 @@
 # B5B 房间管理客户端精确本地集成计划
 
-日期：2026-10-09。状态：**测试、runner 与精确目标已准备，尚未获得本计划的数据操作授权，未执行真实集成**。依据[B5 交互增量](2026-10-09-backend-b5-interaction-proposal.md)及根 `AGENTS.md`，本计划验证正式账号会话绑定的房间管理 HTTP 客户端；B1–B4、B5A 的数据操作批准不授权此次新测试。
+日期：2026-10-09。状态：**用户在本计划和具体数据授权问题展示后回复“继续”，按该精确目标执行本轮真实集成；首轮 4／4 通过，零失败／跳过**。依据[B5 交互增量](2026-10-09-backend-b5-interaction-proposal.md)及根 `AGENTS.md`，本计划验证正式账号会话绑定的房间管理 HTTP 客户端；本轮授权来自上述直接回复，不继承 B1–B4、B5A 批准，不扩大到其他对象或任务。
 
 ## 精确环境
 
@@ -59,3 +59,9 @@ TRX 保存于忽略目录 `artifacts/backend-b5b/postgres-tests/<本次时间>/b
 每个 fixture 使用 `await using` 停止且释放自己的 HTTPS 宿主和临时证书，构造或停止失败也尽力释放。runner `finally` 仅在 PID、启动时间、可执行文件及数据目录均证明属于本轮时停止这个独立 PostgreSQL；不能证明时报告残留，不改停既有服务。结束核对本次数据库 PID/记录端口以及全部临时 HTTPS 监听退出，报告残留进程和端口。
 
 保留原有数据、凭据、key ring、恢复代际、本轮虚构业务记录、未投递队列、未发布事件及日志；停止实例不删除数据。本计划不授权数据库清理、备份还原、删除 worktree/分支，或 main 合并、推送、部署、日常安装、DLL 替换。Windows 人工、真实发信、WinCred 实写、Hub/租约编排和多人画面仍有独立未验证门禁。
+
+## 本轮执行记录
+
+集成候选 `034c827` 执行本计划的完整四项，首轮全部通过，未修改代码或重跑；没有迁移、SMTP、WinCred、worker、重置／删除／数据库还原。TRX：`artifacts/backend-b5b/postgres-tests/20261009-133624-9449573/backend-postgres.trx`，同目录 `resource-receipt.json` 记录收尾。
+
+runner 已停止其启动的独立 PostgreSQL。随后核对该启动 PID 已退出、记录数据库端口无监听、`postmaster.pid` 不存在；本工作树的 fixture 宿主进程和监听为 0。四个 `await using` fixture 完结且所属 testhost 退出，随机 HTTPS 端口未逐一记录，不能写成逐端口验收。原数据目录、凭据、key ring 与恢复代际文件保留；本轮虚构记录也保留。未操作既有 PostgreSQL 服务。结果与未验收边界见[B5B 验证](../verification/2026-10-09-email-backend-b5b.md)。

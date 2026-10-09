@@ -1,6 +1,6 @@
 # Dango 分阶段开发计划 v0.1
 
-> 2026-10-09 B5B Windows 房间管理候选：承接已批准 B5，按[增量计划](planning/2026-10-09-backend-b5b-room-execution.md)接入正式会话绑定房间 HTTP、本人游标目录、创建／修改／解散／恢复、居中浮层及原请求核对。Client 静态 244／244、Desktop 受影响去重 72 项通过，Release 与宽窄离屏检查通过，见[B5B 记录](verification/2026-10-09-email-backend-b5b.md)。四项真实 HTTPS→PostgreSQL 测试及[精确数据计划](planning/2026-10-09-backend-b5b-local-data-plan.md)已准备但未授权／未执行；Windows 人工、进程级请求恢复、正式 Hub／租约与完整 B5 未验收。未合并 main、推送、安装、部署或改受保护 DLL。
+> 2026-10-09 B5B Windows 房间管理候选：承接已批准 B5，按[增量计划](planning/2026-10-09-backend-b5b-room-execution.md)接入正式会话绑定房间 HTTP、本人游标目录、创建／修改／解散／恢复、居中浮层及原请求核对。Client 静态 244／244、Desktop 受影响去重 72 项通过，Release 与宽窄离屏检查通过，见[B5B 记录](verification/2026-10-09-email-backend-b5b.md)。用户在[精确数据计划](planning/2026-10-09-backend-b5b-local-data-plan.md)及具体授权问题展示后回复“继续”，首轮真实 HTTPS→PostgreSQL **4／4** 通过、零失败／跳过；本次实例／fixture 退出，原数据与本轮虚构记录、凭据／密钥／恢复代际保留。Windows 人工、进程级请求恢复、正式 Hub／租约与完整 B5 未验收。未合并 main、推送、安装、部署或改受保护 DLL。
 
 > 2026-10-09 B5A Windows 账号候选：用户已选择居中浮层，按[增量计划](planning/2026-10-09-backend-b5-account-execution.md)实现邮箱账号、注册恢复、受控 Cookie／CSRF、Windows 凭据边界及显式本机／账号配置选择。Client 静态 134／134、Desktop 受影响去重 102 项通过，Release 零警告／错误；宽窄离屏布局检查通过。用户另行批准[精确数据计划](planning/2026-10-09-backend-b5a-local-data-plan.md)后，首轮正式客户端→HTTPS→PostgreSQL 5／5 通过，见[B5A 记录](verification/2026-10-09-email-backend-b5a.md)。本次临时实例／宿主已退出，数据、密钥及恢复代际保留，没有迁移、SMTP、WinCred、main 合并、推送、安装或部署。系统凭据实写、Windows 人工、房间 HTTP／Hub／租约及完整 B5 未验收。
 
