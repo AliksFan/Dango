@@ -5,6 +5,7 @@
     <Project Path="eng/tools/Dango.SettingsRollbackProbe/Dango.SettingsRollbackProbe.csproj" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/Dango.AccessoryAssets/Dango.AccessoryAssets.csproj" />
     <Project Path="src/Dango.Server/Dango.Server.csproj" />
     <Project Path="src/Dango.Client.Sync/Dango.Client.Sync.csproj" />
     <Project Path="src/Dango.Protocol/Dango.Protocol.csproj" />
@@ -13,6 +14,7 @@
     <Project Path="src/Dango.Desktop/Dango.Desktop.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Dango.AccessoryAssets.Tests/Dango.AccessoryAssets.Tests.csproj" />
     <Project Path="tests/Dango.Server.Tests/Dango.Server.Tests.csproj" />
     <Project Path="tests/Dango.Client.Sync.Tests/Dango.Client.Sync.Tests.csproj" />
     <Project Path="tests/Dango.Protocol.Tests/Dango.Protocol.Tests.csproj" />
