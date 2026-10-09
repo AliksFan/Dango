@@ -1,6 +1,6 @@
 # C2 私有穿搭精确本地数据验证计划
 
-日期：2026-10-09。状态：已准备，**尚未获得本计划的数据库操作授权，未执行迁移或真实集成测试**。本次编码沿用[已确认设计](2026-10-09-accessory-account-backup.md)及[C2 实施范围](2026-10-09-accessory-c2-execution.md)。B1–B5A 的既有批准不扩大到新配饰迁移和写入。
+日期：2026-10-09。状态：用户明确“授权，继续，计划，此对话永久授权”，已批准按本精确计划执行并在此对话持续推进；本轮前向迁移和 27/27 真实 PostgreSQL／HTTPS 案例已完成，见[验证记录](../verification/2026-10-09-accessory-c2-private-backup.md)。本次编码沿用[已确认设计](2026-10-09-accessory-account-backup.md)及[C2 实施范围](2026-10-09-accessory-c2-execution.md)。此次 C2 批准独立于 B1–B5A，后续同一计划范围不重复请求授权；范围变化或破坏性操作目标仍必须明确。
 
 ## 精确资源与操作
 
@@ -44,3 +44,7 @@ runner `-C2` 拒绝与 B1/B2/B3/B4/B5A、Initialize、CreateDatabase 混用，�
 证据保存在忽略目录 `artifacts/accessory-c2/postgres-tests/<时间>/`。必须报告总数／通过／失败／跳过，静态通过或未授权跳过不能算集成通过。fixture 释放本次 host 和证书；runner 仅在 PID、启动时间、程序和数据目录匹配自己启动的实例时停止，无法证明归属则报告残留，不停止其他服务。
 
 结束后检查本次 PostgreSQL PID、记录端口、postmaster.pid、测试宿主及临时 HTTPS 监听退出；原 pgdata、key ring、恢复代际、本次虚构记录、图片和日志全部保留。停止服务不等于删除数据。本计划不授权备份还原、持久 GC、资源删除、main 合并、推送、安装、部署或正式 DLL 替换；Windows 人工、系统凭据实写、正式审核／房间显示及双机验收仍独立未验证。
+
+## 本轮执行记录
+
+已在批准后执行上述精确命令：唯一前向迁移成功，27 个案例全部执行并通过，失败／跳过均为 0。TRX 位于 ignored `artifacts/accessory-c2/postgres-tests/20261009-140307-4834614/backend-postgres.trx`。临时 PostgreSQL 正常停止，其 PID／监听／postmaster.pid 和测试宿主均退出；原系统的 10 个 PostgreSQL PID 保持一致。原 key ring 文件哈希和恢复代际状态哈希不变；pgdata、虚构记录及 37 个合成图片文件（共 21,339 bytes，含受控回滚孤儿）保留，没有删除、GC 或还原操作。

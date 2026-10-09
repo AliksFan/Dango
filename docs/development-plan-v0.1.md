@@ -4,7 +4,7 @@
 
 > 首批工程增量历史快照：`codex/accessory-account-sync` 本地提交数据合同、PNG 规范化／去重、备份／恢复协调器、Windows 保存事件与本机恢复适配、真实文件人工审核工具原型；Release 构建及 176 项本批／相关回归通过，实盘模块串联与 CLI 流程通过。详见[首批验证与后续接线门禁](verification/2026-10-09-accessory-account-parallel-increment.md)。人工和双机验收未完成；未合入 main、推送或部署。
 
-> 2026-10-09 C2 私有备份候选：用户明确继续，在 `codex/accessory-account-c2` 结合冻结 B5A，已实现正式 Cookie／CSRF 配饰 API、EF 四表／事务／租约／幂等、正式 HTTP transport 和 Windows 自动备份／显式恢复／账号隔离。最终 Release 零警告／错误，统一 596/596 零跳过、runner 进程归属 10/10 通过，资源门禁审查修订和证据见[C2 记录](verification/2026-10-09-accessory-c2-private-backup.md)。新增迁移及 27 个真实 PostgreSQL／HTTPS 案例已准备，按[精确数据计划](planning/2026-10-09-accessory-c2-local-data-plan.md)等待单独授权，未执行；没有启动正式服务或写入虚构账号。C2 未验收，正式审核／房间投影／GC、WinCred、Windows 人工和双机仍未验证，未合 main、推送、安装或部署。
+> 2026-10-09 C2 私有备份候选：用户明确继续，在 `codex/accessory-account-c2` 结合冻结 B5A，已实现正式 Cookie／CSRF 配饰 API、EF 四表／事务／租约／幂等、正式 HTTP transport 和 Windows 自动备份／显式恢复／账号隔离。最终 Release 零警告／错误，统一 596/596 零跳过、runner 进程归属 10/10 通过。用户另行批准[精确数据计划](planning/2026-10-09-accessory-c2-local-data-plan.md)，并授权本对话按计划持续推进后，唯一前向迁移成功，真实 PostgreSQL／本机 HTTPS 27/27 零跳过；临时实例／宿主退出，原系统进程、key ring、恢复代际未变，数据与 37 个合成图片保留。资源门禁、实际故障注入／优雅重建边界见[C2 记录](verification/2026-10-09-accessory-c2-private-backup.md)。C2 未标记已验收，正式审核／房间投影／GC、WinCred、Windows 人工、强杀／还原和双机仍未验证，未合 main、推送、安装或部署。
 
 > 2026-10-09 DIY 配饰第一版：用户明确设计收口、人工验收通过并授权合并到本地 main。范围包含透明图创建／编辑、多件前后图层与排序、单支点、柔软度／翻折／形变上限、连接强度／径向行程、旋转／重力及本地保存重载；已验候选及历史自动差异见[第五轮记录](verification/2026-10-09-accessory-material-v5.md#2026-10-09-第一版人工通过与本地整合授权)。已本地合入 main，保留现有桌宠房间成果，见[第一版整合记录](verification/2026-10-09-accessory-v1-main-integration.md)；分享及配饰间挂接继续后置。未授权推送、安装、部署或替换正式 DLL，历史性能红灯和完整 Windows／多人门禁不改变。
 
