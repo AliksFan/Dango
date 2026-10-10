@@ -21,3 +21,4 @@
 | [0004](0004-lightweight-soft-body-secondary-motion.md) | Superseded | 2026-09-02 | 手工关键姿势与轻量软体二次运动组合方案；由 ADR 0005 取代 |
 | [0005](0005-box2d-visual-soft-body-presentation.md) | Accepted | 2026-09-03 | Box2D 视觉软体表现层与 Core 权威隔离 |
 | [0006](0006-native-round-ball-display-metric.md) | Accepted | 2026-10-09 | 原团子与正圆家具的逻辑度量及 native 圆球边界 |
+| [提案，待编号](proposals/2026-10-10-authoritative-room-physics.md) | Proposed | 2026-10-10 | 正式普通房服务端玩法物理、客户端软体表现与无家具双人准入 |
