@@ -5,6 +5,9 @@
 // material/positions, damps, caps, or silently delegates to the scalar solver.
 #include <time.h>
 #include "dango_material_contact_solver.h"
+#ifdef DANGO_MATERIAL_CONTACT_NULL_REACTION_CANDIDATE
+#include "dango_material_contact_null_reaction.h"
+#endif
 
 #define DANGO_MATERIAL_CONTACT_BLOCK_CAPACITY 16
 #define DANGO_MATERIAL_CONTACT_BLOCK_SOLVES 32
@@ -20,6 +23,9 @@ typedef enum dango_material_contact_block_status
     DANGO_MATERIAL_CONTACT_BLOCK_REPEATED_MODE,
     DANGO_MATERIAL_CONTACT_BLOCK_BUDGET,
     DANGO_MATERIAL_CONTACT_BLOCK_FINAL
+#ifdef DANGO_MATERIAL_CONTACT_NULL_REACTION_CANDIDATE
+    , DANGO_MATERIAL_CONTACT_BLOCK_NULL_REACTION
+#endif
 } dango_material_contact_block_status;
 
 typedef enum dango_material_contact_block_mode
@@ -58,6 +64,9 @@ typedef struct dango_material_contact_block_report
     // Most recent complete double traversal; final_rows can subsequently refer
     // to the independently inspected float publication.
     double all_row_rates[DANGO_MATERIAL_CONTACT_ROWS];
+#ifdef DANGO_MATERIAL_CONTACT_NULL_REACTION_CANDIDATE
+    dango_material_contact_null_report null_reaction;
+#endif
 } dango_material_contact_block_report;
 
 typedef struct dango_material_contact_block
@@ -78,6 +87,9 @@ static inline void dango_mcb_report_init(dango_material_contact_block_report* re
     report->solve_limit = DANGO_MATERIAL_CONTACT_BLOCK_SOLVES;
     report->matrix_mode_index = report->solution_mode_index = report->rates_mode_index = -1;
     for (int i = 0; i < DANGO_MATERIAL_CONTACT_BLOCK_CAPACITY; ++i) report->active_row_ids[i] = -1;
+#ifdef DANGO_MATERIAL_CONTACT_NULL_REACTION_CANDIDATE
+    dango_mcn_report_init(&report->null_reaction);
+#endif
 }
 
 // The same fixed guard is used by the actual solve loop. Only evaluated mode
@@ -256,6 +268,10 @@ static inline bool dango_mcb_system(const dango_material_contact_solver* referen
     dango_material_contact_block_report* report)
 {
     int n = report->active_count;
+#ifdef DANGO_MATERIAL_CONTACT_NULL_REACTION_CANDIDATE
+    dango_mcn_report_init(&report->null_reaction);
+    report->null_reaction.mode_index = report->mode_history_count - 1;
+#endif
     report->matrix_available = report->linear_solution_available = false;
     report->matrix_mode_index = report->solution_mode_index = -1;
     memset(report->raw_matrix, 0, sizeof(report->raw_matrix));
@@ -311,6 +327,135 @@ static inline bool dango_mcb_system(const dango_material_contact_solver* referen
     report->matrix_mode_index = report->mode_history_count - 1;
     return true;
 }
+
+#ifdef DANGO_MATERIAL_CONTACT_NULL_REACTION_CANDIDATE
+typedef enum dango_material_contact_block_null_constraint_kind
+{
+    DANGO_MATERIAL_CONTACT_BLOCK_NULL_SIGN = 1,
+    DANGO_MATERIAL_CONTACT_BLOCK_NULL_FIXED_UPPER,
+    DANGO_MATERIAL_CONTACT_BLOCK_NULL_FIXED_LOWER,
+    DANGO_MATERIAL_CONTACT_BLOCK_NULL_CUMULATIVE_NORMAL,
+    DANGO_MATERIAL_CONTACT_BLOCK_NULL_CONE_POSITIVE,
+    DANGO_MATERIAL_CONTACT_BLOCK_NULL_CONE_NEGATIVE
+} dango_material_contact_block_null_constraint_kind;
+
+// Fixed physical interval assembly only; selection is a separate, single step.
+// The report/reference may be synthetic in unit fixtures, never a world result.
+static inline bool dango_mcb_null_interval(const dango_material_contact_solver* reference,
+    dango_material_contact_block_report* report)
+{
+    if (!report) return false;
+    dango_material_contact_null_report* null_report = &report->null_reaction;
+    if (null_report->status != DANGO_MATERIAL_CONTACT_NULL_OK) return false;
+    if (!reference || report->active_count <= 0 || report->active_count > DANGO_MATERIAL_CONTACT_BLOCK_CAPACITY ||
+        report->active_count != null_report->dimension)
+        return dango_mcn_fail(null_report, DANGO_MATERIAL_CONTACT_NULL_INVALID_INPUT);
+    if (!dango_mcn_interval_init(null_report)) return false;
+    int n = report->active_count;
+    for (int i = 0; i < n; ++i)
+    {
+        int id = report->active_row_ids[i];
+        dango_material_contact_block_mode mode = report->modes[i];
+        if (id < 0 || id >= DANGO_MATERIAL_CONTACT_ROWS || id != null_report->original_row_ids[i] ||
+            (i > 0 && id <= report->active_row_ids[i - 1]))
+            return dango_mcn_fail(null_report, DANGO_MATERIAL_CONTACT_NULL_INVALID_INPUT);
+        double p = null_report->effective_lambda_particular[i], k = null_report->effective_lambda_direction[i];
+        if (id < 144)
+        {
+            if (mode == DANGO_MATERIAL_CONTACT_BLOCK_ENABLED)
+            {
+                if (!dango_mcn_interval_add(null_report, id, DANGO_MATERIAL_CONTACT_BLOCK_NULL_SIGN, -k, -p)) return false;
+            }
+            else if (mode == DANGO_MATERIAL_CONTACT_BLOCK_RELEASED)
+            {
+                if (!dango_mcn_interval_add(null_report, id, DANGO_MATERIAL_CONTACT_BLOCK_NULL_FIXED_UPPER, k, p) ||
+                    !dango_mcn_interval_add(null_report, id, DANGO_MATERIAL_CONTACT_BLOCK_NULL_FIXED_LOWER, -k, -p)) return false;
+            }
+            else return dango_mcn_fail(null_report, DANGO_MATERIAL_CONTACT_NULL_INVALID_INPUT);
+            if (id >= 128 && !dango_mcn_interval_add(null_report, id, DANGO_MATERIAL_CONTACT_BLOCK_NULL_CUMULATIVE_NORMAL,
+                -k, -(reference->support[id - 128].base_normal + p))) return false;
+        }
+        else
+        {
+            int node = id - 144, normal_column = -1;
+            for (int j = 0; j < n; ++j) if (report->active_row_ids[j] == 128 + node) normal_column = j;
+            if (normal_column < 0) return dango_mcn_fail(null_report, DANGO_MATERIAL_CONTACT_NULL_INVALID_INPUT);
+            const dango_material_contact_support* support = &reference->support[node];
+            if (mode == DANGO_MATERIAL_CONTACT_BLOCK_ZERO)
+            {
+                double fixed = support->base_tangent + p;
+                if (!dango_mcn_interval_add(null_report, id, DANGO_MATERIAL_CONTACT_BLOCK_NULL_FIXED_UPPER, k, fixed) ||
+                    !dango_mcn_interval_add(null_report, id, DANGO_MATERIAL_CONTACT_BLOCK_NULL_FIXED_LOWER, -k, -fixed)) return false;
+            }
+            else if (mode != DANGO_MATERIAL_CONTACT_BLOCK_STICK && mode != DANGO_MATERIAL_CONTACT_BLOCK_SLIDE_POSITIVE &&
+                mode != DANGO_MATERIAL_CONTACT_BLOCK_SLIDE_NEGATIVE)
+                return dango_mcn_fail(null_report, DANGO_MATERIAL_CONTACT_NULL_INVALID_INPUT);
+            double normal_p = support->base_normal + null_report->effective_lambda_particular[normal_column];
+            double normal_k = null_report->effective_lambda_direction[normal_column];
+            double bound_p = support->friction * normal_p + support->receipt_cone_slack;
+            double bound_k = support->friction * normal_k;
+            double total_p = support->base_tangent + p;
+            if (!dango_mcn_interval_add(null_report, id, DANGO_MATERIAL_CONTACT_BLOCK_NULL_CONE_POSITIVE, k - bound_k, total_p - bound_p) ||
+                !dango_mcn_interval_add(null_report, id, DANGO_MATERIAL_CONTACT_BLOCK_NULL_CONE_NEGATIVE, -k - bound_k, -total_p - bound_p)) return false;
+        }
+    }
+    return true;
+}
+
+static inline bool dango_mcb_null_failure(dango_material_contact_block_report* report)
+{
+    dango_material_contact_null_status status = report->null_reaction.status;
+    if (status == DANGO_MATERIAL_CONTACT_NULL_INVALID_INPUT)
+        return dango_mcb_fail(report, DANGO_MATERIAL_CONTACT_BLOCK_INVALID_INPUT);
+    if (status == DANGO_MATERIAL_CONTACT_NULL_NONFINITE)
+        return dango_mcb_fail(report, DANGO_MATERIAL_CONTACT_BLOCK_NONFINITE);
+    if (status == DANGO_MATERIAL_CONTACT_NULL_NULLITY)
+        return dango_mcb_fail(report, DANGO_MATERIAL_CONTACT_BLOCK_RANK);
+    return dango_mcb_fail(report, DANGO_MATERIAL_CONTACT_BLOCK_NULL_REACTION);
+}
+
+// One factorization per already-budgeted mode. The retained full-rank operations
+// are used directly; a raw particular never becomes the block's solved result.
+static inline bool dango_mcb_null_solve(const dango_material_contact_solver* reference,
+    dango_material_contact_block_report* report)
+{
+    if (!report) return false;
+    int n = report->active_count, mode_index = report->matrix_mode_index;
+    if (!reference || !report->matrix_available || n <= 0 || n > DANGO_MATERIAL_CONTACT_BLOCK_CAPACITY)
+        return dango_mcb_fail(report, DANGO_MATERIAL_CONTACT_BLOCK_INVALID_INPUT);
+    dango_material_contact_null_report* null_report = &report->null_reaction;
+    bool factored = dango_mcn_factor(n, report->active_row_ids, report->scaled_matrix,
+        report->scaled_rhs, report->linear_solution, null_report);
+    null_report->mode_index = mode_index;
+    if (null_report->factor_available) null_report->factor_mode_index = mode_index;
+    if (null_report->raw_pair_available) null_report->raw_pair_mode_index = mode_index;
+    report->pivot_searches += null_report->pivot_searches;
+    report->pivot_eliminations += null_report->pivot_eliminations;
+    report->matrix_infinity_norm = null_report->matrix_infinity_norm;
+    report->pivot_threshold = null_report->pivot_threshold;
+    if (!factored) return dango_mcb_null_failure(report);
+    if (null_report->nullity == 0) return true;
+    bool fixed[16] = {false}; double fixed_values[16] = {0};
+    for (int i = 0; i < n; ++i)
+    {
+        if (report->modes[i] == DANGO_MATERIAL_CONTACT_BLOCK_RELEASED) fixed[i] = true;
+        else if (report->modes[i] == DANGO_MATERIAL_CONTACT_BLOCK_ZERO)
+        {
+            int id = report->active_row_ids[i];
+            if (id < 144 || id >= 160)
+            { dango_mcn_fail(null_report, DANGO_MATERIAL_CONTACT_NULL_INVALID_INPUT); return dango_mcb_null_failure(report); }
+            fixed[i] = true; fixed_values[i] = -reference->support[id - 144].base_tangent;
+        }
+    }
+    if (!dango_mcn_effective_pair(n, report->active_row_ids, report->scaling, fixed, fixed_values,
+        report->scaled_matrix, report->scaled_rhs, null_report) ||
+        !dango_mcn_reaction_null(reference, n, report->active_row_ids, null_report) ||
+        !dango_mcb_null_interval(reference, report) || !dango_mcn_interval_select(null_report) ||
+        !dango_mcn_selected(n, report->scaling, report->scaled_matrix, report->scaled_rhs, null_report,
+            report->raw_multipliers, report->linear_solution)) return dango_mcb_null_failure(report);
+    return true;
+}
+#endif
 
 // Complete traversal uses the exact shared physical gates, including strict
 // multiplier signs. Unlike the scalar helper, a negative multiplier does not
@@ -532,9 +677,13 @@ static inline bool dango_material_contact_block_solve(dango_material_contact_blo
         {
             if (!dango_mcb_record_modes(&block->report)) return dango_mcb_finish(block, report, &started, timed, false);
             ++block->report.linear_solves;
+#ifdef DANGO_MATERIAL_CONTACT_NULL_REACTION_CANDIDATE
+            if (!dango_mcb_system(&reference, &block->report) || !dango_mcb_null_solve(&reference, &block->report))
+#else
             if (!dango_mcb_system(&reference, &block->report) ||
                 !dango_mcb_linear_solve(n, block->report.active_row_ids, block->report.scaled_matrix,
                     block->report.scaled_rhs, block->report.linear_solution, &block->report))
+#endif
                 return dango_mcb_finish(block, report, &started, timed, false);
             block->report.linear_solution_available = true;
             block->report.solution_mode_index = block->report.mode_history_count - 1;
@@ -542,7 +691,12 @@ static inline bool dango_material_contact_block_solve(dango_material_contact_blo
             for (int i = 0; i < n; ++i)
             {
                 int id = block->report.active_row_ids[i];
+#ifdef DANGO_MATERIAL_CONTACT_NULL_REACTION_CANDIDATE
+                double multiplier = block->report.null_reaction.used ? block->report.null_reaction.selected_lambda[i] :
+                    block->report.scaling[i] * block->report.linear_solution[i];
+#else
                 double multiplier = block->report.scaling[i] * block->report.linear_solution[i];
+#endif
                 block->report.raw_multipliers[i] = multiplier;
                 if (!isfinite(multiplier))
                 { block->report.status = DANGO_MATERIAL_CONTACT_BLOCK_NONFINITE; return dango_mcb_finish(block, report, &started, timed, false); }

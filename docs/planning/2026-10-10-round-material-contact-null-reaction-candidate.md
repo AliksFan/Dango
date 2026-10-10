@@ -1,6 +1,6 @@
 # 圆形材料：一维冗余反力候选
 
-2026-10-10。**待用户批准，未实施；不扩大上一方案授权。** 上一[有限活动块候选](2026-10-10-round-material-contact-block-candidate.md)已按固定秩失败规则停止；[第 147 帧复核](../verification/2026-10-10-round-material-contact-block-result.md)证明该帧存在合法运动，但反力分配不唯一。
+2026-10-10。**用户明确回复“继续”，批准本方案与隔离实施顺序；第 1／2 项固定第 147 帧数学验收失败，已按第 6 项停止设计复核，第 3 项及之后未执行。** [本轮数学结果](../verification/2026-10-10-round-material-null-reaction-result.md)记录批准的证书拒绝舍入零方向；下一[证书尺度方案](2026-10-10-round-material-null-certificate-scale-candidate.md)待批准、未实施。上一[有限活动块候选](2026-10-10-round-material-contact-block-candidate.md)已按固定秩失败规则停止；[第 147 帧复核](../verification/2026-10-10-round-material-contact-block-result.md)证明该帧存在合法运动，但反力分配不唯一。本次批准不代表新物理或人工验收通过。
 
 ## 问题与选择
 
