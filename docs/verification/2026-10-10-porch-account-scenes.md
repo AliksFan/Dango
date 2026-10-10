@@ -27,7 +27,9 @@
 
 同一物理回执中的 `OwnedNativeKeyboardOpensAndWalksThePhysicalPorch` 已实际尝试，但 Windows 拒绝将该精确隔离测试窗口激活为前台；测试以 Inconclusive／NotExecuted 结束，没有注入原生键盘，不能报告通过。阻碍为 `Windows refused foreground activation of this exact isolated scene; no native input was injected.` 该结果不影响已执行的受控物理移动检查，也不能代替真实按键证据。
 
-一次较宽的原生回归因包含长物理运行而被中止；截至中止有 59 项通过及 2 项焦点相关失败，该轮不是完整通过证据。本阶段没有扩大重跑范围或降低门禁，也不声称完整长物理回归通过。
+一次较宽的原生回归因包含长物理运行而被中止；截至中止有 59 项通过及 2 项新增测试 fixture 失败，该轮不是完整通过证据。`RealDoorsHaveStableAccessibleIdentitiesAndDistantInvocationDoesNotOpenAnything` 在 UIA peer Invoke 后立即断言 `IsInPorch` 时为 false；`SameRealPhysicalPetWalksToBuildSignAndKeepsRenderingUnderTheSceneForm` 期望最近目标 `porch-create`，实际为 `local-single`。失败回执为 `porch-native-regression.trx`，不能把它们归为既有基线或 Win32 前台激活阻碍。
+
+最终 fixture 已在异步 Invoke 后等待真实转场，并在物理操作前显式设置 Stage 焦点；两项分别已包含在上述 87 项及物理单项成功证据中。联合接入新的账号实现后，又只定向运行这两项，在同一进程 2／2 通过、零跳过，回执 `porch-previous-two-failures-directed.trx`。这是当前两项的通过证据，不声称初始较宽回归完整通过，也不将先前未捕获的焦点状态推断为已证明的唯一根因。
 
 本阶段未连接数据库、没有修改正在运行的 R2 验收资源，没有真实账号或房间持久写入。受保护 `dango_box2d.dll` 的 SHA256 仍为 `6712D66ECEF9588123CAFCD868455080598B5B58711A698FB8AF022A0CDA191A`。只有已确认归属的本工作树测试进程参与运行和收尾。
 
