@@ -2,6 +2,8 @@
 
 状态：候选，尚未获本轮真实执行授权。仅编写、构建、离线门禁不代表已经执行此计划。根工作树整合及最终构建后，生成一次冻结清单；审批请求必须包含该清单的准确路径与 SHA256，不能只批准可变的文件名。
 
+本次已审查的固定清单是本工作树 `artifacts/account-profile-a-approved.json`，SHA256 为 `195596BA3F9D334EF71EEA33F75844C88DE492276FA8FD19AD33FD03D7AFE21A`，冻结 294 份输入。工作树为 `backend-b5-windows/Dango`；执行必须传入此摘要，不能重新生成清单代替用户所批准的版本。实现整合提交为 `377b557`，后续仅追加验证文档。
+
 ## 1. 唯一目标和范围
 
 - 既有独立实例：当前用户 LocalAppData 下 `Dango/BackendDevelopment/run20261008b0/pgdata`；PostgreSQL 18 的固定安装 `ProgramFiles/PostgreSQL/18/bin`。
@@ -10,6 +12,8 @@
 - 新建一次性受保护证据目录：同级 `run20261010profilea`。目录已存在即拒绝，不退款、不续跑、不自动 retry。
 - 历史必须恰为 InitialAccountRoomFoundation、AccountLifecycle、RoomManagement、RoomAccess、RoomAccessIntegrity 五项（对应原 20261008/09 迁移 ID）；唯一前向目标 `20261010055529_AccountProfile`。正式迁移入口须精确执行到此目标、拒绝后退或未来迁移。
 - 只运行 `FullyQualifiedName~Dango.Server.Tests.Accounts.AccountProfilePostgresTests` 一次，7 个实际 Passed；不 build/restore、不运行旧 B1、B3/B4/B5、其他测试类或维护任务。
+
+既有历史的准确 ID 为：`20261008074701_InitialAccountRoomFoundation`、`20261008085521_AccountLifecycle`、`20261009031410_RoomManagement`、`20261009055558_RoomAccess`、`20261009062701_RoomAccessIntegrity`。不符即停止，不补其它迁移。
 
 ## 2. 固定输入和入口
 

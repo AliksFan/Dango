@@ -57,3 +57,7 @@ Profile 专用保护已整合。固定 7 个用例共享一次 owner；邀请、
 整合后新增 13 项无数据库反例随非 PostgreSQL 的 Server 门禁执行，当前 **209/209、零跳过**，`server-profile-boundary-nondatabase.trx`。独立清空 Profile 与 B1 批准后，精确 Profile 类 **7 项全部 skipped/inconclusive、零 failed**，`profile-unapproved-gate.trx`；初始化未通过时 cleanup 不再重新访问 owner。这是禁止未批准执行的证据，不能称 7 项真实数据库业务已通过。
 
 后续真实验证拆为 A-only 昵称迁移与固定 7 项测试、以及另行准备的联合 UIA／双客户端／门廊验证。前一段批准不会开放后一段写入。全量草案仍为未批准规划，测试 owner 异常即停止，不声明崩溃续跑已实现。
+
+独立 A-only 运行器整合为 `377b557`，根 `eng/test-account-profile-postgres-boundary.ps1` **66/66**、旧阶段隔离 **2/2**；本轮非秘密离线回执为 `artifacts/account-profile-offline/93e4532dccba41d4a34390389b5adce2/offline-results.json`，`ExecutedDatabase=false`。覆盖固定 digest、文件及旁依赖变更拒绝、精确目标、进程超时及归属、不可退款的尝试、证书销毁回执、TRX 精确七项、只读 JSON framing、旧图保留和本轮图／零发信证据。代理故障副本去掉批准摘要校验后，仅针对清单与DLL同时变更的反例失败（65/66），没有修改根正式实现或启动数据库。
+
+[A-only 精确计划](../planning/2026-10-10-account-profile-postgres-a-plan.md)已可审查，批准仍待用户给出。固定清单 `artifacts/account-profile-a-approved.json` 冻结 294 份输入，SHA256 `195596BA3F9D334EF71EEA33F75844C88DE492276FA8FD19AD33FD03D7AFE21A`；根实查与当前输入一致。仅准备清单和离线检查，未创建新的受保护数据运行目录、读取真实数据库凭据、探测本轮 PostgreSQL 端口、启动实例或执行迁移／种子。此固定输入仅用于 A-only，不授权后续联合 UIA、房间业务写入或系统凭据操作。

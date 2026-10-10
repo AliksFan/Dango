@@ -100,6 +100,8 @@ Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](d
 
 - [登录持续捏脸同步、昵称与门廊设计](docs/planning/2026-10-10-account-sync-nickname-and-porch-design.md)、[联合验证](docs/verification/2026-10-10-account-sync-nickname-and-porch.md)和[门廊实窗证据](docs/verification/2026-10-10-porch-account-scenes.md)：按用户确认实现登录差异选择、会话自动同步、首次昵称及场景直接展开房间功能。核心和受影响检查通过，新真实数据库与主观验收仍待完成，配饰同步随后接入。
 
+- [昵称独立数据库验证计划](docs/planning/2026-10-10-account-profile-postgres-a-plan.md)：一次精确前向迁移与固定 7 项 PostgreSQL／HTTPS 测试；保护与离线反例完成，固定输入已冻结，尚待该段真实数据及资源授权。
+
 ## 当前调研
 
 - [B5C 正式连接／租约增量](docs/planning/2026-10-09-backend-b5c-session-execution.md)、[候选验证](docs/verification/2026-10-09-email-backend-b5c.md)与[精确数据计划](docs/planning/2026-10-09-backend-b5c-local-data-plan.md)：用户明确批准后，真实HTTPS／LongPolling／PostgreSQL最终6／6通过，Client静态364／364；三轮测试资源均退出、数据保留。Windows人工、正式移动／动作与多人呈现仍未接入，完整 B5 未验收。
