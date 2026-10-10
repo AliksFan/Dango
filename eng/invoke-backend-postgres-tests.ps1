@@ -163,7 +163,7 @@ try {
     # Stage permission cannot leak in from the parent shell or another previous test run.
     $taskTestEnvironment = @{
         DANGO_BACKEND_TEST_CONNECTION=$taskConnection; DANGO_BACKEND_TEST_DATA_DIRECTORY=$taskDataDirectory
-        DANGO_BACKEND_B1_TEST_APPROVED='0'; DANGO_BACKEND_B3_TEST_APPROVED='0'; DANGO_BACKEND_B4_TEST_APPROVED='0'; DANGO_BACKEND_B5A_TEST_APPROVED='0'; DANGO_BACKEND_B5B_TEST_APPROVED='0'; DANGO_BACKEND_B5C_TEST_APPROVED='0'; DANGO_BACKEND_B5C_RESOURCE_DIRECTORY=''
+        DANGO_BACKEND_B1_TEST_APPROVED='0'; DANGO_BACKEND_B3_TEST_APPROVED='0'; DANGO_BACKEND_B4_TEST_APPROVED='0'; DANGO_BACKEND_B5A_TEST_APPROVED='0'; DANGO_BACKEND_B5B_TEST_APPROVED='0'; DANGO_BACKEND_B5C_TEST_APPROVED='0'; DANGO_BACKEND_PROFILE_TEST_APPROVED='0'; DANGO_BACKEND_B5C_RESOURCE_DIRECTORY=''
     }
     if ($B1 -or $B2 -or $B3 -or $B4 -or $B5A -or $B5B -or $B5C) {
         $taskB1StateFile = Join-Path $taskStateDirectory 'b1test-state.json'
@@ -208,7 +208,7 @@ try {
             [void](Invoke-TaskProcess 'dotnet' @('src/Dango.Server/bin/Release/net10.0/Dango.Server.dll', '--formal-migrate') $taskMigrationEnvironment)
         }
     }
-    $taskBaseAllowedFilter = 'TestCategory=PostgresIntegration&TestCategory!=BackendB5AIntegration&TestCategory!=BackendB5BIntegration&TestCategory!=BackendB5CIntegration'
+    $taskBaseAllowedFilter = 'TestCategory=PostgresIntegration&TestCategory!=BackendB5AIntegration&TestCategory!=BackendB5BIntegration&TestCategory!=BackendB5CIntegration&FullyQualifiedName!~Dango.Server.Tests.Accounts.AccountProfilePostgresTests'
     $taskTestFilter = if ($TestFilter) { "($taskBaseAllowedFilter)&($TestFilter)" } elseif ($B2 -or $B3 -or $B4) { "$taskBaseAllowedFilter&FullyQualifiedName!~PostgresFoundationTests" } else { $taskBaseAllowedFilter }
     if ($B4) {
         # A requested subset can narrow B4, never re-enable B0 schema/probe writes.
