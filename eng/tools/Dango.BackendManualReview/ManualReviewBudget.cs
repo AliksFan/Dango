@@ -24,6 +24,7 @@ public sealed class ManualReviewBudget
     private readonly Func<CancellationToken, Task<ManualReviewIdentity>>? resolveIdentity;
     private readonly SemaphoreSlim mutationGate = new(1, 1);
     private ManualReviewIdentity? identity;
+    private ManualReviewIdentity? expectedIdentity;
     private Guid? pendingRegistrationId;
     private string? confirmationHash;
 
@@ -48,7 +49,7 @@ public sealed class ManualReviewBudget
         if (value.UserId == Guid.Empty || value.PetId == Guid.Empty || value.DefaultRoomId == Guid.Empty) throw Reject();
         lock (sync)
         {
-            if (identity is not null && identity != value) throw Reject();
+            if (identity is not null && identity != value || expectedIdentity is not null && expectedIdentity != value) throw Reject();
             identity = value;
             rooms.Add(value.DefaultRoomId);
         }
@@ -96,6 +97,24 @@ public sealed class ManualReviewBudget
     {
         lock (sync) return Enum.GetValues<ManualReviewOperation>().ToDictionary(operation => operation, operation => counts.GetValueOrDefault(operation));
     }
+
+    // The runtime resolver only reads the already captured pending ID, fixed email/invitation and
+    // epoch. A lost Complete response may have committed; recovery binds that existing identity
+    // before login instead of creating another registration or refunding its write reservation.
+    public async Task RecoverIdentityAsync(CancellationToken ct = default)
+    {
+        lock (sync)
+        {
+            if (identity is not null) return;
+            if (pendingRegistrationId is null || resolveIdentity is null) throw Reject();
+        }
+        ManualReviewIdentity value;
+        try { value = await resolveIdentity(ct); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception error) when (error is not OutOfMemoryException) { throw Reject(); }
+        if (value is null) throw Reject();
+        BindIdentity(value);
+    }
     internal async Task<IDisposable> LockMutationAsync(CancellationToken ct)
     {
         await mutationGate.WaitAsync(ct);
@@ -138,6 +157,12 @@ public sealed class ManualReviewBudget
     }
     internal async Task CaptureIdentityAsync(ManualReviewIdentity value, CancellationToken ct)
     {
+        if (value.UserId == Guid.Empty || value.PetId == Guid.Empty || value.DefaultRoomId == Guid.Empty) throw Reject();
+        lock (sync)
+        {
+            if (expectedIdentity is not null && expectedIdentity != value) throw Reject();
+            expectedIdentity = value;
+        }
         if (resolveIdentity is not null && await resolveIdentity(ct) != value) throw Reject();
         BindIdentity(value);
     }
