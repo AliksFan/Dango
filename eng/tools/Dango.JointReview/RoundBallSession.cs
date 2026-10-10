@@ -12,6 +12,8 @@ internal sealed class RoundBallSession : IDisposable
     internal static readonly TimeSpan FixedStep = TimeSpan.FromSeconds(1d / 60);
     internal const double LeftBound = -4;
     internal const double RightBound = 4;
+    // 132 DIP at s=1: about 20% wider than the accepted resting body's painted width.
+    internal const double OfficialBallRadiusQ = 1.1;
     private readonly DangoPhysicsWorld world;
     private bool disposed;
 
@@ -30,7 +32,7 @@ internal sealed class RoundBallSession : IDisposable
                 _ => 0,
             };
             Entity = world.Add(anchorX, 0);
-            var floorCenter = DangoPhysicsDefaults.Current.GroundHeight + .4;
+            var floorCenter = DangoPhysicsDefaults.Current.GroundHeight + OfficialBallRadiusQ;
             if (scenario != RoundBallScenario.WithoutBall)
             {
                 var center = scenario switch
@@ -40,7 +42,7 @@ internal sealed class RoundBallSession : IDisposable
                     RoundBallScenario.BallFalls => (X: 1.8, Y: 2.4),
                     _ => (X: 1d, Y: floorCenter),
                 };
-                world.AddRoundBall(new(center.X, center.Y));
+                world.AddRoundBall(new(center.X, center.Y, RadiusQ: OfficialBallRadiusQ));
             }
             LastFrame = world.ReadRoundBallFrame();
             ValidateOwnership(LastFrame);
