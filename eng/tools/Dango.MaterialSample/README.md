@@ -140,7 +140,21 @@
 
 最终 Release 构建零警告／零错误，独立数学 24 组主要夹具及 4 个可失败负例通过（`material-forces-step2-final.log`），默认无宏模块限定兼容回归 **11/11**（`test-results/gradient-default-scoped-module-final-tests.trx`）；首次较宽类筛选为 4 项通过、6 项历史三体库对照因夹具 DLL 缺失失败（`test-results/gradient-default-module-tests.trx`），原失败报告保留，这 6 项未验证，不声称全套回归通过。
 
-本节证据位于忽略的 `artifacts/round-material/`：`idle-native-{area-gradient,bending-gradient,material-gradients,material-gradients-cached,material-gradients-half-phase}.json` 与同名 `idle-render-*.json`，另有上述真实 DLL 全帧报告、甩动后静置报告、基线等价报告及集成日志。缓存及半相位 WPF 报告以新文件创建，没有覆盖旧证据。**35/35＋35/35 只属于半相位模式 7 的既有门禁，其镜像甩动后长时稳定已经被否证；三个后续固定隔离也均失败。** 本增量到此停止扩展单变量变体，下一阶段已形成[接触与约束裁定候选](../../../docs/planning/2026-10-10-round-material-contact-solver-candidate.md)，属于待批准设计，不能写成已有充分根因或物理验收通过。没有选定新材料候选，没有打开新候选人工验收窗口；用户已认可的旧小样与两份受保护 DLL 保留原状态。没有切换生产、合并、推送或更新日常安装。
+本节证据位于忽略的 `artifacts/round-material/`：`idle-native-{area-gradient,bending-gradient,material-gradients,material-gradients-cached,material-gradients-half-phase}.json` 与同名 `idle-render-*.json`，另有上述真实 DLL 全帧报告、甩动后静置报告、基线等价报告及集成日志。缓存及半相位 WPF 报告以新文件创建，没有覆盖旧证据。**35/35＋35/35 只属于半相位模式 7 的既有门禁，其镜像甩动后长时稳定已经被否证；三个后续固定隔离也均失败。** 本增量到此停止扩展单变量变体。当时形成了[接触与约束裁定候选](../../../docs/planning/2026-10-10-round-material-contact-solver-candidate.md)，后续批准与失败结果见下节；不能写成已有充分根因或物理验收通过。没有选定新材料候选，没有打开新候选人工验收窗口；用户已认可的旧小样与两份受保护 DLL 保留原状态。没有切换生产、合并、推送或更新日常安装。
+
+## 已批准的接触末态候选
+
+用户随后明确“同意”，批准[单体接触与约束裁定方案](../../../docs/planning/2026-10-10-round-material-contact-solver-candidate.md)及其隔离实施顺序。原模式 7 的镜像长时失败继续保留，尚未选定新候选。
+
+第 1 项[逐行捕获](../../../docs/verification/2026-10-10-round-material-contact-capture.md)完成：正向／镜像各 6,000＋36,000 帧，观察器 ON／OFF 的 3,528,000 个完整帧 float 和 168,000 个成本计数逐位一致；旧真实 DLL 的六个检查点及跨度也一致。两向共 1,134,063 个逐行事件重构到完整求解输入／输出，残差为零。固定采集全部 17 体、真实容量完整读取的接触、约束和耗散阶段；不称含 Box2D 缓存的世界重放或新候选验收。
+
+在新 `native-contact-capture` 目录构建 `dango_material_contact_plain`、`dango_material_contact_observed` 和 `dango_constraint_observer_tests{,_off}`，不复用受保护模块目录。捕获命令为 `dango_material_contact_observed <全新输出前缀> forward|mirror`；ON／OFF 两组完成后运行 `verify_contact_capture.py --prefix <共同前缀> --actual <原实际 DLL 报告> --output <全新报告>`，前缀后文件命名为 `plain-forward`／`observed-forward`／`plain-mirror`／`observed-mirror`。检查脚本依赖 NumPy，只比较真实文件，不启动或修改物理世界。
+
+第 2 项独立速度夹具通过：原几何与真实累计冲量、摩擦预算、double／float 末态、逐体冲量账本及原统一限速分别验证。位置仍沿用原 384 次上限，速度候选另有固定 384 扫描上限，两阶段成本分别报告，不能称整个小步仍只有 384 次。最终检查数和证据见[候选结果](../../../docs/verification/2026-10-10-round-material-contact-candidate-result.md)。
+
+第 3 项真实私有 DLL **失败**：默认／正向／X 镜像均只完成 28 个合法帧，第 29 帧自然落地（尚未开始甩动）触发 `-96`。失败的小步位置 21 次已通过，速度 384 次／3,072 活动行访问仍有角度闭合 `2.61051648e-5 rad/s`，超过原 `1e-5`。未执行完整长时或第 4 项验收，零采样跨度不算通过。真实锁存／主动输入／显式恢复 315 项检查通过，但不表示物理修复。
+
+新诊断入口 `dango_material_candidate_diagnostics <全新报告.json> default|forward|mirror` 与实际 DLL 的 `--diagnose-post-drag-idle` 均复现失败。私有诊断完整保留 17 体输入、全部 160 行及 double 速度；未生成的 uncapped／output／speed-cap 报告为 `null`，未检查的能量／动量账本为 `ledgerEvaluated=false` 与 `null`。旧报告保留。按已批准停止点保存结果并复核设计，形成[待批准的有限活动块候选](../../../docs/planning/2026-10-10-round-material-contact-block-candidate.md)。没有切换生产、合并、推送或更新日常安装。
 
 ## 运行
 

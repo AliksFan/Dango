@@ -215,6 +215,9 @@ static void idle_world_step(b2WorldId world, float dt, int substeps)
     idle_state before = idle_capture();
     b2World_Step(world, dt, substeps);
     idle_state after = idle_capture(); idle_delta(IDLE_INTEGRATION, &before, &after);
+#if defined(DANGO_CONTACT_TRACE)
+    contact_after_integration(&before, dt);
+#endif
     idle_stats.duration += dt; ++idle_stats.substeps;
 }
 
@@ -262,7 +265,13 @@ static bool idle_constraints(dango_self_soft_body* body, const dango_self_physic
     dango_constraint_state state = idle_constraint_state(&before);
     idle_stats.max_pre_residual = fmax(idle_stats.max_pre_residual, dango_constraint_sweep(&state, false));
     unsigned long long count = dango_constraint_sweep_count;
+#if defined(DANGO_CONTACT_TRACE)
+    contact_before_constraints(&state);
+#endif
     bool valid = idle_original_constraints(body, config);
+#if defined(DANGO_CONTACT_TRACE)
+    contact_after_constraints(valid);
+#endif
     unsigned long long sweeps = dango_constraint_sweep_count - count;
     idle_stats.sweeps += sweeps; if (sweeps > idle_stats.max_sweeps) idle_stats.max_sweeps = sweeps;
     idle_after_constraints = idle_capture(); idle_delta(IDLE_CONSTRAINTS, &before, &idle_after_constraints);
@@ -278,6 +287,9 @@ static bool idle_limit(dango_self_soft_body* body, float limit)
     idle_state before = idle_capture(); idle_delta(IDLE_DAMPING, &idle_after_constraints, &before);
     bool valid = idle_original_limit(body, limit);
     idle_cached = idle_capture(); idle_delta(IDLE_SPEED, &before, &idle_cached);
+#if defined(DANGO_CONTACT_TRACE)
+    contact_after_speed(&before, &idle_cached);
+#endif
     return valid;
 }
 

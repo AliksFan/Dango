@@ -5,6 +5,9 @@
 #include "dango_self_physics_internal.h"
 #include "dango_physics_module.h"
 #include "dango_display_contact.h"
+#if defined(DANGO_MATERIAL_CONTACT_CANDIDATE)
+#include "dango_material_contact_adapter.h"
+#endif
 
 typedef struct collision_review
 {
@@ -19,6 +22,9 @@ typedef struct collision_review
     bool horizontal_bounds_enabled;
     float horizontal_left, horizontal_right;
     float preview_jump_speed_scale;
+#if defined(DANGO_MATERIAL_CONTACT_CANDIDATE)
+    dango_material_contact_diagnostic candidate_diagnostic;
+#endif
 } collision_review;
 
 DANGO_API void dango_collision_test_interaction_flags(void* handle,int flags)
@@ -414,6 +420,14 @@ DANGO_API int dango_collision_step(void* handle, float dt, const float* controls
             }
             if (p->error) break;
             b2World_Step(p->bodies[0]->world_id,small_dt,1);
+#if defined(DANGO_MATERIAL_CONTACT_CANDIDATE)
+            if (p->capacity!=1 || p->count!=1 || p->disable_damping_for_test) { p->error=-410; break; }
+            // This private single-body path performs position, original damping,
+            // final velocity and original global speed cap before one writeback.
+            p->error=dango_material_contact_substep(p->bodies[0],&p->config,small_dt,controls,&p->candidate_diagnostic);
+            if (p->error) break;
+            (void)collision_damp;
+#else
             for (int r=0;r<p->capacity;++r)
                 if (p->active[r])
                 if (!dango_self_solve_constraints(p->bodies[r],&p->config)) p->error=-91;
@@ -442,6 +456,7 @@ DANGO_API int dango_collision_step(void* handle, float dt, const float* controls
             for (int r=0;r<p->capacity;++r)
                 if (p->active[r])
                 if (!dango_self_limit_speed(p->bodies[r],p->config.maximum_speed)) p->error=-87;
+#endif
             // Display convex-hull separation is checked by the contact solve; raw rig overlap is not visible penetration.
         }
         float candidate[DANGO_PHYSICS_MAX_BODIES*42]={0};
@@ -474,6 +489,9 @@ DANGO_API int dango_physics_get_abi_version(void)
 
 DANGO_API int dango_physics_world_create(const dango_self_physics_config* config,int capacity,void** handle)
 {
+#if defined(DANGO_MATERIAL_CONTACT_CANDIDATE)
+    if (capacity!=1 || !config || config->node_count!=16) return -410;
+#endif
     if (!handle || !dango_self_config_valid(config) || capacity<1 || capacity>DANGO_PHYSICS_MAX_BODIES) return -410;
     *handle=NULL;
     collision_review* p=calloc(1,sizeof *p); if (!p) return -401;
@@ -484,6 +502,16 @@ DANGO_API int dango_physics_world_create(const dango_self_physics_config* config
     *handle=p;
     return 0;
 }
+
+#if defined(DANGO_MATERIAL_CONTACT_CANDIDATE)
+// Private candidate telemetry only; never compiled into the default module.
+DANGO_API int dango_material_contact_get_diagnostic(void* handle,dango_material_contact_diagnostic* output)
+{
+    if (!handle || !output) return -410;
+    *output=((collision_review*)handle)->candidate_diagnostic;
+    return 0;
+}
+#endif
 
 DANGO_API int dango_physics_world_add(void* handle,float anchor_x,float anchor_y,int* entity_id)
 {
@@ -581,6 +609,9 @@ DANGO_API int dango_physics_world_reset(void* handle)
         dango_self_initialize_at(p->bodies[slot],&p->config,p->anchors[2*slot],p->anchors[2*slot+1]);
     }
     p->error=0; p->contact_steps=0; memset(p->snapshot,0,sizeof p->snapshot);
+#ifdef DANGO_MATERIAL_CONTACT_CANDIDATE
+    memset(&p->candidate_diagnostic,0,sizeof p->candidate_diagnostic);
+#endif
     return collision_read(p,p->snapshot);
 }
 
