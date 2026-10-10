@@ -182,7 +182,9 @@ internal sealed class OrdinaryRoomFurnitureEditorPanel : UserControl
         var button = ActionButton(name, label, () => { });
         button.MouseDoubleClick += (_, e) =>
         {
-            if (e.ChangedButton != MouseButton.Left || e.ClickCount != 2 || !button.IsEnabled) return;
+            // Control synthesizes this event only for the second raw mouse
+            // press, but its fresh args have ClickCount == 1.
+            if (e.ChangedButton != MouseButton.Left || !button.IsEnabled) return;
             e.Handled = true;
             AddRequested?.Invoke(kind);
         };

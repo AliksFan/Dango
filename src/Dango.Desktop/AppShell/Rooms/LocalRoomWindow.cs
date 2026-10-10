@@ -95,7 +95,8 @@ internal sealed class LocalRoomWindow : Window
         root.Children.Add(menu);
         Content = root;
         Scene.ViewChanged += RefreshLabel;
-        Scene.SizeChanged += (_, _) => RefreshLabel();
+        Scene.SizeChanged += (_, _) => { RefreshFurnitureEditorOcclusion(); RefreshLabel(); };
+        furnitureLayer.SizeChanged += (_, _) => RefreshFurnitureEditorOcclusion();
         Deactivated += (_, _) => { CancelFurnitureGesture(); driver.ClearInput(); ReleaseScenePointerCapture(); };
         LostKeyboardFocus += (_, _) => { if (!Scene.IsKeyboardFocusWithin) { CancelCameraPan(); CancelFurnitureGesture(); driver.ClearInput(); } };
         Scene.MouseWheel += OnSceneWheel;
@@ -349,11 +350,10 @@ internal sealed class LocalRoomWindow : Window
         if (!IsActive || !IsKeyboardFocusWithin || Keyboard.Modifiers != ModifierKeys.None) return;
         if (e.Key == Key.Escape)
         {
-            if (!e.IsRepeat && !(IsMenuOpen && menu.CloseCameraDropDown()))
+            if (!e.IsRepeat)
             {
-                if (!IsMenuOpen && IsFurnitureEditing && (IsFurnitureGestureActive || cameraPanActive || requestedFurnitureAnchor is not null || driver.Furniture?.HasPreview == true))
-                { CancelAllSceneGestures(); CancelFurniturePreview(); }
-                else SetMenuOpen(!IsMenuOpen);
+                if (!IsMenuOpen && IsFurnitureEditing) EndFurnitureEditing();
+                else if (!(IsMenuOpen && menu.CloseCameraDropDown())) SetMenuOpen(!IsMenuOpen);
             }
             e.Handled = true;
         }
@@ -389,8 +389,10 @@ internal sealed class LocalRoomWindow : Window
     {
         menu.RefreshStatus(Scene);
         RefreshFurnitureAvailability();
-        Scene.ToolTip = "A / D 移动 · S 轻压 · 空格跳跃 · 滚轮调视距 · Shift + 左键横移抚摸 · Esc 菜单";
-        if (Scene.Camera.CameraMode == RoomCameraMode.Manual) Scene.ToolTip += " · 右键拖动视角";
+        Scene.ToolTip = IsFurnitureEditing
+            ? "左键选择 / 拖动家具 · 方向键微调 · 手套拖动团子 · 右键拖动视角 · Esc 退出布置"
+            : "A / D 移动 · S 轻压 · 空格跳跃 · 滚轮调视距 · Shift + 左键横移抚摸 · Esc 菜单";
+        if (!IsFurnitureEditing && Scene.Camera.CameraMode == RoomCameraMode.Manual) Scene.ToolTip += " · 右键拖动视角";
     }
 
     internal bool BeginFurnitureEditing()
@@ -429,10 +431,11 @@ internal sealed class LocalRoomWindow : Window
             };
         }
         furnitureLayer.Visibility = Visibility.Visible;
+        RefreshFurnitureEditorOcclusion();
         furnitureTool = OrdinaryRoomFurnitureTool.Select;
         driver.Furniture?.SelectFurniture(null);
         furnitureCommandError = null;
-        RefreshFurnitureEditor(); Scene.Focus(); return true;
+        RefreshFurnitureEditor(); RefreshLabel(); Scene.Focus(); return true;
     }
 
     internal bool EndFurnitureEditing()
@@ -442,6 +445,7 @@ internal sealed class LocalRoomWindow : Window
         CancelAllSceneGestures(); driver.ClearInput(); CancelFurniturePreview();
         driver.Furniture?.SelectFurniture(null);
         furnitureLayer.Visibility = Visibility.Collapsed;
+        Scene.SetFurnitureEditorOcclusion(0);
         Scene.SetFurnitureSelected((Guid?)null);
         Scene.Cursor = Cursors.Arrow;
         if (previousFurnitureCamera is { } snapshot) Scene.RestoreFurnitureCamera(snapshot);
@@ -449,6 +453,13 @@ internal sealed class LocalRoomWindow : Window
         RefreshLabel();
         if (IsVisible && IsActive && !IsMenuOpen) Scene.Focus();
         return true;
+    }
+
+    private void RefreshFurnitureEditorOcclusion()
+    {
+        var width = furnitureLayer.ActualWidth > 0 ? furnitureLayer.ActualWidth : furnitureEditor?.Width ?? 0;
+        Scene.SetFurnitureEditorOcclusion(IsFurnitureEditing && double.IsFinite(width)
+            ? width + furnitureLayer.Margin.Right + 12 : 0);
     }
 
     private bool FurnitureCanInteract => IsFurnitureEditing && !IsMenuOpen && Scene.HasHealthyFrame &&

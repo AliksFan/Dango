@@ -84,6 +84,15 @@ internal sealed partial class LocalRoomSceneView
     }
 
     internal RoomCameraSnapshot CaptureFurnitureCamera() => Camera.CaptureState();
+    internal void SetFurnitureEditorOcclusion(double width)
+    {
+        if (DesktopPetPresentationEnabled || !Camera.SetRightPresentationOcclusion(width)) return;
+        InputInvalidated?.Invoke();
+        ClearWheel();
+        UpdateProjection(0, advanceCamera: false);
+        ViewChanged?.Invoke();
+    }
+
     internal void RestoreFurnitureCamera(RoomCameraSnapshot snapshot)
     {
         Camera.RestoreState(snapshot);

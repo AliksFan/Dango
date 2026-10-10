@@ -25,12 +25,12 @@ public sealed class MultiFurnitureUiTests
         platform.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         ball.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Assert.AreEqual(0, requests.Count, "Single-click, including the first click of a double-click, must not insert furniture.");
-        RaiseMouseDoubleClick(ball, 2);
+        RaiseMousePress(ball, 2);
         ball.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        RaiseMouseDoubleClick(ball, 3);
+        RaiseMousePress(ball, 3);
         Assert.AreEqual(1, requests.Count, "Trailing Click and the third mouse press must not duplicate the add request.");
         Assert.AreEqual(FurnitureItemKind.RoundBall, requests[0]);
-        RaiseMouseDoubleClick(platform, 2);
+        RaiseMousePress(platform, 2);
         Assert.AreEqual(2, requests.Count);
         Assert.AreEqual(FurnitureItemKind.StaticPlatform, requests[1]);
     }
@@ -46,7 +46,7 @@ public sealed class MultiFurnitureUiTests
         foreach (var name in new[] { "RoomFurnitureSelect", "RoomFurnitureGlove", "RoomFurnitureDelete", "RoomFurnitureUp" })
             Assert.IsTrue(Find<Button>(panel, name).IsEnabled, name);
         var requests = 0; panel.AddRequested += _ => requests++;
-        RaiseMouseDoubleClick(Find<Button>(panel, "RoomFurnitureBall"), 2);
+        RaiseMousePress(Find<Button>(panel, "RoomFurnitureBall"), 2);
         Assert.AreEqual(0, requests, "Disabled mouse events must not issue a hidden add command.");
         panel.Refresh(true, true, false, FurnitureItemKind.RoundBall, true, 29, false, false, false, "", OrdinaryRoomFurnitureTool.Select);
         Assert.IsTrue(Find<Button>(panel, "RoomFurnitureBall").IsEnabled);
@@ -138,11 +138,11 @@ public sealed class MultiFurnitureUiTests
         return scene;
     }
 
-    private static void RaiseMouseDoubleClick(Button button, int count)
+    private static void RaiseMousePress(Button button, int count)
     {
-        var args = new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = Control.MouseDoubleClickEvent };
-        // WPF supplies this internal-set property through its mouse device. Set
-        // the same event metadata while exercising the real control handler.
+        var args = new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = Mouse.MouseDownEvent };
+        // Set metadata only on the raw mouse press. WPF Control must synthesize
+        // MouseDoubleClick itself; a third press never synthesizes that event.
         typeof(MouseButtonEventArgs).GetProperty(nameof(MouseButtonEventArgs.ClickCount))!.SetValue(args, count);
         button.RaiseEvent(args);
     }

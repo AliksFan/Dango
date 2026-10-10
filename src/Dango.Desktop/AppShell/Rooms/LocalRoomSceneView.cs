@@ -368,11 +368,13 @@ internal sealed partial class LocalRoomSceneView : Grid
                 VisualTreeHelper.GetDpi(this).PixelsPerDip);
             dc.DrawText(text, new Point(Math.Max(24, (ActualWidth - text.Width) / 2), 48));
         }
-        DrawFurniture(dc);
         // Only the painted floor is lifted; the camera, body and native collision remain unchanged.
         if (right > left && floorY < ActualHeight)
             dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(205, 182, 149)), null,
                 new Rect(left, floorY, right - left, ActualHeight - floorY));
+        // Furniture shares the real collision floor. Its lower artwork must
+        // remain in front of the lifted decorative strip, just like the body.
+        DrawFurniture(dc);
         if (!DesktopPetPresentationEnabled)
         {
             if (left > 0) dc.DrawRectangle(ExcludedArea, null, new Rect(0, 0, left, ActualHeight));

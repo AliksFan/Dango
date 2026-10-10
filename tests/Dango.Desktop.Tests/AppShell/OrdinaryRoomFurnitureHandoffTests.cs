@@ -141,12 +141,16 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
         var old = rig.Scene.ReadFurnitureCollectionFrame();
         var bytes = File.ReadAllBytes(rig.Path);
         var owner = rig.Runtime.FrameDriver;
+        Assert.IsTrue(rig.Host.LocalWindow!.BeginFurnitureEditing(), rig.Furniture.Status);
         rig.Furniture.PreviewPlatform(1600, 120);
         var pending = rig.Furniture.ConfirmAsync();
         try
         {
             Assert.IsTrue(writer.Entered.Task.Wait(TimeSpan.FromSeconds(5)), "The real staged file must reach the blocked writer.");
             Assert.IsTrue(rig.Furniture.Busy);
+            PressEscape();
+            Assert.IsTrue(rig.Host.LocalWindow!.IsFurnitureEditing, "An in-flight save must finish before exiting editing.");
+            Assert.IsFalse(rig.Host.LocalWindow.IsMenuOpen, "Esc while saving cannot open another overlay.");
             rig.Host.LocalWindow!.WindowState = WindowState.Minimized;
             Assert.AreEqual(WindowState.Normal, rig.Host.LocalWindow.WindowState,
                 "Refusing a busy hide must restore the rendering surface so the existing owner can finish.");
@@ -163,6 +167,9 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
             Assert.AreEqual(OrdinaryFurnitureSceneState.Synced, rig.Furniture.State, rig.Furniture.Status);
             Assert.AreEqual(2L, rig.Furniture.Layout.LayoutVersion);
             Assert.AreEqual(1, writer.CommitCalls);
+            PressEscape();
+            Assert.IsFalse(rig.Host.LocalWindow.IsFurnitureEditing, "A fresh Esc can exit after the real commit finishes.");
+            Assert.IsFalse(rig.Host.LocalWindow.IsMenuOpen);
             var saved = File.ReadAllBytes(rig.Path);
             rig.Host.HideLocalRoom();
             Assert.AreEqual(LocalRoomPresentation.Hidden, rig.Host.LocalPresentation);
@@ -180,6 +187,17 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
             CollectionAssert.AreEqual(saved, File.ReadAllBytes(rig.Path));
         }
         finally { writer.Release.TrySetResult(); }
+
+        void PressEscape()
+        {
+            var window = rig.Host.LocalWindow!;
+            window.FocusScene();
+            var args = new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice,
+                PresentationSource.FromVisual(window)!, Environment.TickCount, System.Windows.Input.Key.Escape)
+                { RoutedEvent = System.Windows.Input.Keyboard.PreviewKeyDownEvent };
+            window.Scene.RaiseEvent(args);
+            Assert.IsTrue(args.Handled);
+        }
     }
 
     [STATestMethod]
