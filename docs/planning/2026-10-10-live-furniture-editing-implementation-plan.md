@@ -1,6 +1,6 @@
 # 实时家具编辑：首个本地增量实施计划
 
-日期：2026-10-10。状态：**用户明确回复“开始”，已授权 C0–C4 本地实现、隔离构建与独立单人验收窗口。定向单元、native、最终 r7 真实文件／物理整链与进程重启门禁，以及同一候选 r8 的 600 秒／50 次配对窗口观察已通过；早退失败记录保留。真实键鼠／DPI 与人工验收未完成，本批保持待人工，不标记已验收。**
+日期：2026-10-10。状态：**用户授权 C0–C4 本地实施后，对实现提交 `956ec56` 的首批单人木平台候选明确回复“通过”，整体人工验收通过。定向单元、native、最终 r7 真实文件／物理整链与进程重启门禁，以及同一候选 r8 的 600 秒／50 次配对观察已通过；早退失败记录保留。专项键鼠／DPI 矩阵未逐项验证，既有 59 FPS 门禁保持开放；未授权 main 合并、推送、安装或部署。**
 
 依据[实时编辑与手套设计](2026-10-10-live-furniture-editing-design.md)，本计划替代旧 L0–L5 的暂停／整体取消／重建世界路径。实施来源为设计提交 `cba27b9`，在独立 `codex/furniture-layout-live` 分支推进；冻结合同见 [C0](2026-10-10-live-furniture-c0-contract.md)，实际门禁、未验证项与交付状态见[本批实施记录](../verification/2026-10-10-live-furniture-layout-implementation.md)。设计／原型的[历史准备记录](../verification/2026-10-10-furniture-layout-design.md)不替代本批真实实现证据。
 
@@ -106,8 +106,8 @@ writer 抛错后重读：候选为已提交；等于旧字节，或基线原本�
 | C0 来源与合同 | [C0 合同](2026-10-10-live-furniture-c0-contract.md)、几何／序列化、能力与接口 DTO、候选 manifest | 冻结来源、几何、计时与容差，记录实际候选 DLL hash；证明缺能力不能演示成功 | 合同、native hash 与最终 r7 manifest 已归档 |
 | C1 同世界平台变更 | native 平台、`DangoPhysicsWorld.Furniture.cs` 与 `DangoFurnitureTypes.cs`、定向 Physics 测试 | Prepare／Apply／Cancel／一致只读帧，拒绝完整旧世界保持、成功不重建、删除无旧支撑；身体材质不修改 | 新增 17＋既有平台 41，共 58／58 通过；故意错误候选被门禁检出；既有球 native 回归 0 失败 |
 | C2 数据与文件 | Core Furniture 数据／操作／序列化，Desktop Store／lease／writer，Core／Desktop 测试 | 版本与去重、故障三态、Saved／Applied 分离、真实文件保护 | Core 66／66、Desktop 存储 18／18 定向通过；整链状态不由单元结果推定 |
-| C3 场景与界面 | `FurnitureLayoutWindow`、Projection、SceneSession、InputPolicy，JointReview 入口与隔离脚本 | 一只团子单 world 持续步进、预览确认、即删、自拖、图标焦点及相机 | 最终 r7 Release 0 警告／错误、整链 13／13 与纯窗口 35 checks 通过；硬件输入未验证 |
-| C4 单人真实验收 | 候选及独占数据目录、验证报告、人工窗口 | 真实文件重启恢复、物理拒绝／删除、输入／DPI、提交帧耗时和资源循环；用户人工确认后才验收该批 | 50 个 scene/world 生命周期、150 次保存并应用、两个真实子进程重启，以及 r8 600 秒／50 次配对观察通过；观察资源归零，正常人工窗口已打开，硬件／DPI 与人工验收未完成 |
+| C3 场景与界面 | `FurnitureLayoutWindow`、Projection、SceneSession、InputPolicy，JointReview 入口与隔离脚本 | 一只团子单 world 持续步进、预览确认、即删、自拖、图标焦点及相机 | 最终 r7 Release 0 警告／错误、整链 13／13 与纯窗口 35 checks 通过；整体人工体验通过，专项键鼠未逐项记录 |
+| C4 单人真实验收 | 候选及独占数据目录、验证报告、人工窗口 | 真实文件重启恢复、物理拒绝／删除、输入／DPI、提交帧耗时和资源循环；用户人工确认后才验收该批 | 50 个 scene/world 生命周期、150 次保存并应用、两个真实子进程重启，以及 r8 600 秒／50 次配对观察通过；观察资源归零，用户对本批候选整体人工确认通过；键鼠／DPI 专项矩阵仍未逐项验证，不关闭完整门禁 |
 | 后续多人 | 另行准备 server／client／shared-state 文件和双端批次 | 正式权限、目标抓取独占、权威 3／5／10 秒、版本／幂等广播及断线真实双客户端证据；不从本地测试推定 | 不属于本批实施 |
 
 原固定平台定义、实际接触几何和身体造型回归门槛不降低。布局保存平台初始配置；游玩时团子运动、手套活动和相机不写成布局。球与多家具另行冻结各自行为合同。
