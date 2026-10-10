@@ -2,6 +2,7 @@ using System.Windows.Threading;
 using Dango.Desktop.AppShell.Persistence;
 using Dango.Desktop.AppShell.Rooms;
 using Dango.Client.Sync.Pets;
+using Dango.Protocol;
 using Dango.Desktop.AppShell.ControlCenter;
 using System.IO;
 
@@ -24,6 +25,18 @@ internal sealed partial class DangoApplicationHost
         var journal = new PetConfigurationFileJournal(Path.Combine(
             paths.GetAccountDirectory(remote.Origin, remote.UserId, remote.PetId), "configuration-choices"));
         return new(remote, repository, journal);
+    }
+
+    private PetConfigurationLiveSyncCoordinator CreatePetConfigurationLiveSync(IRemotePetConfigurationClient remote,
+        PetConfigurationSnapshot baseline)
+    {
+        ThrowIfDisposed();
+        var paths = new DangoUserDataPaths(settingsPath);
+        var repository = new LocalPetConfigurationRepository(paths.AppearancePath, appearance, workerWWindow.Dispatcher,
+            configuration => { if (!disposed) { stackedRuntime.SetAppearance(configuration); controlCenterWindow?.ProductHome.RefreshAccountAppearance(); } });
+        var journal = new PetConfigurationFileJournal(Path.Combine(
+            paths.GetAccountDirectory(remote.Origin, remote.UserId, remote.PetId), "configuration-sync"));
+        return new(remote, repository, journal, baseline);
     }
 
     private void RestoreLocalRoomCheckpoint(LocalRoomPresentation target)
