@@ -1,4 +1,4 @@
-<div id="dango-furniture-layout-v1" class="viz-carousel" aria-label="家具布置界面方案" data-previous-label="上一个方案" data-next-label="下一个方案">
+<div id="dango-furniture-layout-v1" aria-label="单人房间家具布置">
   <style>
     #dango-furniture-layout-v1 {
       --room-paper: light-dark(#faf9f4, #23271f);
@@ -35,7 +35,6 @@
     }
     #dango-furniture-layout-v1 * { box-sizing: border-box; }
     #dango-furniture-layout-v1 [hidden] { display: none !important; }
-    #dango-furniture-layout-v1 .room-variant { min-height: 760px; }
     #dango-furniture-layout-v1 .room-window {
       --catalog-width: 188px;
       --room-gap: 12px;
@@ -70,16 +69,16 @@
     #dango-furniture-layout-v1 .room-actions { display: flex; flex-wrap: wrap; gap: 6px; }
     #dango-furniture-layout-v1 .room-body { display: grid; grid-template-columns: var(--catalog-width) minmax(0, 1fr); gap: var(--room-gap); padding: 0 12px 12px; }
     #dango-furniture-layout-v1 .side-window[data-editing="false"] .room-body { grid-template-columns: minmax(0, 1fr); }
-    #dango-furniture-layout-v1 .room-catalog { padding: 14px 12px; border-radius: 12px; background: var(--room-panel); }
-    #dango-furniture-layout-v1 .room-section-title { font-weight: 500; margin-bottom: 12px; }
-    #dango-furniture-layout-v1 .catalog-list { display: grid; gap: 10px; }
-    #dango-furniture-layout-v1 .catalog-item { display: grid; grid-template-columns: 1fr; gap: 4px; padding: 10px 12px; text-align: left; width: 100%; }
+    #dango-furniture-layout-v1 .room-catalog { align-self: start; padding: 12px; border-radius: 12px; background: var(--room-panel); }
+    #dango-furniture-layout-v1 .sidebar-section + .sidebar-section { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--room-line); }
+    #dango-furniture-layout-v1 .room-section-title { font-weight: 500; margin-bottom: 8px; }
+    #dango-furniture-layout-v1 .catalog-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    #dango-furniture-layout-v1 .catalog-item { display: grid; place-items: center; padding: 6px; min-height: 60px; width: 100%; }
     #dango-furniture-layout-v1 .catalog-item[aria-pressed="true"] { border-color: var(--room-action); box-shadow: inset 0 0 0 1px var(--room-action); }
-    #dango-furniture-layout-v1 .catalog-thumb { height: 64px; display: grid; place-items: center; }
-    #dango-furniture-layout-v1 .platform-thumb { width: 100px; height: 17px; background: var(--room-wood); border-radius: 5px; border-top: 5px solid var(--room-wood-light); box-shadow: 0 3px 0 var(--room-shadow); }
-    #dango-furniture-layout-v1 .ball-thumb { width: 54px; height: 54px; border-radius: 50%; background: radial-gradient(circle at 32% 27%, var(--room-ball-light), var(--room-ball) 58%, var(--room-ball-dark)); position: relative; overflow: hidden; }
+    #dango-furniture-layout-v1 .catalog-thumb { height: 46px; display: grid; place-items: center; }
+    #dango-furniture-layout-v1 .platform-thumb { width: 58px; height: 14px; background: var(--room-wood); border-radius: 5px; border-top: 4px solid var(--room-wood-light); box-shadow: 0 3px 0 var(--room-shadow); }
+    #dango-furniture-layout-v1 .ball-thumb { width: 42px; height: 42px; border-radius: 50%; background: radial-gradient(circle at 32% 27%, var(--room-ball-light), var(--room-ball) 58%, var(--room-ball-dark)); position: relative; overflow: hidden; }
     #dango-furniture-layout-v1 .ball-thumb::after, #dango-furniture-layout-v1 .piece-ball::after { content: ""; position: absolute; inset: 0; border-left: 13px solid var(--room-ball-band); border-radius: 50%; transform: rotate(-25deg); opacity: .85; pointer-events: none; }
-    #dango-furniture-layout-v1 .room-catalog-note { margin-top: 12px; color: var(--room-muted); font-size: 12px; }
     #dango-furniture-layout-v1 .room-main { min-width: 0; }
     #dango-furniture-layout-v1 .scene {
       height: 340px;
@@ -118,23 +117,22 @@
     #dango-furniture-layout-v1 .placement-ghost { opacity: .55; pointer-events: none; outline: 2px dashed var(--room-focus); outline-offset: 4px; }
     #dango-furniture-layout-v1 .scene[data-placement="true"] .furniture-piece { visibility: hidden; }
     #dango-furniture-layout-v1 .scene[data-editing="false"] .scene-safe-zone, #dango-furniture-layout-v1 .scene[data-editing="false"] .scene-safe-label { display: none; }
-    #dango-furniture-layout-v1 .selection-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 0 4px; min-height: 60px; }
-    #dango-furniture-layout-v1 .selection-name { font-weight: 500; margin-right: auto; }
-    #dango-furniture-layout-v1 .nudge-buttons { display: flex; gap: 4px; }
-    #dango-furniture-layout-v1 .nudge-buttons button { width: 40px; padding: 6px; }
-    #dango-furniture-layout-v1 .room-feedback { padding: 9px 12px; background: var(--room-panel); border-radius: 8px; min-height: 58px; color: var(--room-muted); font-size: 12px; }
+    #dango-furniture-layout-v1 .nudge-buttons { display: grid; grid-template-columns: repeat(3, 36px); grid-template-rows: repeat(3, 36px); gap: 4px; justify-content: center; }
+    #dango-furniture-layout-v1 .nudge-buttons button { width: 36px; min-height: 36px; padding: 4px; }
+    #dango-furniture-layout-v1 .nudge-up { grid-column: 2; grid-row: 1; }
+    #dango-furniture-layout-v1 .nudge-left { grid-column: 1; grid-row: 2; }
+    #dango-furniture-layout-v1 .nudge-right { grid-column: 3; grid-row: 2; }
+    #dango-furniture-layout-v1 .nudge-down { grid-column: 2; grid-row: 3; }
+    #dango-furniture-layout-v1 .nudge-center { grid-column: 2; grid-row: 2; place-self: center; width: 5px; height: 5px; border-radius: 50%; background: var(--room-line); }
+    #dango-furniture-layout-v1 .furniture-parameters { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 6px 8px; margin: 0; font-size: 12px; }
+    #dango-furniture-layout-v1 .furniture-parameters dt { color: var(--room-muted); }
+    #dango-furniture-layout-v1 .furniture-parameters dd { margin: 0; overflow-wrap: anywhere; }
+    #dango-furniture-layout-v1 .parameter-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    #dango-furniture-layout-v1 .parameter-actions button { padding: 6px 9px; font-size: 12px; }
+    #dango-furniture-layout-v1 .room-feedback { margin-top: 10px; padding: 8px 10px; background: var(--room-panel); border-radius: 8px; color: var(--room-muted); font-size: 12px; }
     #dango-furniture-layout-v1 .room-feedback[data-error="true"] { color: var(--room-error); background: var(--room-error-fill); }
     #dango-furniture-layout-v1 .room-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 11px 16px; border-top: 1px solid var(--room-line); color: var(--room-muted); font-size: 12px; }
-    #dango-furniture-layout-v1 .bottom-window .room-body { display: block; }
-    #dango-furniture-layout-v1 .bottom-window .room-catalog { margin-top: 12px; padding: 12px; display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 12px; }
-    #dango-furniture-layout-v1 .bottom-window .room-section-title { margin-bottom: 5px; }
-    #dango-furniture-layout-v1 .bottom-window .catalog-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    #dango-furniture-layout-v1 .bottom-window .catalog-item { grid-template-columns: 66px minmax(0, 1fr); align-items: center; gap: 10px; }
-    #dango-furniture-layout-v1 .bottom-window .catalog-thumb { height: 50px; }
-    #dango-furniture-layout-v1 .bottom-window .platform-thumb { width: 60px; height: 14px; }
-    #dango-furniture-layout-v1 .bottom-window .ball-thumb { width: 46px; height: 46px; }
-    #dango-furniture-layout-v1 .bottom-window .room-catalog-note { margin-top: 0; }
-    #dango-furniture-layout-v1 .room-left { min-height: 490px; display: grid; align-content: center; justify-items: center; gap: 16px; padding: 20px; text-align: center; }
+    #dango-furniture-layout-v1 .room-left { display: grid; align-content: center; justify-items: center; gap: 16px; padding: 64px 20px; text-align: center; }
     #dango-furniture-layout-v1 .room-left .room-brand { width: 72px; height: 48px; }
     #dango-furniture-layout-v1 dialog { width: min(420px, calc(100% - 24px)); padding: 22px; border: 1px solid var(--room-line); border-radius: 14px; background: var(--room-paper); color: var(--room-ink); box-shadow: 0 16px 60px var(--room-shadow); }
     #dango-furniture-layout-v1 dialog::backdrop { background: light-dark(#24302355, #00000077); }
@@ -144,53 +142,60 @@
     #dango-furniture-layout-v1 .sr-label { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     #dango-furniture-layout-v1 .compact { --room-gap: 8px; }
     #dango-furniture-layout-v1 .compact .room-controls { padding-block: 8px; }
-    #dango-furniture-layout-v1 .compact .catalog-item { padding: 7px 10px; }
+    #dango-furniture-layout-v1 .compact .sidebar-section + .sidebar-section { margin-top: 10px; padding-top: 10px; }
     @media (max-width: 660px) {
-      #dango-furniture-layout-v1 .room-variant { min-height: 960px; }
       #dango-furniture-layout-v1 .room-titlebar { padding-left: 12px; }
       #dango-furniture-layout-v1 .room-controls { padding: 10px; }
       #dango-furniture-layout-v1 .room-body { grid-template-columns: 1fr; padding: 0 8px 10px; }
       #dango-furniture-layout-v1 .room-main { grid-row: 1; }
-      #dango-furniture-layout-v1 .room-catalog { display: grid; grid-template-columns: 1fr; gap: 8px; padding: 10px; }
-      #dango-furniture-layout-v1 .room-section-title { margin-bottom: 0; }
-      #dango-furniture-layout-v1 .catalog-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      #dango-furniture-layout-v1 .catalog-item { padding: 8px; }
-      #dango-furniture-layout-v1 .catalog-thumb { height: 44px; }
-      #dango-furniture-layout-v1 .ball-thumb { width: 40px; height: 40px; }
-      #dango-furniture-layout-v1 .platform-thumb { width: 80px; }
-      #dango-furniture-layout-v1 .room-catalog-note { margin-top: 0; }
-      #dango-furniture-layout-v1 .bottom-window .room-catalog { grid-template-columns: 1fr; }
-      #dango-furniture-layout-v1 .bottom-window .catalog-item { grid-template-columns: 1fr; gap: 4px; }
-      #dango-furniture-layout-v1 .bottom-window .catalog-thumb { height: 44px; }
-      #dango-furniture-layout-v1 .selection-name { flex-basis: 100%; }
+      #dango-furniture-layout-v1 .room-catalog { padding: 12px; }
       #dango-furniture-layout-v1 .scene { height: 310px; }
       #dango-furniture-layout-v1 .room-footer { padding: 10px; }
     }
     @media (pointer: coarse) {
       #dango-furniture-layout-v1 button { min-height: 44px; }
-      #dango-furniture-layout-v1 .nudge-buttons button { width: 44px; }
+      #dango-furniture-layout-v1 .nudge-buttons { grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); }
+      #dango-furniture-layout-v1 .nudge-buttons button { width: 44px; min-height: 44px; }
       #dango-furniture-layout-v1 .furniture-piece { min-height: 0; }
       #dango-furniture-layout-v1 .piece-platform::after { content: ""; position: absolute; left: 0; right: 0; top: -22px; bottom: -22px; }
     }
   </style>
-  <section class="room-variant" data-variant="侧栏布置" aria-label="侧栏布置方案">
     <div class="room-window side-window" aria-label="侧栏家具布置" data-room-ui="side">
       <header class="room-titlebar"><span class="room-brand" aria-hidden="true"></span><div><div class="room-heading">团子的单人房间</div><div class="room-caption">本地单人 · 独立窗口</div></div></header>
       <div class="room-inside">
         <div class="room-controls"><div class="room-mode"><span class="room-mode-dot" aria-hidden="true"></span><span data-mode-label>布置中 · 游玩暂停</span></div><div class="room-actions"><button class="cursor-interaction" type="button" data-action="reopen">重新打开</button><button class="cursor-interaction" type="button" data-action="cancel">取消修改</button><button class="cursor-interaction room-primary" type="button" data-action="save">保存布局</button><button class="cursor-interaction room-primary" type="button" data-action="edit" hidden>布置家具</button></div></div>
         <div class="room-body">
-          <aside class="room-catalog" aria-label="官方家具"><div class="room-section-title">官方家具</div><div class="catalog-list"><button type="button" class="catalog-item cursor-interaction" data-type="platform" aria-pressed="false"><span class="catalog-thumb" aria-hidden="true"><span class="platform-thumb"></span></span><span><span>木平台</span><br><span class="room-caption" data-catalog-label="platform">选择并放置</span></span></button><button type="button" class="catalog-item cursor-interaction" data-type="ball" aria-pressed="false"><span class="catalog-thumb" aria-hidden="true"><span class="ball-thumb"></span></span><span><span>圆球</span><br><span class="room-caption" data-catalog-label="ball">独立预览</span></span></button></div><div class="room-catalog-note">一次预览一件家具<br>平台与圆球分开体验</div></aside>
+          <aside class="room-catalog" aria-label="家具布置侧栏">
+            <section class="sidebar-section" data-sidebar-section="move" aria-label="家具微调">
+              <div class="room-section-title">微调</div>
+              <div class="nudge-buttons" data-nudge>
+                <button class="nudge-up cursor-interaction" type="button" data-dx="0" data-dy="-1" aria-label="向上微调">↑</button>
+                <button class="nudge-left cursor-interaction" type="button" data-dx="-1" data-dy="0" aria-label="向左微调">←</button>
+                <span class="nudge-center" aria-hidden="true"></span>
+                <button class="nudge-right cursor-interaction" type="button" data-dx="1" data-dy="0" aria-label="向右微调">→</button>
+                <button class="nudge-down cursor-interaction" type="button" data-dx="0" data-dy="1" aria-label="向下微调">↓</button>
+              </div>
+            </section>
+            <section class="sidebar-section" data-sidebar-section="parameters" aria-label="家具参数">
+              <div class="room-section-title">家具参数</div>
+              <dl class="furniture-parameters"><dt>名称</dt><dd data-selection>木平台</dd><dt>尺寸</dt><dd data-param-size>标准（固定）</dd><dt>行为</dt><dd data-param-behavior>静态平台 · 四向摆放</dd></dl>
+              <div class="parameter-actions"><button class="cursor-interaction room-quiet" type="button" data-action="remove">移除</button><button class="cursor-interaction" type="button" data-action="place-recommended" hidden>推荐落位</button><button class="cursor-interaction room-quiet" type="button" data-action="cancel-placement" hidden>取消放置</button></div>
+            </section>
+            <section class="sidebar-section" data-sidebar-section="warehouse" aria-label="家具仓库">
+              <div class="room-section-title">家具仓库</div>
+              <div class="catalog-list"><button type="button" class="catalog-item cursor-interaction" data-type="platform" aria-pressed="false" aria-label="木平台，已在场景中" data-tooltip="木平台 · 已在场景中"><span class="catalog-thumb" aria-hidden="true"><span class="platform-thumb"></span></span></button><button type="button" class="catalog-item cursor-interaction" data-type="ball" aria-pressed="false" aria-label="圆球，改用圆球，独立预览" data-tooltip="圆球 · 独立预览"><span class="catalog-thumb" aria-hidden="true"><span class="ball-thumb"></span></span></button></div>
+            </section>
+          </aside>
           <main class="room-main">
             <div class="scene" data-scene="side" aria-label="家具摆放场景，团子为静止示意">
-              <button class="scene-place-target cursor-interaction" type="button" data-action="scene-place" aria-label="在场景中放下家具" disabled><span class="sr-label">点击位置放下家具；键盘可用下方的推荐位置按钮</span></button>
+              <button class="scene-place-target cursor-interaction" type="button" data-action="scene-place" aria-label="在场景中放下家具" disabled><span class="sr-label">点击位置放下家具；键盘可用侧栏中的推荐落位按钮</span></button>
               <div class="scene-floor"></div><div class="scene-safe-zone"></div><span class="scene-safe-label">团子出生区</span><span class="scene-label">团子为静止示意</span>
               <div class="dango-body" aria-hidden="true"><span class="dango-sprout"></span><span class="dango-eye left"></span><span class="dango-eye right"></span><span class="dango-mouth"></span><span class="dango-cheek left"></span><span class="dango-cheek right"></span></div>
               <button class="room-door cursor-interaction" type="button" data-action="leave" aria-label="通过房门离开单人房间">房门</button>
               <button type="button" class="furniture-piece piece-platform cursor-interaction" data-piece aria-label="木平台，选择后可拖动或用方向键移动"></button>
               <span class="placement-ghost piece-platform" data-ghost hidden aria-hidden="true"></span>
             </div>
-            <div class="selection-bar"><span class="selection-name" data-selection>木平台</span><div class="nudge-buttons" data-nudge><button class="cursor-interaction" type="button" data-dx="-1" data-dy="0" aria-label="向左微调">←</button><button class="cursor-interaction" type="button" data-dx="1" data-dy="0" aria-label="向右微调">→</button><button class="cursor-interaction" type="button" data-dx="0" data-dy="-1" aria-label="向上微调">↑</button><button class="cursor-interaction" type="button" data-dx="0" data-dy="1" aria-label="向下微调">↓</button></div><button class="cursor-interaction room-quiet" type="button" data-action="remove">移除</button><button class="cursor-interaction" type="button" data-action="place-recommended" hidden>放到推荐位置</button><button class="cursor-interaction room-quiet" type="button" data-action="cancel-placement" hidden>取消放置</button></div>
-            <div class="room-feedback" data-feedback role="status" aria-live="polite">已选中木平台。可以拖动，也可以用方向键微调；当前布局尚未保存。</div>
+            <div class="room-feedback" data-feedback role="status" aria-live="polite">木平台已选中 · 布局未保存。</div>
           </main>
         </div>
       </div>
@@ -198,33 +203,6 @@
       <footer class="room-footer"><span>交互稿 · 保存仅用于预览恢复</span><span data-storage>仅本次预览</span></footer>
       <dialog data-unsaved aria-labelledby="side-unsaved-title"><div class="dialog-title" id="side-unsaved-title">布局还有未保存的修改</div><p class="dialog-message" data-dialog-message>离开前，如何处理这次布置？</p><div class="dialog-actions"><button class="cursor-interaction room-primary" type="button" data-dialog-action="save">保存并继续</button><button class="cursor-interaction" type="button" data-dialog-action="discard">舍弃并继续</button><button class="cursor-interaction room-quiet" type="button" data-dialog-action="stay">继续布置</button></div></dialog>
     </div>
-  </section>
-  <section class="room-variant" data-variant="底栏布置" aria-label="底栏布置方案" hidden>
-    <div class="room-window bottom-window" aria-label="底栏家具布置" data-room-ui="bottom">
-      <header class="room-titlebar"><span class="room-brand" aria-hidden="true"></span><div><div class="room-heading">团子的单人房间</div><div class="room-caption">本地单人 · 独立窗口</div></div></header>
-      <div class="room-inside">
-        <div class="room-controls"><div class="room-mode"><span class="room-mode-dot" aria-hidden="true"></span><span data-mode-label>布置中 · 游玩暂停</span></div><div class="room-actions"><button class="cursor-interaction" type="button" data-action="reopen">重新打开</button><button class="cursor-interaction" type="button" data-action="cancel">取消修改</button><button class="cursor-interaction room-primary" type="button" data-action="save">保存布局</button><button class="cursor-interaction room-primary" type="button" data-action="edit" hidden>布置家具</button></div></div>
-        <div class="room-body">
-          <main class="room-main">
-            <div class="scene" data-scene="bottom" aria-label="家具摆放场景，团子为静止示意">
-              <button class="scene-place-target cursor-interaction" type="button" data-action="scene-place" aria-label="在场景中放下家具" disabled><span class="sr-label">点击位置放下家具；键盘可用下方的推荐位置按钮</span></button>
-              <div class="scene-floor"></div><div class="scene-safe-zone"></div><span class="scene-safe-label">团子出生区</span><span class="scene-label">团子为静止示意</span>
-              <div class="dango-body" aria-hidden="true"><span class="dango-sprout"></span><span class="dango-eye left"></span><span class="dango-eye right"></span><span class="dango-mouth"></span><span class="dango-cheek left"></span><span class="dango-cheek right"></span></div>
-              <button class="room-door cursor-interaction" type="button" data-action="leave" aria-label="通过房门离开单人房间">房门</button>
-              <button type="button" class="furniture-piece piece-platform cursor-interaction" data-piece aria-label="木平台，选择后可拖动或用方向键移动"></button>
-              <span class="placement-ghost piece-platform" data-ghost hidden aria-hidden="true"></span>
-            </div>
-            <div class="selection-bar"><span class="selection-name" data-selection>木平台</span><div class="nudge-buttons" data-nudge><button class="cursor-interaction" type="button" data-dx="-1" data-dy="0" aria-label="向左微调">←</button><button class="cursor-interaction" type="button" data-dx="1" data-dy="0" aria-label="向右微调">→</button><button class="cursor-interaction" type="button" data-dx="0" data-dy="-1" aria-label="向上微调">↑</button><button class="cursor-interaction" type="button" data-dx="0" data-dy="1" aria-label="向下微调">↓</button></div><button class="cursor-interaction room-quiet" type="button" data-action="remove">移除</button><button class="cursor-interaction" type="button" data-action="place-recommended" hidden>放到推荐位置</button><button class="cursor-interaction room-quiet" type="button" data-action="cancel-placement" hidden>取消放置</button></div>
-            <div class="room-feedback" data-feedback role="status" aria-live="polite">已选中木平台。可以拖动，也可以用方向键微调；当前布局尚未保存。</div>
-          </main>
-          <aside class="room-catalog" aria-label="官方家具"><div><div class="room-section-title">官方家具</div><div class="room-catalog-note">一次预览一件<br>平台与球分开体验</div></div><div class="catalog-list"><button type="button" class="catalog-item cursor-interaction" data-type="platform" aria-pressed="false"><span class="catalog-thumb" aria-hidden="true"><span class="platform-thumb"></span></span><span><span>木平台</span><br><span class="room-caption" data-catalog-label="platform">选择并放置</span></span></button><button type="button" class="catalog-item cursor-interaction" data-type="ball" aria-pressed="false"><span class="catalog-thumb" aria-hidden="true"><span class="ball-thumb"></span></span><span><span>圆球</span><br><span class="room-caption" data-catalog-label="ball">独立预览</span></span></button></div></aside>
-        </div>
-      </div>
-      <div class="room-left" hidden><span class="room-brand" aria-hidden="true"></span><div class="room-heading">已离开单人房间</div><button class="cursor-interaction room-primary" type="button" data-action="return">返回房间</button></div>
-      <footer class="room-footer"><span>交互稿 · 保存仅用于预览恢复</span><span data-storage>仅本次预览</span></footer>
-      <dialog data-unsaved aria-labelledby="bottom-unsaved-title"><div class="dialog-title" id="bottom-unsaved-title">布局还有未保存的修改</div><p class="dialog-message" data-dialog-message>离开前，如何处理这次布置？</p><div class="dialog-actions"><button class="cursor-interaction room-primary" type="button" data-dialog-action="save">保存并继续</button><button class="cursor-interaction" type="button" data-dialog-action="discard">舍弃并继续</button><button class="cursor-interaction room-quiet" type="button" data-dialog-action="stay">继续布置</button></div></dialog>
-    </div>
-  </section>
   <script>
     (() => {
       const root = document.getElementById('dango-furniture-layout-v1');
@@ -232,7 +210,6 @@
       const clone = value => JSON.parse(JSON.stringify(value));
       const nameOf = type => type === 'ball' ? '圆球' : '木平台';
       const sizeOf = type => type === 'ball' ? { w: 132, h: 132 } : { w: 140, h: 22 };
-      const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
       const sessionId = 'preview-' + Math.random().toString(36).slice(2);
       let revision = 0;
       let writeQueue = Promise.resolve();
@@ -246,7 +223,7 @@
       let drag = null;
       let busy = false;
       let pending = null;
-      let feedback = '已选中木平台。可以拖动，也可以用方向键微调；当前布局尚未保存。';
+      let feedback = '木平台已选中 · 布局未保存。';
       let error = false;
       let storageProblem = false;
       let localInteracted = false;
@@ -350,8 +327,10 @@
           surface.querySelector('.room-left').hidden = !leftRoom;
           surface.querySelector('[data-mode-label]').textContent = busy ? '正在保存预览布局…' : editing ? (isDirty() ? '布置中 · 游玩暂停 · 未保存' : '布置中 · 游玩暂停') : '浏览布局 · 静止示意';
           const active = selectedItem();
-          surface.querySelector('[data-selection]').textContent = placement ? '待放置：' + nameOf(placement.type) : active ? nameOf(active.type) : (draft.length ? '点击家具以选择' : '场景中还没有家具');
-          surface.querySelector('[data-nudge]').hidden = !editing || !active || !!placement;
+          const parameterItem = placement || active;
+          surface.querySelector('[data-selection]').textContent = placement ? '待放置 · ' + nameOf(placement.type) : active ? nameOf(active.type) : '未选择';
+          surface.querySelector('[data-param-size]').textContent = parameterItem ? '标准（固定）' : '—';
+          surface.querySelector('[data-param-behavior]').textContent = parameterItem ? parameterItem.type === 'ball' ? '地面出生 · 仅横向' : '静态平台 · 四向摆放' : '从仓库选择家具';
           surface.querySelector('[data-action="remove"]').hidden = !editing || !active || !!placement;
           surface.querySelector('[data-action="place-recommended"]').hidden = !placement;
           surface.querySelector('[data-action="cancel-placement"]').hidden = !placement;
@@ -372,9 +351,13 @@
           });
           ['platform', 'ball'].forEach(type => {
             const current = draft[0];
-            surface.querySelector('[data-catalog-label="' + type + '"]').textContent = current && current.type !== type ? '改用' + nameOf(type) : current && current.type === type ? '已在场景中' : type === 'ball' ? '独立预览' : '选择并放置';
+            const button = surface.querySelector('.catalog-item[data-type="' + type + '"]');
+            const status = current && current.type !== type ? '替换当前家具' : current && current.type === type ? '已在场景中' : '选择并放置';
+            const label = nameOf(type) + ' · ' + status + (type === 'ball' ? ' · 独立预览' : '');
+            button.setAttribute('aria-label', label);
+            button.setAttribute('data-tooltip', label);
           });
-          surface.querySelectorAll('[data-dx]').forEach(button => { button.disabled = busy || !!drag || (active && active.type === 'ball' && button.dataset.dy !== '0'); });
+          surface.querySelectorAll('[data-dx]').forEach(button => { button.disabled = busy || !!drag || !!placement || !editing || !active || (active.type === 'ball' && button.dataset.dy !== '0'); });
           surface.querySelectorAll('[data-action="cancel"], [data-action="edit"], [data-action="reopen"], [data-action="leave"], [data-action="remove"], [data-action="place-recommended"], [data-action="cancel-placement"]').forEach(button => { button.disabled = busy || !!drag; });
           surface.querySelectorAll('[data-dialog-action]').forEach(button => { button.disabled = busy; });
           const status = surface.querySelector('[data-feedback]');
@@ -385,16 +368,16 @@
       function choose(type, surface) {
         if (!editing || busy || drag) return;
         cancelDrag(false);
-        if (draft[0] && draft[0].type === type) { selected = draft[0].id; placement = null; say('场景中已有' + nameOf(type) + '。首版预览一次只布置一件，不能添加第二件。', true); return; }
+        if (draft[0] && draft[0].type === type) { selected = draft[0].id; placement = null; say('已有' + nameOf(type) + '；一次只能摆放一件。', true); return; }
         placement = recommended(type, surface.querySelector('[data-scene]'));
-        say((draft.length ? '放下后将替换当前家具。' : '') + (type === 'ball' ? '圆球从地面出生，只能横向摆放。点击场景，或放到推荐位置。' : '点击场景放下木平台，也可以放到推荐位置。'));
+        say((draft.length ? '放下后替换当前家具。' : '') + '点击场景放置，或用“推荐落位”。');
       }
       function place(surface, position) {
         if (!placement || busy) return;
         const item = Object.assign({}, placement, position || {}), scene = surface.querySelector('[data-scene]');
-        if (!validPosition(item, scene)) { say('这里超出了摆放范围或占用了团子出生区，不能放置。请换个位置。', true); return; }
+        if (!validPosition(item, scene)) { say('不能越界或占用出生区，请换个位置。', true); return; }
         draft = [item]; selected = item.id; placement = null;
-        say(nameOf(item.type) + '已放下。拖动或用方向按钮调整，保存布局后结束布置。');
+        say(nameOf(item.type) + '已放下 · 尚未保存。');
         remember();
         surface.querySelector('[data-piece]').focus({ preventScroll: true });
       }
@@ -404,8 +387,8 @@
         if (item.type === 'ball' && dy) { say('圆球从地面出生，只能左右移动。'); return; }
         const scene = surface.querySelector('[data-scene]'), rect = rectFor(item, scene);
         const candidate = Object.assign({}, item, positionFor(item.type, rect.x + dx * amount, rect.y + dy * amount, scene));
-        if (!validPosition(candidate, scene)) { say('这个位置超出了摆放范围或占用了团子出生区，已保留原位置。', true); return; }
-        Object.assign(item, candidate); say(nameOf(item.type) + '位置已调整，尚未保存。'); remember();
+        if (!validPosition(candidate, scene)) { say('不能越界或占用出生区，已保留原位置。', true); return; }
+        Object.assign(item, candidate); say(nameOf(item.type) + '已移动 · 尚未保存。'); remember();
       }
       function cancelDrag(announce = true) {
         if (!drag) return;
@@ -424,7 +407,7 @@
       async function saveLayout() {
         if (busy || placement || drag) return false;
         const candidate = clone(draft);
-        const activeSurface = surfaces.find(surface => !surface.closest('[data-variant]').hidden) || surfaces[0];
+        const activeSurface = surfaces[0];
         if (!normalizedItems(candidate) || !candidate.every(item => validPosition(item, activeSurface.querySelector('[data-scene]')))) {
           say('布局中有超出范围或占用出生区的家具，请调整后再保存。', true);
           return false;
@@ -551,13 +534,10 @@
       if (!restore(window.openai && window.openai.widgetState)) render();
       if (globalThis.Tweak) {
         const sideStyle = { sidebar: 188, compact: false };
-        const bottomStyle = { compact: false };
-        const side = surfaces[0], bottom = surfaces[1];
+        const side = surfaces[0];
         const sideTweak = new Tweak({ container: side, onChange: () => { side.style.setProperty('--catalog-width', sideStyle.sidebar + 'px'); side.classList.toggle('compact', sideStyle.compact); render(); } });
         sideTweak.addSlider(sideStyle, 'sidebar', { label: '家具侧栏宽度', min: 160, max: 236, step: 4, unit: 'px' });
         sideTweak.addToggle(sideStyle, 'compact', { label: '紧凑间距' });
-        const bottomTweak = new Tweak({ container: bottom, onChange: () => { bottom.classList.toggle('compact', bottomStyle.compact); render(); } });
-        bottomTweak.addToggle(bottomStyle, 'compact', { label: '紧凑间距' });
       }
     })();
   </script>
