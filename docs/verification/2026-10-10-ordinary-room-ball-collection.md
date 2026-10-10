@@ -42,6 +42,8 @@
 
 `product-final-r2/source-snapshot.json` 记录构建前实际相对路径／逐文件 SHA256，并于构建后核对没有漂移；完整快照 SHA256 为 `0AA58684FAA736FE14B6D26B75F0D5DFC471BA7497570FDDC3AC54E48E4123E7`。当时 sourceDirty=true，基线 HEAD 不代表已测试的所有源码。manifest 另记录实际 exe、托管程序集与两处复制 native 的 hash。本记录与计划状态是在测试后补充的文档，不构成产品源码变更。
 
+实现本地提交为 `e1293f634d6ee3776a0aefbafe15ff2bb759afbe`。提交前还仅移除了两个新增验证 helper 的末尾空行以通过 staged diff-check；未修改其执行语句。`delivery-source-delta.json` 逐项核对构建快照与交付文件，差异仅为计划状态及这两处空行，另新增本验证文档，产品／native／测试源码无测试后变更。后续只更新本记录不另造候选。
+
 最终 `product-final-r2/verification/verification-summary.json`：实际产品 `DangoApplicationHost`／`LocalRoomWindow`、同一世界、同一原团子，30 件真实混合家具（24 平台、6 球）、80 次逐操作保存、50 次房间往返及 50 次编辑往返、两次不同 OS 进程真实保存／加载。球被实际 driver 方向输入推动，中心／转角渲染核对通过；重新进房回到确认锚点且保存字节不变；隐藏不推进物理，恢复不替换任何 native ID。正常退出核实帧 owner、原生世界及所属窗口均已释放。耗时 32.9433 秒，保存提交边界 p95 4.1165 ms、最大 7.2850 ms，scheduler faults=0。
 
 初始化每颗球前经过真实退出编辑／返回门廊／重新入房，显式核对世界引用、generation、实体 ID、健康帧、相同已保存布局、团子合法出生位置和既有球实际锚点。新增初始化往返不计入 50 次循环；不关闭自动行走、不吞掉碰撞失败。随后动态推动、隐藏、50 次循环与观察仍走正常产品行为。
