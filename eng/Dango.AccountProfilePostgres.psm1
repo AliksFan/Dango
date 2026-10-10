@@ -39,6 +39,25 @@ function Test-DangoProfilePath {
         [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetFullPath($Expected)), [StringComparison]::OrdinalIgnoreCase)
 }
 
+function Get-DangoProfileDiagnosticPlan {
+    param([string]$RunName, [string]$PostgresBinDirectory, [string]$Repository)
+    if ($RunName -cne 'run20261008b0') { throw 'profile_run_diagnostic_target_rejected' }
+    $expectedBin=Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'PostgreSQL/18/bin'
+    if (-not (Test-DangoProfilePath $PostgresBinDirectory $expectedBin)) { throw 'profile_run_binary_target_rejected' }
+    $state=Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Dango/BackendDevelopment/run20261008b0'
+    return [pscustomobject]@{
+        Version=1; Stage='AccountProfileTargetDiagnostic'; RunName=$RunName; Executed=$false
+        StateDirectory=$state; DataDirectory=(Join-Path $state 'pgdata')
+        EvidenceDirectory=(Join-Path (Split-Path -Parent $state) 'run20261010profiled1')
+        Database='dango_backend_b0'; Role='dango_b0_owner'; PostgresBinDirectory=$expectedBin
+        Repository=[IO.Path]::GetFullPath($Repository)
+        PriorMigrations=@('20261008074701_InitialAccountRoomFoundation','20261008085521_AccountLifecycle',
+            '20261009031410_RoomManagement','20261009055558_RoomAccess','20261009062701_RoomAccessIntegrity')
+        ProfileMigration='20261010055529_AccountProfile'
+        MaximumToolProcesses=5; ReadOnlyQueries=1; BusinessWriteAttempts=0; ExpectedTests=0
+    }
+}
+
 function Assert-DangoProfileApproval {
     param([bool]$Approved)
     if (-not $Approved) { throw 'profile_run_explicit_approval_required' }
@@ -236,7 +255,11 @@ function Get-DangoProfileFixedPlan {
     param($Plan)
     try {
         if ($null -eq $Plan) { throw 'rejected' }
-        $fixed=Get-DangoProfilePlan 'run20261008b0' $Plan.PostgresBinDirectory $Plan.Repository
+        $fixed=if ($Plan.Stage -ceq 'AccountProfileA') {
+            Get-DangoProfilePlan 'run20261008b0' $Plan.PostgresBinDirectory $Plan.Repository
+        } elseif ($Plan.Stage -ceq 'AccountProfileTargetDiagnostic') {
+            Get-DangoProfileDiagnosticPlan 'run20261008b0' $Plan.PostgresBinDirectory $Plan.Repository
+        } else { throw 'rejected' }
         if (@($Plan.PSObject.Properties).Count -ne @($fixed.PSObject.Properties).Count) { throw 'rejected' }
         foreach ($property in $fixed.PSObject.Properties) {
             $actual=$Plan.PSObject.Properties[$property.Name]
@@ -275,6 +298,7 @@ function Assert-DangoProfileEvidenceOutputContract {
             if ($decoded.Length -ne 32 -or [Convert]::ToBase64String($decoded) -cne $EnvironmentValues['PGPASSWORD']) { throw 'rejected' }
         } finally { if ($null -ne $decoded) { [Security.Cryptography.CryptographicOperations]::ZeroMemory($decoded) } }
         $fixed=Get-DangoProfileFixedPlan $Plan
+        if ($fixed.Stage -cne 'AccountProfileA') { throw 'rejected' }
         if (-not (Test-DangoProfilePath $Executable (Join-Path $fixed.PostgresBinDirectory 'psql.exe')) -or
             -not (Test-DangoProfilePath $WorkingDirectory $fixed.Repository)) { throw 'rejected' }
         $expected=@('-X','-w','-q','-A','-t','-v','ON_ERROR_STOP=1','-h','127.0.0.1','-p',[string]$Port,
@@ -1062,6 +1086,219 @@ function Assert-DangoProfileResources {
     if ($fixtures.Count -ne 7 -or $caseIds.Count -ne 7 -or $httpsReady -ne 1 -or
         @($fixtures.Values | Where-Object { $_.Step -ne 4 }).Count -ne 0) { throw 'profile_run_resource_lifecycle_rejected' }
     return [pscustomobject]@{ Fixtures=7; ResourceRecords=28; HttpsStarted=1; Disposed=7; NativeCleanupConfirmed=$true }
+}
+
+function New-DangoProfileDiagnosticReservation {
+    param($Plan)
+    $fixed=Get-DangoProfileFixedPlan $Plan
+    if ($fixed.Stage -cne 'AccountProfileTargetDiagnostic') { throw 'profile_run_diagnostic_plan_required' }
+    Assert-DangoProfileRegularPath $fixed.EvidenceDirectory
+    Get-DangoProfileNativeType
+    if (-not [DangoProfileRunNativeV2]::CreateDirectoryW($fixed.EvidenceDirectory,[IntPtr]::Zero)) {
+        throw 'profile_run_diagnostic_already_reserved'
+    }
+    $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User
+    $acl=[Security.AccessControl.DirectorySecurity]::new(); $acl.SetOwner($sid); $acl.SetAccessRuleProtection($true,$false)
+    $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($sid,'FullControl','ContainerInherit,ObjectInherit','None','Allow'))
+    Set-Acl -LiteralPath $fixed.EvidenceDirectory -AclObject $acl
+    $reservation=[pscustomobject]@{ Version=1; OwnerId=[Guid]::NewGuid(); Stage=$fixed.Stage; ReservedAt=[DateTime]::UtcNow;
+        Plan=$fixed; WholeDiagnosticReserved=$true; RetryAllowed=$false; ReadOnlyQueries=1; BusinessWriteAttempts=0 }
+    Write-DangoProfileJson (Join-Path $fixed.EvidenceDirectory 'reservation.json') $reservation -CreateNew
+    $ownerProcess=[Diagnostics.Process]::GetCurrentProcess()
+    try {
+        $owner=[pscustomobject]@{ Version=1; Stage=$fixed.Stage; RunName=$fixed.RunName; OwnerId=$reservation.OwnerId;
+            OwnerPid=$ownerProcess.Id; OwnerCreatedAt=$ownerProcess.StartTime.ToUniversalTime().ToString('O');
+            OwnerExecutable=$ownerProcess.MainModule.FileName; RunDirectory=$fixed.EvidenceDirectory;
+            MaximumToolProcesses=5; ReadOnlyQueries=1; BusinessWriteAttempts=0; ExpectedTests=0; RetryAllowed=$false }
+    } finally { $ownerProcess.Dispose() }
+    Write-DangoProfileJson (Join-Path $fixed.EvidenceDirectory 'owner-manifest.json') $owner -CreateNew
+    $reservation | Add-Member Owner $owner
+    return $reservation
+}
+
+function Get-DangoProfileDiagnosticSql {
+    return @'
+BEGIN READ ONLY;
+SELECT json_build_object(
+ 'database',current_database(),'role',current_user,'version',current_setting('server_version_num')::integer,
+ 'dataDirectory',current_setting('data_directory'),'listenAddresses',current_setting('listen_addresses'),
+ 'migrations',(SELECT COALESCE(json_agg("MigrationId" ORDER BY "MigrationId"),'[]'::json) FROM dango.__ef_migrations_history),
+ 'profileColumnsPresent',(SELECT count(*)=2 FROM information_schema.columns WHERE table_schema='dango'
+   AND table_name='users' AND column_name IN ('nickname','profile_version')));
+COMMIT;
+'@
+}
+
+function Assert-DangoProfileDiagnosticEvidence {
+    param([string]$Json)
+    $document=$null
+    try {
+        if ([string]::IsNullOrWhiteSpace($Json) -or $Json.Length -gt 131072) { throw 'rejected' }
+        $options=[Text.Json.JsonDocumentOptions]::new(); $options.MaxDepth=4
+        $document=[Text.Json.JsonDocument]::Parse($Json,$options)
+        if ($document.RootElement.ValueKind -ne [Text.Json.JsonValueKind]::Object) { throw 'rejected' }
+        $properties=@($document.RootElement.EnumerateObject())
+        $names=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+        $expected=@('database','role','version','dataDirectory','listenAddresses','migrations','profileColumnsPresent')
+        if ($properties.Count -ne 7) { throw 'rejected' }
+        foreach ($property in $properties) {
+            if ($property.Name -cnotin $expected -or -not $names.Add($property.Name)) { throw 'rejected' }
+        }
+        $values=[ordered]@{}
+        foreach ($name in @('database','role','dataDirectory','listenAddresses')) {
+            $element=$document.RootElement.GetProperty($name)
+            if ($element.ValueKind -ne [Text.Json.JsonValueKind]::String) { throw 'rejected' }
+            $value=$element.GetString(); $maximum=if ($name -ceq 'dataDirectory') { 32767 } else { 256 }
+            if ([string]::IsNullOrWhiteSpace($value) -or $value.Length -gt $maximum -or $value -match '\p{Cc}') { throw 'rejected' }
+            $values[$name]=$value
+        }
+        $version=0; $versionElement=$document.RootElement.GetProperty('version')
+        if ($versionElement.ValueKind -ne [Text.Json.JsonValueKind]::Number -or
+            -not $versionElement.TryGetInt32([ref]$version) -or $version -lt 0) { throw 'rejected' }
+        $values['version']=$version
+        $migrationsElement=$document.RootElement.GetProperty('migrations')
+        if ($migrationsElement.ValueKind -ne [Text.Json.JsonValueKind]::Array -or $migrationsElement.GetArrayLength() -gt 32) { throw 'rejected' }
+        $migrations=[Collections.Generic.List[string]]::new(); $migrationNames=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+        foreach ($element in $migrationsElement.EnumerateArray()) {
+            if ($element.ValueKind -ne [Text.Json.JsonValueKind]::String) { throw 'rejected' }
+            $migration=$element.GetString()
+            if ($migration.Length -gt 128 -or $migration -cnotmatch '^[0-9]{14}_[A-Za-z][A-Za-z0-9_]*$' -or
+                -not $migrationNames.Add($migration)) { throw 'rejected' }
+            $migrations.Add($migration)
+        }
+        $values['migrations']=[string[]]$migrations.ToArray()
+        $columns=$document.RootElement.GetProperty('profileColumnsPresent')
+        if ($columns.ValueKind -notin @([Text.Json.JsonValueKind]::True,[Text.Json.JsonValueKind]::False)) { throw 'rejected' }
+        $values['profileColumnsPresent']=$columns.GetBoolean()
+        return [pscustomobject]$values
+    } catch { throw 'profile_run_diagnostic_evidence_rejected' }
+    finally { if ($null -ne $document) { $document.Dispose() } }
+}
+
+function Get-DangoProfileDiagnosticMatches {
+    param($Plan, $Evidence)
+    $fixed=Get-DangoProfileFixedPlan $Plan
+    if ($fixed.Stage -cne 'AccountProfileTargetDiagnostic') { throw 'profile_run_diagnostic_plan_required' }
+    $facts=Assert-DangoProfileDiagnosticEvidence ($Evidence | ConvertTo-Json -Depth 4)
+    $database=$facts.database -ceq $fixed.Database; $role=$facts.role -ceq $fixed.Role
+    $version=$facts.version -ge 180000 -and $facts.version -lt 190000
+    $directory=$false
+    try { $directory=Test-DangoProfilePath $facts.dataDirectory $fixed.DataDirectory } catch { $directory=$false }
+    $listen=$facts.listenAddresses -ceq '127.0.0.1'
+    $migrations=(@($facts.migrations) -join ',') -ceq ($fixed.PriorMigrations -join ',')
+    return [pscustomobject]@{ DatabaseMatches=$database; RoleMatches=$role; VersionMatches=$version;
+        DataDirectoryMatches=$directory; ListenAddressesMatches=$listen; MigrationsMatch=$migrations;
+        AllExpectedTargetFactsMatch=($database -and $role -and $version -and $directory -and $listen -and $migrations);
+        ProfileMigrationPresent=(@($facts.migrations) -ccontains $fixed.ProfileMigration) }
+}
+
+function Get-DangoProfileDiagnosticReviewInputs {
+    param($Plan)
+    $fixed=Get-DangoProfileFixedPlan $Plan
+    if ($fixed.Stage -cne 'AccountProfileTargetDiagnostic') { throw 'profile_run_diagnostic_plan_required' }
+    $expectedHost=Join-Path ([Environment]::GetFolderPath('UserProfile')) '.cache/codex-runtimes/codex-primary-runtime/dependencies/native/powershell/pwsh.exe'
+    if (-not (Test-DangoProfilePath ([Environment]::ProcessPath) $expectedHost)) { throw 'profile_run_diagnostic_bundled_host_required' }
+    $paths=[ordered]@{
+        'eng/Dango.AccountProfilePostgres.psm1'=(Join-Path $fixed.Repository 'eng/Dango.AccountProfilePostgres.psm1')
+        'eng/invoke-account-profile-target-diagnostic.ps1'=(Join-Path $fixed.Repository 'eng/invoke-account-profile-target-diagnostic.ps1')
+        'state/state.json'=(Join-Path $fixed.StateDirectory 'state.json')
+        'postgres-bin/postgres.exe'=(Join-Path $fixed.PostgresBinDirectory 'postgres.exe')
+        'postgres-bin/pg_ctl.exe'=(Join-Path $fixed.PostgresBinDirectory 'pg_ctl.exe')
+        'postgres-bin/psql.exe'=(Join-Path $fixed.PostgresBinDirectory 'psql.exe')
+        'powershell-host/pwsh.exe'=$expectedHost
+    }
+    Assert-DangoProfileRegularPath $fixed.PostgresBinDirectory
+    $enumerated=0
+    if ([IO.Directory]::Exists($fixed.PostgresBinDirectory)) {
+        Get-ChildItem -LiteralPath $fixed.PostgresBinDirectory -Recurse -Force | ForEach-Object {
+            $file=$_
+            $enumerated++
+            if ($enumerated -gt 1024) { throw 'profile_run_diagnostic_review_input_bound_rejected' }
+            Assert-DangoProfileRegularPath $file.FullName
+            if (-not $file.PSIsContainer -and $file.Extension.ToLowerInvariant() -ceq '.dll') {
+                $relative=[IO.Path]::GetRelativePath($fixed.PostgresBinDirectory,$file.FullName).Replace('\','/')
+                $paths['postgres-bin/'+$relative]=$file.FullName
+            }
+        }
+    }
+    if ($paths.Count -gt 1024) { throw 'profile_run_diagnostic_review_input_bound_rejected' }
+    $hashes=[ordered]@{}; $missing=@()
+    foreach ($label in @($paths.Keys | Sort-Object -CaseSensitive)) {
+        $path=$paths[$label]; Assert-DangoProfileRegularPath $path
+        if (-not [IO.File]::Exists($path)) { $missing+=$label; continue }
+        $hashes[$label]=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+    }
+    return [pscustomobject]@{ Version=1; Stage=$fixed.Stage; RunName=$fixed.RunName; MaximumToolProcesses=5;
+        ReadOnlyQueries=1; BusinessWriteAttempts=0; ExpectedTests=0; Hashes=$hashes; MissingInputs=$missing }
+}
+
+function New-DangoProfileDiagnosticApprovalManifest {
+    param($Plan, [string]$Path)
+    $physical=Assert-DangoProfileManifestPath $Plan $Path
+    $inputs=Get-DangoProfileDiagnosticReviewInputs $Plan
+    if ($inputs.MissingInputs.Count -ne 0) { throw 'profile_run_diagnostic_review_inputs_missing' }
+    $json=$inputs | ConvertTo-Json -Depth 12
+    if ([Text.UTF8Encoding]::new($false,$true).GetByteCount($json) -gt 65536) { throw 'profile_run_diagnostic_approval_manifest_invalid' }
+    [void][IO.Directory]::CreateDirectory((Split-Path -Parent $physical))
+    Write-DangoProfileJson $physical $inputs -CreateNew
+    return [pscustomobject]@{ Path=$physical; Sha256=(Get-FileHash -LiteralPath $physical -Algorithm SHA256).Hash; Inputs=$inputs }
+}
+
+function Assert-DangoProfileDiagnosticReviewInputs {
+    param($Plan, [string]$Path, [string]$ApprovalManifestSha256)
+    $document=$null
+    try {
+        $fixed=Get-DangoProfileFixedPlan $Plan
+        if ($fixed.Stage -cne 'AccountProfileTargetDiagnostic') { throw 'profile_run_diagnostic_plan_required' }
+        if ($ApprovalManifestSha256 -cnotmatch '^[A-F0-9]{64}$') { throw 'profile_run_approval_digest_required' }
+        $physical=Assert-DangoProfileManifestPath $fixed $Path
+        $file=[IO.FileInfo]::new($physical)
+        if (-not $file.Exists -or $file.Length -le 0 -or $file.Length -gt 65536) { throw 'profile_run_diagnostic_approval_manifest_invalid' }
+        $bytes=[IO.File]::ReadAllBytes($physical)
+        $digest=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes))
+        if ($digest -cne $ApprovalManifestSha256) { throw 'profile_run_diagnostic_approval_manifest_changed' }
+        $json=[Text.UTF8Encoding]::new($false,$true).GetString($bytes)
+        $options=[Text.Json.JsonDocumentOptions]::new(); $options.MaxDepth=4
+        $document=[Text.Json.JsonDocument]::Parse($json,$options)
+        if ($document.RootElement.ValueKind -ne [Text.Json.JsonValueKind]::Object) { throw 'profile_run_diagnostic_approval_manifest_invalid' }
+        $properties=@($document.RootElement.EnumerateObject()); $names=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+        $expected=@('Version','Stage','RunName','MaximumToolProcesses','ReadOnlyQueries','BusinessWriteAttempts','ExpectedTests','Hashes','MissingInputs')
+        if ($properties.Count -ne 9) { throw 'profile_run_diagnostic_approval_manifest_invalid' }
+        foreach ($property in $properties) {
+            if ($property.Name -cnotin $expected -or -not $names.Add($property.Name)) { throw 'profile_run_diagnostic_approval_manifest_invalid' }
+        }
+        foreach ($entry in @{ Version=1; MaximumToolProcesses=5; ReadOnlyQueries=1; BusinessWriteAttempts=0; ExpectedTests=0 }.GetEnumerator()) {
+            $element=$document.RootElement.GetProperty($entry.Key); $number=0
+            if ($element.ValueKind -ne [Text.Json.JsonValueKind]::Number -or -not $element.TryGetInt32([ref]$number) -or $number -ne $entry.Value) {
+                throw 'profile_run_diagnostic_approval_manifest_invalid'
+            }
+        }
+        foreach ($entry in @{ Stage=$fixed.Stage; RunName=$fixed.RunName }.GetEnumerator()) {
+            $element=$document.RootElement.GetProperty($entry.Key)
+            if ($element.ValueKind -ne [Text.Json.JsonValueKind]::String -or $element.GetString() -cne $entry.Value) {
+                throw 'profile_run_diagnostic_approval_manifest_invalid'
+            }
+        }
+        $missing=$document.RootElement.GetProperty('MissingInputs')
+        if ($missing.ValueKind -ne [Text.Json.JsonValueKind]::Array -or $missing.GetArrayLength() -ne 0) { throw 'profile_run_diagnostic_approval_manifest_invalid' }
+        $approvedHashes=$document.RootElement.GetProperty('Hashes')
+        if ($approvedHashes.ValueKind -ne [Text.Json.JsonValueKind]::Object) { throw 'profile_run_diagnostic_approval_manifest_invalid' }
+        $current=Get-DangoProfileDiagnosticReviewInputs $fixed
+        $hashProperties=@($approvedHashes.EnumerateObject()); $hashNames=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+        if ($current.MissingInputs.Count -ne 0 -or $hashProperties.Count -ne $current.Hashes.Count -or $hashProperties.Count -gt 1024) {
+            throw 'profile_run_diagnostic_approval_manifest_invalid'
+        }
+        foreach ($property in $hashProperties) {
+            if (-not $hashNames.Add($property.Name) -or $property.Name -cnotin @($current.Hashes.Keys) -or
+                $property.Value.ValueKind -ne [Text.Json.JsonValueKind]::String) { throw 'profile_run_diagnostic_approval_manifest_invalid' }
+            $hash=$property.Value.GetString()
+            if ($hash -cnotmatch '^[A-F0-9]{64}$' -or $hash -cne $current.Hashes[$property.Name]) { throw 'profile_run_diagnostic_approved_input_changed' }
+        }
+        return [pscustomobject]@{ Path=$physical; Sha256=$digest; Inputs=$current }
+    } catch {
+        if ($_.Exception.Message -cmatch '^profile_run_[a-z_]+$') { throw }
+        throw 'profile_run_diagnostic_approval_manifest_invalid'
+    } finally { if ($null -ne $document) { $document.Dispose() } }
 }
 
 Export-ModuleMember -Function *-DangoProfile*
