@@ -46,6 +46,6 @@ R2 助手回执为 ready／StartupPhase=ready、StartupFailure为空、无 Probl
 
 ### R2 后续实际收尾
 
-账号／门廊修订续作时只读复核：runtime-receipt 已为 stopped，ResourceCleanupComplete=true、ServerKeyDisposed=true、Problems为空、EvidenceFailure为空。原助手26912、PostgreSQL34716、第二次候选29704均不存在，记录的63237／63939无监听，独立 pgdata 的 pidfile和本轮90A3DB8A94F85DC7F0FBD45641C16D6C39B3593C公钥信任不存在。助手回执证明两槽清理；本轮复核没有重新读出任何凭据内容。
+账号／门廊修订续作时只读复核：runtime-receipt 已为 stopped，ResourceCleanupComplete=true、ServerKeyDisposed=true、Problems为空、EvidenceFailure为空。原助手26912、PostgreSQL34716、第二次候选29704均不存在，记录的63237／63939无监听，独立 pgdata 的 pidfile和本轮90A3DB8A94F85DC7F0FBD45641C16D6C39B3593C公钥信任不存在。按固定origin精确核验两槽摘要后只探存在性（不解包credential／blob）实查两槽均不存在，没有重新读出任何凭据内容。
 
 落库回执：邀请／预注册／挑战／未发送邮件／账号／团子各1，房间2（默认房与共同房各1），会话2、历史租约1、Code0、Audit3、Events4，邮件Attempts0。预算已用注册开始1、完成1、登录2、创建1、Enter1、配置0、码重置0、Other2。原库、批次文件和隔离本地存档保留；这表明有限真实路径发生过，不代表未执行的原验收步骤或后续修订通过。以上“环境保持运行”描述仅为先前 ready 快照，现已收尾。

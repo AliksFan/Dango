@@ -1,6 +1,6 @@
 # 登录同步、昵称与门廊修订验证
 
-日期：2026-10-10。状态：核心与 Desktop 接线已整合，正在完成真实窗口与独立审查；新真实数据库验证和主观验收尚未通过。
+日期：2026-10-10。状态：核心与 Desktop 接线已整合，真实窗口 UIA 已通过；正在准备独立昵称数据库验证，新真实数据库验证和主观验收尚未通过。
 
 ## 登录比较与成功保存边界
 
@@ -20,7 +20,7 @@
 
 ## 数据与交付
 
-旧 R2 回执已为 stopped，ResourceCleanupComplete=true、ServerKeyDisposed=true、无 Problems 或 EvidenceFailure；根复核助手、PostgreSQL 和第二次候选原 PID 均不存在，两个记录端口无监听、pidfile和本轮 Root 公钥消失。按原回执保留邀请、注册、挑战、邮件、账号、团子各1，账号房间2、会话2、历史租约1、Audit3、Events4，邮件尝试为0。此收尾不表示新要求通过，也不删除原数据。
+旧 R2 回执已为 stopped，ResourceCleanupComplete=true、ServerKeyDisposed=true、无 Problems 或 EvidenceFailure；根复核助手、PostgreSQL 和第二次候选原 PID 均不存在，两个记录端口无监听、pidfile和本轮 Root 公钥消失。对该固定origin核验两槽准确摘要后只调用CredRead存在性及CredFree，未解包或复制blob，实查两槽均不存在。按原回执保留邀请、注册、挑战、邮件、账号、团子各1，账号房间2、会话2、历史租约1、Audit3、Events4，邮件尝试为0。此收尾不表示新要求通过，也不删除原数据。
 
 新昵称迁移未应用于真实数据库。未合并 main、推送、部署、更新日常安装或替换生产 DLL。生产 DLL SHA256 仍为 `6712D66ECEF9588123CAFCD868455080598B5B58711A698FB8AF022A0CDA191A`；测试输出隔离模块为既有 `BFDD6CD68835540569A7D96EFCDE9B4580846983BDD717111D6BC68811150507`。
 
@@ -38,4 +38,16 @@
 
 昵称为独立 AccountProfile，允许重名；首次 null 必设，之后可修改。前向迁移 `20261010055529_AccountProfile` 只增加可空昵称和资料版本。7项真实 PostgreSQL/HTTPS昵称用例仅编译，尚未执行。
 
-门廊组件、真实物理实体及多视口证据见[门廊记录](2026-10-10-porch-account-scenes.md)。24字素最长昵称窄窗口溢出已复现；修为按导航空间缩放、有界省略显示、完整Tooltip／辅助名称，代理七种真实窗口通过。根联合账号／外观／门廊／昵称布局 **61/61**，`account-porch-layout-final.trx`，零失败或跳过。真实独立 UIA 流程继续推进。以上受控 receiver、文件与 Dispatcher 测试不能替代正式服务端、数据库和系统凭据端到端验证。
+门廊组件、真实物理实体及多视口证据见[门廊记录](2026-10-10-porch-account-scenes.md)。24字素最长昵称窄窗口溢出已复现；修为按导航空间缩放、有界省略显示、完整Tooltip／辅助名称，代理七种真实窗口通过。根联合账号／外观／门廊／昵称布局 **61/61**，`account-porch-layout-final.trx`，零失败或跳过。
+
+独立线程对真实 HWND 的 Windows UIA client 已在根整合执行 **4/4**，`account-window-uia-confirmed.trx`：首次null昵称校验／保存、配置来源选择、首页昵称、关闭浮层后真实两秒timer收敛及记住登录相等／差异恢复。使用实际 Invoke／Value／Selection／Toggle 模式，密码为fixture预填、HTTP与仓储受控；不是正式HTTPS／系统WinCred／真实数据库端到端。方法与边界见[账号真实UIA记录](2026-10-10-account-window-uia.md)。根截图位于 `artifacts/test-runs/5cc9425eb4ff4319b30f7e6be7705c74/account-window-uia/`，已检查来源选择与首页昵称；首页fixture标明无实时场景，不能冒充实体渲染。
+
+旧较宽门廊回归的两项失败准确属于新增fixture：转场尚未完成即断言门廊，以及实际stage焦点缺失导致团子仍选本地门。最终增加转场等待和明确stage焦点后，87项及真实实体单项通过，随后同进程定向2项也通过；不将这两个错误归入系统前台阻碍。独立原生键盘仍因Windows拒绝前台而未验证、未注入键；不会默认交给用户，后续真实候选若仍需手动取得前台再按具体阻碍请求协助。
+
+独立候选 `artifacts/local-room/account-profile-sync-20261010/bin/Dango.Desktop/release/` 已由现有review脚本NoLaunch构建，零警告／错误；未启动或触达新系统凭据槽。exe SHA256 `36349C85912EA6384253AF33F83BDB1026592F82A3C8EED59E9A217D0FBDB6B2`、Desktop DLL `B2D606261FBF330D76B799C75BC082E17B6FC62E3EF90A99D471A998088A7FC6`。生产和隔离物理模块hash仍为上述原值。
+
+新增旧PostgreSQL运行器边界：对子进程明确归零Profile批准变量，所有旧阶段基线强制排除Profile类。原实现两个离线反例均失败；修后根 `eng/test-backend-postgres-stage-boundary.ps1` **2/2** 通过，未启动数据库。新迁移与虚构资料写入只可走本轮独立审批入口。
+
+精确单迁移命令现在向正式 `IMigrator` 传入批准目标。单个 pending 与目标不符或有额外 pending 时拒绝；目标已应用则零迁移调用，避免向后执行。迁移失败继续作为失败返回。提取原无目标调用作为反例后，离线 4 项中 2 项失败；显式传目标后 **4/4**，`formal-single-migration-confirmed.trx`，原反例 `formal-single-migration-before.trx` 保留。此检查使用 recording migrator，不连接数据库；并不表示新增真实迁移已经执行。
+
+后续真实验证拆为 A-only 昵称迁移与固定 7 项测试、以及另行准备的联合 UIA／双客户端／门廊验证。前一段批准不会开放后一段写入。全量草案仍为未批准规划，测试 owner 异常即停止，不声明崩溃续跑已实现。

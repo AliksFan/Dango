@@ -2,12 +2,14 @@
 
 日期：2026-10-10。状态：**设计草案，尚未获得本轮数据及资源操作授权，尚未执行**。
 
+执行拆为独立批准的两段。先准备 A-only：唯一昵称前向迁移与 Profile 类固定 7 项真实测试；其目标、有限计数和运行器以单独 A-only 计划为准。本文剩余 UIA、双客户端及门廊全部业务操作属于后续联合验证草案，不因批准 A-only 而获准执行。表中的合计仅为规划参考，不能作为同一运行的可用额度。
+
 本计划覆盖已确认的昵称、捏脸登录比较、会话同步和门廊房间入口迁移。配饰同步仍是随后阶段。助手完成能够自动执行的真实 PostgreSQL、HTTPS、客户端与 UIA 技术验证；用户验收界面效果、手感和流畅度。
 
 ## 1. 只读核查所得事实
 
 - 当前 `FormalTestFixture` 不迁移、不初始化、不清库。它使用正式 `DangoDatabaseOptions.Create`，检查编译程序集的全部迁移已经应用，再创建夹具。服务默认不启动 Email、Expiry、Live、Outbox workers。
-- `AccountProfilePostgresTests` 当前有 7 个实际用例，其中事务失败方法有两项 DataRow。精确过滤并执行一次会创建 9 个虚构账号及各自注册图、执行 10 次登录、19 次昵称修改调用和 2 次会话撤销；不得顺带运行其他 PostgreSQL 类或自动重跑。
+- `AccountProfilePostgresTests` 当前有 7 个实际用例，其中事务失败方法有两项 DataRow。精确过滤并执行一次会创建 9 个虚构账号及各自注册图、执行 10 次登录、11 次直接昵称 Update 与 8 次 HTTP PATCH 尝试，以及 2 次会话撤销；合计 67 次变更尝试。HTTP 在正式边界拒绝也计数，不把 19 次都称为进入资料 service；不得顺带运行其他 PostgreSQL 类或自动重跑。
 - 当前 Profile 类还有本轮独立批准开关，但其夹具仍使用 B1 目标入口。仅设置旧环境变量不能替代本计划的目标、次数和资源核验。
 - 旧 R2 `ManualReviewBudget` 仅允许 1 个账号、3 次登录、2 次配置写入，没有 profile 路由。它将整个变更执行包在串行 gate 中；配置以 expectedVersion 作为 replay key，相同摘要重复不再计数。此实现不能用于本轮的真正 CAS 并发和逐次尝试计数。
 - 旧 R2 资源状态和收尾由父任务统一核对。本计划要求它完整退出后才能启动本轮；不继承它的 PID、资源所有权、剩余额度或授权。
@@ -86,8 +88,8 @@ HTTP、Hub 和直接 service 调用共用相应业务次数。另设整个运行
 - 直接 service 调用也必须在调用前预留次数。Profile 专用注册 helper 先捕获生成的 .invalid 邮箱、邀请 ID、request/completion key；每次 Invite、Start、Confirm、Complete、Login、Update、Revoke 预留并记账。不能仅给 HTTPS 加 middleware，而使夹具 service 种子写入无界。
 - 分离「尝试计数」与「业务重放摘要」。每次到边界均生成运行器自己的 attempt ID 并扣数；房间 request ID 的摘要仍用于识别同笔业务。配置和昵称 CAS 的 expectedVersion 不是幂等键，同版本不同内容允许进入正式服务的竞争和冲突处理。
 - 短 gate 只保护预留、记账和成功 ID 捕获，不包住整个正式执行。指定的两个竞争请求允许同时使用独立 Npgsql 连接，并记录不同 backend PID；不通过移除数据库锁或修改服务事务制造并发。
-- 预留先持久落盘并 Flush(true)，然后调用／转发；成功捕获即使客户端断线也用非客户端取消令牌完成。账本、固定 manifest 和非秘密回执在受保护目录；摘要密钥用当前用户 DPAPI 保护。响应丢失、服务重开、运行器恢复均不清次数。账本损坏、回执 IO 失败、目标漂移或归属不明立即关闭业务写入口。
-- 正式服务重开复用同 ledger、origin、TLS 材料、keys、epoch 和 captured IDs，禁止重新签发邀请、创建新身份或选择新资源。运行器自身意外退出后不能开一个全新运行绕过已消费额度。
+- 预留先持久落盘并 Flush(true)，然后调用／转发；成功捕获即使客户端断线也用非客户端取消令牌完成。账本、固定 manifest 和非秘密回执在受保护目录。A-only 不需要新的摘要密钥，只保存非秘密尝试及资源证据；后续联合 guard 的摘要材料另行审查。响应丢失不退次数；账本损坏、回执 IO 失败、目标漂移或归属不明立即关闭业务写入口。
+- A-only 不实现测试 owner 异常退出后的恢复续跑：固定目录一次性预留，异常即停止，未获新的精确授权不得重开清额度。后续联合验证若按计划正常关闭并重开正式服务，必须由同一存活 owner 复用同 ledger、origin、TLS 材料、keys、epoch 和 captured IDs，禁止重新 seed 或换资源。测试运行器收尾及此正常重开不能替代产品服务／数据库崩溃恢复与备份还原证据。
 - 安全反例必须到正式边界：Profile 阶段的匿名、跨账号、缺 CSRF、坏 Origin、坏 JSON 应得到正式服务的对应错误。guard 只限定预先冻结的反例清单，不能先返回自身 403／400，再把它冒充服务端授权或输入验证证据。
 - 新 UI guard 仅放行本轮两个 .invalid 邮箱、已捕获会话／Pet／房间／租约／instance ID。A 的配置和房间写入不能指向 B；B 仅允许使用本轮公共码 Resolve／Enter A 的公共房。不能把拥有本轮任意账号等同于拥有本轮所有房间。
 - HTTP 和 Hub 的 Create、Rename、Dissolve、Restore、Enter、CodeReset、Control、Leave、End 共享同类额度；重复 request ID 仍扣尝试。额外业务路由、全库维护、密码重置／发信、moderation、动作／移动等拒绝。

@@ -4,6 +4,8 @@ using Dango.Server.Configuration;
 using Dango.Server.Email;
 using Dango.Server.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Dango.Server.Hosting;
 
@@ -35,13 +37,6 @@ public static class FormalEntry
                         || reader.GetInt32(2) is < 180000 or >= 190000)
                         throw new AccountFault("maintenance_database_target_invalid");
                 }
-                if (Read("EXPECTED_MIGRATION") is { Length: > 0 } expectedMigration)
-                {
-                    var pending = (await db.Database.GetPendingMigrationsAsync()).ToArray();
-                    if (!db.Database.GetMigrations().Contains(expectedMigration, StringComparer.Ordinal)
-                        || pending.Length > 1 || (pending.Length == 1 && pending[0] != expectedMigration))
-                        throw new AccountFault("maintenance_migration_target_invalid");
-                }
                 if (Read("EXPECTED_MIGRATIONS") is { Length: > 0 } expectedMigrationList)
                 {
                     var expected = expectedMigrationList.Split(',', StringSplitOptions.TrimEntries);
@@ -52,7 +47,11 @@ public static class FormalEntry
                         || !pending.SequenceEqual(expected.Skip(expected.Length - pending.Length), StringComparer.Ordinal))
                         throw new AccountFault("maintenance_migration_target_invalid");
                 }
-                await db.Database.MigrateAsync();
+                if (Read("EXPECTED_MIGRATION") is { Length: > 0 } expectedMigration)
+                    await FormalSingleMigration.ApplyAsync(db.GetService<IMigrator>(), expectedMigration,
+                        db.Database.GetMigrations(), (await db.Database.GetPendingMigrationsAsync()).ToArray());
+                else
+                    await db.Database.MigrateAsync();
                 Console.WriteLine("formal_migration_applied");
                 return 0;
             }
