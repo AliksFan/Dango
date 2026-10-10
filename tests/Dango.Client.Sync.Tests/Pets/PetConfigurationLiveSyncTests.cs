@@ -292,6 +292,107 @@ public sealed class PetConfigurationLiveSyncTests
         Assert.AreEqual(PetLiveSyncStatus.Synchronized, second.State.Status);
     }
 
+    [TestMethod]
+    public async Task NewSaveAfterAnExhaustedUnknownEditBecomesAnIndependentIntent()
+    {
+        var f = new Fixture(); f.Save(Cream); f.Remote.BeforeWrite = (_, _) => throw Unavailable();
+        await f.Sync.PumpAsync(); await f.Sync.PumpAsync(); await f.Sync.PumpAsync();
+        Assert.AreEqual(2, f.Remote.Writes.Count);
+        f.Remote.BeforeWrite = null; f.Save(Blue); await f.Sync.PumpAsync();
+        Assert.AreEqual(3, f.Remote.Writes.Count);
+        Assert.IsTrue(AppearanceContract.Equivalent(Blue, f.Remote.Writes[2].Configuration));
+        Assert.IsTrue(AppearanceContract.Equivalent(Blue, f.Remote.Current.Configuration));
+        Assert.AreEqual(1, f.Journal.Receipts.Count(r => r.Outcome == PetChoiceOutcome.OutcomeUnknown));
+        Assert.AreEqual(PetLiveSyncStatus.Synchronized, f.Sync.State.Status);
+    }
+
+    [TestMethod]
+    public async Task AnotherPollCannotForgetAFailedCompletionReceipt()
+    {
+        var f = new Fixture(); f.Save(Cream); f.Journal.FailReceipt = true;
+        await f.Sync.PumpAsync(); await f.Sync.PumpAsync(); await f.Sync.PumpAsync();
+        Assert.AreEqual(PetLiveSyncStatus.Failed, f.Sync.State.Status);
+        Assert.AreEqual("archive_write_failed", f.Sync.State.FailureCode);
+        Assert.AreEqual(1, f.Remote.Writes.Count);
+    }
+
+    [TestMethod]
+    public async Task CompletingFailedReceiptDoesNotResubmitTheAcknowledgedPatch()
+    {
+        var f = new Fixture(); f.Save(Cream); f.Journal.FailReceipt = true;
+        await f.Sync.PumpAsync(); f.Journal.FailReceipt = false;
+        await f.Sync.PumpAsync();
+        Assert.AreEqual(1, f.Journal.Receipts.Count);
+        Assert.AreEqual(1, f.Remote.Writes.Count);
+        Assert.AreEqual(PetLiveSyncStatus.Synchronized, f.Sync.State.Status);
+    }
+
+    [TestMethod]
+    public async Task LateOldUnknownRequestCannotOverwriteAnAcknowledgedNewSave()
+    {
+        var f = new Fixture(); f.Save(Cream); f.Remote.BeforeWrite = (_, _) => throw Unavailable();
+        await f.Sync.PumpAsync(); await f.Sync.PumpAsync();
+        f.Remote.BeforeWrite = null; f.Save(Blue); await f.Sync.PumpAsync();
+        Assert.AreEqual(PetChoiceOutcome.CloudUpdated, f.Sync.State.LastLocalSaveOutcome);
+        Assert.AreEqual(2L, f.Sync.State.LastLocalSaveSerial);
+        await Assert.ThrowsExactlyAsync<PetConfigurationHttpException>(() => f.Remote.UpdateAsync(1, Cream, CancellationToken.None));
+        await f.Sync.PumpAsync();
+        Assert.IsTrue(AppearanceContract.Equivalent(Blue, f.Local.Current));
+        Assert.IsTrue(AppearanceContract.Equivalent(Blue, f.Remote.Current.Configuration));
+        Assert.AreEqual(2L, f.Remote.Current.ConfigurationVersion);
+    }
+
+    [TestMethod]
+    public async Task OldUnknownWinningBeforeNewSaveIsAnExplicitConflictOutcomeWithBothArchives()
+    {
+        var f = new Fixture(); f.Save(Cream); f.Remote.BeforeWrite = (_, _) => throw Unavailable();
+        await f.Sync.PumpAsync(); await f.Sync.PumpAsync(); f.Save(Blue);
+        f.Remote.BeforeWrite = (_, _) => { f.Remote.BeforeWrite = null; f.Remote.Commit(Cream); return Task.CompletedTask; };
+        await f.Sync.PumpAsync();
+        Assert.AreEqual(PetChoiceOutcome.Conflict, f.Sync.State.LastLocalSaveOutcome);
+        Assert.AreEqual(2L, f.Sync.State.LastLocalSaveSerial);
+        Assert.AreEqual(1, f.Journal.Receipts.Count(r => r.Outcome == PetChoiceOutcome.OutcomeUnknown));
+        Assert.AreEqual(1, f.Journal.Receipts.Count(r => r.Outcome == PetChoiceOutcome.Conflict));
+        Assert.IsTrue(f.Journal.Archives.Any(a => AppearanceContract.Equivalent(Blue, a.Local.NormalizedConfiguration)));
+        Assert.IsTrue(AppearanceContract.Equivalent(Cream, f.Local.Current));
+        Assert.IsTrue(AppearanceContract.Equivalent(Cream, f.Remote.Current.Configuration));
+    }
+
+    [TestMethod]
+    public async Task ReceiptRetryBudgetIsBoundedAndCannotPermitMoreMutations()
+    {
+        var f = new Fixture(); f.Save(Cream); f.Journal.FailReceipt = true;
+        await f.Sync.PumpAsync(); f.Save(Blue);
+        await f.Sync.PumpAsync(); await f.Sync.PumpAsync(); await f.Sync.PumpAsync();
+        Assert.AreEqual(2, f.Journal.ReceiptAttempts);
+        Assert.AreEqual(1, f.Remote.Writes.Count);
+        Assert.AreEqual(PetLiveSyncStatus.Failed, f.Sync.State.Status);
+        Assert.IsTrue(f.Sync.State.HasPendingLocalSave);
+        Assert.IsTrue(AppearanceContract.Equivalent(Blue, f.Local.Current));
+    }
+
+    [TestMethod]
+    public async Task CancelledReceiptCanCompleteNextPumpWithoutDuplicatingThePatchOrReceipt()
+    {
+        var f = new Fixture(); f.Save(Cream); using var cancel = new CancellationTokenSource();
+        f.Journal.BeforeReceipt = () => { f.Journal.BeforeReceipt = null; cancel.Cancel(); };
+        await f.Sync.PumpAsync(cancel.Token); await f.Sync.PumpAsync();
+        Assert.AreEqual(1, f.Remote.Writes.Count); Assert.AreEqual(1, f.Journal.Receipts.Count);
+        Assert.AreEqual(PetLiveSyncStatus.Synchronized, f.Sync.State.Status);
+    }
+
+    [TestMethod]
+    public async Task FailedConflictReceiptBlocksCloudOverwriteUntilTheReceiptIsSaved()
+    {
+        var f = new Fixture(); f.Save(Cream); f.Journal.FailReceipt = true;
+        f.Remote.BeforeWrite = (_, _) => { f.Remote.BeforeWrite = null; f.Remote.Commit(Blue); return Task.CompletedTask; };
+        await f.Sync.PumpAsync(); Assert.AreEqual(0, f.Local.ApplyCount);
+        f.Journal.FailReceipt = false; await f.Sync.PumpAsync();
+        Assert.IsTrue(AppearanceContract.Equivalent(Blue, f.Local.Current));
+        Assert.AreEqual(2, f.Journal.Receipts.Count);
+        Assert.AreEqual(1, f.Remote.Writes.Count);
+    }
+
     private static PetConfigurationHttpException Unavailable() => new(PetHttpFailure.Unavailable, "cloud_outcome_unknown");
     private static JsonElement Configuration(string color) => JsonSerializer.SerializeToElement(new
     { appearanceSchemaVersion = 3, bodyColorHex = color, eyeColorHex = "#222222", eyeSizePercent = 100, eyeOvalityPercent = 0, eyeHeightControlPercent = 49, eyeSpacingControlPercent = 23 });
@@ -357,10 +458,12 @@ public sealed class PetConfigurationLiveSyncTests
         public bool FailArchive;
         public bool FailReceipt;
         public Action? BeforeArchive;
+        public Action? BeforeReceipt;
+        public int ReceiptAttempts;
         public Task<Guid> SaveOriginalsAsync(PetConfigurationOriginals originals, CancellationToken ct)
         { ct.ThrowIfCancellationRequested(); BeforeArchive?.Invoke(); if (FailArchive) throw new IOException(); Archives.Add(originals); return Task.FromResult(Guid.NewGuid()); }
         public Task<PetConfigurationOriginals> LoadOriginalsAsync(Guid id, CancellationToken ct) => throw new AssertFailedException("No archived operation is replayed.");
         public Task WriteReceiptAsync(Guid id, PetConfigurationReceipt receipt, CancellationToken ct)
-        { ct.ThrowIfCancellationRequested(); if (FailReceipt) throw new IOException(); Receipts.Add(receipt); return Task.CompletedTask; }
+        { ReceiptAttempts++; BeforeReceipt?.Invoke(); ct.ThrowIfCancellationRequested(); if (FailReceipt) throw new IOException(); Receipts.Add(receipt); return Task.CompletedTask; }
     }
 }
