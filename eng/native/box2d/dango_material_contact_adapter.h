@@ -100,6 +100,9 @@ static int dango_material_contact_substep(dango_self_soft_body* body, const dang
         state.inverse_mass[n] = 1 / masses[n];
     }
     diagnostic->input = state;
+#ifdef DANGO_IDLE_TRACE_STATE
+    DANGO_IDLE_TRACE_STATE(2, &state);
+#endif
     if (!dango_mca_receipts(body, diagnostic)) { diagnostic->report.status = DANGO_MATERIAL_CONTACT_RECEIPT; return dango_mca_failure(diagnostic, -96); }
     diagnostic->phase = 2; bool position_valid = false;
     for (int iteration = 0; iteration < 384; ++iteration)
@@ -110,6 +113,9 @@ static int dango_material_contact_substep(dango_self_soft_body* body, const dang
         if (dango_constraint_sweep_order_mode(&state, false, false, DANGO_CONSTRAINT_CORRECT_POSITION) <= DANGO_CONSTRAINT_TOLERANCE) { position_valid = true; break; }
     }
     diagnostic->positioned = state;
+#ifdef DANGO_IDLE_TRACE_STATE
+    DANGO_IDLE_TRACE_STATE(3, &state);
+#endif
     if (!position_valid || !dango_mca_geometry(&state)) return dango_mca_failure(diagnostic, -91);
     diagnostic->phase = 3;
     bool near_ground = false, active = controls[0] != 0 || controls[1] != 0 || controls[2] != 0 || controls[3] != 0;
@@ -123,6 +129,9 @@ static int dango_material_contact_substep(dango_self_soft_body* body, const dang
         for (int n = 0; n < 17; ++n) state.velocities[n].x = (state.velocities[n].x - delta) * expf(-60 * dt);
     }
     diagnostic->damped = state; diagnostic->phase = 4;
+#ifdef DANGO_IDLE_TRACE_STATE
+    DANGO_IDLE_TRACE_STATE(4, &state);
+#endif
     diagnostic->report_valid = true;
 #if defined(DANGO_MATERIAL_CONTACT_BLOCK_CANDIDATE)
     bool block_built = dango_material_contact_block_build(&state, diagnostic->receipts, diagnostic->receipt_count,
@@ -137,6 +146,9 @@ static int dango_material_contact_substep(dango_self_soft_body* body, const dang
     if (!dango_material_contact_solve(&diagnostic->solver, &diagnostic->uncapped, &diagnostic->report)) return dango_mca_failure(diagnostic, -96);
 #endif
     state = diagnostic->uncapped; diagnostic->phase = 5;
+#ifdef DANGO_IDLE_TRACE_STATE
+    DANGO_IDLE_TRACE_STATE(5, &state);
+#endif
     if (!dango_mca_geometry(&state)) return dango_mca_failure(diagnostic, -91);
     // A common positive scale preserves every homogeneous rate inequality.
     float maximum = 0;
@@ -146,6 +158,9 @@ static int dango_material_contact_substep(dango_self_soft_body* body, const dang
     if (diagnostic->final_speed_scale < 1)
         for (int n = 0; n < 17; ++n) state.velocities[n] = b2MulSV(diagnostic->final_speed_scale, state.velocities[n]);
     diagnostic->output = state;
+#ifdef DANGO_IDLE_TRACE_STATE
+    DANGO_IDLE_TRACE_STATE(6, &state);
+#endif
 #if defined(DANGO_MATERIAL_CONTACT_BLOCK_CANDIDATE)
     if (!dango_material_contact_block_validate_after_uniform_scale(&diagnostic->block, &diagnostic->uncapped,
         &state, diagnostic->final_speed_scale, config->maximum_speed, &diagnostic->cap_report)) return dango_mca_failure(diagnostic, -87);

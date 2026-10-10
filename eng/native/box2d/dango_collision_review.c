@@ -5,8 +5,19 @@
 #include "dango_self_physics_internal.h"
 #include "dango_physics_module.h"
 #include "dango_display_contact.h"
+#if defined(DANGO_MATERIAL_IDLE_TRACE)
+#include <stddef.h>
+#include "dango_material_idle_trace_format.h"
+static void dango_it_mode_event(const void*, bool, bool);
+static void dango_it_state_event(int, const void*);
+#define DANGO_IDLE_TRACE_MODE_EVENT(report, built, solved) dango_it_mode_event(report, built, solved)
+#define DANGO_IDLE_TRACE_STATE(index, state) dango_it_state_event(index, state)
+#endif
 #if defined(DANGO_MATERIAL_CONTACT_CANDIDATE)
 #include "dango_material_contact_adapter.h"
+#endif
+#if defined(DANGO_MATERIAL_IDLE_TRACE)
+#include "dango_material_idle_trace.h"
 #endif
 
 typedef struct collision_review
@@ -24,6 +35,9 @@ typedef struct collision_review
     float preview_jump_speed_scale;
 #if defined(DANGO_MATERIAL_CONTACT_CANDIDATE)
     dango_material_contact_diagnostic candidate_diagnostic;
+#endif
+#if defined(DANGO_MATERIAL_IDLE_TRACE)
+    dango_it_context idle_trace;
 #endif
 } collision_review;
 
@@ -386,8 +400,14 @@ DANGO_API int dango_collision_step(void* handle, float dt, const float* controls
         int small_steps=(int)ceilf(dt*(p->disable_damping_for_test ? 240.0f : 960.0f));
         if (small_steps<p->config.substep_count) small_steps=p->config.substep_count;
         float small_dt=dt/(float)small_steps;
+#if defined(DANGO_MATERIAL_IDLE_TRACE)
+        if (p->idle_trace.file) ++p->idle_trace.frame;
+#endif
         for (int sub=0;sub<small_steps && !p->error;++sub)
         {
+#if defined(DANGO_MATERIAL_IDLE_TRACE)
+            dango_it_start(&p->idle_trace,p->bodies[0],(uint32_t)sub,small_dt);
+#endif
             int supported[DANGO_PHYSICS_MAX_BODIES];
             for (int r=0;r<p->capacity;++r) supported[r]=-1;
             for (int r=0;r<p->capacity;++r) if (p->active[r]) supported[r]=collision_support_slot(p,r);
@@ -419,12 +439,18 @@ DANGO_API int dango_collision_step(void* handle, float dt, const float* controls
                 }
             }
             if (p->error) break;
+#if defined(DANGO_MATERIAL_IDLE_TRACE)
+            dango_it_pre_world(&p->idle_trace,p->bodies[0]);
+#endif
             b2World_Step(p->bodies[0]->world_id,small_dt,1);
 #if defined(DANGO_MATERIAL_CONTACT_CANDIDATE)
             if (p->capacity!=1 || p->count!=1 || p->disable_damping_for_test) { p->error=-410; break; }
             // This private single-body path performs position, original damping,
             // final velocity and original global speed cap before one writeback.
             p->error=dango_material_contact_substep(p->bodies[0],&p->config,small_dt,controls,&p->candidate_diagnostic);
+#if defined(DANGO_MATERIAL_IDLE_TRACE)
+            dango_it_after(&p->idle_trace,p->bodies[0],&p->candidate_diagnostic);
+#endif
             if (p->error) break;
             (void)collision_damp;
 #else
@@ -462,6 +488,9 @@ DANGO_API int dango_collision_step(void* handle, float dt, const float* controls
         float candidate[DANGO_PHYSICS_MAX_BODIES*42]={0};
         if (!p->error) p->error=collision_read(p,candidate);
         if (!p->error) memcpy(p->snapshot,candidate,sizeof candidate);
+#if defined(DANGO_MATERIAL_IDLE_TRACE)
+        dango_it_publish(&p->idle_trace,p->snapshot,p->error,p->contact_steps);
+#endif
     }
     memcpy(output,p->snapshot,(size_t)p->capacity*42*sizeof(float)); *contact_steps=p->contact_steps;
     return p->error;
@@ -470,6 +499,10 @@ DANGO_API int dango_collision_step(void* handle, float dt, const float* controls
 DANGO_API int dango_collision_destroy(void* handle)
 {
     collision_review* p=handle; if (!p) return -400;
+#if defined(DANGO_MATERIAL_IDLE_TRACE)
+    if (p->idle_trace.file) { (void)fclose(p->idle_trace.file); p->idle_trace.file=NULL; }
+    if (dango_it_current==&p->idle_trace) dango_it_current=NULL;
+#endif
     int bytes=0; int error=dango_box2d_self_soft_body_destroy(p->bodies[0],&bytes);
     free(p); return error;
 }
@@ -486,6 +519,58 @@ DANGO_API int dango_physics_get_abi_version(void)
 {
     return DANGO_PHYSICS_MODULE_ABI_VERSION;
 }
+
+#if defined(DANGO_MATERIAL_IDLE_TRACE)
+DANGO_API int dango_material_idle_trace_layout(dango_it_layout* output)
+{
+    if (!output) return -500;
+    *output=(dango_it_layout){1,sizeof(dango_it_header),sizeof(dango_it_step),sizeof(dango_it_mode),sizeof(dango_it_frame),
+        sizeof(dango_material_contact_diagnostic),sizeof(dango_self_physics_config),sizeof(dango_it_cost),dango_it_worst_bytes(),
+        offsetof(dango_material_contact_diagnostic,input),offsetof(dango_material_contact_diagnostic,positioned),
+        offsetof(dango_material_contact_diagnostic,damped),offsetof(dango_material_contact_diagnostic,uncapped),
+        offsetof(dango_material_contact_diagnostic,output),offsetof(dango_constraint_state,positions),
+        offsetof(dango_constraint_state,velocities),offsetof(dango_constraint_state,inverse_mass)};
+    return output->worst_case_bytes <= DANGO_IT_LIMIT ? 0 : -501;
+}
+DANGO_API int dango_material_idle_trace_begin(void* handle,const char* path,int enabled)
+{
+    collision_review* p=handle;
+    if (!p || !path || (enabled!=0 && enabled!=1) || p->capacity!=1 || p->count!=1 ||
+        p->candidate_diagnostic.substeps || p->idle_trace.file || dango_it_worst_bytes()>DANGO_IT_LIMIT) return -500;
+    dango_it_context* trace=&p->idle_trace;
+    memset(trace,0,sizeof(*trace)); trace->enabled=enabled; trace->end.enabled=(uint32_t)enabled;
+    trace->file=fopen(path,"wbx"); if (!trace->file) return -502;
+    dango_it_header header={0}; memcpy(header.magic,"DGTRACE1",8);
+    header.schema=1; header.enabled=(uint32_t)enabled; header.header_bytes=sizeof(header);
+    header.step_bytes=sizeof(dango_it_step); header.mode_bytes=sizeof(dango_it_mode); header.frame_bytes=sizeof(dango_it_frame);
+    header.diagnostic_bytes=sizeof(dango_material_contact_diagnostic); header.config_bytes=sizeof(p->config); header.maximum_bytes=DANGO_IT_LIMIT;
+    _Static_assert(sizeof(dango_self_physics_config)==164,"private config layout");
+    memcpy(header.config,&p->config,sizeof(p->config));
+    dango_it_body(p->bodies[0],header.initial,header.masses);
+    memcpy(trace->previous,header.initial,sizeof(trace->previous));
+    memcpy(trace->end.final,header.initial,sizeof(trace->end.final));
+    (void)dango_it_write(trace,&header,sizeof(header));
+    return trace->error;
+}
+DANGO_API int dango_material_idle_trace_status(void* handle)
+{
+    return handle ? ((collision_review*)handle)->idle_trace.error : -500;
+}
+DANGO_API int dango_material_idle_trace_finish(void* handle)
+{
+    collision_review* p=handle;
+    if (!p || !p->idle_trace.file) return -500;
+    dango_it_context* trace=&p->idle_trace;
+    if (dango_it_current==trace) dango_it_current=NULL;
+    dango_it_body(p->bodies[0],trace->end.final,NULL);
+    trace->end.error=trace->error;
+    dango_it_end end=trace->end;
+    end.bytes+=sizeof(dango_it_prefix)+sizeof(end);
+    (void)dango_it_record(trace,DANGO_IT_END,&end,sizeof(end));
+    if (fclose(trace->file)!=0 && !trace->error) trace->error=-502;
+    trace->file=NULL; return trace->error;
+}
+#endif
 
 DANGO_API int dango_physics_world_create(const dango_self_physics_config* config,int capacity,void** handle)
 {
@@ -744,6 +829,10 @@ DANGO_API int dango_physics_world_destroy(void* handle)
 {
     collision_review* p=handle;
     if (!p || !p->bodies[0]) return -410;
+#if defined(DANGO_MATERIAL_IDLE_TRACE)
+    if (p->idle_trace.file) { (void)fclose(p->idle_trace.file); p->idle_trace.file=NULL; }
+    if (dango_it_current==&p->idle_trace) dango_it_current=NULL;
+#endif
     if (b2World_IsValid(p->bodies[0]->world_id)) b2DestroyWorld(p->bodies[0]->world_id);
     free(p->bodies[0]); free(p);
     return 0;

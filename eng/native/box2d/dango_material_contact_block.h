@@ -715,7 +715,14 @@ static inline bool dango_material_contact_block_solve(dango_material_contact_blo
             if (!dango_mcb_record_modes(&block->report)) return dango_mcb_finish(block, report, &started, timed, false);
             ++block->report.linear_solves;
 #ifdef DANGO_MATERIAL_CONTACT_NULL_REACTION_CANDIDATE
+#ifdef DANGO_IDLE_TRACE_MODE_EVENT
+            bool trace_built = dango_mcb_system(&reference, &block->report);
+            bool trace_solved = trace_built && dango_mcb_null_solve(&reference, &block->report);
+            DANGO_IDLE_TRACE_MODE_EVENT(&block->report, trace_built, trace_solved);
+            if (!trace_solved)
+#else
             if (!dango_mcb_system(&reference, &block->report) || !dango_mcb_null_solve(&reference, &block->report))
+#endif
 #else
             if (!dango_mcb_system(&reference, &block->report) ||
                 !dango_mcb_linear_solve(n, block->report.active_row_ids, block->report.scaled_matrix,
