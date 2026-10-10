@@ -15,18 +15,26 @@ namespace Dango.Server.Tests.Accounts;
 [TestCategory("PostgresIntegration")]
 public sealed class AccountProfilePostgresTests
 {
+    public TestContext TestContext { get; set; } = null!;
+    private ProfileTestOwner? owner;
     [TestInitialize]
     public void RequireNewProfileDataApprovalBeforeAnyResourceAccess()
     {
         if (Environment.GetEnvironmentVariable("DANGO_BACKEND_PROFILE_TEST_APPROVED") != "1")
             Assert.Inconclusive("Nickname migration and fictional profile writes require their own precise approval; B1/B5/R2 approval is insufficient.");
+        owner = ProfileTestOwner.Require();
     }
+
+    [TestCleanup]
+    public void EndProfileCase() => owner?.EndCase(TestContext.CurrentTestOutcome == UnitTestOutcome.Passed);
 
     [TestMethod]
     public async Task IndependentConnectionsWithSameExpectedVersionProduceOneCommitAndOneConflict()
     {
-        await using var fixture = await FormalTestFixture.CreateAsync();
-        var account = await PetTestSupport.RegisterAsync(fixture);
+        ProfileTestOwner.Require().BeginCase("concurrent_profile");
+        await using var owned = await ProfileTestSupport.CreateFixtureAsync();
+        var fixture = owned.Fixture;
+        var account = await ProfileTestSupport.RegisterAsync(fixture);
         var before = await PetTestSupport.GraphAsync(fixture, account);
         var stamp = await fixture.InScopeAsync(s => s.GetRequiredService<DangoDbContext>().Users.AsNoTracking()
             .Where(u => u.Id == account.UserId).Select(u => u.SecurityStamp).SingleAsync());
@@ -40,7 +48,7 @@ public sealed class AccountProfilePostgresTests
             processes.Add(((NpgsqlConnection)db.Database.GetDbConnection()).ProcessID);
             if (Interlocked.Increment(ref arrived) == 2) release.SetResult();
             await release.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            try { return (await Service(s).UpdateAsync(account.UserId, account.SessionId, new(1, nickname), CancellationToken.None), (string?)null); }
+            try { return (await ProfileTestSupport.UpdateAsync(Service(s), account.UserId, account.SessionId, new(1, nickname), CancellationToken.None), (string?)null); }
             catch (AccountFault fault) { return ((AccountProfileSnapshot?)null, fault.Code); }
         });
         var results = await Task.WhenAll(Compete("团子甲"), Compete("团子乙"));
@@ -50,22 +58,25 @@ public sealed class AccountProfilePostgresTests
         Assert.AreEqual(2L, winner.ProfileVersion);
         Assert.AreEqual(winner, await fixture.InScopeAsync(s => Service(s).GetAsync(account.UserId, account.SessionId, CancellationToken.None)));
         Assert.AreEqual(before, await PetTestSupport.GraphAsync(fixture, account));
-        Assert.AreEqual(stamp, await fixture.InScopeAsync(s => s.GetRequiredService<DangoDbContext>().Users.AsNoTracking()
-            .Where(u => u.Id == account.UserId).Select(u => u.SecurityStamp).SingleAsync()));
+        var afterStamp = await fixture.InScopeAsync(s => s.GetRequiredService<DangoDbContext>().Users.AsNoTracking()
+            .Where(u => u.Id == account.UserId).Select(u => u.SecurityStamp).SingleAsync());
+        Assert.IsTrue(string.Equals(stamp, afterStamp, StringComparison.Ordinal), "Profile changes must preserve the account security state.");
     }
 
     [TestMethod]
     public async Task DuplicateNamesAndSequentialEditsDoNotChangeAccountPetOrRoomIdentity()
     {
-        await using var fixture = await FormalTestFixture.CreateAsync();
-        var a = await PetTestSupport.RegisterAsync(fixture); var b = await PetTestSupport.RegisterAsync(fixture);
+        ProfileTestOwner.Require().BeginCase("duplicate_names");
+        await using var owned = await ProfileTestSupport.CreateFixtureAsync();
+        var fixture = owned.Fixture;
+        var a = await ProfileTestSupport.RegisterAsync(fixture); var b = await ProfileTestSupport.RegisterAsync(fixture);
         var before = await PetTestSupport.GraphAsync(fixture, a);
-        var first = await fixture.InScopeAsync(s => Service(s).UpdateAsync(a.UserId, a.SessionId, new(1, "小团子"), CancellationToken.None));
-        var same = await fixture.InScopeAsync(s => Service(s).UpdateAsync(b.UserId, b.SessionId, new(1, "小团子"), CancellationToken.None));
+        var first = await fixture.InScopeAsync(s => ProfileTestSupport.UpdateAsync(Service(s), a.UserId, a.SessionId, new(1, "小团子"), CancellationToken.None));
+        var same = await fixture.InScopeAsync(s => ProfileTestSupport.UpdateAsync(Service(s), b.UserId, b.SessionId, new(1, "小团子"), CancellationToken.None));
         Assert.AreEqual(first.Nickname, same.Nickname); Assert.AreNotEqual(first.UserId, same.UserId);
-        var changed = await fixture.InScopeAsync(s => Service(s).UpdateAsync(a.UserId, a.SessionId, new(2, "新团子"), CancellationToken.None));
+        var changed = await fixture.InScopeAsync(s => ProfileTestSupport.UpdateAsync(Service(s), a.UserId, a.SessionId, new(2, "新团子"), CancellationToken.None));
         Assert.AreEqual(3L, changed.ProfileVersion);
-        await Fault("account_profile_conflict", () => fixture.InScopeAsync(s => Service(s).UpdateAsync(a.UserId, a.SessionId,
+        await Fault("account_profile_conflict", () => fixture.InScopeAsync(s => ProfileTestSupport.UpdateAsync(Service(s), a.UserId, a.SessionId,
             new(2, "过时修改"), CancellationToken.None)));
         Assert.AreEqual(before, await PetTestSupport.GraphAsync(fixture, a));
     }
@@ -75,29 +86,33 @@ public sealed class AccountProfilePostgresTests
     [DataRow("before_commit")]
     public async Task FailureAfterSaveRollsBackNicknameAndVersion(string failureAt)
     {
-        await using var fixture = await FormalTestFixture.CreateAsync();
-        var account = await PetTestSupport.RegisterAsync(fixture);
+        ProfileTestOwner.Require().BeginCase(failureAt switch { "after_profile" => "rollback_after_profile", "before_commit" => "rollback_before_commit", _ => throw new InvalidOperationException("profile_case_rejected") });
+        await using var owned = await ProfileTestSupport.CreateFixtureAsync();
+        var fixture = owned.Fixture;
+        var account = await ProfileTestSupport.RegisterAsync(fixture);
         var before = await fixture.InScopeAsync(s => Service(s).GetAsync(account.UserId, account.SessionId, CancellationToken.None));
-        await Assert.ThrowsExactlyAsync<InjectedFailure>(() => fixture.InScopeAsync(s => Service(s,
-            new CallbackCheckpoint((name, _) => name == failureAt ? Task.FromException(new InjectedFailure()) : Task.CompletedTask))
-            .UpdateAsync(account.UserId, account.SessionId, new(1, "不会保存"), CancellationToken.None)));
+        await Assert.ThrowsExactlyAsync<InjectedFailure>(() => fixture.InScopeAsync(s => ProfileTestSupport.UpdateAsync(Service(s,
+            new CallbackCheckpoint((name, _) => name == failureAt ? Task.FromException(new InjectedFailure()) : Task.CompletedTask)),
+            account.UserId, account.SessionId, new(1, "不会保存"), CancellationToken.None)));
         Assert.AreEqual(before, await fixture.InScopeAsync(s => Service(s).GetAsync(account.UserId, account.SessionId, CancellationToken.None)));
     }
 
     [TestMethod]
     public async Task CrossAccountSessionCannotReadOrWriteAndRevocationBeforeLocksIsRechecked()
     {
-        await using var fixture = await FormalTestFixture.CreateAsync();
-        var a = await PetTestSupport.RegisterAsync(fixture); var b = await PetTestSupport.RegisterAsync(fixture);
+        ProfileTestOwner.Require().BeginCase("cross_session");
+        await using var owned = await ProfileTestSupport.CreateFixtureAsync();
+        var fixture = owned.Fixture;
+        var a = await ProfileTestSupport.RegisterAsync(fixture); var b = await ProfileTestSupport.RegisterAsync(fixture);
         await Fault("authentication_required", () => fixture.InScopeAsync(s => Service(s).GetAsync(a.UserId, b.SessionId, CancellationToken.None)));
-        await Fault("authentication_required", () => fixture.InScopeAsync(s => Service(s).UpdateAsync(a.UserId, b.SessionId, new(1, "冒名修改"), CancellationToken.None)));
+        await Fault("authentication_required", () => fixture.InScopeAsync(s => ProfileTestSupport.UpdateAsync(Service(s), a.UserId, b.SessionId, new(1, "冒名修改"), CancellationToken.None)));
         var checkpoint = new CallbackCheckpoint(async (name, _) =>
         {
-            if (name == "before_locks") await fixture.InScopeAsync(s => s.GetRequiredService<SessionService>()
-                .RevokeAsync(a.UserId, a.SessionId, CancellationToken.None));
+            if (name == "before_locks") await fixture.InScopeAsync(s => ProfileTestSupport.RevokeAsync(s.GetRequiredService<SessionService>(),
+                a.UserId, a.SessionId, CancellationToken.None));
         });
-        await Fault("authentication_required", () => fixture.InScopeAsync(s => Service(s, checkpoint)
-            .UpdateAsync(a.UserId, a.SessionId, new(1, "撤销会话"), CancellationToken.None)));
+        await Fault("authentication_required", () => fixture.InScopeAsync(s => ProfileTestSupport.UpdateAsync(Service(s, checkpoint),
+            a.UserId, a.SessionId, new(1, "撤销会话"), CancellationToken.None)));
         await fixture.InScopeAsync(async s =>
         {
             var user = await s.GetRequiredService<DangoDbContext>().Users.AsNoTracking().SingleAsync(u => u.Id == a.UserId);
@@ -108,16 +123,18 @@ public sealed class AccountProfilePostgresTests
     [TestMethod]
     public async Task SessionExpiryAtPrecommitRollsBackNickname()
     {
+        ProfileTestOwner.Require().BeginCase("expiry");
         var clock = new MutableTestClock(DateTimeOffset.UtcNow);
-        await using var fixture = await FormalTestFixture.CreateAsync(clock: clock);
-        var account = await PetTestSupport.RegisterAsync(fixture);
+        await using var owned = await ProfileTestSupport.CreateFixtureAsync(clock: clock);
+        var fixture = owned.Fixture;
+        var account = await ProfileTestSupport.RegisterAsync(fixture);
         var checkpoint = new CallbackCheckpoint((name, _) =>
         {
             if (name == "before_commit") clock.Advance(TimeSpan.FromHours(8));
             return Task.CompletedTask;
         });
-        await Fault("authentication_required", () => fixture.InScopeAsync(s => Service(s, checkpoint)
-            .UpdateAsync(account.UserId, account.SessionId, new(1, "过期修改"), CancellationToken.None)));
+        await Fault("authentication_required", () => fixture.InScopeAsync(s => ProfileTestSupport.UpdateAsync(Service(s, checkpoint),
+            account.UserId, account.SessionId, new(1, "过期修改"), CancellationToken.None)));
         await fixture.InScopeAsync(async s =>
         {
             var user = await s.GetRequiredService<DangoDbContext>().Users.AsNoTracking().SingleAsync(u => u.Id == account.UserId);
@@ -128,9 +145,11 @@ public sealed class AccountProfilePostgresTests
     [TestMethod]
     public async Task ProfileHttpsUsesCurrentSessionRejectsForeignOwnershipCsrfOriginAndMalformedBodies()
     {
-        await using var fixture = await FormalTestFixture.CreateAsync(startHttp: true);
-        var account = await PetTestSupport.RegisterAsync(fixture);
-        using var client = fixture.CreateClient(out _);
+        ProfileTestOwner.Require().BeginCase("https");
+        await using var owned = await ProfileTestSupport.CreateFixtureAsync(startHttp: true);
+        var fixture = owned.Fixture;
+        var account = await ProfileTestSupport.RegisterAsync(fixture);
+        using var client = ProfileTestSupport.CreateClient(fixture, out _);
         using var anonymous = await client.GetAsync("api/v1/me/profile");
         Assert.AreEqual(HttpStatusCode.Unauthorized, anonymous.StatusCode);
         using var login = await FormalTestFixture.SendAsync(client, HttpMethod.Post, "api/v1/auth/login",
