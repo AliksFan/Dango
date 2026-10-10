@@ -9,6 +9,10 @@
 #define DANGO_ROUND_BALL_TEST_VARIANT 0
 #endif
 
+/* Official ball material: softer gravity gives the lightweight ball a slower
+   descent. This does not change the original Dango/world gravity. */
+#define DANGO_ROUND_BALL_GRAVITY_SCALE 0.5
+
 /* Internal admission contract. All lengths/ball velocities are in q=T p,
    T=diag(4/3,1), never DIP. The original Dango coordinates remain p. */
 typedef struct dango_ball_vec { double x,y; } dango_ball_vec;

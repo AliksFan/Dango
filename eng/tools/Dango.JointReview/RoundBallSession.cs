@@ -14,6 +14,8 @@ internal sealed class RoundBallSession : IDisposable
     internal const double RightBound = 4;
     // 132 DIP at s=1: about 20% wider than the accepted resting body's painted width.
     internal const double OfficialBallRadiusQ = 1.1;
+    internal const double OfficialBallMass = .02;
+    internal const double OfficialBallGravityScale = .5;
     private readonly DangoPhysicsWorld world;
     private bool disposed;
 
@@ -35,6 +37,8 @@ internal sealed class RoundBallSession : IDisposable
             var floorCenter = DangoPhysicsDefaults.Current.GroundHeight + OfficialBallRadiusQ;
             if (scenario != RoundBallScenario.WithoutBall)
             {
+                if (world.RoundBallGravityScale != OfficialBallGravityScale)
+                    throw new InvalidDataException("当前官方圆球需要半重力候选模块；旧模块仍可运行原物理路径。");
                 var center = scenario switch
                 {
                     RoundBallScenario.PushFromRight => (X: -1d, Y: floorCenter),
@@ -42,7 +46,7 @@ internal sealed class RoundBallSession : IDisposable
                     RoundBallScenario.BallFalls => (X: 1.8, Y: 2.4),
                     _ => (X: 1d, Y: floorCenter),
                 };
-                world.AddRoundBall(new(center.X, center.Y, RadiusQ: OfficialBallRadiusQ));
+                world.AddRoundBall(new(center.X, center.Y, RadiusQ: OfficialBallRadiusQ, Mass: OfficialBallMass));
             }
             LastFrame = world.ReadRoundBallFrame();
             ValidateOwnership(LastFrame);
@@ -52,6 +56,7 @@ internal sealed class RoundBallSession : IDisposable
     }
 
     internal DangoEntityId Entity { get; }
+    internal double BallGravityScale => world.RoundBallGravityScale;
     internal DangoRoundBallFrame LastFrame { get; private set; }
     internal int StepCalls { get; private set; }
     internal int SuccessfulSteps { get; private set; }

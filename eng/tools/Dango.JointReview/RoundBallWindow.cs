@@ -27,6 +27,7 @@ internal sealed class RoundBallWindow : Window
     private const double VisualCenterY = 66;
     private readonly string libraryPath;
     private readonly string moduleHash;
+    private double ballGravityScale;
     private readonly Canvas scene = new()
     {
         Background = new SolidColorBrush(Color.FromRgb(246, 249, 250)),
@@ -230,6 +231,7 @@ internal sealed class RoundBallWindow : Window
             ClearInput(); restoreTimer.Stop(); session?.Dispose(); session = null;
             ClearPresentation();
             scenario = value; session = new(libraryPath, scenario);
+            ballGravityScale = session.BallGravityScale;
             AcceptFrame(session.LastFrame); CompleteReset();
         }
         catch (Exception error) { StopWithFailure(error); }
@@ -466,6 +468,8 @@ internal sealed class RoundBallWindow : Window
             JumpPending = input.JumpPending, JumpHeld = input.JumpHeld,
             JumpRequestsConsumed = jumpRequestsConsumed, LastStepJumpRequested = lastStepJumpRequested,
             PeakNativeContactErrorQ = peakNativeContactErrorQ, PeakPublicPaintedContactErrorQ = peakPaintedContactErrorQ,
+            BallGravityScale = ballGravityScale,
+            DeferredStatePublications = diagnostics?.DeferredStatePublications ?? 0,
             LatestPublicPaintedGapQ = latestPaintedGapQ,
             PauseCycles = pauseCycles, HideCycles = hideCycles,
             OwnedWorldCount = RoundBallSession.OwnedWorldCount,
@@ -534,6 +538,7 @@ internal sealed class RoundBallWindow : Window
                 StepP95Milliseconds = ordered.Length == 0 ? 0 : ordered[(int)Math.Floor((ordered.Length - 1) * .95)],
                 StepMaximumMilliseconds = ordered.LastOrDefault(),
                 diagnostics.PeakWorkingSetBytes,
+                diagnostics.DeferredStatePublications,
                 PeakNativeContactErrorQ = peakNativeContactErrorQ, PeakPublicPaintedContactErrorQ = peakPaintedContactErrorQ,
                 RoundBallWindowDiagnostics.ContactBudgetQ,
                 ContactMeasurement = "Native diagnostics plus independent 64-samples-per-segment public painted contour in q; not raster or human acceptance",

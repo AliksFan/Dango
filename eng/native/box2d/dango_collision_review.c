@@ -310,7 +310,8 @@ static bool collision_ball_substep(collision_review* p,double dt,int* touched)
 #endif
     if (integrate)
     {
-        s->vy-=p->config.gravity*dt; s->x+=s->vx*dt; s->y+=s->vy*dt;
+        s->vy-=DANGO_ROUND_BALL_GRAVITY_SCALE*p->config.gravity*dt;
+        s->x+=s->vx*dt; s->y+=s->vy*dt;
         s->angle+=s->omega*dt; ++s->integrations;
     }
     if (!collision_ball_valid(p)) return false;
@@ -330,7 +331,7 @@ static bool collision_ball_substep(collision_review* p,double dt,int* touched)
            angular damping mechanism. The bounded torque cannot cross zero. */
         double inertia=.5*p->ball.definition.mass*p->ball.definition.radius*p->ball.definition.radius;
         double radius=p->ball.definition.radius,mass=p->ball.definition.mass;
-        double limit=.02*mass*p->config.gravity*radius*dt/(inertia+mass*radius*radius);
+        double limit=.02*mass*DANGO_ROUND_BALL_GRAVITY_SCALE*p->config.gravity*radius*dt/(inertia+mass*radius*radius);
         if (p->ball.definition.floor_friction>0 && fabs(s->vx+radius*s->omega)<.002)
         {
             /* Static floor friction transmits the rolling torque through the
@@ -1357,6 +1358,8 @@ DANGO_API int dango_physics_get_round_ball_abi_version(void)
 { return DANGO_ROUND_BALL_ABI_VERSION; }
 DANGO_API int dango_physics_get_round_ball_frame_size(void)
 { return (int)sizeof(dango_round_ball_frame); }
+DANGO_API double dango_physics_get_round_ball_gravity_scale(void)
+{ return DANGO_ROUND_BALL_GRAVITY_SCALE; }
 DANGO_API int dango_physics_world_add_round_ball(void* handle,const dango_ball_definition* definition,int* id)
 { return collision_ball_add(handle,definition,id); }
 DANGO_API int dango_physics_world_remove_round_ball(void* handle,int id)

@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Dango.Desktop.Physics.Tuning;
+using Dango.Physics.Configuration;
 
 namespace Dango.Physics.Tests;
 
@@ -14,6 +15,9 @@ public sealed class RoundBallTests
     private static readonly DangoRoundBallDefinition FloorBall = new(0, -.32);
     private static string BaselinePath => Environment.GetEnvironmentVariable("DANGO_ROUND_BALL_BASELINE_PATH") ??
         throw new InvalidOperationException("Set DANGO_ROUND_BALL_BASELINE_PATH to the independent, read-only accepted r3 module.");
+    private const string LegacyRoundBallSha256 = "9A2A7ED50EEE62080A3A6F9C3DB345652C68829C0DA5E9822969ED6F1BCA8B39";
+    private static string LegacyRoundBallPath => Environment.GetEnvironmentVariable("DANGO_ROUND_BALL_LEGACY_PATH") ??
+        throw new InvalidOperationException("Set DANGO_ROUND_BALL_LEGACY_PATH to the independent, read-only accepted ABI-1 ball module without the gravity-scale export.");
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
@@ -89,12 +93,125 @@ public sealed class RoundBallTests
         AssertMissing(() => world.RemoveRoundBall(new(1)));
         AssertMissing(() => world.ReadRoundBallFrame());
         AssertMissing(() => world.StepWithRoundBall(Dt, [new(id, Horizontal: 1)]));
+        AssertMissing(() => { _ = world.RoundBallGravityScale; });
         for (var step = 0; step < 30; step++)
             Assert.AreEqual(Json(reference.Step(Dt, [new(expectedId)])), Json(world.Step(Dt, [new(id)])),
                 "Capability failure must occur before Step and leave the old physics path unchanged.");
         world.Reset();
         reference.Reset();
         Assert.AreEqual(Json(reference.Step(Dt, [new(expectedId)])), Json(world.Step(Dt, [new(id)])));
+    }
+
+    [TestMethod]
+    public void NativeGravityScaleDoubleExportAndManagedGetterAreReadOnlyWithoutAdvancingAnyFrame()
+    {
+        Assert.IsFalse(typeof(DangoPhysicsWorld).GetProperty(nameof(DangoPhysicsWorld.RoundBallGravityScale))!.CanWrite,
+            "The gravity multiplier must be native material information rather than a writable client control.");
+        using var native = new RawWorld();
+        var nativeId = native.Add(-2, 0);
+        native.AddBall(FloorBall);
+        using var managed = Create(-2, 0, out var id);
+        managed.AddRoundBall(FloorBall);
+        for (var phase = 0; phase < 2; phase++)
+        {
+            var nativeBefore = native.Read();
+            var managedBefore = Json(managed.ReadRoundBallFrame());
+            for (var read = 0; read < 40; read++)
+            {
+                Assert.AreEqual(.5, native.ReadGravityScale(), "The real C export must return the double-precision native multiplier.");
+                Assert.AreEqual(.5, managed.RoundBallGravityScale, "The wrapper must expose the actual native material multiplier.");
+                CollectionAssert.AreEqual(nativeBefore, native.Read(), "Reading the native gravity scale changed the real 912-byte frame.");
+                Assert.AreEqual(managedBefore, Json(managed.ReadRoundBallFrame()), "Reading the managed gravity scale mutated or advanced the scene.");
+            }
+            if (phase == 0) { native.Step(nativeId, 0); Advance(managed, new(id)); }
+        }
+    }
+
+    [TestMethod]
+    public void AcceptedLegacyBallModuleWithoutGravityExportKeepsUnitGravityAndItsBallLifecycle()
+    {
+        var legacy = AssertLegacyRoundBallModule();
+        var library = NativeLibrary.Load(legacy);
+        try
+        {
+            Assert.IsFalse(NativeLibrary.TryGetExport(library, "dango_physics_get_round_ball_gravity_scale", out _),
+                "This compatibility fixture must actually lack the optional gravity-scale export.");
+        }
+        finally { NativeLibrary.Free(library); }
+        using var world = DangoPhysicsWorld.Create(legacy);
+        Assert.IsTrue(world.SupportsRoundBall, "An absent optional material export must not remove the existing ABI-1 ball capability.");
+        Assert.AreEqual(1d, world.RoundBallGravityScale);
+        world.SetHorizontalBounds(-4, 4);
+        var id = world.AddRoundBall(new(0, 4, RadiusQ: 1.1, Mass: .02));
+        var initial = world.ReadRoundBallFrame();
+        var initialJson = Json(initial);
+        for (var read = 0; read < 40; read++)
+        {
+            Assert.AreEqual(1d, world.RoundBallGravityScale);
+            Assert.AreEqual(initialJson, Json(world.ReadRoundBallFrame()), "The compatibility fallback changed the published frame.");
+        }
+        for (var step = 0; step < 18; step++)
+        {
+            var frame = world.StepWithRoundBall(Dt, []);
+            Assert.AreEqual(0, frame.ErrorCode);
+            Assert.AreEqual((ulong)step + 1, frame.Step);
+            AssertVersions(frame);
+        }
+        var falling = world.ReadRoundBallFrame();
+        Assert.IsTrue(falling.Ball!.CenterQY < initial.Ball!.CenterQY - .3,
+            "The older ball module must truly fall instead of merely advertising compatibility.");
+        Assert.IsTrue(falling.Ball.VelocityQY < -2.5);
+        world.Reset();
+        var reset = world.ReadRoundBallFrame();
+        Assert.AreEqual(id, reset.Ball!.Id);
+        Assert.AreEqual(initial.Ball.CenterQY, reset.Ball.CenterQY);
+        Assert.AreEqual(0d, reset.Ball.VelocityQY);
+        Assert.AreEqual(1d, world.RoundBallGravityScale);
+        world.RemoveRoundBall(id);
+        Assert.IsNull(world.ReadRoundBallFrame().Ball);
+    }
+
+    [TestMethod]
+    public void LegalZeroVelocityFreeFallReallyUsesHalfGravityInsteadOfOnlyReportingIt()
+    {
+        var legacy = AssertLegacyRoundBallModule();
+        using var previous = DangoPhysicsWorld.Create(legacy);
+        using var candidate = DangoPhysicsWorld.Create(PhysicsTestLibraries.Unified);
+        var definition = new DangoRoundBallDefinition(0, 4, RadiusQ: 1.1, Mass: .02);
+        previous.SetHorizontalBounds(-4, 4); candidate.SetHorizontalBounds(-4, 4);
+        previous.AddRoundBall(definition); candidate.AddRoundBall(definition);
+        var previousBirth = previous.ReadRoundBallFrame();
+        var candidateBirth = candidate.ReadRoundBallFrame();
+        Assert.AreEqual(0, candidateBirth.Physics.Bodies.Count, "This fixture isolates ball gravity using a legal ball-only scene.");
+        Assert.AreEqual(0d, previousBirth.Ball!.VelocityQY);
+        Assert.AreEqual(0d, candidateBirth.Ball!.VelocityQY, "The test must use an ordinary legal spawn without injected initial velocity.");
+        Assert.AreEqual(0UL, candidateBirth.Ball.IntegrationCount);
+        var fullGravity = (double)(float)DangoPhysicsDefaults.Current.Gravity;
+        var nativeDt = (double)(float)Dt.TotalSeconds;
+        for (var step = 1; step <= 18; step++)
+        {
+            var oldFrame = previous.StepWithRoundBall(Dt, []);
+            var newFrame = candidate.StepWithRoundBall(Dt, []);
+            Assert.AreEqual(0, oldFrame.ErrorCode); Assert.AreEqual(0, newFrame.ErrorCode);
+            Assert.AreEqual((ulong)step, newFrame.Step);
+            AssertVersions(oldFrame); AssertVersions(newFrame);
+            var oldBall = oldFrame.Ball!; var newBall = newFrame.Ball!;
+            Assert.IsFalse(oldFrame.DangoContact.Touching || oldFrame.FloorContact.Touching ||
+                newFrame.DangoContact.Touching || newFrame.FloorContact.Touching,
+                "The early free-flight oracle must remain free of contact impulses.");
+            Assert.IsFalse(oldBall.IsSleeping || newBall.IsSleeping);
+            Assert.IsTrue(newBall.IntegrationCount > 0);
+            Assert.AreEqual(-fullGravity * nativeDt * step, oldBall.VelocityQY, 1e-6,
+                "The independently pinned older module must retain physical unit gravity.");
+            Assert.AreEqual(-.5 * fullGravity * nativeDt * step, newBall.VelocityQY, 1e-6,
+                "An export reporting .5 is insufficient if the actual native ball still accelerates at full gravity.");
+            Assert.AreEqual(.5 * oldBall.VelocityQY, newBall.VelocityQY, 1e-9,
+                "The actual candidate velocity must be half the independent older module's velocity.");
+            Assert.AreEqual(.5 * (definition.CenterQY - oldBall.CenterQY), definition.CenterQY - newBall.CenterQY, 1e-9,
+                "The actual early descent must also halve; changing only the velocity snapshot cannot pass.");
+            Assert.AreEqual(0d, newBall.VelocityQX); Assert.AreEqual(0d, newBall.AngularVelocity);
+        }
+        TestContext.WriteLine($"Legal free flight: oldVy={previous.ReadRoundBallFrame().Ball!.VelocityQY:R}; halfVy={candidate.ReadRoundBallFrame().Ball!.VelocityQY:R}; radius=1.1; mass=.02; no injected velocity.");
     }
 
     [TestMethod]
@@ -540,6 +657,7 @@ public sealed class RoundBallTests
                 () => world.ReadRoundBallFrame(),
                 () => world.StepWithRoundBall(Dt, [new(id)]),
                 () => { _ = world.SupportsRoundBall; },
+                () => { _ = world.RoundBallGravityScale; },
                 world.Dispose
             ];
             foreach (var operation in operations)
@@ -555,6 +673,7 @@ public sealed class RoundBallTests
             Assert.ThrowsExactly<ObjectDisposedException>(() => world.ReadRoundBallFrame());
             Assert.ThrowsExactly<ObjectDisposedException>(() => world.StepWithRoundBall(Dt, [new(id)]));
             Assert.ThrowsExactly<ObjectDisposedException>(() => { _ = world.SupportsRoundBall; });
+            Assert.ThrowsExactly<ObjectDisposedException>(() => { _ = world.RoundBallGravityScale; });
         }
         finally { world.Dispose(); }
     }
@@ -610,6 +729,16 @@ public sealed class RoundBallTests
         Assert.AreNotEqual(Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(baseline))),
             Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(PhysicsTestLibraries.Unified))),
             "The accepted r3 module must be supplied independently; the candidate cannot serve as its own baseline.");
+
+    private static string AssertLegacyRoundBallModule()
+    {
+        var legacy = LegacyRoundBallPath;
+        Assert.AreEqual(LegacyRoundBallSha256, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(legacy))),
+            "Compatibility and free-flight tests require the pinned accepted ABI-1 ball module, not a candidate copy.");
+        Assert.AreNotEqual(LegacyRoundBallSha256, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(PhysicsTestLibraries.Unified))),
+            "The new candidate cannot be its own legacy compatibility and physical oracle.");
+        return legacy;
+    }
 
     private static string Json<T>(T value) => JsonSerializer.Serialize(value);
 
@@ -759,6 +888,8 @@ public sealed class RoundBallTests
             return guarded[8..(FrameSize + 8)];
         }
 
+        internal double ReadGravityScale() => Get<DoubleDelegate>("dango_physics_get_round_ball_gravity_scale")();
+
         internal void AssertRejectedReadDoesNotWrite(int size)
         {
             var guarded = Enumerable.Repeat((byte)0xA5, FrameSize + 32).ToArray();
@@ -790,6 +921,7 @@ public sealed class RoundBallTests
         }
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int IntegerDelegate();
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate double DoubleDelegate();
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int CreateDelegate(nint config, int capacity, out nint handle);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int AddDelegate(nint handle, float x, float y, out int id);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int AddBallDelegate(nint handle, nint definition, out int id);

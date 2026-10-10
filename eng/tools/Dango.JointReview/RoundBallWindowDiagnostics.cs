@@ -22,6 +22,7 @@ internal sealed class RoundBallWindowDiagnostics : IDisposable
     private TimeSpan lastCpu;
     private double lastSampleSeconds, nextSampleSeconds = 1, nextStateSeconds;
     private int stateSequence;
+    private double lastStatePublicationSeconds;
     private bool disposed;
 
     internal RoundBallWindowDiagnostics(string directory, string moduleHash, bool automaticObservation)
@@ -54,6 +55,7 @@ internal sealed class RoundBallWindowDiagnostics : IDisposable
     internal double ElapsedSeconds => clock.Elapsed.TotalSeconds;
     internal bool AutomaticObservation { get; }
     internal long PeakWorkingSetBytes { get; private set; }
+    internal int DeferredStatePublications { get; private set; }
 
     internal void Start()
     {
@@ -71,7 +73,20 @@ internal sealed class RoundBallWindowDiagnostics : IDisposable
             var temporary = Path.Combine(directory, $"state-{stateSequence++:D8}.tmp");
             using (var output = new FileStream(temporary, FileMode.CreateNew))
                 JsonSerializer.Serialize(output, state, JsonOptions);
-            File.Move(temporary, Path.Combine(directory, "latest-state.json"), overwrite: true);
+            try
+            {
+                File.Move(temporary, Path.Combine(directory, "latest-state.json"), overwrite: true);
+                lastStatePublicationSeconds = seconds;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException &&
+                (error.HResult & 0xffff) is 5 or 32)
+            {
+                // Preserve this complete sample. A reader can briefly prevent replacing
+                // the convenience snapshot; the append-only observations still record it.
+                DeferredStatePublications++;
+                if (seconds - lastStatePublicationSeconds >= 1)
+                    throw new IOException("诊断状态文件持续无法替换超过一秒；观察停止，完整样本保留。", error);
+            }
             nextStateSeconds = seconds + .25;
         }
         if (seconds < nextSampleSeconds) return;

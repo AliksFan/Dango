@@ -6,6 +6,12 @@ public sealed partial class DangoPhysicsWorld
 {
     public const int RoundBallAbiVersion = 1;
 
+    /// <summary>Native round-ball gravity multiplier; earlier ball modules use unit gravity.</summary>
+    public double RoundBallGravityScale
+    {
+        get { VerifyAccess(); return api.RequireRoundBall().GravityScale; }
+    }
+
     public bool SupportsRoundBall
     {
         get
@@ -105,6 +111,7 @@ public sealed partial class DangoPhysicsWorld
 
         internal sealed class RoundBallApi
         {
+            internal readonly double GravityScale;
             internal readonly AddRoundBallDelegate Add;
             internal readonly RemoveDelegate Remove;
             internal readonly ReadRoundBallDelegate Read;
@@ -116,12 +123,17 @@ public sealed partial class DangoPhysicsWorld
                 if (version != RoundBallAbiVersion || size != Marshal.SizeOf<NativeRoundBallFrame>())
                     throw new DangoPhysicsException(DangoPhysicsFailureKind.AbiMismatch,
                         $"圆球可选 ABI／帧布局不匹配：需要版本 {RoundBallAbiVersion}、大小 {Marshal.SizeOf<NativeRoundBallFrame>()}，实际 {version}／{size}。");
+                GravityScale = GetOptional<RoundBallGravityScaleDelegate>(handle, "dango_physics_get_round_ball_gravity_scale")?.Invoke() ?? 1;
+                if (!double.IsFinite(GravityScale) || GravityScale <= 0)
+                    throw new DangoPhysicsException(DangoPhysicsFailureKind.AbiMismatch, "圆球模块返回无效重力倍率。");
                 Add = Get<AddRoundBallDelegate>(handle, "dango_physics_world_add_round_ball");
                 Remove = Get<RemoveDelegate>(handle, "dango_physics_world_remove_round_ball");
                 Read = Get<ReadRoundBallDelegate>(handle, "dango_physics_world_get_round_ball_frame");
             }
         }
 
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        internal delegate double RoundBallGravityScaleDelegate();
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         internal delegate int AddRoundBallDelegate(nint handle, in NativeRoundBallDefinition definition, out int id);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]

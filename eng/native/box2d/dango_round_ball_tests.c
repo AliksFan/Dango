@@ -606,6 +606,7 @@ static void rb_real_rolling_contracts(void)
         rb_world_destroy(&world,label);
     }
     const char* label="I3 actual airborne spin independent of horizontal displacement";
+    rb_close(dango_physics_get_round_ball_gravity_scale(),.5,0,0,label,"official-ball-gravity-scale");
     rb_test_world world;
     if (rb_world_create(&world,-3,0,label) && rb_world_add_ball(&world,rb_definition(2,2),label))
     {
@@ -623,6 +624,17 @@ static void rb_real_rolling_contracts(void)
                 rb_close(world.snapshot.ball.x,2,1e-10,0,label,"horizontal-position-stays-fixed");
                 rb_close(world.snapshot.ball.omega,3,1e-6,0,label,"free-flight-native-omega");
                 rb_close(world.snapshot.ball.angle,(step+1)*3*(double)(1.0f/60),1e-10,0,label,"angle-integrates-native-spin-without-horizontal-motion");
+                /* Closed-form semi-implicit free fall, independent of the
+                   implementation's material constant and exported value. */
+                int small_steps=(int)ceilf((1.0f/60)*960.0f);
+                if (small_steps<4) small_steps=4;
+                double small_dt=(double)((1.0f/60)/(float)small_steps);
+                double integrations=(double)((step+1)*small_steps);
+                double effective_gravity=.5*(double)(float)9.8;
+                rb_close(world.snapshot.ball.vy,-effective_gravity*small_dt*integrations,
+                    1e-10,0,label,"ball-only-half-gravity-free-flight-speed");
+                rb_close(world.snapshot.ball.y,2-effective_gravity*small_dt*small_dt*integrations*(integrations+1)/2,
+                    1e-10,0,label,"ball-only-half-gravity-free-flight-position");
                 sampled=true;
             }
         }

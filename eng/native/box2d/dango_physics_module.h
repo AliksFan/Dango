@@ -49,6 +49,8 @@ DANGO_API int dango_physics_get_allocated_bytes(void);
 // Optional round-ball ABI. Get checks exact frame_size before any output write.
 DANGO_API int dango_physics_get_round_ball_abi_version(void);
 DANGO_API int dango_physics_get_round_ball_frame_size(void);
+// Optional official-ball material capability; existing frame/definition stay ABI-1.
+DANGO_API double dango_physics_get_round_ball_gravity_scale(void);
 DANGO_API int dango_physics_world_add_round_ball(void* handle,const dango_ball_definition* definition,int* ball_id);
 DANGO_API int dango_physics_world_remove_round_ball(void* handle,int ball_id);
 DANGO_API int dango_physics_world_get_round_ball_frame(void* handle,dango_round_ball_frame* frame,int frame_size);
