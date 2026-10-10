@@ -267,12 +267,12 @@ function Assert-DangoAccountSyncResources {
 function Get-DangoAccountSyncScopedSql {
     param([Guid]$UserId,[Guid]$Epoch,[Guid]$OwnerId)
     if ($UserId -eq [Guid]::Empty -or $Epoch -eq [Guid]::Empty -or $OwnerId -eq [Guid]::Empty) {throw 'accountsync_scoped_ids_rejected'}
-    return @"
+    $sql=@"
 BEGIN READ ONLY;
 WITH selected AS (SELECT * FROM dango.users WHERE id='$($UserId.ToString('D'))'::uuid)
 SELECT json_build_object('users',(SELECT count(*) FROM selected),
  'validUsers',(SELECT count(*) FROM selected WHERE email='accountsync-$($OwnerId.ToString('N'))@example.invalid' AND email_confirmed AND disabled_at IS NULL AND NOT recovery_locked),
- 'namedUsers',(SELECT count(*) FROM selected WHERE nickname='新同步团子' AND profile_version=3),
+ 'namedUsers',(SELECT count(*) FROM selected WHERE nickname=U&'\65B0\540C\6B65\56E2\5B50' AND profile_version=3),
  'completeGraphs',(SELECT count(*) FROM selected u
  JOIN dango.pets p ON p.user_id=u.id AND p.configuration_version=6 AND (p.configuration::json->>'eyeSizePercent')::numeric=128
  JOIN dango.rooms r ON r.owner_id=u.id AND r.kind=0 AND r.status=0 AND r.version=1 AND r.template_id='desktop-pet-default'
@@ -293,6 +293,16 @@ SELECT json_build_object('users',(SELECT count(*) FROM selected),
  'revokedSessions',(SELECT count(*) FROM dango.auth_sessions s JOIN selected u ON u.id=s.user_id WHERE s.revoked_at IS NOT NULL));
 COMMIT;
 "@
+    Assert-DangoAccountSyncSqlTransportContract $sql
+    return $sql
+}
+
+function Assert-DangoAccountSyncSqlTransportContract {
+    param([string]$Sql)
+    # Windows psql's narrow argv can use ACP despite PGCLIENTENCODING=UTF8.
+    # Keep command-line SQL ASCII; the database interprets the Unicode literal.
+    if ([string]::IsNullOrWhiteSpace($Sql) -or $Sql.Length -gt 16384 -or $Sql -cmatch '[^\x00-\x7F]' -or
+        $Sql.Contains([char]0)) {throw 'accountsync_sql_transport_rejected'}
 }
 
 function Assert-DangoAccountSyncScopedGraph {

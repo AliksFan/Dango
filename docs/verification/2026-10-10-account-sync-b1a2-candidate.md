@@ -1,6 +1,6 @@
 # B1a2 导航修复候选与离线验证
 
-日期：2026-10-10。状态：导航及测试资源边界已修复，Release 与离线回归通过；新的真实 PostgreSQL／HTTPS／完整 AppHost 旅程尚未执行，等待[精确 B1a2 计划](../planning/2026-10-10-account-sync-b1a2-local-plan.md)批准。B1a 原额度已消耗，不能重跑或补查，失败证据见[原记录](2026-10-10-account-sync-b1a-navigation-failure.md)。
+日期：2026-10-10。以下保留执行前候选证据。B1a2 已获批准并执行一次：唯一真实旅程1 Passed，最终 scoped SQL 因中文参数编码失败，整体 Failed，额度已消耗。见[实际结果与独立审计](2026-10-10-account-sync-b1a2-scoped-query-failure.md)。原候选与清单仅供历史追溯，不能重跑或补查。B1a 原失败见[原记录](2026-10-10-account-sync-b1a-navigation-failure.md)。
 
 ## 修复与证据边界
 

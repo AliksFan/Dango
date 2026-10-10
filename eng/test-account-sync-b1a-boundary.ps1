@@ -441,8 +441,42 @@ Check 'ScopedSqlIsReadOnlyAndRestrictsAllRowsToOneIdentityEpochAndOwner' {
         $sql.Contains("WHERE id='$taskNewUser'::uuid",[StringComparison]::Ordinal) -and
         $sql.Contains('accountsync-'+$taskOwner.ToString('N')+'@example.invalid',[StringComparison]::Ordinal) -and
         $sql.Contains("recovery_epoch='f6d9b122-7630-42c3-849f-a199f1dd2485'::uuid",[StringComparison]::Ordinal) -and
-        $sql.Contains("nickname='新同步团子' AND profile_version=3",[StringComparison]::Ordinal) -and
+        $sql.Contains("nickname=U&'\65B0\540C\6B65\56E2\5B50' AND profile_version=3",[StringComparison]::Ordinal) -and
         $sql.Contains("p.configuration_version=6 AND (p.configuration::json->>'eyeSizePercent')::numeric=128",[StringComparison]::Ordinal)
+}
+Check 'ScopedSqlIsIdenticalUnderUtf8AndWindowsChineseCodePage' {
+    $sql=Get-DangoAccountSyncScopedSql ([Guid]$taskNewUser) ([Guid]'f6d9b122-7630-42c3-849f-a199f1dd2485') $taskOwner
+    Assert-DangoAccountSyncSqlTransportContract $sql
+    [Convert]::ToHexString([Text.Encoding]::UTF8.GetBytes($sql)) -ceq
+        [Convert]::ToHexString([Text.Encoding]::GetEncoding(936).GetBytes($sql))
+}
+Check 'ScopedSqlUnicodeEscapeDecodesToExactExpectedNickname' {
+    $sql=Get-DangoAccountSyncScopedSql ([Guid]$taskNewUser) ([Guid]'f6d9b122-7630-42c3-849f-a199f1dd2485') $taskOwner
+    $literal=[regex]::Match($sql,"nickname=U&'(?<value>(?:\\[0-9A-F]{4})+)' AND profile_version=3")
+    if (-not $literal.Success) {return $false}
+    $decoded=[regex]::Replace($literal.Groups['value'].Value,'\\([0-9A-F]{4})',{
+        param($match)
+        ([char][Convert]::ToInt32($match.Groups[1].Value,16)).ToString()
+    })
+    $decoded -ceq '新同步团子'
+}
+foreach($case in @('Empty','Whitespace','ChineseNickname','LatinNonAscii','Nul','TooLong')) {
+    Check ('SqlTransportRejects_'+$case) {
+        $sql=switch($case) {
+            Empty {''};Whitespace {'   '};ChineseNickname {"SELECT '新同步团子';"}
+            LatinNonAscii {"SELECT 'é';"};Nul {'SELECT '+[char]0+';'};TooLong {'a'*16385}
+        }
+        Rejected {Assert-DangoAccountSyncSqlTransportContract $sql} 'accountsync_sql_transport_rejected'
+    }
+}
+Check 'SqlTransportAcceptsExactAsciiLengthBoundary' {
+    Assert-DangoAccountSyncSqlTransportContract ('a'*16384)
+    $true
+}
+Check 'OriginalChineseArgumentReproducesRecordedUtf8ErrorBytes' {
+    $bytes=[Text.Encoding]::GetEncoding(936).GetBytes('新')
+    $bytes.Length -eq 2 -and $bytes[0] -eq 0xD0 -and $bytes[1] -eq 0xC2 -and
+        [Convert]::ToHexString([Text.Encoding]::UTF8.GetBytes('新')) -ceq 'E696B0'
 }
 foreach($empty in @('UserId','Epoch','OwnerId')) {
     Check ('ScopedSqlRejectsEmpty_'+$empty) {
