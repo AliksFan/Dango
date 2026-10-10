@@ -11,6 +11,10 @@ internal static class Program
     {
         try
         {
+            if (args.Length == 4 && args[1] == "--verify-landing-build-landing")
+                return LandingBuildMatrixVerification.RunLanding(Path.GetFullPath(args[0]), args[2], args[3]);
+            if (args.Length == 4 && args[1] == "--verify-landing-build-motion")
+                return LandingBuildMotionMatrixVerification.Run(Path.GetFullPath(args[0]), args[2], args[3]);
             if (args.Length is not 1 and not 3 and not 5) return 2;
             if (args.Length == 3 && args[1] == "--measure-idle-probe") return IdleDiagnostics.MeasureProbe(args[0], args[2]);
             var library = Path.GetFullPath(args[0]);
