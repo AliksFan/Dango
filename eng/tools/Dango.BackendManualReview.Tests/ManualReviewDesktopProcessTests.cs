@@ -21,6 +21,20 @@ public sealed class ManualReviewDesktopProcessTests
         Assert.ThrowsExactly<InvalidOperationException>(() => service.Launch(true, Candidate, Origin));
         Assert.AreEqual(0, fake.Starts.Count);
     }
+    [TestMethod] public void ReviewModePreflightRejectsUnauthorizedBeforeMutexRead()
+    {
+        var fake=new Resources{Existing=true};var service=new ManualReviewDesktopProcess(fake);
+        Assert.ThrowsExactly<InvalidOperationException>(()=>service.AssertNoReviewModeProcess(false));
+        Assert.AreEqual(0,fake.MutexReads+fake.VerifyCount+fake.Starts.Count);
+        Assert.ThrowsExactly<InvalidOperationException>(()=>service.AssertNoReviewModeProcess(true));
+        Assert.AreEqual(1,fake.MutexReads);Assert.AreEqual(0,fake.VerifyCount+fake.Starts.Count);
+    }
+    [TestMethod] public void ReviewModePreflightAbsentInstanceOnlyReadsItsMutex()
+    {
+        var fake=new Resources();var service=new ManualReviewDesktopProcess(fake);
+        service.AssertNoReviewModeProcess(true);
+        Assert.AreEqual(1,fake.MutexReads);Assert.AreEqual(0,fake.VerifyCount+fake.Starts.Count);
+    }
     [TestMethod] public void LaunchPinsOnlyFixedOriginAndReviewArgument()
     {
         var fake = new Resources(); var service = new ManualReviewDesktopProcess(fake);

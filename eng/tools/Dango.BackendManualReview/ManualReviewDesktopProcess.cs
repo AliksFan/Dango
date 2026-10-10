@@ -39,6 +39,12 @@ public sealed class ManualReviewDesktopProcess(IManualReviewDesktopResources? re
     private VerifiedManualReviewCandidate? fixedCandidate;
     private int launches;
 
+    public void AssertNoReviewModeProcess(bool authorizationVerified = true)
+    {
+        ManualReviewCredentials.RequireAuthorization(authorizationVerified);
+        if (backend.LocalRoomReviewExists()) throw new InvalidOperationException("manual_desktop_review_already_running");
+    }
+
     // Retains ownership even when observing the new process fails after Start.
     public IReadOnlyList<OwnedDesktopProcess> SnapshotOwnedProcesses()
     {
