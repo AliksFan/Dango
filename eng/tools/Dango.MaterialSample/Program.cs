@@ -11,6 +11,8 @@ internal static class Program
     {
         try
         {
+            if (args.Length == 6 && args[1] == "--preview-landing-build-stretch")
+                return LandingBuildStretchPreviewVerification.Run(Path.GetFullPath(args[0]), args[2], args[3], args[4], args[5]);
             if (args.Length == 4 && args[1] == "--verify-landing-build-landing")
                 return LandingBuildMatrixVerification.RunLanding(Path.GetFullPath(args[0]), args[2], args[3]);
             if (args.Length == 4 && args[1] == "--verify-landing-build-motion")

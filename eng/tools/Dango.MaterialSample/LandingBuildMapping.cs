@@ -2,7 +2,7 @@ using Dango.Desktop.Physics.Tuning;
 
 namespace Dango.MaterialSample;
 
-internal enum LandingBuildTable { A, B, C }
+internal enum LandingBuildTable { A, B, C, StretchPreview }
 
 internal sealed record LandingBuildFactors(double Radial, double Perimeter, double Area);
 
@@ -19,6 +19,9 @@ internal sealed record LandingBuildControls(double SizePercent = 100, double Sof
             RadialElasticity = baseline.RadialElasticity * factors.Radial,
             PerimeterElasticity = baseline.PerimeterElasticity * factors.Perimeter,
             AreaPreservationStrength = baseline.AreaPreservationStrength * factors.Area,
+            RadialMaximumRatio = table == LandingBuildTable.StretchPreview && LandingBuild < 50
+                ? 1.30 + (baseline.RadialMaximumRatio - 1.30) * (LandingBuild / 50)
+                : baseline.RadialMaximumRatio,
         };
         candidate.Validate();
         return candidate;
@@ -33,6 +36,7 @@ internal static class LandingBuildMapping
         LandingBuildTable.A => "landing-build-v1-A",
         LandingBuildTable.B => "landing-build-v1-B",
         LandingBuildTable.C => "landing-build-v1-C",
+        LandingBuildTable.StretchPreview => "landing-build-v3-stretch-preview",
         _ => throw new ArgumentOutOfRangeException(nameof(table)),
     };
 
@@ -45,6 +49,7 @@ internal static class LandingBuildMapping
             LandingBuildTable.A => (new LandingBuildFactors(.80, .95, .95), new LandingBuildFactors(1.20, 1.05, 1.05)),
             LandingBuildTable.B => (new LandingBuildFactors(.65, .90, .90), new LandingBuildFactors(1.40, 1.10, 1.10)),
             LandingBuildTable.C => (new LandingBuildFactors(.50, .85, .85), new LandingBuildFactors(1.60, 1.15, 1.15)),
+            LandingBuildTable.StretchPreview => (new LandingBuildFactors(.50, .70, 1.00), new LandingBuildFactors(1.60, 1.15, 1.15)),
             _ => throw new ArgumentOutOfRangeException(nameof(table)),
         };
         if (build == 50) return new(1, 1, 1);

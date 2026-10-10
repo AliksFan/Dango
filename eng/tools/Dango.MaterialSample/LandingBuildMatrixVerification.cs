@@ -131,7 +131,7 @@ internal static class LandingBuildMatrixVerification
         return selected.Trials.ToList();
     }
 
-    private static bool TrialComplete(LandingTrial trial) => trial.Failure is null &&
+    internal static bool TrialComplete(LandingTrial trial) => trial.Failure is null &&
         trial.CompletedFrames == 3600 && trial.AttemptedFrame == 3600 && trial.RenderedFrames == 3600 &&
         trial.ShortGateSamples == 120 && trial.MeanSamples == 600 && trial.ShortGateDrift < .003 &&
         trial.Mean is not null && trial.LastHealthyFrame is not null &&
