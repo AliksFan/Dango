@@ -231,13 +231,15 @@ internal static class LandingBuildStretchMatrixVerification
         return trials;
     }
 
-    private static bool MotionComplete(LandingMotionTrial trial)
+    private static bool MotionComplete(LandingMotionTrial trial) => MotionComplete(trial, Table);
+
+    internal static bool MotionComplete(LandingMotionTrial trial, LandingBuildTable table)
     {
         var frames = trial.Kind switch { "flight" => 120, "recovery" => 169, "drag" => 6660, _ => 0 };
         if (frames == 0 || !trial.ExecutionCompleted || !trial.Passed || trial.Failure is not null ||
             trial.RequestedFrames != frames || trial.CompletedFrames != frames || trial.AttemptedFrame != frames ||
             trial.SessionReportedFrames != frames || trial.RenderedFrames != frames || trial.LastHealthyFrameNumber != frames ||
-            trial.LastHealthyFrame is null || trial.Configuration != trial.Controls.Configure(Table)) return false;
+            trial.LastHealthyFrame is null || trial.Configuration != trial.Controls.Configure(table)) return false;
         return trial.Kind switch
         {
             "flight" => trial.Profile is null && trial.RoundWindowSamples == 60 && trial.RoundFrames == 60 &&
