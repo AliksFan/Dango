@@ -1,6 +1,6 @@
 # B1a2 closure：现存虚构账号的一次只读核对
 
-准备日期：2026-10-10；2026-10-11完成修复及离线检查，等待新的精确批准。未预留真实目录、未启动数据库或执行查询。根PowerShell1132/1132、实际SQL元数据47/47、Release零警告／错误及独立源码审查通过，见[候选记录](../verification/2026-10-11-account-sync-b1a2-closure-candidate.md)。B1a2已执行一次，真实正常旅程通过但最终scoped SQL因中文参数编码失败；原额度已消耗。此计划只核对其现存账号，不重复注册、写入或界面旅程，不覆盖原Failed回执。见[原实际结果](../verification/2026-10-10-account-sync-b1a2-scoped-query-failure.md)。
+准备日期：2026-10-10；2026-10-11获用户批准后按冻结输入执行一次并通过，额度已消耗。实际只读查询1、业务写入0、迁移0，目标与八项业务检查匹配，资源完整收尾，独立保存证据审计30/30通过，见[实际记录](../verification/2026-10-11-account-sync-b1a2-closure-passed.md)。以下保留原精确范围，当前状态更新不能使原清单重新可执行。批准前根PowerShell1132/1132、实际SQL元数据47/47及Release零警告／错误，见[候选记录](../verification/2026-10-11-account-sync-b1a2-closure-candidate.md)。原B1a2正常旅程通过而整体Failed的回执保留，见[原实际结果](../verification/2026-10-10-account-sync-b1a2-scoped-query-failure.md)。
 
 ## 精确目标与额度
 

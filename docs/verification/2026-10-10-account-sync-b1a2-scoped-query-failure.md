@@ -2,6 +2,8 @@
 
 日期：2026-10-10。用户批准后仅执行一次固定 B1a2 计划。唯一正式客户端旅程 **1 Passed、0 Failed、0 NotExecuted**，但运行器最终退出 1，失败码 `accountsync_run_scoped_evidence_failed`；整体运行仍为 Failed。本轮额度已消耗，不能补 SQL、重复旅程或复用原清单。
 
+2026-10-11补充：修复后另获精确批准的独立只读closure已执行一次并通过，补齐此轮现存账号的最终数据库证据，见[补验记录](2026-10-11-account-sync-b1a2-closure-passed.md)。本文件及原Failed回执保持原事实，不改写为Passed。
+
 ## 已验证事实
 
 执行候选 HEAD `237db114cad57270868c6018cf4171a49b3f8773`；运行前工作区干净，根与独立审查的 222 个冻结输入全部匹配。批准清单 SHA256 `AECA0FCBC2BAF55EB6E8B2D9888AF32B93B3624131999EEF42B055ED220F4102`，计划 SHA256 `B50B74F640F5850BAF3269E949F5A698138374F903D430D0CC03FA45D3351E25`。执行期间没有改源码或重建候选。

@@ -1,8 +1,8 @@
 # 登录同步、昵称与门廊修订验证
 
-日期：2026-10-10。状态：A5昵称迁移与七项真实PostgreSQL／HTTPS测试已通过；B1a2正式Desktop登录／连续捏脸同步的唯一正常旅程1 Passed，22表旧图保全与资源收尾通过，但最终scoped SQL因中文参数编码失败，整体运行Failed，等待新的单次只读核对。B1b异常／多设备、门廊真实端到端与主观验收仍未通过。
+更新：2026-10-11。A5昵称迁移与七项真实PostgreSQL／HTTPS测试已通过；B1a2正式Desktop登录／连续捏脸同步的唯一正常旅程1 Passed，22表旧图保全与资源收尾通过，原最终scoped SQL编码失败回执保留。修复后的独立单次只读closure已获批执行并通过，补齐最终数据库核对，见[实际记录](2026-10-11-account-sync-b1a2-closure-passed.md)。正常登录／昵称／捏脸同步技术主流程现已验证；B1b异常／多设备、门廊真实端到端与主观验收仍未通过。
 
-正常旅程已拆为 [B1a 精确计划](../planning/2026-10-10-account-sync-b1a-local-plan.md)。完整宿主内部接线7/7、新离线C#97/97、新PowerShell420/420与原工具回归438/438通过。随后 B1a 获批并执行一次，真实旅程 1 Failed：首次保存111时UIA找不到被换装编辑页隐藏的FaceButton。7次尝试、6条资源与7工具均已收尾；旧22表最终保全未验证，额度已消耗，详见[失败记录](2026-10-10-account-sync-b1a-navigation-failure.md)。导航和UIA超时收尾已修复，根C#100/100、真实独立窗口／账号／宿主接线27/27、PowerShell406/406与runner40/40、原工具438/438通过；旧批准调用新旅程为1 NotExecuted。[B1a2候选](2026-10-10-account-sync-b1a2-candidate.md)随后获批执行一次，旅程通过但最终数据库核对失败，见[实际记录](2026-10-10-account-sync-b1a2-scoped-query-failure.md)。原清单与数据保留，不能补SQL或重跑；修复后的运输边界416/416通过，正在准备独立只读closure。B1b和门廊真实验证仍需后续独立计划。
+正常旅程已拆为 [B1a 精确计划](../planning/2026-10-10-account-sync-b1a-local-plan.md)。完整宿主内部接线7/7、新离线C#97/97、新PowerShell420/420与原工具回归438/438通过。随后 B1a 获批并执行一次，真实旅程 1 Failed：首次保存111时UIA找不到被换装编辑页隐藏的FaceButton。7次尝试、6条资源与7工具均已收尾；旧22表最终保全未验证，额度已消耗，详见[失败记录](2026-10-10-account-sync-b1a-navigation-failure.md)。导航和UIA超时收尾已修复，根C#100/100、真实独立窗口／账号／宿主接线27/27、PowerShell406/406与runner40/40、原工具438/438通过；旧批准调用新旅程为1 NotExecuted。[B1a2候选](2026-10-10-account-sync-b1a2-candidate.md)随后获批执行一次，旅程通过但最终数据库核对失败，见[实际记录](2026-10-10-account-sync-b1a2-scoped-query-failure.md)。原清单与数据保留，不能补SQL或重跑；修复后的运输边界416/416通过，独立只读closure随后获批执行并通过，独立结果审计30/30。原失败回执与单次额度保留；B1b和门廊真实验证仍需后续独立计划。
 
 ## 登录比较与成功保存边界
 

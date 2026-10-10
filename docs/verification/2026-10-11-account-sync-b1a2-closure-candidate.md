@@ -1,6 +1,6 @@
 # B1a2 单次只读核对候选
 
-日期：2026-10-11。编码修复、固定只读运行器与离线检查完成，等待[精确closure计划](../planning/2026-10-10-account-sync-b1a2-closure-plan.md)的新批准。此次仅核对现存虚构账号；原B1a2旅程Passed、整个运行Failed的事实及回执保留，见[原记录](2026-10-10-account-sync-b1a2-scoped-query-failure.md)。
+日期：2026-10-11。此候选已按用户批准执行一次并通过，见[实际closure记录](2026-10-11-account-sync-b1a2-closure-passed.md)；以下离线、冻结与未执行描述均为批准前准备证据。单次额度已消耗，当前计划状态更新不再匹配原冻结摘要，不能复用。原B1a2旅程Passed、整个运行Failed的事实及回执保留，见[原记录](2026-10-10-account-sync-b1a2-scoped-query-failure.md)。
 
 ## 最终实现
 
