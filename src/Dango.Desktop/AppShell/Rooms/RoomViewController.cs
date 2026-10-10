@@ -5,6 +5,8 @@ namespace Dango.Desktop.AppShell.Rooms;
 internal enum RoomViewPreset { Standard, Near, Whole, Custom }
 internal enum RoomCameraMode { Follow, EdgeFollow, Manual }
 
+internal readonly record struct RoomCameraSnapshot(RoomCameraMode Mode, RoomViewPreset Preset, double RequestedPercent, double X, double Y);
+
 internal readonly record struct RoomProjection(double Scale, double OffsetX, double OffsetY)
 {
     internal LogicalPoint WorldToScreen(LogicalPoint point)
@@ -77,6 +79,23 @@ internal sealed class RoomViewController
     internal RoomCameraMode CameraMode { get; private set; } = RoomCameraMode.Follow;
     internal RoomViewPreset Preset { get; private set; } = RoomViewPreset.Standard;
     internal double ZoomPercent => Scale / StandardScale * 100;
+    internal RoomCameraSnapshot CaptureState() => new(CameraMode, Preset, requestedPercent, CameraX, CameraY);
+
+    internal void RestoreState(RoomCameraSnapshot snapshot)
+    {
+        RequireFinite(snapshot.RequestedPercent, nameof(snapshot));
+        RequireFinite(snapshot.X, nameof(snapshot));
+        RequireFinite(snapshot.Y, nameof(snapshot));
+        SelectCameraMode(snapshot.Mode);
+        Preset = snapshot.Preset;
+        requestedPercent = snapshot.RequestedPercent;
+        Recalculate();
+        CameraX = ClampCameraX(snapshot.X);
+        CameraY = ClampCameraY(snapshot.Y);
+        ResetMotion();
+        ApplyProjection();
+    }
+
     internal RoomProjection Projection { get; private set; }
 
     // Other hosts retain their accepted legacy camera unless explicitly opted in.

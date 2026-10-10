@@ -11,18 +11,19 @@ public static class FurnitureLayoutSerializer
     public const string CoordinateSpace = "static-platform-p-v1";
     public const int SceneGeometryRevision = 1;
 
-    public static byte[] Serialize(FurnitureLayout layout)
+    public static byte[] Serialize(FurnitureLayout layout, FurnitureLayoutContract? contract = null)
     {
         ArgumentNullException.ThrowIfNull(layout);
-        layout.Validate();
+        contract ??= FurnitureLayoutContract.Trial;
+        layout.Validate(contract);
         var buffer = new ArrayBufferWriter<byte>();
         using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { Indented = true }))
         {
             writer.WriteStartObject();
             writer.WriteNumber("schemaVersion", SchemaVersion);
-            writer.WriteString("sceneId", SceneId);
-            writer.WriteString("coordinateSpace", CoordinateSpace);
-            writer.WriteNumber("sceneGeometryRevision", SceneGeometryRevision);
+            writer.WriteString("sceneId", contract.SceneId);
+            writer.WriteString("coordinateSpace", contract.CoordinateSpace);
+            writer.WriteNumber("sceneGeometryRevision", contract.SceneGeometryRevision);
             writer.WriteNumber("layoutVersion", layout.LayoutVersion);
             if (layout.LastOperationId is { } operation) writer.WriteString("lastOperationId", operation);
             else writer.WriteNull("lastOperationId");
@@ -46,16 +47,17 @@ public static class FurnitureLayoutSerializer
         return buffer.WrittenSpan.ToArray();
     }
 
-    public static FurnitureLayout Deserialize(ReadOnlySpan<byte> bytes)
+    public static FurnitureLayout Deserialize(ReadOnlySpan<byte> bytes, FurnitureLayoutContract? contract = null)
     {
+        contract ??= FurnitureLayoutContract.Trial;
         if (bytes.Length is < 1 or > MaximumBytes) throw new InvalidDataException("布局文件大小无效。");
         using var document = JsonDocument.Parse(bytes.ToArray());
         var root = ExactObject(document.RootElement,
             ["schemaVersion", "sceneId", "coordinateSpace", "sceneGeometryRevision", "layoutVersion", "lastOperationId", "items"]);
         RequireInt(root["schemaVersion"], SchemaVersion);
-        RequireString(root["sceneId"], SceneId);
-        RequireString(root["coordinateSpace"], CoordinateSpace);
-        RequireInt(root["sceneGeometryRevision"], SceneGeometryRevision);
+        RequireString(root["sceneId"], contract.SceneId);
+        RequireString(root["coordinateSpace"], contract.CoordinateSpace);
+        RequireInt(root["sceneGeometryRevision"], contract.SceneGeometryRevision);
         if (root["layoutVersion"].ValueKind != JsonValueKind.Number || !root["layoutVersion"].TryGetInt64(out var version))
             throw new InvalidDataException("布局版本无效。");
         Guid? operation = root["lastOperationId"].ValueKind == JsonValueKind.Null ? null : ReadGuid(root["lastOperationId"]);
@@ -72,7 +74,7 @@ public static class FurnitureLayoutSerializer
             platform = new(ReadGuid(item["instanceId"]), new(ReadDouble(anchor["x"]), ReadDouble(anchor["y"])));
         }
         var layout = new FurnitureLayout(version, operation, platform);
-        layout.Validate();
+        layout.Validate(contract);
         return layout;
     }
 

@@ -49,7 +49,13 @@ public sealed class FurnitureAtomicFileWriter : IFurnitureFileWriter
 public sealed class FurnitureLayoutStore
 {
     private readonly IFurnitureFileWriter writer;
-    public FurnitureLayoutStore(IFurnitureFileWriter? writer = null) => this.writer = writer ?? new FurnitureAtomicFileWriter();
+    public FurnitureLayoutStore(IFurnitureFileWriter? writer = null, FurnitureLayoutContract? contract = null)
+    {
+        this.writer = writer ?? new FurnitureAtomicFileWriter();
+        Contract = contract ?? FurnitureLayoutContract.Trial;
+    }
+
+    public FurnitureLayoutContract Contract { get; }
 
     public FurnitureLayoutLoadResult Load(string path)
     {
@@ -63,7 +69,7 @@ public sealed class FurnitureLayoutStore
             var bytes = new byte[checked((int)input.Length)];
             input.ReadExactly(bytes);
             // Replacing an open file cannot make this snapshot partially parsed.
-            var layout = FurnitureLayoutSerializer.Deserialize(bytes);
+            var layout = FurnitureLayoutSerializer.Deserialize(bytes, Contract);
             return new(FurnitureLayoutLoadState.Valid, layout, bytes);
         }
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
@@ -88,10 +94,10 @@ public sealed class FurnitureLayoutStore
         catch { handle.Dispose(); throw; }
     }
 
-    public static string GetLayoutPath(string dataRoot)
+    public static string GetLayoutPath(string dataRoot, FurnitureLayoutContract? contract = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dataRoot);
-        return Path.Combine(Path.GetFullPath(dataRoot), "furniture-layout.json");
+        return Path.GetFullPath(Path.Combine(dataRoot, (contract ?? FurnitureLayoutContract.Trial).LayoutRelativePath));
     }
 
     internal static string NormalizePath(string path)
@@ -138,11 +144,11 @@ public sealed class FurnitureLayoutLease : IDisposable
         if (unknown) throw new InvalidOperationException("上次保存结果待确认，禁止继续覆盖。");
         if (pending is not null) throw new InvalidOperationException("已有布局提交正在进行。");
         if (!Baseline.IsWritable) throw new InvalidDataException("原布局受保护，禁止覆盖。");
-        candidate.Validate();
+        candidate.Validate(store.Contract);
         if (Baseline.Layout!.LayoutVersion != expectedVersion || expectedVersion == long.MaxValue ||
             candidate.LayoutVersion != expectedVersion + 1)
             throw new InvalidOperationException("布局保存版本冲突。");
-        var bytes = FurnitureLayoutSerializer.Serialize(candidate);
+        var bytes = FurnitureLayoutSerializer.Serialize(candidate, store.Contract);
         var temporary = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Path)!,
             ".furniture-" + Guid.NewGuid().ToString("N") + ".tmp");
         try

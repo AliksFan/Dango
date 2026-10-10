@@ -20,6 +20,7 @@ internal sealed partial class DangoApplicationHost
     private bool localRoomSelected;
     private bool roomControlCenterRequested;
     private bool openRoomMenuAfterHandoff;
+    private bool openFurnitureAfterHandoff;
     private LocalRoomPresentation preferredRoomPresentation = LocalRoomPresentation.Window;
     private string? localRoomFailure;
     private bool restoringRoomSource;
@@ -32,8 +33,8 @@ internal sealed partial class DangoApplicationHost
 
     private void BindLocalRoom(ControlCenterWindow homeWindow)
     {
-        localRoomDriver = new(sceneSession, stackedRuntime);
-        localRoomWindow = new(localRoomDriver);
+        localRoomDriver = new(sceneSession, stackedRuntime, furnitureDataRoot: Path.GetDirectoryName(Path.GetFullPath(settingsPath))!);
+        localRoomWindow = new(localRoomDriver, homeWindow.ProductHome.Resources);
         localRoomWallpaper = new();
         localRoomWallpaper.Bind(localRoomDriver);
         desktopPetRoom = new();
@@ -41,6 +42,8 @@ internal sealed partial class DangoApplicationHost
         homeWindow.ProductHome.EnableLocalRoomDoor();
         homeWindow.ProductHome.EnableDesktopPetRoomDoor();
         homeWindow.ProductHome.LocalRoomRequested += EnterLocalRoom;
+        homeWindow.ProductHome.LocalFurnitureRequested += EnterLocalRoomFurniture;
+        localRoomWindow.Deactivated += (_, _) => openFurnitureAfterHandoff = false;
         homeWindow.ProductHome.DesktopPetRoomRequested += EnterDesktopPetRoom;
         homeWindow.ProductHome.HealthyPorchFrameReady += attempt => CompleteLocalHandoff(attempt, LocalRoomPresentation.Porch);
         localRoomWindow.ReturnRequested += ReturnToPorch;
@@ -126,6 +129,13 @@ internal sealed partial class DangoApplicationHost
         BeginLocalHandoff(LocalRoomPresentation.Window, enterWorld: true);
     }
 
+    internal void EnterLocalRoomFurniture()
+    {
+        if (disposed || roomHandoff.Pending || localRoomSelected) return;
+        openFurnitureAfterHandoff = true;
+        EnterLocalRoom();
+    }
+
     internal void EnterDesktopPetRoom()
     {
         if (disposed || roomHandoff.Pending || localRoomSelected) return;
@@ -149,7 +159,13 @@ internal sealed partial class DangoApplicationHost
     {
         if (roomHandoff.Pending) return;
         if (!localRoomSelected) { ShowControlCenter(); return; }
-        if (roomHandoff.Current == LocalRoomPresentation.Window && localRoomDriver!.OwnsRuntime) { localRoomWindow!.FocusScene(); return; }
+        if (roomHandoff.Current == LocalRoomPresentation.Window && localRoomDriver!.OwnsRuntime)
+        {
+            if (!localRoomWindow!.IsVisible) localRoomWindow.Show();
+            if (localRoomWindow.WindowState == WindowState.Minimized) localRoomWindow.WindowState = WindowState.Normal;
+            localRoomWindow.FocusScene();
+            return;
+        }
         if (roomHandoff.Current is LocalRoomPresentation.Wallpaper or LocalRoomPresentation.DesktopPet) return;
         BeginLocalHandoff(preferredRoomPresentation, enterWorld: roomWorldNeedsRestore);
     }
@@ -157,8 +173,17 @@ internal sealed partial class DangoApplicationHost
     internal void ReturnToPorch()
     {
         if (disposed) return;
-        openRoomMenuAfterHandoff = false;
         GetOrCreateControlCenter();
+        // A pending target can already own a platform before its rendered-frame acknowledgement.
+        // Do not invalidate that handshake or resume the porch until the binding is cleared.
+        if (!stackedRuntime.TryDetachOrdinaryFurniture())
+        {
+            localRoomFailure = stackedRuntime.Furniture?.Status ?? "家具状态尚未核对，暂不能返回房门。";
+            trayIcon?.ShowRoomWarning(localRoomFailure);
+            return;
+        }
+        localRoomWindow?.EndFurnitureEditing();
+        openRoomMenuAfterHandoff = openFurnitureAfterHandoff = false;
         if (roomHandoff.Pending)
         {
             // Cancel invalidates all queued first-frame/input work before any recovery.
@@ -184,9 +209,26 @@ internal sealed partial class DangoApplicationHost
         if (disposed || localRoomDriver is null) return;
         var selected = localRoomSelected;
         var wasEntering = roomHandoff.Pending && !selected;
+        if (stackedRuntime.Furniture?.Busy == true)
+        {
+            localRoomFailure = "家具正在保存，请完成后重试。";
+            // Rendering owns the commit boundary. Keep it available while a file stage is pending.
+            if (localRoomWindow?.WindowState == WindowState.Minimized)
+            {
+                localRoomWindow.WindowState = WindowState.Normal;
+                localRoomWindow.Show();
+                localRoomWindow.FocusScene();
+            }
+            return;
+        }
+        if (wasEntering && !stackedRuntime.TryDetachOrdinaryFurniture())
+        {
+            FailLocalHandoff(roomHandoff.Generation, "家具绑定尚未卸载，暂不能隐藏入房窗口。");
+            return;
+        }
         roomHandoffTimeout.Stop();
         restoringRoomSource = false;
-        openRoomMenuAfterHandoff = false;
+        openRoomMenuAfterHandoff = openFurnitureAfterHandoff = false;
         localRoomDriver.Stop();
         if (selected)
         {
@@ -201,13 +243,23 @@ internal sealed partial class DangoApplicationHost
         {
             localRoomSelected = false;
             ShowAndActivate(controlCenterWindow!);
-            controlCenterWindow!.ProductHome.ResumePorch();
+            BeginLocalHandoff(LocalRoomPresentation.Porch, enterWorld: false);
         }
     }
 
     private void BeginLocalHandoff(LocalRoomPresentation target, bool enterWorld)
     {
         if (roomHandoff.Pending) return;
+        if (target != LocalRoomPresentation.Window || enterWorld)
+        {
+            if (!stackedRuntime.TryDetachOrdinaryFurniture())
+            {
+                localRoomFailure = stackedRuntime.Furniture?.Status ?? "家具操作尚未完成，请稍后重试。";
+                trayIcon?.ShowRoomWarning(localRoomFailure);
+                return;
+            }
+            localRoomWindow?.EndFurnitureEditing();
+        }
         var attempt = roomHandoff.Begin(target);
         localRoomFailure = null;
         controlCenterWindow!.ProductHome.SuspendForRoom();
@@ -278,6 +330,8 @@ internal sealed partial class DangoApplicationHost
                 localRoomWallpaper!.Hide(); desktopPetRoom!.Hide(); localRoomWindow!.FocusScene();
                 if (openRoomMenuAfterHandoff) localRoomWindow.OpenMenu();
                 openRoomMenuAfterHandoff = false;
+                if (openFurnitureAfterHandoff) localRoomWindow.BeginFurnitureEditing();
+                openFurnitureAfterHandoff = false;
             }
             else if (target == LocalRoomPresentation.DesktopPet)
             {
@@ -292,6 +346,24 @@ internal sealed partial class DangoApplicationHost
 
     private void FailLocalHandoff(long attempt, string message)
     {
+        // A late callback must not detach the furniture of a newer successful room.
+        if (disposed || attempt != roomHandoff.Generation || (!roomHandoff.Pending && !localRoomSelected)) return;
+        openFurnitureAfterHandoff = false;
+        if (!stackedRuntime.TryDetachOrdinaryFurniture())
+        {
+            localRoomFailure = stackedRuntime.Furniture?.Status ?? message;
+            if (stackedRuntime.Furniture?.Busy == true) return;
+            if (roomHandoff.Pending) roomHandoff.Fail(attempt);
+            roomHandoffTimeout.Stop();
+            openRoomMenuAfterHandoff = false;
+            restoringRoomSource = false;
+            localRoomDriver!.Stop();
+            localRoomWallpaper!.StopInput();
+            desktopPetRoom!.StopInput();
+            localRoomWindow!.Scene.ShowUnavailable("家具运行状态无法确认，房间已停止。请核对保存状态后重试。");
+            trayIcon?.ShowRoomWarning(localRoomFailure);
+            return;
+        }
         if (!disposed && !roomHandoff.Pending && attempt == roomHandoff.Generation && localRoomSelected)
         {
             openRoomMenuAfterHandoff = false;
@@ -367,6 +439,13 @@ internal sealed partial class DangoApplicationHost
     {
         if (disposed || roomHandoff.Pending) return;
         GetOrCreateControlCenter();
+        if (!stackedRuntime.TryDetachOrdinaryFurniture())
+        {
+            localRoomFailure = "家具状态尚未核对，暂不能重置团子。";
+            trayIcon?.ShowRoomWarning(localRoomFailure);
+            return;
+        }
+        localRoomWindow?.EndFurnitureEditing();
         localRoomDriver!.Stop();
         desktopPetRoom!.StopInput();
         controlCenterWindow!.ProductHome.SuspendForRoom();

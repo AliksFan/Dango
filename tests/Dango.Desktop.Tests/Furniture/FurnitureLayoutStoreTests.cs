@@ -12,52 +12,62 @@ public sealed class FurnitureLayoutStoreTests
     private static readonly Guid Operation = Guid.Parse("20000000-0000-4000-8000-000000000002");
 
     [TestMethod]
-    public void MissingLayoutDoesNotCreateFileAndTwoRealCommitsRoundTrip()
+    [DataRow(false)]
+    [DataRow(true)]
+    public void MissingLayoutDoesNotCreateFileAndTwoRealCommitsRoundTrip(bool ordinaryRoom)
     {
+        var contract = Contract(ordinaryRoom);
         var path = NewPath();
-        var store = new FurnitureLayoutStore();
+        var store = new FurnitureLayoutStore(contract: contract);
         var missing = store.Load(path);
         Assert.AreEqual(FurnitureLayoutLoadState.Missing, missing.State);
         Assert.AreEqual(FurnitureLayout.Empty, missing.Layout);
         Assert.IsFalse(File.Exists(path));
         using var lease = store.AcquireLease(path);
-        using (var first = lease.Stage(Candidate(), 0))
+        using (var first = lease.Stage(Candidate(contract), 0))
         {
             Assert.IsFalse(File.Exists(path)); // Staging never publishes the layout.
             Assert.AreEqual(FurnitureCommitState.Committed, first.Commit().State);
             Assert.AreEqual(FurnitureCommitState.Committed, first.Commit().State); // No second replacement.
         }
-        Assert.AreEqual(Candidate(), new FurnitureLayoutStore().Load(path).Layout);
+        Assert.AreEqual(Candidate(contract), new FurnitureLayoutStore(contract: contract).Load(path).Layout);
         var empty = new FurnitureLayout(2, Guid.Parse("30000000-0000-4000-8000-000000000003"), null);
         using (var second = lease.Stage(empty, 1)) Assert.AreEqual(FurnitureCommitState.Committed, second.Commit().State);
-        Assert.AreEqual(empty, new FurnitureLayoutStore().Load(path).Layout);
+        Assert.AreEqual(empty, new FurnitureLayoutStore(contract: contract).Load(path).Layout);
         Assert.AreEqual(0, Directory.GetFiles(Path.GetDirectoryName(path)!, ".furniture-*.tmp").Length);
     }
 
     [TestMethod]
-    [DataRow("invalid-json")]
-    [DataRow("{\"schemaVersion\":100}")]
-    [DataRow("{}")]
-    public void CorruptOrFutureLayoutIsPreservedAndCannotBeStaged(string content)
+    [DataRow("invalid-json", false)]
+    [DataRow("invalid-json", true)]
+    [DataRow("{\"schemaVersion\":100}", false)]
+    [DataRow("{\"schemaVersion\":100}", true)]
+    [DataRow("{}", false)]
+    [DataRow("{}", true)]
+    public void CorruptOrFutureLayoutIsPreservedAndCannotBeStaged(string content, bool ordinaryRoom)
     {
+        var contract = Contract(ordinaryRoom);
         var path = NewPath();
         Write(path, Encoding.UTF8.GetBytes(content));
         var bytes = File.ReadAllBytes(path);
-        var store = new FurnitureLayoutStore();
+        var store = new FurnitureLayoutStore(contract: contract);
         using var lease = store.AcquireLease(path);
         Assert.AreEqual(FurnitureLayoutLoadState.Protected, lease.Baseline.State);
         Assert.IsNull(lease.Baseline.Layout);
         Assert.IsFalse(lease.Baseline.IsWritable);
-        Assert.ThrowsExactly<InvalidDataException>(() => lease.Stage(Candidate(), 0));
+        Assert.ThrowsExactly<InvalidDataException>(() => lease.Stage(Candidate(contract), 0));
         CollectionAssert.AreEqual(bytes, File.ReadAllBytes(path));
     }
 
     [TestMethod]
-    public void OverBudgetAndLockedFileStayProtectedInsteadOfBecomingEmpty()
+    [DataRow(false)]
+    [DataRow(true)]
+    public void OverBudgetAndLockedFileStayProtectedInsteadOfBecomingEmpty(bool ordinaryRoom)
     {
+        var contract = Contract(ordinaryRoom);
         var path = NewPath();
         Write(path, new byte[FurnitureLayoutSerializer.MaximumBytes + 1]);
-        var store = new FurnitureLayoutStore();
+        var store = new FurnitureLayoutStore(contract: contract);
         Assert.AreEqual(FurnitureLayoutLoadState.Protected, store.Load(path).State);
         using var locked = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
         var load = store.Load(path);
@@ -67,23 +77,29 @@ public sealed class FurnitureLayoutStoreTests
     }
 
     [TestMethod]
-    public void LeaseCompetesAndReReadsTheLatestFileOnAcquisition()
+    [DataRow(false)]
+    [DataRow(true)]
+    public void LeaseCompetesAndReReadsTheLatestFileOnAcquisition(bool ordinaryRoom)
     {
+        var contract = Contract(ordinaryRoom);
         var path = NewPath();
-        var store = new FurnitureLayoutStore();
+        var store = new FurnitureLayoutStore(contract: contract);
         Assert.AreEqual(FurnitureLayoutLoadState.Missing, store.Load(path).State);
-        Write(path, FurnitureLayoutSerializer.Serialize(Candidate()));
+        Write(path, FurnitureLayoutSerializer.Serialize(Candidate(contract), contract));
         using var owner = store.AcquireLease(path);
-        Assert.AreEqual(Candidate(), owner.Baseline.Layout);
+        Assert.AreEqual(Candidate(contract), owner.Baseline.Layout);
         Assert.ThrowsExactly<IOException>(() => store.AcquireLease(path));
-        Assert.ThrowsExactly<InvalidOperationException>(() => owner.Stage(Candidate(), 0));
+        Assert.ThrowsExactly<InvalidOperationException>(() => owner.Stage(Candidate(contract), 0));
     }
 
     [TestMethod]
-    public async Task AnotherProcessCannotOpenTheOwnedLeaseAndLockFileIsReusable()
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task AnotherProcessCannotOpenTheOwnedLeaseAndLockFileIsReusable(bool ordinaryRoom)
     {
+        var contract = Contract(ordinaryRoom);
         var path = NewPath();
-        var store = new FurnitureLayoutStore();
+        var store = new FurnitureLayoutStore(contract: contract);
         using (var owner = store.AcquireLease(path))
         {
             const string script = "try { $held = [IO.File]::Open($env:DANGO_FURNITURE_TEST_LOCK, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None); $held.Dispose(); [Console]::WriteLine('ACQUIRED') } catch { [Console]::WriteLine('BLOCKED') }";
@@ -109,16 +125,19 @@ public sealed class FurnitureLayoutStoreTests
     }
 
     [TestMethod]
-    public void StagingFailureOrCorruptedTemporaryDoesNotPublishAnything()
+    [DataRow(false)]
+    [DataRow(true)]
+    public void StagingFailureOrCorruptedTemporaryDoesNotPublishAnything(bool ordinaryRoom)
     {
+        var contract = Contract(ordinaryRoom);
         foreach (var corrupt in new[] { false, true })
         {
             var path = NewPath();
-            Write(path, FurnitureLayoutSerializer.Serialize(Candidate()));
+            Write(path, FurnitureLayoutSerializer.Serialize(Candidate(contract), contract));
             var bytes = File.ReadAllBytes(path);
             var writer = new ControlledWriter { StageFailure = !corrupt, CorruptStage = corrupt };
-            using var lease = new FurnitureLayoutStore(writer).AcquireLease(path);
-            var updated = Candidate() with { LayoutVersion = 2, LastOperationId = Guid.NewGuid() };
+            using var lease = new FurnitureLayoutStore(writer, contract).AcquireLease(path);
+            var updated = Candidate(contract) with { LayoutVersion = 2, LastOperationId = Guid.NewGuid() };
             if (corrupt) Assert.ThrowsExactly<InvalidDataException>(() => lease.Stage(updated, 1));
             else Assert.ThrowsExactly<IOException>(() => lease.Stage(updated, 1));
             Assert.AreEqual(0, writer.CommitCalls);
@@ -128,44 +147,53 @@ public sealed class FurnitureLayoutStoreTests
     }
 
     [TestMethod]
-    public void UnconfirmedStageCanBeDisposedAndConcurrentStageCannotStart()
+    [DataRow(false)]
+    [DataRow(true)]
+    public void UnconfirmedStageCanBeDisposedAndConcurrentStageCannotStart(bool ordinaryRoom)
     {
+        var contract = Contract(ordinaryRoom);
         var path = NewPath();
-        using var lease = new FurnitureLayoutStore().AcquireLease(path);
-        using (var stage = lease.Stage(Candidate(), 0))
-            Assert.ThrowsExactly<InvalidOperationException>(() => lease.Stage(Candidate(), 0));
+        using var lease = new FurnitureLayoutStore(contract: contract).AcquireLease(path);
+        using (var stage = lease.Stage(Candidate(contract), 0))
+            Assert.ThrowsExactly<InvalidOperationException>(() => lease.Stage(Candidate(contract), 0));
         Assert.IsFalse(File.Exists(path));
         Assert.AreEqual(0, Directory.GetFiles(Path.GetDirectoryName(path)!, ".furniture-*.tmp").Length);
-        using var retry = lease.Stage(Candidate(), 0);
+        using var retry = lease.Stage(Candidate(contract), 0);
         Assert.AreEqual(FurnitureCommitState.Committed, retry.Commit().State);
     }
 
     [TestMethod]
-    public void ExternalByteChangeBeforeCommitCannotBeOverwrittenEvenWithSameVersion()
+    [DataRow(false)]
+    [DataRow(true)]
+    public void ExternalByteChangeBeforeCommitCannotBeOverwrittenEvenWithSameVersion(bool ordinaryRoom)
     {
+        var contract = Contract(ordinaryRoom);
         var path = NewPath();
-        Write(path, FurnitureLayoutSerializer.Serialize(Candidate()));
+        Write(path, FurnitureLayoutSerializer.Serialize(Candidate(contract), contract));
         var writer = new ControlledWriter();
-        using var lease = new FurnitureLayoutStore(writer).AcquireLease(path);
-        using var stage = lease.Stage(Candidate() with { LayoutVersion = 2, LastOperationId = Guid.NewGuid() }, 1);
+        using var lease = new FurnitureLayoutStore(writer, contract).AcquireLease(path);
+        using var stage = lease.Stage(Candidate(contract) with { LayoutVersion = 2, LastOperationId = Guid.NewGuid() }, 1);
         var changed = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(File.ReadAllBytes(path)) + " ");
         File.WriteAllBytes(path, changed);
         Assert.AreEqual(FurnitureCommitState.Unknown, stage.Commit().State);
         Assert.AreEqual(0, writer.CommitCalls);
         CollectionAssert.AreEqual(changed, File.ReadAllBytes(path));
         stage.Dispose();
-        Assert.ThrowsExactly<InvalidOperationException>(() => lease.Stage(Candidate(), 0));
+        Assert.ThrowsExactly<InvalidOperationException>(() => lease.Stage(Candidate(contract), 0));
     }
 
     [TestMethod]
-    public void CorruptionOfTemporaryAfterStagingCannotReplaceTheOldLayout()
+    [DataRow(false)]
+    [DataRow(true)]
+    public void CorruptionOfTemporaryAfterStagingCannotReplaceTheOldLayout(bool ordinaryRoom)
     {
+        var contract = Contract(ordinaryRoom);
         var path = NewPath();
-        Write(path, FurnitureLayoutSerializer.Serialize(Candidate()));
+        Write(path, FurnitureLayoutSerializer.Serialize(Candidate(contract), contract));
         var bytes = File.ReadAllBytes(path);
         var writer = new ControlledWriter();
-        using var lease = new FurnitureLayoutStore(writer).AcquireLease(path);
-        using var stage = lease.Stage(Candidate() with { LayoutVersion = 2, LastOperationId = Guid.NewGuid() }, 1);
+        using var lease = new FurnitureLayoutStore(writer, contract).AcquireLease(path);
+        using var stage = lease.Stage(Candidate(contract) with { LayoutVersion = 2, LastOperationId = Guid.NewGuid() }, 1);
         File.WriteAllText(writer.StagedPath!, "bad-temp");
         Assert.AreEqual(FurnitureCommitState.NotCommitted, stage.Commit().State);
         Assert.AreEqual(0, writer.CommitCalls);
@@ -173,34 +201,41 @@ public sealed class FurnitureLayoutStoreTests
     }
 
     [TestMethod]
-    [DataRow(false)]
-    [DataRow(true)]
-    public void ThrowBeforeCommitIsNotCommittedButThrowAfterCommitIsCommitted(bool after)
+    [DataRow(false, false)]
+    [DataRow(false, true)]
+    [DataRow(true, false)]
+    [DataRow(true, true)]
+    public void ThrowBeforeCommitIsNotCommittedButThrowAfterCommitIsCommitted(bool after, bool ordinaryRoom)
     {
+        var contract = Contract(ordinaryRoom);
         var path = NewPath();
-        Write(path, FurnitureLayoutSerializer.Serialize(Candidate()));
+        Write(path, FurnitureLayoutSerializer.Serialize(Candidate(contract), contract));
         var bytes = File.ReadAllBytes(path);
-        var updated = Candidate() with { LayoutVersion = 2, LastOperationId = Guid.NewGuid(), Platform = null };
+        var updated = Candidate(contract) with { LayoutVersion = 2, LastOperationId = Guid.NewGuid(), Platform = null };
         var writer = new ControlledWriter { CommitAction = (temporary, target, existed) =>
         {
             if (after) new FurnitureAtomicFileWriter().Commit(temporary, target, existed);
             throw new IOException("simulated commit exception");
         } };
-        using var lease = new FurnitureLayoutStore(writer).AcquireLease(path);
+        using var lease = new FurnitureLayoutStore(writer, contract).AcquireLease(path);
         using var stage = lease.Stage(updated, 1);
         Assert.AreEqual(after ? FurnitureCommitState.Committed : FurnitureCommitState.NotCommitted, stage.Commit().State);
-        if (after) Assert.AreEqual(updated, new FurnitureLayoutStore().Load(path).Layout);
+        if (after) Assert.AreEqual(updated, new FurnitureLayoutStore(contract: contract).Load(path).Layout);
         else CollectionAssert.AreEqual(bytes, File.ReadAllBytes(path));
     }
 
     [TestMethod]
-    [DataRow("removed")]
-    [DataRow("third-content")]
-    [DataRow("unreadable")]
-    public void CommitExceptionWithMissingThirdOrUnreadableTargetIsUnknown(string mode)
+    [DataRow("removed", false)]
+    [DataRow("removed", true)]
+    [DataRow("third-content", false)]
+    [DataRow("third-content", true)]
+    [DataRow("unreadable", false)]
+    [DataRow("unreadable", true)]
+    public void CommitExceptionWithMissingThirdOrUnreadableTargetIsUnknown(string mode, bool ordinaryRoom)
     {
+        var contract = Contract(ordinaryRoom);
         var path = NewPath();
-        Write(path, FurnitureLayoutSerializer.Serialize(Candidate()));
+        Write(path, FurnitureLayoutSerializer.Serialize(Candidate(contract), contract));
         FileStream? targetLock = null;
         var writer = new ControlledWriter { CommitAction = (_, target, _) =>
         {
@@ -211,41 +246,48 @@ public sealed class FurnitureLayoutStoreTests
         } };
         try
         {
-            using var lease = new FurnitureLayoutStore(writer).AcquireLease(path);
-            using (var stage = lease.Stage(Candidate() with { LayoutVersion = 2, LastOperationId = Guid.NewGuid() }, 1))
+            using var lease = new FurnitureLayoutStore(writer, contract).AcquireLease(path);
+            using (var stage = lease.Stage(Candidate(contract) with { LayoutVersion = 2, LastOperationId = Guid.NewGuid() }, 1))
                 Assert.AreEqual(FurnitureCommitState.Unknown, stage.Commit().State);
-            Assert.ThrowsExactly<InvalidOperationException>(() => lease.Stage(Candidate(), 0));
+            Assert.ThrowsExactly<InvalidOperationException>(() => lease.Stage(Candidate(contract), 0));
         }
         finally { targetLock?.Dispose(); }
     }
 
     [TestMethod]
-    public void FailedFirstCommitWithNoFileIsNotCommittedAndCanRetry()
+    [DataRow(false)]
+    [DataRow(true)]
+    public void FailedFirstCommitWithNoFileIsNotCommittedAndCanRetry(bool ordinaryRoom)
     {
+        var contract = Contract(ordinaryRoom);
         var path = NewPath();
         var writer = new ControlledWriter { CommitAction = (_, _, _) => throw new IOException("before initial move") };
-        using var lease = new FurnitureLayoutStore(writer).AcquireLease(path);
-        using (var stage = lease.Stage(Candidate(), 0)) Assert.AreEqual(FurnitureCommitState.NotCommitted, stage.Commit().State);
+        using var lease = new FurnitureLayoutStore(writer, contract).AcquireLease(path);
+        using (var stage = lease.Stage(Candidate(contract), 0)) Assert.AreEqual(FurnitureCommitState.NotCommitted, stage.Commit().State);
         Assert.IsFalse(File.Exists(path));
         writer.CommitAction = null;
-        using var retry = lease.Stage(Candidate(), 0);
+        using var retry = lease.Stage(Candidate(contract), 0);
         Assert.AreEqual(FurnitureCommitState.Committed, retry.Commit().State);
     }
 
     [TestMethod]
-    public void ResidualOtherOperationTemporaryIsNeverLoadedOrCleaned()
+    [DataRow(false)]
+    [DataRow(true)]
+    public void ResidualOtherOperationTemporaryIsNeverLoadedOrCleaned(bool ordinaryRoom)
     {
+        var contract = Contract(ordinaryRoom);
         var path = NewPath();
         var other = Path.Combine(Path.GetDirectoryName(path)!, ".furniture-unrelated.tmp");
-        Write(other, FurnitureLayoutSerializer.Serialize(Candidate()));
-        using (var lease = new FurnitureLayoutStore().AcquireLease(path))
-        using (var stage = lease.Stage(Candidate(), 0)) { }
+        Write(other, FurnitureLayoutSerializer.Serialize(Candidate(contract), contract));
+        using (var lease = new FurnitureLayoutStore(contract: contract).AcquireLease(path))
+        using (var stage = lease.Stage(Candidate(contract), 0)) { }
         Assert.IsFalse(File.Exists(path));
         Assert.IsTrue(File.Exists(other));
-        Assert.AreEqual(FurnitureLayoutLoadState.Missing, new FurnitureLayoutStore().Load(path).State);
+        Assert.AreEqual(FurnitureLayoutLoadState.Missing, new FurnitureLayoutStore(contract: contract).Load(path).State);
     }
 
-    private static FurnitureLayout Candidate() => new(1, Operation, new(Instance, LocalFurnitureSceneGeometry.DefaultAnchor));
+    private static FurnitureLayout Candidate(FurnitureLayoutContract contract) => new(1, Operation, new(Instance, contract.DefaultAnchor));
+    private static FurnitureLayoutContract Contract(bool ordinaryRoom) => ordinaryRoom ? FurnitureLayoutContract.OrdinaryRoom : FurnitureLayoutContract.Trial;
     private static string NewPath() => Path.Combine(TestRepository.Root, "artifacts", "test-runs", "live-furniture-store",
         Guid.NewGuid().ToString("N"), "furniture-layout.json");
     private static void Write(string path, byte[] bytes)

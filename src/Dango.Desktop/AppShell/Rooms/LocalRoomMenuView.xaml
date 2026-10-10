@@ -83,6 +83,19 @@
                     <TextBlock x:Name="RoomInstructions" LineHeight="20" TextWrapping="Wrap"
                                Text="A / D 移动    ·    S 轻压&#10;空格 跳跃    ·    滚轮 调视距&#10;Shift + 左键横移 抚摸&#10;Esc 打开 / 收起菜单" />
                 </Border>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <Button x:Name="RoomFurnitureButton" Width="32" Height="32" MinHeight="32" Padding="5"
+                            Visibility="Collapsed" IsEnabled="False" Click="OnFurniture"
+                            ToolTip="布置家具" ToolTipService.InitialShowDelay="250" ToolTipService.ShowOnDisabled="True"
+                            AutomationProperties.Name="布置家具">
+                        <Path Data="M3,7 L21,7 L21,14 L3,14 Z M5,14 L5,21 M19,14 L19,21 M6,10 L11,10 M14,11 L18,11"
+                              Width="20" Height="20" Stretch="Uniform" StrokeThickness="1.6"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                    </Button>
+                </StackPanel>
+                <TextBlock x:Name="RoomFurnitureUnavailable" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8"
+                           Visibility="Collapsed" Foreground="{StaticResource RoomMenuMuted}" />
                 <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
                     <Button x:Name="RoomReturnButton" Content="回门廊" Margin="0,0,4,0" Click="OnReturn" />

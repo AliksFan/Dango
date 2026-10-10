@@ -19,7 +19,7 @@ public sealed record DesktopPhysicsSceneFrame(
 /// coordinates and render these ID-bearing snapshots; they do not own worlds.
 /// This adapter is staged separately from the existing host entry point.
 /// </summary>
-public sealed class DesktopPhysicsScene : IDisposable
+public sealed partial class DesktopPhysicsScene : IDisposable
 {
     private readonly DangoPhysicsWorld world;
     private readonly Dictionary<DangoEntityId, DangoPhysicsPresentationAdapter> presenters = [];

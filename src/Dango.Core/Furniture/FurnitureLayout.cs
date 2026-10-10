@@ -7,10 +7,10 @@ public sealed record FurniturePlatformInstance(Guid InstanceId, FurnitureAnchor 
     public const string PresetId = "official-static-platform";
     public const int PresetRevision = 1;
 
-    public void Validate()
+    public void Validate(FurnitureLayoutContract? contract = null)
     {
         if (InstanceId == Guid.Empty) throw new InvalidDataException("家具实例标识为空。");
-        LocalFurnitureSceneGeometry.ValidateAnchor(Anchor);
+        (contract ?? FurnitureLayoutContract.Trial).ValidateAnchor(Anchor);
     }
 }
 
@@ -19,12 +19,12 @@ public sealed record FurnitureLayout(long LayoutVersion, Guid? LastOperationId, 
 {
     public static FurnitureLayout Empty { get; } = new(0, null, null);
 
-    public void Validate()
+    public void Validate(FurnitureLayoutContract? contract = null)
     {
         if (LayoutVersion < 0 || (LayoutVersion == 0 && LastOperationId is not null) ||
             (LayoutVersion > 0 && (!LastOperationId.HasValue || LastOperationId.Value == Guid.Empty)))
             throw new InvalidDataException("布局版本和最近操作标识不一致。");
-        Platform?.Validate();
+        Platform?.Validate(contract);
     }
 }
 
@@ -48,18 +48,5 @@ public static class LocalFurnitureSceneGeometry
     public const int MaxNudgePerSecond = 20;
     public static FurnitureAnchor DefaultAnchor { get; } = new(0, 1.375);
 
-    public static void ValidateAnchor(FurnitureAnchor anchor)
-    {
-        if (!double.IsFinite(anchor.X) || !double.IsFinite(anchor.Y))
-            throw new InvalidDataException("家具坐标不是有限值。");
-        var left = anchor.X - PlatformWidth / 2;
-        var right = anchor.X + PlatformWidth / 2;
-        var bottom = anchor.Y - PlatformHeight;
-        if (left < Left || right > Right || bottom < Ground || anchor.Y > Ceiling)
-            throw new InvalidDataException("家具超出房间边界。");
-        // Touching is allowed; overlap must have positive area in both axes.
-        if (left < SpawnProtectionRight && right > SpawnProtectionLeft &&
-            bottom < SpawnProtectionTop && anchor.Y > SpawnProtectionBottom)
-            throw new InvalidDataException("家具穿入固定出生保护区。");
-    }
+    public static void ValidateAnchor(FurnitureAnchor anchor) => FurnitureLayoutContract.Trial.ValidateAnchor(anchor);
 }

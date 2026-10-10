@@ -10,10 +10,10 @@ public sealed record FurnitureEditOperation(
     Guid? TargetInstanceId,
     FurniturePlatformInstance? Candidate)
 {
-    public FurnitureLayout BuildCandidate(FurnitureLayout baseline)
+    public FurnitureLayout BuildCandidate(FurnitureLayout baseline, FurnitureLayoutContract? contract = null)
     {
         ArgumentNullException.ThrowIfNull(baseline);
-        baseline.Validate();
+        baseline.Validate(contract);
         if (OperationId == Guid.Empty || ExpectedVersion < 0 || baseline.LayoutVersion != ExpectedVersion ||
             baseline.LastOperationId == OperationId)
             throw new InvalidOperationException("布局版本已变化或请求标识不可用。");
@@ -27,7 +27,7 @@ public sealed record FurnitureEditOperation(
         };
         if (!valid) throw new InvalidOperationException("家具请求与当前实例不一致。");
         var layout = new FurnitureLayout(checked(ExpectedVersion + 1), OperationId, Candidate);
-        layout.Validate();
+        layout.Validate(contract);
         return layout;
     }
 }

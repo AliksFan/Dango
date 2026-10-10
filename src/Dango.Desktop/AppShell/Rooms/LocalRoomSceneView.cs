@@ -13,7 +13,7 @@ using Pen = System.Windows.Media.Pen;
 
 namespace Dango.Desktop.AppShell.Rooms;
 
-internal sealed class LocalRoomSceneView : Grid
+internal sealed partial class LocalRoomSceneView : Grid
 {
     internal const double WorldWidth = 2160;
     internal const double WorldHeight = 360;
@@ -368,6 +368,7 @@ internal sealed class LocalRoomSceneView : Grid
                 VisualTreeHelper.GetDpi(this).PixelsPerDip);
             dc.DrawText(text, new Point(Math.Max(24, (ActualWidth - text.Width) / 2), 48));
         }
+        DrawFurniture(dc);
         // Only the painted floor is lifted; the camera, body and native collision remain unchanged.
         if (right > left && floorY < ActualHeight)
             dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(205, 182, 149)), null,

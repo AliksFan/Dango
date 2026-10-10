@@ -71,8 +71,9 @@ public sealed class LocalRoomWindowMenuTests
         var names = Descendants<Button>(menu).Select(button => button.Name).ToArray();
         CollectionAssert.AreEquivalent(new[]
         {
-            "RoomReturnButton", "RoomControlCenterButton", "RoomWindowButton", "RoomWallpaperButton", "RoomRecoverButton",
-        }, names, "The menu contains only the five real room actions, with no continue or camera preset buttons.");
+            "RoomReturnButton", "RoomControlCenterButton", "RoomWindowButton", "RoomWallpaperButton", "RoomRecoverButton", "RoomFurnitureButton",
+        }, names, "The room menu includes furniture capability admission, with no continue or camera preset buttons.");
+        Assert.IsFalse(Find<Button>(menu, "RoomFurnitureButton").IsEnabled, "A menu-only fixture without a healthy furnished runtime cannot edit.");
         var instructions = Find<System.Windows.Controls.TextBlock>(menu, "RoomInstructions").Text;
         foreach (var control in new[] { "A / D", "S", "空格", "滚轮", "Shift + 左键横移", "Esc" })
             StringAssert.Contains(instructions, control);

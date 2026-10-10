@@ -12,6 +12,7 @@ internal sealed partial class LocalRoomMenuView : UserControl
     internal event Action<LocalRoomPresentation>? PresentationRequested;
     internal event Action? RecoverRequested;
     internal event Action<RoomCameraMode>? CameraModeRequested;
+    internal event Action? FurnitureRequested;
     private bool showCameraSettings;
     private bool refreshingCamera;
     private const string Instructions = "A / D 移动    ·    S 轻压\n空格 跳跃    ·    滚轮 调视距\nShift + 左键横移 抚摸\nEsc 打开 / 收起菜单";
@@ -27,6 +28,15 @@ internal sealed partial class LocalRoomMenuView : UserControl
         }
     }
     internal bool IsCameraDropDownOpen => RoomCameraModeSelector.IsDropDownOpen;
+
+    internal void SetFurnitureAvailability(bool available, string reason)
+    {
+        RoomFurnitureButton.Visibility = showCameraSettings ? Visibility.Visible : Visibility.Collapsed;
+        RoomFurnitureButton.IsEnabled = available;
+        RoomFurnitureButton.ToolTip = reason;
+        RoomFurnitureUnavailable.Text = available ? "" : reason;
+        RoomFurnitureUnavailable.Visibility = showCameraSettings && !available ? Visibility.Visible : Visibility.Collapsed;
+    }
 
     internal LocalRoomMenuView()
     {
@@ -69,6 +79,10 @@ internal sealed partial class LocalRoomMenuView : UserControl
     private void OnWindow(object sender, RoutedEventArgs e) => PresentationRequested?.Invoke(LocalRoomPresentation.Window);
     private void OnWallpaper(object sender, RoutedEventArgs e) => PresentationRequested?.Invoke(LocalRoomPresentation.Wallpaper);
     private void OnRecover(object sender, RoutedEventArgs e) => RecoverRequested?.Invoke();
+    private void OnFurniture(object sender, RoutedEventArgs e)
+    {
+        if (RoomFurnitureButton.IsEnabled) FurnitureRequested?.Invoke();
+    }
     private void OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
         if (IsCameraDropDownOpen) return;
