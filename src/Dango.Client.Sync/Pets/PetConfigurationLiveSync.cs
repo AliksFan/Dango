@@ -5,8 +5,11 @@ namespace Dango.Client.Sync.Pets;
 
 public enum PetLiveSyncStatus { Synchronized, Pending, Synchronizing, PausedForDraft, Offline, Failed, Stopped }
 
+// Synchronized describes current local/cloud parity. The last local-save outcome separately
+// distinguishes an acknowledged upload from a local edit superseded by a later server commit.
 public sealed record PetLiveSyncState(PetLiveSyncStatus Status, long HighestCloudVersion,
-    bool HasPendingLocalSave, string? FailureCode = null);
+    bool HasPendingLocalSave, string? FailureCode = null,
+    long? LastLocalSaveSerial = null, PetChoiceOutcome? LastLocalSaveOutcome = null);
 
 /// <summary>
 /// One authenticated session. The caller supplies a confirmed login baseline, successful-save
@@ -16,6 +19,7 @@ public sealed record PetLiveSyncState(PetLiveSyncStatus Status, long HighestClou
 public sealed class PetConfigurationLiveSyncCoordinator : IDisposable
 {
     private const int MaximumWriteAttempts = 2;
+    private const int MaximumReceiptAttempts = 2;
     private readonly IRemotePetConfigurationClient remote;
     private readonly ILocalPetConfigurationRepository local;
     private readonly IPetConfigurationJournal journal;
@@ -31,6 +35,9 @@ public sealed class PetConfigurationLiveSyncCoordinator : IDisposable
     private long savedSerial;
     private long? pendingSerial;
     private Attempt? attempt;
+    private PendingReceipt? pendingReceipt;
+    private long? lastLocalSaveSerial;
+    private PetChoiceOutcome? lastLocalSaveOutcome;
     private bool stopped;
 
     public PetConfigurationLiveSyncCoordinator(IRemotePetConfigurationClient remote,
@@ -73,6 +80,9 @@ public sealed class PetConfigurationLiveSyncCoordinator : IDisposable
             if (!entered) return State;
             Check(token); SetStatus(PetLiveSyncStatus.Synchronizing);
             var observed = await ReadCloudAsync(token);
+            PendingReceipt? receipt;
+            lock (stateLock) receipt = pendingReceipt;
+            if (receipt is not null && !await TryReceiptAsync(receipt, token)) return State;
             Attempt? current;
             lock (stateLock) current = attempt;
             if (current is not null)
@@ -81,18 +91,25 @@ public sealed class PetConfigurationLiveSyncCoordinator : IDisposable
                 {
                     var receiptSaved = await FinishAsync(current, AppearanceContract.Equivalent(observed.Configuration, current.Configuration)
                         ? PetChoiceOutcome.TargetSatisfied : PetChoiceOutcome.Conflict, observed, token);
+                    if (!receiptSaved) return State;
                     await ReconcileLocalAsync(token);
-                    if (!receiptSaved) SetStatus(PetLiveSyncStatus.Failed, "archive_write_failed");
                     return State;
                 }
                 // Drafts are never captured/uploaded. An already submitted saved edit keeps its immutable intent.
                 _ = await local.CaptureAsync(token); Check(token);
                 if (!current.RetryAllowed || current.WriteAttempts >= MaximumWriteAttempts)
                 {
-                    SetStatus(PetLiveSyncStatus.Failed, "cloud_outcome_unknown");
-                    return State; // Keep checking facts, but do not exceed this edit's total PATCH budget.
+                    var newer = Pending();
+                    if (newer is null || newer <= current.Serial)
+                    {
+                        SetStatus(PetLiveSyncStatus.Failed, "cloud_outcome_unknown");
+                        return State; // Only another explicit successful save can be a new write intent.
+                    }
+                    // Do not revive this edit or reset its budget. Preserve its unresolved outcome
+                    // before allowing the separately numbered, newly saved edit to be submitted.
+                    if (!await FinishAsync(current, PetChoiceOutcome.OutcomeUnknown, observed, token)) return State;
                 }
-                return await SubmitAsync(current, token);
+                else return await SubmitAsync(current, token);
             }
 
             var serial = Pending();
@@ -160,8 +177,8 @@ public sealed class PetConfigurationLiveSyncCoordinator : IDisposable
                 throw new PetConfigurationChoiceException("remote_response_invalid");
             Observe(updated); // An acknowledged response cannot lower the already observed version.
             var receiptSaved = await FinishAsync(current, PetChoiceOutcome.CloudUpdated, updated, ct);
+            if (!receiptSaved) return State;
             await ReconcileLocalAsync(ct);
-            if (!receiptSaved) SetStatus(PetLiveSyncStatus.Failed, "archive_write_failed");
             return State;
         }
         catch (PetConfigurationHttpException fault) when (fault.Failure is PetHttpFailure.Conflict or PetHttpFailure.Unavailable)
@@ -173,8 +190,8 @@ public sealed class PetConfigurationLiveSyncCoordinator : IDisposable
             {
                 var receiptSaved = await FinishAsync(current, AppearanceContract.Equivalent(observed.Configuration, current.Configuration)
                     ? PetChoiceOutcome.TargetSatisfied : PetChoiceOutcome.Conflict, observed, ct);
+                if (!receiptSaved) return State;
                 await ReconcileLocalAsync(ct);
-                if (!receiptSaved) SetStatus(PetLiveSyncStatus.Failed, "archive_write_failed");
                 return State;
             }
             // A 409 without a newer version is not a successful mutation or a usable new baseline.
@@ -195,16 +212,24 @@ public sealed class PetConfigurationLiveSyncCoordinator : IDisposable
     private async Task<bool> FinishAsync(Attempt completed, PetChoiceOutcome outcome,
         PetConfigurationSnapshot observed, CancellationToken ct)
     {
-        var saved = await WriteReceiptAsync(completed.JournalId, PetConfigurationChoice.Local, outcome,
-            observed.ConfigurationVersion, outcome == PetChoiceOutcome.Conflict ? "pet_configuration_conflict" : null, ct);
-        Check(ct);
+        var receipt = new PendingReceipt(completed.JournalId, new(PetConfigurationChoice.Local, outcome,
+            clock.GetUtcNow(), observed.ConfigurationVersion, outcome switch
+            {
+                PetChoiceOutcome.Conflict => "pet_configuration_conflict",
+                PetChoiceOutcome.OutcomeUnknown => "cloud_outcome_unknown",
+                PetChoiceOutcome.Failed => "remote_request_rejected",
+                _ => null
+            }));
         lock (stateLock)
         {
+            Check(lifetimeToken);
+            if (pendingReceipt is not null) throw new PetConfigurationChoiceException("archive_write_failed");
+            pendingReceipt = receipt;
             if (ReferenceEquals(attempt, completed)) attempt = null;
-            Publish(saved ? PetLiveSyncStatus.Synchronizing : PetLiveSyncStatus.Failed,
-                saved ? null : "archive_write_failed");
+            lastLocalSaveSerial = completed.Serial; lastLocalSaveOutcome = outcome;
+            Publish(PetLiveSyncStatus.Synchronizing);
         }
-        return saved;
+        return await TryReceiptAsync(receipt, ct);
     }
 
     private async Task<PetLiveSyncState> ReconcileLocalAsync(CancellationToken ct)
@@ -226,7 +251,7 @@ public sealed class PetConfigurationLiveSyncCoordinator : IDisposable
         Check(ct);
         if (Pending() is not null || Serial() != serial)
         { SetStatus(PetLiveSyncStatus.Pending); return State; }
-        await local.ApplyAsync(captured, cloud.Configuration, ct); Check(ct);
+        await local.ApplyAsync(captured, cloud.Configuration, ct); Check(lifetimeToken);
         var saved = await WriteReceiptAsync(id, PetConfigurationChoice.Cloud, PetChoiceOutcome.LocalApplied,
             cloud.ConfigurationVersion, null, ct);
         Check(ct);
@@ -244,13 +269,31 @@ public sealed class PetConfigurationLiveSyncCoordinator : IDisposable
     private async Task<bool> WriteReceiptAsync(Guid id, PetConfigurationChoice choice, PetChoiceOutcome outcome,
         long version, string? failure, CancellationToken ct)
     {
+        var receipt = new PendingReceipt(id, new(choice, outcome, clock.GetUtcNow(), version, failure));
+        lock (stateLock)
+        {
+            Check(lifetimeToken);
+            if (pendingReceipt is not null) throw new PetConfigurationChoiceException("archive_write_failed");
+            pendingReceipt = receipt;
+        }
+        return await TryReceiptAsync(receipt, ct);
+    }
+
+    private async Task<bool> TryReceiptAsync(PendingReceipt receipt, CancellationToken ct)
+    {
+        Check(ct);
+        if (receipt.WriteAttempts >= MaximumReceiptAttempts)
+        { SetStatus(PetLiveSyncStatus.Failed, "archive_write_failed"); return false; }
+        receipt.WriteAttempts++;
         try
         {
-            await journal.WriteReceiptAsync(id, new(choice, outcome, clock.GetUtcNow(), version, failure), ct);
+            await journal.WriteReceiptAsync(receipt.JournalId, receipt.Receipt, ct);
+            Check(lifetimeToken);
+            lock (stateLock) if (ReferenceEquals(pendingReceipt, receipt)) pendingReceipt = null;
             return true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or PetConfigurationChoiceException)
-        { return false; }
+        { receipt.HadFailure = true; SetStatus(PetLiveSyncStatus.Failed, "archive_write_failed"); return false; }
     }
 
     private async Task<PetConfigurationSnapshot> ReadCloudAsync(CancellationToken ct)
@@ -293,7 +336,11 @@ public sealed class PetConfigurationLiveSyncCoordinator : IDisposable
         lock (stateLock)
         {
             if (stopped) return;
-            if (pendingSerial <= throughSerial) pendingSerial = null;
+            if (pendingSerial is { } pending && pending <= throughSerial)
+            {
+                lastLocalSaveSerial = pending; lastLocalSaveOutcome = PetChoiceOutcome.TargetSatisfied;
+                pendingSerial = null;
+            }
             Publish(pendingSerial is null && attempt is null ? PetLiveSyncStatus.Synchronized : PetLiveSyncStatus.Pending);
         }
     }
@@ -304,8 +351,14 @@ public sealed class PetConfigurationLiveSyncCoordinator : IDisposable
     }
     private void SetStatus(PetLiveSyncStatus status, string? failure = null)
     { lock (stateLock) if (!stopped) Publish(status, failure); }
-    private void Publish(PetLiveSyncStatus status, string? failure = null) => state = new(status,
-        highest.ConfigurationVersion, pendingSerial is not null || attempt is not null, failure);
+    private void Publish(PetLiveSyncStatus status, string? failure = null)
+    {
+        if (pendingReceipt is not null && status != PetLiveSyncStatus.Stopped
+            && (pendingReceipt.HadFailure || status == PetLiveSyncStatus.Synchronized))
+        { status = PetLiveSyncStatus.Failed; failure = "archive_write_failed"; }
+        state = new(status, highest.ConfigurationVersion, pendingSerial is not null || attempt is not null,
+            failure, lastLocalSaveSerial, lastLocalSaveOutcome);
+    }
 
     public void Stop() => Stop(null);
     private void Stop(string? failure)
@@ -313,7 +366,7 @@ public sealed class PetConfigurationLiveSyncCoordinator : IDisposable
         lock (stateLock)
         {
             if (stopped) return;
-            stopped = true; attempt = null; pendingSerial = null;
+            stopped = true; attempt = null; pendingSerial = null; pendingReceipt = null;
             Publish(PetLiveSyncStatus.Stopped, failure);
         }
         lifetime.Cancel();
@@ -328,5 +381,13 @@ public sealed class PetConfigurationLiveSyncCoordinator : IDisposable
         public Guid JournalId { get; } = journalId;
         public int WriteAttempts { get; set; }
         public bool RetryAllowed { get; set; } = true;
+    }
+
+    private sealed class PendingReceipt(Guid journalId, PetConfigurationReceipt receipt)
+    {
+        public Guid JournalId { get; } = journalId;
+        public PetConfigurationReceipt Receipt { get; } = receipt;
+        public int WriteAttempts { get; set; }
+        public bool HadFailure { get; set; }
     }
 }
