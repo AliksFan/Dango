@@ -51,6 +51,12 @@ public sealed class ManualReviewHttpGuard(RequestDelegate next, ManualReviewBudg
             requestCopy = new MemoryStream(body, writable: false);
             context.Request.Body = requestCopy;
             using var document = body.Length > 0 ? JsonDocument.Parse(body, new() { MaxDepth = 16, AllowDuplicateProperties = false }) : null;
+            if (HttpMethods.IsPost(method) && path == "/api/v1/auth/login" && budget.Identity is null)
+            {
+                var login = Read<LoginRequest>(document?.RootElement);
+                if (!budget.IsEmail(login.Email)) throw ManualReviewBudget.Reject();
+                await budget.RecoverIdentityAsync(context.RequestAborted);
+            }
             var plan = PlanMutation(context, path, document?.RootElement);
             var proof = context.Request.Headers["X-Registration-Proof"];
             if (proof.Count > 1 || proof.ToString().Length > 4096 || context.Request.Query.Count != 0) throw ManualReviewBudget.Reject();
@@ -70,8 +76,10 @@ public sealed class ManualReviewHttpGuard(RequestDelegate next, ManualReviewBudg
                 {
                     capture.Position = 0;
                     using var result = await JsonDocument.ParseAsync(capture,
-                        new() { MaxDepth = 16, AllowDuplicateProperties = false }, context.RequestAborted);
-                    await plan.Capture(result.RootElement, context.RequestAborted);
+                        new() { MaxDepth = 16, AllowDuplicateProperties = false }, CancellationToken.None);
+                    // Once a successful response is available, the known commit must be captured
+                    // even when the client disconnects. Only copying to that client uses its token.
+                    await plan.Capture(result.RootElement, CancellationToken.None);
                 }
                 capture.Position = 0;
                 await capture.CopyToAsync(originalResponseBody, context.RequestAborted);

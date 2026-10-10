@@ -523,6 +523,129 @@ public sealed class ManualReviewGuardTests
         Assert.AreEqual(0, fixture.Budget.Snapshot()[ManualReviewOperation.RoomCreate]);
     }
 
+    [TestMethod]
+    public async Task Complete_response_canceled_before_return_recovers_existing_identity_before_login()
+    {
+        var identity = new ManualReviewIdentity(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var pending = Guid.NewGuid(); var session = Guid.NewGuid();
+        var resolved = 0;
+        var budget = new ManualReviewBudget(Email, Guid.NewGuid(), _ => { resolved++; return Task.FromResult(identity); });
+        using var cancellation = new CancellationTokenSource();
+        var guard = new ManualReviewHttpGuard(async context =>
+        {
+            if (context.Request.Path.Value!.EndsWith("/complete", StringComparison.Ordinal))
+            {
+                // The business transaction committed, but cancellation prevented its response
+                // from returning to this guard. No identity has been captured yet.
+                cancellation.Cancel();
+                throw new OperationCanceledException(cancellation.Token);
+            }
+            if (context.Request.Path.Value.EndsWith("/login", StringComparison.Ordinal))
+                await context.Response.WriteAsync(JsonSerializer.Serialize(new { userId = identity.UserId, sessionId = session }));
+            else await context.Response.WriteAsync(JsonSerializer.Serialize(new { id = pending }));
+        }, budget);
+        await guard.InvokeAsync(Request("POST", "/api/v1/auth/registrations", JsonSerializer.Serialize(new { email = Email, invitationId = budget.InvitationId, invitationProof = "fake", requestKey = Guid.NewGuid() })));
+        var complete = Request("POST", $"/api/v1/auth/registrations/{pending:D}/complete", JsonSerializer.Serialize(new { completionKey = Guid.NewGuid(), password = "fake-test-password", appearance = new { } }));
+        complete.RequestAborted = cancellation.Token;
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => guard.InvokeAsync(complete));
+        Assert.IsNull(budget.Identity);
+        Assert.AreEqual(1, budget.Snapshot()[ManualReviewOperation.RegistrationComplete]);
+        var login = Request("POST", "/api/v1/auth/login", JsonSerializer.Serialize(new { email = Email, password = "fake-test-password", remembered = false }));
+        await guard.InvokeAsync(login);
+        Assert.AreEqual(200, login.Response.StatusCode);
+        Assert.AreEqual(identity, budget.Identity);
+        Assert.AreEqual(1, resolved);
+        Assert.AreEqual(1, budget.Snapshot()[ManualReviewOperation.Login]);
+        Assert.AreEqual(1, budget.Snapshot()[ManualReviewOperation.RegistrationComplete]);
+    }
+
+    [TestMethod]
+    public async Task Successful_complete_capture_uses_host_lifetime_after_client_cancellation()
+    {
+        var identity = new ManualReviewIdentity(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var pending = Guid.NewGuid();
+        var resolverCanceled = false;
+        var budget = new ManualReviewBudget(Email, Guid.NewGuid(), ct =>
+        {
+            resolverCanceled = ct.IsCancellationRequested;
+            ct.ThrowIfCancellationRequested();
+            return Task.FromResult(identity);
+        });
+        using var cancellation = new CancellationTokenSource();
+        var guard = new ManualReviewHttpGuard(async context =>
+        {
+            if (context.Request.Path.Value!.EndsWith("/complete", StringComparison.Ordinal))
+            {
+                await context.Response.WriteAsync(JsonSerializer.Serialize(new { userId = identity.UserId, petId = identity.PetId, roomId = identity.DefaultRoomId }));
+                cancellation.Cancel();
+            }
+            else await context.Response.WriteAsync(JsonSerializer.Serialize(new { id = pending }));
+        }, budget);
+        await guard.InvokeAsync(Request("POST", "/api/v1/auth/registrations", JsonSerializer.Serialize(new { email = Email, invitationId = budget.InvitationId, invitationProof = "fake", requestKey = Guid.NewGuid() })));
+        var complete = Request("POST", $"/api/v1/auth/registrations/{pending:D}/complete", JsonSerializer.Serialize(new { completionKey = Guid.NewGuid(), password = "fake-test-password", appearance = new { } }));
+        complete.RequestAborted = cancellation.Token;
+        try { await guard.InvokeAsync(complete); }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        Assert.IsFalse(resolverCanceled);
+        Assert.AreEqual(identity, budget.Identity);
+        Assert.AreEqual(1, budget.Snapshot()[ManualReviewOperation.RegistrationComplete]);
+    }
+
+    [TestMethod]
+    public async Task Recovery_rejects_resolver_identity_different_from_successful_completion_receipt()
+    {
+        var identity = new ManualReviewIdentity(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var pending = Guid.NewGuid(); var loginForwarded = false;
+        var budget = new ManualReviewBudget(Email, Guid.NewGuid(), _ => Task.FromResult(identity with { UserId = Guid.NewGuid() }));
+        var guard = new ManualReviewHttpGuard(context =>
+        {
+            if (context.Request.Path.Value!.EndsWith("/login", StringComparison.Ordinal)) loginForwarded = true;
+            return context.Response.WriteAsync(context.Request.Path.Value.EndsWith("/complete", StringComparison.Ordinal)
+                ? JsonSerializer.Serialize(new { userId = identity.UserId, petId = identity.PetId, roomId = identity.DefaultRoomId })
+                : JsonSerializer.Serialize(new { id = pending }));
+        }, budget);
+        await guard.InvokeAsync(Request("POST", "/api/v1/auth/registrations", JsonSerializer.Serialize(new { email = Email, invitationId = budget.InvitationId, invitationProof = "fake", requestKey = Guid.NewGuid() })));
+        var complete = Request("POST", $"/api/v1/auth/registrations/{pending:D}/complete", JsonSerializer.Serialize(new { completionKey = Guid.NewGuid(), password = "fake", appearance = new { } }));
+        await guard.InvokeAsync(complete);
+        Assert.AreEqual(403, complete.Response.StatusCode);
+        var login = Request("POST", "/api/v1/auth/login", JsonSerializer.Serialize(new { email = Email, password = "fake", remembered = false }));
+        await guard.InvokeAsync(login);
+        Assert.AreEqual(403, login.Response.StatusCode);
+        Assert.IsFalse(loginForwarded);
+        Assert.IsNull(budget.Identity);
+        Assert.AreEqual(0, budget.Snapshot()[ManualReviewOperation.Login]);
+    }
+
+    [TestMethod]
+    [DataRow("missing")]
+    [DataRow("null")]
+    [DataRow("throws")]
+    [DataRow("empty")]
+    public async Task Recovery_missing_null_failed_or_empty_resolver_never_forwards_login(string mode)
+    {
+        var pending = Guid.NewGuid(); var loginForwarded = false;
+        Func<CancellationToken, Task<ManualReviewIdentity>>? resolver = mode switch
+        {
+            "missing" => null,
+            "null" => _ => Task.FromResult<ManualReviewIdentity>(null!),
+            "throws" => _ => throw new IOException("fictional-not-completed"),
+            _ => _ => Task.FromResult(new ManualReviewIdentity(Guid.Empty, Guid.NewGuid(), Guid.NewGuid()))
+        };
+        var budget = new ManualReviewBudget(Email, Guid.NewGuid(), resolver);
+        var guard = new ManualReviewHttpGuard(context =>
+        {
+            if (context.Request.Path.Value!.EndsWith("/login", StringComparison.Ordinal)) loginForwarded = true;
+            return context.Response.WriteAsync(JsonSerializer.Serialize(new { id = pending }));
+        }, budget);
+        await guard.InvokeAsync(Request("POST", "/api/v1/auth/registrations", JsonSerializer.Serialize(new { email = Email, invitationId = budget.InvitationId, invitationProof = "fake", requestKey = Guid.NewGuid() })));
+        var login = Request("POST", "/api/v1/auth/login", JsonSerializer.Serialize(new { email = Email, password = "fake", remembered = false }));
+        await guard.InvokeAsync(login);
+        Assert.AreEqual(403, login.Response.StatusCode);
+        Assert.IsFalse(loginForwarded);
+        Assert.IsNull(budget.Identity);
+        Assert.AreEqual(0, budget.Snapshot()[ManualReviewOperation.Login]);
+    }
+
     private sealed class FailingOutput : MemoryStream
     {
         public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) => throw new IOException("simulated-client-output-loss");
