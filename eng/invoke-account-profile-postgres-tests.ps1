@@ -119,12 +119,13 @@ try {
     $taskProfileBeforeResult=Invoke-DangoProfileSnapshot 'before'
     if ($taskProfileBeforeResult.ExitCode -ne 0) { throw 'profile_run_database_probe_failed' }
     $taskProfileBefore=$taskProfileBeforeResult.Output | ConvertFrom-Json
+    Assert-DangoProfileProtectedGraphShape $taskProfileBefore
+    Write-DangoProfileJson (Join-Path $taskProfilePlan.EvidenceDirectory 'before.json') $taskProfileBefore -CreateNew
     if ($taskProfileBefore.database -cne $taskProfilePlan.Database -or $taskProfileBefore.role -cne $taskProfilePlan.Role -or
         $taskProfileBefore.version -lt 180000 -or $taskProfileBefore.version -ge 190000 -or
         $taskProfileBefore.listenAddresses -cne '127.0.0.1' -or
         -not (Test-DangoProfilePath $taskProfileBefore.dataDirectory $taskProfilePlan.DataDirectory) -or
         (@($taskProfileBefore.migrations) -join ',') -cne ($taskProfilePlan.PriorMigrations -join ',')) { throw 'profile_run_database_target_rejected' }
-    Write-DangoProfileJson (Join-Path $taskProfilePlan.EvidenceDirectory 'before.json') $taskProfileBefore -CreateNew
     $taskProfileConnection="Host=127.0.0.1;Port=$($taskProfileFacts.Port);Database=dango_backend_b0;Username=dango_b0_owner;Password=$taskProfilePassword;Include Error Detail=false"
     $taskProfileMigrationEnv=@{ DANGO_DATABASE=$taskProfilePlan.Database; DANGO_CONNECTION_STRING=$taskProfileConnection;
         DANGO_KEYS_DIRECTORY=(Join-Path $taskProfilePlan.StateDirectory 'b1tests-keys');
@@ -138,6 +139,8 @@ try {
     $taskProfileMigratedResult=Invoke-DangoProfileSnapshot 'migration'
     if ($taskProfileMigratedResult.ExitCode -ne 0) { throw 'profile_run_migration_evidence_failed' }
     $taskProfileMigrated=$taskProfileMigratedResult.Output | ConvertFrom-Json
+    Assert-DangoProfileProtectedGraphShape $taskProfileMigrated
+    Write-DangoProfileJson (Join-Path $taskProfilePlan.EvidenceDirectory 'migration-evidence.json') $taskProfileMigrated -CreateNew
     Assert-DangoProfileOldGraph $taskProfileBefore $taskProfileMigrated -RequireInitialProfiles
     foreach ($taskProfileProperty in $taskProfileBefore.counts.PSObject.Properties) {
         if ($taskProfileMigrated.counts.($taskProfileProperty.Name) -ne $taskProfileProperty.Value) { throw 'profile_run_migration_graph_changed' }
@@ -145,7 +148,6 @@ try {
     if ((@($taskProfileMigrated.migrations) -join ',') -cne ((@($taskProfilePlan.PriorMigrations)+$taskProfilePlan.Migration) -join ',')) {
         throw 'profile_run_migration_history_rejected'
     }
-    Write-DangoProfileJson (Join-Path $taskProfilePlan.EvidenceDirectory 'migration-evidence.json') $taskProfileMigrated -CreateNew
     foreach ($taskProfilePath in $taskProfileHashes.Keys) {
         if ((Get-FileHash -LiteralPath $taskProfilePath -Algorithm SHA256).Hash -cne $taskProfileHashes[$taskProfilePath]) {
             throw 'profile_run_frozen_input_changed'
@@ -176,6 +178,8 @@ try {
     $taskProfileAfterResult=Invoke-DangoProfileSnapshot 'after'
     if ($taskProfileAfterResult.ExitCode -ne 0) { throw 'profile_run_database_evidence_failed' }
     $taskProfileAfter=$taskProfileAfterResult.Output | ConvertFrom-Json
+    Assert-DangoProfileProtectedGraphShape $taskProfileAfter
+    Write-DangoProfileJson (Join-Path $taskProfilePlan.EvidenceDirectory 'after.json') $taskProfileAfter -CreateNew
     Assert-DangoProfileOldGraph $taskProfileBefore $taskProfileAfter -RequireInitialProfiles
     foreach ($taskProfileCounter in @('invitations','registrations','challenges','emailJobs','users','pets','rooms','memberships','petStates')) {
         if ($taskProfileAfter.counts.$taskProfileCounter-$taskProfileBefore.counts.$taskProfileCounter -ne 9) { throw 'profile_run_graph_delta_rejected' }
@@ -185,7 +189,6 @@ try {
         @($taskProfileBefore.userIds | Where-Object { $_ -notin $taskProfileAfter.userIds }).Count -ne 0) {
         throw 'profile_run_session_or_history_delta_rejected'
     }
-    Write-DangoProfileJson (Join-Path $taskProfilePlan.EvidenceDirectory 'after.json') $taskProfileAfter -CreateNew
     $taskProfileNewUsers=@($taskProfileAfter.userIds | Where-Object { $_ -notin $taskProfileBefore.userIds })
     $taskProfileScopedSql=Get-DangoProfileScopedSql $taskProfileNewUsers $taskProfileFacts.Epoch $taskProfileReservation.OwnerId
     $taskProfileScopedArgs=@($taskProfilePsqlArgs[0..($taskProfilePsqlArgs.Count-2)])+$taskProfileScopedSql

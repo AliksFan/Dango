@@ -79,8 +79,12 @@ $taskManifest=Join-Path $taskSandbox 'artifacts/approved.json'
 $taskApproval=New-DangoProfileApprovalManifest $taskPlan $taskManifest
 Check 'FictionalManifestFreezesDependencyTreesAndDigest' {
     $accepted=Assert-DangoProfileReviewInputs $taskPlan $taskManifest $taskApproval.Sha256
-    $accepted.Sha256 -ceq $taskApproval.Sha256 -and $accepted.Inputs.Hashes.Count -eq 12 -and
-    $accepted.Inputs.Hashes.Contains('tests/Dango.Server.Tests/bin/Release/net10.0/runtime/native.dll')
+    $migrationSources=@('src/Dango.Server/Hosting/FormalEntry.cs','src/Dango.Server/Hosting/FormalSingleMigration.cs',
+        'src/Dango.Server/Persistence/DangoDatabaseOptions.cs','src/Dango.Server/Persistence/DangoDbContext.cs',
+        'src/Dango.Server/Persistence/Migrations/DangoDbContextModelSnapshot.cs')
+    $accepted.Sha256 -ceq $taskApproval.Sha256 -and $accepted.Inputs.Hashes.Count -eq 17 -and
+    $accepted.Inputs.Hashes.Contains('tests/Dango.Server.Tests/bin/Release/net10.0/runtime/native.dll') -and
+    @($migrationSources | Where-Object { -not $accepted.Inputs.Hashes.Contains($_) }).Count -eq 0
 }
 Check 'ManifestCreateNewNeverReplacesReviewedFile' { Rejected { New-DangoProfileApprovalManifest $taskPlan $taskManifest } 'already exists' }
 Check 'SourceChangeFailsFixedManifest' {

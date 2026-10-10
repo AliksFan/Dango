@@ -10,7 +10,7 @@ function Get-DangoProfilePlan {
     return [pscustomobject]@{
         Version=1; Stage='AccountProfileA'; RunName=$RunName; Executed=$false
         StateDirectory=$state; DataDirectory=(Join-Path $state 'pgdata')
-        EvidenceDirectory=(Join-Path (Split-Path -Parent $state) 'run20261010profilea4')
+        EvidenceDirectory=(Join-Path (Split-Path -Parent $state) 'run20261010profilea5')
         Database='dango_backend_b0'; Role='dango_b0_owner'; PostgresBinDirectory=$expectedBin
         Repository=[IO.Path]::GetFullPath($Repository)
         Migration='20261010055529_AccountProfile'
@@ -28,7 +28,8 @@ function Get-DangoProfilePlan {
             expiry=@{ Invite=1; Start=1; Confirm=1; Complete=1; Login=1; DirectProfileUpdate=1 };
             https=@{ Invite=1; Start=1; Confirm=1; Complete=1; Login=2; HttpProfilePatch=8; HttpLogout=1 } }
         PriorMigrations=@('20261008074701_InitialAccountRoomFoundation','20261008085521_AccountLifecycle',
-            '20261009031410_RoomManagement','20261009055558_RoomAccess','20261009062701_RoomAccessIntegrity')
+            '20261009031410_RoomManagement','20261009055558_RoomAccess','20261009062701_RoomAccessIntegrity',
+            '20261009124814_AccessoryAccountBackup')
         Writes='one exact forward migration and this seven-case class once; existing data retained; no retry, reset, SMTP or room lifecycle work'
     }
 }
@@ -70,6 +71,9 @@ function Get-DangoProfileReviewInputs {
         'tests/Dango.Server.Tests/Accounts/AccountProfilePostgresTests.cs',
         'tests/Dango.Server.Tests/Accounts/ProfileTestSupport.cs','tests/Dango.Server.Tests/Accounts/ProfileTestOwner.cs',
         'src/Dango.Server/Persistence/Migrations/20261010055529_AccountProfile.cs',
+        'src/Dango.Server/Hosting/FormalEntry.cs','src/Dango.Server/Hosting/FormalSingleMigration.cs',
+        'src/Dango.Server/Persistence/DangoDatabaseOptions.cs','src/Dango.Server/Persistence/DangoDbContext.cs',
+        'src/Dango.Server/Persistence/Migrations/DangoDbContextModelSnapshot.cs',
         'eng/invoke-account-profile-postgres-tests.ps1','eng/Dango.AccountProfilePostgres.psm1')
     foreach ($relativeRoot in @('src/Dango.Server/bin/Release/net10.0','tests/Dango.Server.Tests/bin/Release/net10.0')) {
         $root=Join-Path $Plan.Repository $relativeRoot
@@ -932,7 +936,9 @@ function Get-DangoProfileDatabaseSql {
         challenges='email_challenges'; emailJobs='email_jobs'; users='users'; pets='pets'; rooms='rooms';
         memberships='room_memberships'; petStates='pet_room_states'; sessions='auth_sessions';
         audit='audit_logs'; outbox='domain_outbox'; leases='room_device_leases'; codes='public_room_credentials';
-        bans='room_bans'; claims='user_claims'; logins='user_logins'; tokens='user_tokens' }
+        bans='room_bans'; claims='user_claims'; logins='user_logins'; tokens='user_tokens';
+        accessoryBlobs='accessory_blobs'; accessoryAssetReferences='accessory_asset_references';
+        accessoryCurrentOutfits='accessory_current_outfits'; accessoryCommitReceipts='accessory_commit_receipts' }
     $counts=@(); $digests=@()
     foreach ($name in $tables.Keys) {
         $table=$tables[$name]
@@ -969,6 +975,34 @@ function Assert-DangoProfileDatabaseEvidenceSize {
             $Result.utf8Octets -lt 1 -or $Result.utf8Octets -gt 1048574) { throw 'rejected' }
         return [pscustomobject]@{ Utf8Octets=[long]$Result.utf8Octets; MaximumUtf8Bytes=1048576; TerminatorReserve=2 }
     } catch { throw 'profile_run_database_evidence_size_rejected' }
+}
+
+function Assert-DangoProfileProtectedGraphShape {
+    param($Evidence)
+    try {
+        $expected=@('invitations','registrations','challenges','emailJobs','users','pets','rooms','memberships',
+            'petStates','sessions','audit','outbox','leases','codes','bans','claims','logins','tokens',
+            'accessoryBlobs','accessoryAssetReferences','accessoryCurrentOutfits','accessoryCommitReceipts')
+        if ($null -eq $Evidence) { throw 'rejected' }
+        foreach ($containerName in @('counts','digests')) {
+            $containerProperty=$Evidence.PSObject.Properties[$containerName]
+            if ($null -eq $containerProperty -or $null -eq $containerProperty.Value) { throw 'rejected' }
+            $properties=@($containerProperty.Value.PSObject.Properties)
+            if ($properties.Count -ne 22) { throw 'rejected' }
+            $names=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+            foreach ($property in $properties) {
+                if ($property.Name -cnotin $expected -or -not $names.Add($property.Name)) { throw 'rejected' }
+            }
+        }
+        foreach ($name in $expected) {
+            $count=$Evidence.counts.$name; $digests=$Evidence.digests.$name
+            if (($count -isnot [int] -and $count -isnot [long]) -or $count -lt 0 -or
+                $digests -isnot [Array] -or $digests.LongLength -ne $count) { throw 'rejected' }
+            foreach ($digest in $digests) {
+                if ($digest -isnot [string] -or $digest -cnotmatch '^[a-f0-9]{64}$') { throw 'rejected' }
+            }
+        }
+    } catch { throw 'profile_run_protected_graph_shape_rejected' }
 }
 
 function Assert-DangoProfileOldGraph {
