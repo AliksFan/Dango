@@ -7,6 +7,57 @@ namespace Dango.AccountSyncReview.Tests;
 public sealed class AccountSyncBudgetTests
 {
     [TestMethod]
+    public void Previous_B1a_and_profile_grants_cannot_authorize_the_new_owner_or_initializer()
+    {
+        var oldGrants = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["DANGO_BACKEND_ACCOUNTSYNC_B1A_APPROVED"] = "1",
+            ["DANGO_BACKEND_PROFILE_TEST_APPROVED"] = "1"
+        };
+        var reads = new List<string>(); var initializerAccesses = 0;
+        var approved = AccountSyncTestOwner.IsApprovalGranted(name =>
+        {
+            reads.Add(name); return oldGrants.GetValueOrDefault(name);
+        });
+        Assert.IsFalse(approved);
+        CollectionAssert.AreEqual(new[] { "DANGO_BACKEND_ACCOUNTSYNC_B1A2_APPROVED" }, reads);
+        Assert.ThrowsExactly<AssertInconclusiveException>(() => AccountSyncTestOwner.RequireWithFactory(approved, () =>
+        {
+            initializerAccesses++;
+            throw new AssertFailedException("A consumed earlier stage reached the new resource initializer.");
+        }));
+        Assert.AreEqual(0, initializerAccesses);
+    }
+
+    [TestMethod]
+    public void Only_the_new_B1a2_exact_grant_is_accepted_by_the_production_approval_reader()
+    {
+        var reads = new List<string>();
+        Assert.IsTrue(AccountSyncTestOwner.IsApprovalGranted(name =>
+        {
+            reads.Add(name); return name == "DANGO_BACKEND_ACCOUNTSYNC_B1A2_APPROVED" ? "1" : null;
+        }));
+        CollectionAssert.AreEqual(new[] { "DANGO_BACKEND_ACCOUNTSYNC_B1A2_APPROVED" }, reads);
+    }
+
+    [TestMethod]
+    public void Missing_zero_and_noncanonical_new_grants_are_rejected_before_initialization()
+    {
+        foreach (var value in new string?[] { null, "0", "true", "1 " })
+        {
+            var initializerAccesses = 0;
+            var approved = AccountSyncTestOwner.IsApprovalGranted(_ => value);
+            Assert.IsFalse(approved);
+            Assert.ThrowsExactly<AssertInconclusiveException>(() => AccountSyncTestOwner.RequireWithFactory(approved, () =>
+            {
+                initializerAccesses++;
+                throw new AssertFailedException("An absent or invalid grant reached its resource initializer.");
+            }));
+            Assert.AreEqual(0, initializerAccesses);
+        }
+    }
+
+    [TestMethod]
     public void Missing_independent_approval_is_inconclusive_before_any_initializer_resource_access()
     {
         var accessed = 0;

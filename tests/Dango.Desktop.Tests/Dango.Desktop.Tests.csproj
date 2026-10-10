@@ -19,4 +19,9 @@
     <ProjectReference Include="..\..\src\Dango.Desktop\Dango.Desktop.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\..\eng\tools\Dango.AccountSyncReview.Tests\AccountSyncAppearanceNavigator.cs"
+             Link="AppShell\AccountSyncAppearanceNavigator.cs" />
+  </ItemGroup>
+
 </Project>

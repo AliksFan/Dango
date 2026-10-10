@@ -84,7 +84,7 @@ public sealed class AccountSyncB1aJourneyTests
             rig.Wait(() => SyncStatus(rig.Controller) == "捏脸草稿保留；应用或取消后继续同步。");
             Assert.AreEqual(draft, rig.Home.BoundAppearance!.DraftAppearance);
             Assert.AreEqual(111d, DiskSize(paths)); Assert.AreEqual(2, ConfigAttempts(owner));
-            rig.Uia(u => u.InvokeId("CancelAppearanceButton"));
+            rig.CancelPreview();
             rig.Wait(() => rig.Saved.EyeLayout.SizePercent == 116 && SyncStatus(rig.Controller) == "捏脸已同步。");
             rig.CloseEditor(); Assert.AreEqual(2, ConfigAttempts(owner));
             var restoredLocal = CaptureLocal(paths);
@@ -171,6 +171,12 @@ public sealed class AccountSyncB1aJourneyTests
                 UsesSystemTrust = false, UsesWindowsCredentials = false, ActualFormalHost = true, ActualApplicationHost = true,
                 HealthyNativeFrames = true, ExactChoiceArchives = 3, ExactSyncArchives = 3 });
         }
+        catch
+        {
+            // A failed journey immediately closes business access before cleanup pumps the dispatcher.
+            owner.Abort();
+            throw;
+        }
         finally
         {
             try { rig?.Dispose(); }
@@ -245,6 +251,9 @@ public sealed class AccountSyncB1aJourneyTests
         private readonly ControlCenterWindow window;
         private readonly nint handle;
         private readonly int index;
+        private readonly AccountSyncAppearanceNavigator appearanceNavigator;
+        private int navigationSequence;
+        private Task? pendingUia;
         private bool disposed;
         internal ProductHomeView Home => window.ProductHome;
         internal DesktopAccountController Controller => Field<DesktopAccountController>(host, "accountController");
@@ -269,10 +278,22 @@ public sealed class AccountSyncB1aJourneyTests
                 window.Left = 80; window.Top = 80; window.ShowInTaskbar = false;
                 handle = new WindowInteropHelper(window).Handle; Assert.AreNotEqual(nint.Zero, handle);
                 Assert.AreEqual(Process.GetCurrentProcess().Id, AutomationElement.FromHandle(handle).Current.ProcessId);
+                appearanceNavigator = new(id => Uia(u => u.InvokeId(id)),
+                    (id, value) => Uia(u => u.Range(id, value)), Wait, ReadNavigationState, TraceNavigation);
                 Wait(() => Controller is not null && PrimaryEnabled);
                 AssertHealthyFrame();
+                TraceNavigation("host-ready", ReadNavigationState());
             }
-            catch { DisposeCore(checkHealth: false); throw; }
+            catch (Exception startupError)
+            {
+                owner.Abort();
+                try { DisposeCore(checkHealth: false); }
+                catch (Exception cleanupError)
+                {
+                    throw new AggregateException("Application startup and owned cleanup both failed.", startupError, cleanupError);
+                }
+                throw;
+            }
         }
 
         internal void Register()
@@ -299,21 +320,66 @@ public sealed class AccountSyncB1aJourneyTests
         internal void SetNickname(string value) => Uia(u => { u.Value("AccountNickname", value); u.InvokeId("AccountPrimary"); });
         internal void Choose(string source) { Uia(u => { u.Select(source); u.InvokeId("AccountPrimary"); }); Wait(() => Controller.ConfigurationReady && PrimaryEnabled); }
         internal void OpenAccount() { Uia(u => u.InvokeId("AccountButton")); Wait(() => Home.IsAccountPanelOpen && PrimaryEnabled); }
-        internal void CloseAccount() { Uia(u => u.InvokeName("继续本地游玩")); Wait(() => !Home.IsAccountPanelOpen); }
+        internal void CloseAccount()
+        {
+            TraceNavigation("before-close-account", ReadNavigationState());
+            Uia(u => u.InvokeName("继续本地游玩")); Wait(() => !Home.IsAccountPanelOpen);
+            TraceNavigation("account-closed", ReadNavigationState());
+        }
         internal void Logout()
         {
             if (!Home.IsAccountPanelOpen) OpenAccount(); Uia(u => u.InvokeName("退出登录"));
             Wait(() => !Controller.IsLoggedIn && PrimaryName == "登录" && PrimaryEnabled);
         }
-        internal void PreviewEyeSize(double value)
+        internal void PreviewEyeSize(double value) => appearanceNavigator.PreviewEyeSize(value);
+        internal void SaveEyeSize(double value) => appearanceNavigator.SaveEyeSize(value);
+        internal void CancelPreview() => appearanceNavigator.CancelPreview();
+        internal void CloseEditor() => appearanceNavigator.CloseEditor();
+        private AccountSyncAppearanceNavigationState ReadNavigationState()
         {
-            Uia(u => { u.InvokeId("FaceButton"); u.InvokeId("AppearanceEyesTab"); u.Range("EyeSizeSlider", value); });
-            Wait(() => Home.BoundAppearance!.DraftAppearance.EyeLayout.SizePercent == value);
+            bool Ready(string id) => Home.FindName(id) is FrameworkElement element
+                && element.IsVisible && element.IsEnabled && element.IsHitTestVisible
+                && element.ActualWidth > 0 && element.ActualHeight > 0;
+            var editor = !Home.IsEditing ? AccountSyncAppearanceEditor.None
+                : Home.SelectedEditor == HomeEditor.Face ? AccountSyncAppearanceEditor.Face
+                : AccountSyncAppearanceEditor.Wardrobe;
+            var appearance = Home.BoundAppearance!;
+            return new(Home.IsAccountPanelOpen, Home.IsSettingsOpen, Home.IsInPorch, Home.IsDangoAway,
+                editor, Ready("FaceButton"), Ready("AppearanceEyesTab"),
+                Ready("AppearanceEyesPanel") && Ready("EyeSizeSlider"), Ready("ApplyButton"),
+                Ready("CancelAppearanceButton"), Ready(editor == AccountSyncAppearanceEditor.Face
+                    ? "FaceCloseEditorButton" : "CloseEditorButton"), appearance.HasPendingSave,
+                appearance.DraftAppearance.EyeLayout.SizePercent, appearance.SavedAppearance.EyeLayout.SizePercent);
         }
-        internal void SaveEyeSize(double value) { PreviewEyeSize(value); Uia(u => u.InvokeId("ApplyButton")); Wait(() => Saved.EyeLayout.SizePercent == value); CloseEditor(); }
-        internal void CloseEditor() { if (Home.IsEditing) { Uia(u => u.InvokeId("FaceCloseEditorButton")); Wait(() => !Home.IsEditing); } }
+        private void TraceNavigation(string phase, AccountSyncAppearanceNavigationState state)
+        {
+            // Only this owned synthetic window's page and appearance state; never capture input or secrets.
+            Assert.IsTrue(navigationSequence < 128, "The bounded navigation evidence limit was exceeded.");
+            var sequence = ++navigationSequence;
+            owner.WriteEvidence($"navigation-{index}-{sequence:D3}.json",
+                new { Version = 1, owner.OwnerId, DesktopIndex = index, Sequence = sequence, Phase = phase, State = state });
+        }
         internal void Wait(Func<bool> condition) => AccountSyncB1aJourneyTests.Wait(condition);
-        internal void Uia(Action<UiaClient> action) => Complete(Task.Run(() => action(new(handle))));
+        internal void Uia(Action<UiaClient> action)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            Assert.IsTrue(pendingUia is null, "The previous owned UIA worker has not settled.");
+            pendingUia = Task.Run(() =>
+            {
+                ObjectDisposedException.ThrowIf(Volatile.Read(ref disposed), this);
+                action(new(handle, () => !Volatile.Read(ref disposed)));
+            });
+            try { Complete(pendingUia); }
+            catch { owner.Abort(); throw; }
+            finally
+            {
+                if (pendingUia.IsCompleted)
+                {
+                    if (pendingUia.IsFaulted) _ = pendingUia.Exception;
+                    pendingUia = null;
+                }
+            }
+        }
         internal void SaveScreenshot(string name)
         {
             AssertHealthyFrame();
@@ -340,32 +406,69 @@ public sealed class AccountSyncB1aJourneyTests
         {
             if (disposed) return; disposed = true;
             Exception? failure = null;
-            var hostDisposed = false; var pumpDrained = false; var hwndClosed = false;
-            var controller = Controller;
-            try { if (checkHealth) AssertHealthyFrame(); } catch (Exception ex) { failure = ex; }
-            try { host.Dispose(); hostDisposed = true; } catch (Exception ex) { failure ??= ex; }
-            try { Complete(Field<Task>(controller, "configurationPump")); pumpDrained = true; } catch (Exception ex) { failure ??= ex; }
-            try { Wait(() => !IsWindow(handle)); hwndClosed = true; } catch (Exception ex) { failure ??= ex; }
-            fixture.Resource("DesktopDisposed", new { Index = index, Disposed = hostDisposed, HwndClosed = hwndClosed, ConfigurationPumpDrained = pumpDrained });
+            var hostDisposed = false; var pumpDrained = false; var hwndClosed = false; var uiaWorkerSettled = false;
+            void RecordFailure(Exception error) { owner.Abort(); failure ??= error; }
+            DesktopAccountController? controller = null;
+            try { controller = Controller; } catch (Exception ex) { RecordFailure(ex); }
+            try { if (checkHealth) AssertHealthyFrame(); } catch (Exception ex) { RecordFailure(ex); }
+            try { host.Dispose(); hostDisposed = true; } catch (Exception ex) { RecordFailure(ex); }
+            try
+            {
+                Assert.IsNotNull(controller, "The owned account controller was not captured.");
+                Complete(Field<Task>(controller, "configurationPump")); pumpDrained = true;
+            }
+            catch (Exception ex) { RecordFailure(ex); }
+            try
+            {
+                Assert.AreNotEqual(nint.Zero, handle, "An uncaptured HWND cannot prove window cleanup.");
+                Wait(() => !IsWindow(handle)); hwndClosed = true;
+            }
+            catch (Exception ex) { RecordFailure(ex); }
+            try
+            {
+                Wait(() => pendingUia is null || pendingUia.IsCompleted);
+                if (pendingUia?.IsFaulted == true) _ = pendingUia.Exception;
+                pendingUia = null; uiaWorkerSettled = true;
+            }
+            catch (Exception ex) { RecordFailure(ex); }
+            fixture.Resource("DesktopDisposed", new { Index = index, Disposed = hostDisposed, HwndClosed = hwndClosed,
+                ConfigurationPumpDrained = pumpDrained, UiaWorkerSettled = uiaWorkerSettled });
             if (failure is not null) ExceptionDispatchInfo.Capture(failure).Throw();
         }
     }
 
-    private sealed class UiaClient(nint handle)
+    private sealed class UiaClient(nint handle, Func<bool> mayOperate)
     {
-        private AutomationElement Root => AutomationElement.FromHandle(handle);
+        private AutomationElement Root
+        {
+            get
+            {
+                Assert.IsTrue(mayOperate() && IsWindow(handle), "The owned UIA window has closed.");
+                var root = AutomationElement.FromHandle(handle);
+                Assert.AreEqual(Process.GetCurrentProcess().Id, root.Current.ProcessId);
+                return root;
+            }
+        }
         private AutomationElement Id(string id) => Root.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, id))
             ?? throw new AssertFailedException("Approved HWND control missing: " + id);
         internal string Name(string id) => Id(id).Current.Name;
-        internal void Value(string id, string value) => ((ValuePattern)Id(id).GetCurrentPattern(ValuePattern.Pattern)).SetValue(value);
-        internal void Check(string id) { var pattern = (TogglePattern)Id(id).GetCurrentPattern(TogglePattern.Pattern); if (pattern.Current.ToggleState != ToggleState.On) pattern.Toggle(); }
-        internal void Select(string id) => ((SelectionItemPattern)Id(id).GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
-        internal void Range(string id, double value) => ((RangeValuePattern)Id(id).GetCurrentPattern(RangeValuePattern.Pattern)).SetValue(value);
-        internal void InvokeId(string id) => ((InvokePattern)Id(id).GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+        internal void Value(string id, string value) => ((ValuePattern)Ready(id).GetCurrentPattern(ValuePattern.Pattern)).SetValue(value);
+        internal void Check(string id) { var pattern = (TogglePattern)Ready(id).GetCurrentPattern(TogglePattern.Pattern); if (pattern.Current.ToggleState != ToggleState.On) pattern.Toggle(); }
+        internal void Select(string id) => ((SelectionItemPattern)Ready(id).GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+        private AutomationElement Ready(string id)
+        {
+            var element = Id(id);
+            Assert.IsTrue(element.Current.IsEnabled && !element.Current.IsOffscreen, "Approved HWND control unavailable: " + id);
+            return element;
+        }
+        internal void Range(string id, double value) => ((RangeValuePattern)Ready(id).GetCurrentPattern(RangeValuePattern.Pattern)).SetValue(value);
+        internal void InvokeId(string id) => ((InvokePattern)Ready(id).GetCurrentPattern(InvokePattern.Pattern)).Invoke();
         internal void InvokeName(string name)
         {
             var button = Root.FindFirst(TreeScope.Descendants, new AndCondition(new PropertyCondition(AutomationElement.NameProperty, name),
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button))) ?? throw new AssertFailedException("Approved HWND button missing: " + name);
+            Assert.IsTrue(mayOperate() && button.Current.IsEnabled && !button.Current.IsOffscreen,
+                "Approved HWND button unavailable: " + name);
             ((InvokePattern)button.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
         }
     }

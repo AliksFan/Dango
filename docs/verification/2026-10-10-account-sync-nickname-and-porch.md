@@ -2,7 +2,7 @@
 
 日期：2026-10-10。状态：核心与Desktop接线、受控真实窗口UIA已通过；D1完成元数据诊断后，A5已按用户“继续”指令执行一次，昵称迁移及七项真实PostgreSQL／HTTPS测试全部通过，22表旧图保全与资源收尾通过。正式Desktop联合登录／连续同步／门廊端到端技术验证和主观验收仍未通过。
 
-后续正常旅程已拆为 [B1a 精确计划](../planning/2026-10-10-account-sync-b1a-local-plan.md)。完整宿主内部接线7/7、新离线C#97/97、新PowerShell420/420与原工具回归438/438通过；关闭批准时唯一真实旅程为1 NotExecuted，实际资源未启动。候选、反例与未验证边界见 [B1a 离线记录](2026-10-10-account-sync-b1a-candidate.md)。B1b和门廊真实验证仍需后续独立计划。
+后续正常旅程已拆为 [B1a 精确计划](../planning/2026-10-10-account-sync-b1a-local-plan.md)。完整宿主内部接线7/7、新离线C#97/97、新PowerShell420/420与原工具回归438/438通过。随后 B1a 获批并执行一次，真实旅程 1 Failed：首次保存 111 时 UIA 找不到当时被换装编辑页隐藏的 FaceButton。7 次尝试、6 条资源与 7 个工具均已收尾；旧 22 表最终保全未验证，额度已消耗，详见[失败记录](2026-10-10-account-sync-b1a-navigation-failure.md)。导航和UIA超时收尾已修复，根最终C#100/100、真实独立窗口／账号／宿主接线27/27、PowerShell406/406与runner40/40、原工具438/438通过；旧批准调用唯一新旅程为1 NotExecuted。新的[B1a2候选](2026-10-10-account-sync-b1a2-candidate.md)等待精确资源批准。B1b和门廊真实验证仍需后续独立计划。
 
 ## 登录比较与成功保存边界
 

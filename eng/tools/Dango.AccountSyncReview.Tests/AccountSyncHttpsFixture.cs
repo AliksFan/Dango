@@ -69,7 +69,7 @@ internal sealed class AccountSyncHttpsFixture : IAsyncDisposable
         listener.Start(); var port = ((IPEndPoint)listener.LocalEndpoint).Port; listener.Stop();
         if (port == owner.DatabasePort) throw Reject();
         using var rsa = RSA.Create(2048);
-        var request = new CertificateRequest($"CN=Dango AccountSync B1a {owner.OwnerId:N}", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        var request = new CertificateRequest($"CN=Dango AccountSync B1a2 {owner.OwnerId:N}", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         var names = new SubjectAlternativeNameBuilder(); names.AddIpAddress(IPAddress.Loopback);
         request.CertificateExtensions.Add(names.Build());
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));

@@ -6,13 +6,14 @@ function Get-DangoAccountSyncPlan {
     param([string]$Repository)
     $state=Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Dango/BackendDevelopment/run20261008b0'
     [pscustomobject]@{
-        Version=1; Stage='AccountSyncB1a'; RunName='run20261008b0'; Executed=$false
+        Version=1; Stage='AccountSyncB1a2'; RunName='run20261008b0'; Executed=$false
         Repository=[IO.Path]::GetFullPath($Repository); StateDirectory=$state; DataDirectory=(Join-Path $state 'pgdata')
-        EvidenceDirectory=(Join-Path (Split-Path -Parent $state) 'run20261010accountsyncb1a')
+        EvidenceDirectory=(Join-Path (Split-Path -Parent $state) 'run20261010accountsyncb1a2')
         PostgresBinDirectory=(Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'PostgreSQL/18/bin')
         Database='dango_backend_b0'; Role='dango_b0_owner'; DatabasePort=63237; ExpectedTests=1; MaximumToolProcesses=10
         Filter='FullyQualifiedName=Dango.AccountSyncReview.Tests.AccountSyncB1aJourneyTests.FullApplicationHostRegistersNamesComparesEveryLoginAndSynchronizesRealSavedAppearance'
-        CandidateDirectory='artifacts/account-sync-b1a-candidate/bin/Dango.AccountSyncReview.Tests/release'
+        CandidateDirectory='artifacts/account-sync-b1a2-candidate/bin/Dango.AccountSyncReview.Tests/release'
+        ApprovalVariable='DANGO_BACKEND_ACCOUNTSYNC_B1A2_APPROVED'; TrxFileName='account-sync-b1a2.trx'
         NativeModule='artifacts/local-room/account-profile-sync-20261010/bin/Dango.Desktop/release/dango_physics_module.dll'
         NativeSha256='BFDD6CD68835540569A7D96EFCDE9B4580846983BDD717111D6BC68811150507'
         PriorMigrations=@('20261008074701_InitialAccountRoomFoundation','20261008085521_AccountLifecycle',
@@ -41,7 +42,8 @@ function Get-DangoAccountSyncInputs {
     param($Plan)
     $fixed=Assert-DangoAccountSyncFixedPlan $Plan
     $files=@('eng/Dango.AccountSyncPostgres.psm1','eng/Dango.AccountProfilePostgres.psm1',
-        'eng/invoke-account-sync-b1a-tests.ps1','src/Dango.Desktop/Properties/AssemblyInfo.cs',
+        'eng/invoke-account-sync-b1a-tests.ps1','eng/test-account-sync-b1a-boundary.ps1',
+        'eng/test-account-sync-b1a-runner-boundary.ps1','src/Dango.Desktop/Properties/AssemblyInfo.cs',
         'src/Dango.Desktop/AppShell/DangoApplicationHost.cs','src/Dango.Desktop/AppShell/DangoApplicationHost.Accounts.cs',
         'src/Dango.Desktop/AppShell/DangoApplicationHost.AccountDependencies.cs','src/Dango.Desktop/AppShell/DangoApplicationHost.Persistence.cs',
         'eng/tools/Dango.AccountSyncReview.Tests/Dango.AccountSyncReview.Tests.csproj','Directory.Build.props','global.json',$fixed.NativeModule)
@@ -187,6 +189,7 @@ function Assert-DangoAccountSyncOldGraph {
 function Assert-DangoAccountSyncTrx {
     param([string]$Path)
     Assert-DangoProfileRegularPath $Path
+    if ([IO.Path]::GetFileName($Path) -cne 'account-sync-b1a2.trx') {throw 'accountsync_trx_stage_path_rejected'}
     $file=[IO.FileInfo]::new($Path);if (-not $file.Exists -or $file.Length -le 0 -or $file.Length -gt 1048576) {throw 'accountsync_trx_rejected'}
     $settings=[Xml.XmlReaderSettings]::new();$settings.DtdProcessing='Prohibit';$settings.XmlResolver=$null
     $reader=[Xml.XmlReader]::Create($Path,$settings);$xml=[Xml.XmlDocument]::new();$xml.XmlResolver=$null
@@ -229,7 +232,7 @@ function Assert-DangoAccountSyncResources {
             'TLSCreated' {@('Port','CertificateSha256')}
             'HostStarted' {@('Port','WorkersDisabled')}
             'DesktopStarted' {@('Index','Attempt')}
-            'DesktopDisposed' {@('Index','Disposed','HwndClosed','ConfigurationPumpDrained')}
+            'DesktopDisposed' {@('Index','Disposed','HwndClosed','ConfigurationPumpDrained','UiaWorkerSettled')}
             'HostDisposed' {@('Stopped','Disposed','InFlightRequests')}
             'TLSDisposed' {@('NativeKeyIdentityCaptured','NativeCleanupConfirmed','NativeProbeFailed')}
             default {throw 'accountsync_resource_order_rejected'}
@@ -250,14 +253,15 @@ function Assert-DangoAccountSyncResources {
         if ($r.Phase -ceq 'DesktopStarted' -and -not(Test-DangoAccountSyncBoolean $r.Facts.Attempt $true)) {throw 'accountsync_desktop_resource_rejected'}
         if ($r.Phase -ceq 'DesktopDisposed' -and (-not(Test-DangoAccountSyncBoolean $r.Facts.Disposed $true) -or
             -not(Test-DangoAccountSyncBoolean $r.Facts.HwndClosed $true) -or
-            -not(Test-DangoAccountSyncBoolean $r.Facts.ConfigurationPumpDrained $true))) {throw 'accountsync_desktop_cleanup_rejected'}
+            -not(Test-DangoAccountSyncBoolean $r.Facts.ConfigurationPumpDrained $true) -or
+            -not(Test-DangoAccountSyncBoolean $r.Facts.UiaWorkerSettled $true))) {throw 'accountsync_desktop_cleanup_rejected'}
     }
     if (-not(Test-DangoAccountSyncBoolean $Rows[8].Facts.Stopped $true) -or -not(Test-DangoAccountSyncBoolean $Rows[8].Facts.Disposed $true) -or
         -not(Test-DangoAccountSyncInteger $Rows[8].Facts.InFlightRequests 0) -or
         -not(Test-DangoAccountSyncBoolean $Rows[9].Facts.NativeKeyIdentityCaptured $true) -or
         -not(Test-DangoAccountSyncBoolean $Rows[9].Facts.NativeCleanupConfirmed $true) -or
         -not(Test-DangoAccountSyncBoolean $Rows[9].Facts.NativeProbeFailed $false)) {throw 'accountsync_native_cleanup_rejected'}
-    return [pscustomobject]@{HttpsHosts=1;Certificates=1;DesktopHosts=3;NativeCleanupConfirmed=$true}
+    return [pscustomobject]@{HttpsHosts=1;Certificates=1;DesktopHosts=3;NativeCleanupConfirmed=$true;UiaWorkersCleanupConfirmed=$true}
 }
 
 function Get-DangoAccountSyncScopedSql {

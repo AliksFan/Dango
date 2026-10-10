@@ -13,9 +13,9 @@ namespace Dango.AccountSyncReview.Tests;
 
 internal sealed class AccountSyncTestOwner : IDisposable
 {
-    internal const string ApprovalVariable = "DANGO_BACKEND_ACCOUNTSYNC_B1A_APPROVED";
-    internal const string Stage = "AccountSyncB1a";
-    internal const string RunName = "run20261010accountsyncb1a";
+    internal const string ApprovalVariable = "DANGO_BACKEND_ACCOUNTSYNC_B1A2_APPROVED";
+    internal const string Stage = "AccountSyncB1a2";
+    internal const string RunName = "run20261010accountsyncb1a2";
     private static readonly object initializationGate = new();
     private static AccountSyncTestOwner? instance;
     private static bool initializationAttempted;
@@ -50,14 +50,17 @@ internal sealed class AccountSyncTestOwner : IDisposable
     }
 
     internal static AccountSyncTestOwner Require() =>
-        RequireWithFactory(Environment.GetEnvironmentVariable(ApprovalVariable) == "1", LoadApproved);
+        RequireWithFactory(IsApprovalGranted(Environment.GetEnvironmentVariable), LoadApproved);
+
+    internal static bool IsApprovalGranted(Func<string, string?> readEnvironment) =>
+        readEnvironment(ApprovalVariable) == "1";
 
     internal static AccountSyncTestOwner RequireWithFactory(bool approved, Func<AccountSyncTestOwner> loadApproved)
     {
         // The only operation preceding this check is reading the independent grant.
-        // No old B1/B5/Profile grant authorizes this stage or even its resource reads.
+        // No old B1/B5/Profile/B1a grant authorizes this stage or even its resource reads.
         if (!approved)
-            Assert.Inconclusive("AccountSyncB1a resource access and fictional writes need their own exact approval.");
+            Assert.Inconclusive("AccountSyncB1a2 resource access and fictional writes need their own exact approval.");
         lock (initializationGate)
         {
             if (instance is not null) { instance.CheckAlive(); return instance; }
@@ -104,7 +107,7 @@ internal sealed class AccountSyncTestOwner : IDisposable
         if (!OperatingSystem.IsWindows()) throw Reject("windows_required");
         var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Dango", "BackendDevelopment", RunName);
-        if (!SamePath(RequiredEnvironment("DANGO_BACKEND_ACCOUNTSYNC_B1A_RUN_DIRECTORY"), directory))
+        if (!SamePath(RequiredEnvironment("DANGO_BACKEND_ACCOUNTSYNC_B1A2_RUN_DIRECTORY"), directory))
             throw Reject("run_directory_rejected");
         RequireRegularPath(directory);
         var info = new DirectoryInfo(directory);
@@ -119,12 +122,12 @@ internal sealed class AccountSyncTestOwner : IDisposable
                 && (rule.FileSystemRights & (FileSystemRights.Write | FileSystemRights.Modify | FileSystemRights.FullControl)) != 0)
                 throw Reject("run_acl_rejected");
 
-        if (!Guid.TryParseExact(RequiredEnvironment("DANGO_BACKEND_ACCOUNTSYNC_B1A_OWNER_ID"), "D", out var ownerId) || ownerId == Guid.Empty
-            || !int.TryParse(RequiredEnvironment("DANGO_BACKEND_ACCOUNTSYNC_B1A_OWNER_PID"), out var ownerPid) || ownerPid <= 0)
+        if (!Guid.TryParseExact(RequiredEnvironment("DANGO_BACKEND_ACCOUNTSYNC_B1A2_OWNER_ID"), "D", out var ownerId) || ownerId == Guid.Empty
+            || !int.TryParse(RequiredEnvironment("DANGO_BACKEND_ACCOUNTSYNC_B1A2_OWNER_PID"), out var ownerPid) || ownerPid <= 0)
             throw Reject("owner_identity_rejected");
         var manifestPath = Path.Combine(directory, "owner-manifest.json");
         var manifestBytes = ReadBoundedFile(manifestPath, 65536);
-        var expectedDigest = RequiredEnvironment("DANGO_BACKEND_ACCOUNTSYNC_B1A_OWNER_MANIFEST_SHA256");
+        var expectedDigest = RequiredEnvironment("DANGO_BACKEND_ACCOUNTSYNC_B1A2_OWNER_MANIFEST_SHA256");
         if (expectedDigest.Length != 64 || expectedDigest.Any(character => character is not (>= '0' and <= '9') and not (>= 'A' and <= 'F'))
             || Convert.ToHexString(SHA256.HashData(manifestBytes)) != expectedDigest)
             throw Reject("owner_manifest_digest_rejected");

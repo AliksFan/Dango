@@ -3,7 +3,7 @@ param([string]$Repository=(Split-Path -Parent $PSScriptRoot),[string]$RunnerOver
 $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
 Import-Module (Join-Path $Repository 'eng/Dango.AccountProfilePostgres.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $Repository 'eng/Dango.AccountSyncPostgres.psm1') -Force -DisableNameChecking
-$artifactRoot=Join-Path $Repository 'artifacts/account-sync-b1a-runner-offline-20261010'
+$artifactRoot=Join-Path $Repository 'artifacts/account-sync-b1a2-runner-offline-20261010'
 $runner=if([string]::IsNullOrWhiteSpace($RunnerOverride)){Join-Path $Repository 'eng/invoke-account-sync-b1a-tests.ps1'}else{
     $overridePath=[IO.Path]::GetFullPath($RunnerOverride)
     $overrideRoot=[IO.Path]::GetFullPath($artifactRoot)+[IO.Path]::DirectorySeparatorChar

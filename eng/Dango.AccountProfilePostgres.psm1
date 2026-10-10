@@ -263,7 +263,7 @@ function Get-DangoProfileFixedPlan {
             Get-DangoProfilePlan 'run20261008b0' $Plan.PostgresBinDirectory $Plan.Repository
         } elseif ($Plan.Stage -ceq 'AccountProfileTargetDiagnostic') {
             Get-DangoProfileDiagnosticPlan 'run20261008b0' $Plan.PostgresBinDirectory $Plan.Repository
-        } elseif ($Plan.Stage -ceq 'AccountSyncB1a') {
+        } elseif ($Plan.Stage -ceq 'AccountSyncB1a2') {
             Get-DangoAccountSyncPlan $Plan.Repository
         } else { throw 'rejected' }
         if (@($Plan.PSObject.Properties).Count -ne @($fixed.PSObject.Properties).Count) { throw 'rejected' }

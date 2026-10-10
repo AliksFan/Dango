@@ -10,7 +10,7 @@ Import-Module $ModulePath -Force
 # is created. No runner, reservation, database, socket, certificate, credential,
 # state directory, key ring or installed executable is opened or invoked.
 $taskRepo=Split-Path -Parent $PSScriptRoot
-$taskSandbox=Join-Path $taskRepo ('artifacts/account-sync-b1a-offline/'+[Guid]::NewGuid().ToString('N'))
+$taskSandbox=Join-Path $taskRepo ('artifacts/account-sync-b1a2-offline/'+[Guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($taskSandbox)
 $taskChecks=[Collections.Generic.List[object]]::new()
 $taskOwner=[Guid]'86d87632-8216-4abd-86e9-93bfa9b58644'
@@ -26,6 +26,7 @@ $taskAdds=@('invitations','registrations','challenges','emailJobs','users','pets
 $taskSeven=@('20261008074701_InitialAccountRoomFoundation','20261008085521_AccountLifecycle','20261009031410_RoomManagement',
     '20261009055558_RoomAccess','20261009062701_RoomAccessIntegrity','20261009124814_AccessoryAccountBackup','20261010055529_AccountProfile')
 $taskFrozen=@('eng/Dango.AccountSyncPostgres.psm1','eng/Dango.AccountProfilePostgres.psm1','eng/invoke-account-sync-b1a-tests.ps1',
+    'eng/test-account-sync-b1a-boundary.ps1','eng/test-account-sync-b1a-runner-boundary.ps1',
     'src/Dango.Desktop/Properties/AssemblyInfo.cs','src/Dango.Desktop/AppShell/DangoApplicationHost.cs',
     'src/Dango.Desktop/AppShell/DangoApplicationHost.Accounts.cs','src/Dango.Desktop/AppShell/DangoApplicationHost.AccountDependencies.cs',
     'src/Dango.Desktop/AppShell/DangoApplicationHost.Persistence.cs','eng/tools/Dango.AccountSyncReview.Tests/Dango.AccountSyncReview.Tests.csproj',
@@ -85,7 +86,7 @@ function Resources {
             TLSCreated {[pscustomobject]@{Port=62123;CertificateSha256=('A'*64)}}
             HostStarted {[pscustomobject]@{Port=62123;WorkersDisabled=$true}}
             DesktopStarted {[pscustomobject]@{Index=([int][Math]::Floor(($i-2)/2)+1);Attempt=$true}}
-            DesktopDisposed {[pscustomobject]@{Index=([int][Math]::Floor(($i-2)/2)+1);Disposed=$true;HwndClosed=$true;ConfigurationPumpDrained=$true}}
+            DesktopDisposed {[pscustomobject]@{Index=([int][Math]::Floor(($i-2)/2)+1);Disposed=$true;HwndClosed=$true;ConfigurationPumpDrained=$true;UiaWorkerSettled=$true}}
             HostDisposed {[pscustomobject]@{Stopped=$true;Disposed=$true;InFlightRequests=0}}
             TLSDisposed {[pscustomobject]@{NativeKeyIdentityCaptured=$true;NativeCleanupConfirmed=$true;NativeProbeFailed=$false}}
         }
@@ -112,9 +113,12 @@ function WriteFixture([string]$Relative,[string]$Content='fictional-offline-sour
     return $path
 }
 
-Check 'FixedPlanHasExactB1aScopeAndSevenMigrations' {
+Check 'FixedPlanHasExactB1a2ScopeAndSevenMigrations' {
     $plan=Plan;[void](Assert-DangoAccountSyncFixedPlan $plan)
-    $plan.Stage -ceq 'AccountSyncB1a' -and $plan.RunName -ceq 'run20261008b0' -and $plan.ExpectedTests -eq 1 -and
+    $plan.Stage -ceq 'AccountSyncB1a2' -and $plan.RunName -ceq 'run20261008b0' -and $plan.ExpectedTests -eq 1 -and
+        [IO.Path]::GetFileName($plan.EvidenceDirectory) -ceq 'run20261010accountsyncb1a2' -and
+        $plan.CandidateDirectory -ceq 'artifacts/account-sync-b1a2-candidate/bin/Dango.AccountSyncReview.Tests/release' -and
+        $plan.ApprovalVariable -ceq 'DANGO_BACKEND_ACCOUNTSYNC_B1A2_APPROVED' -and $plan.TrxFileName -ceq 'account-sync-b1a2.trx' -and
         $plan.MaximumToolProcesses -eq 10 -and $plan.MaximumHttpRequests -eq 512 -and $plan.MaximumDurationMinutes -eq 10 -and
         $plan.HttpsHosts -eq 1 -and $plan.Certificates -eq 1 -and $plan.DesktopHosts -eq 3 -and
         $plan.MigrationOperations -eq 0 -and $plan.RoomOperations -eq 0 -and $plan.SystemTrustOperations -eq 0 -and
@@ -141,7 +145,24 @@ Check 'FixedPlanRejectsNumericStringBudget' {$plan=Plan;$plan.Budgets.Login='4';
 Check 'ImportedProfileHelperResolvesTheAccountSyncFixedPlan' {
     $fixed=Get-DangoProfileFixedPlan (Plan)
     [void](Assert-DangoAccountSyncFixedPlan $fixed)
-    $fixed.Stage -ceq 'AccountSyncB1a'
+    $fixed.Stage -ceq 'AccountSyncB1a2'
+}
+foreach($oldField in @('Stage','EvidenceDirectory','CandidateDirectory','ApprovalVariable','TrxFileName')) {
+    Check ('FixedPlanRejectsConsumedB1a_'+$oldField) {
+        $plan=Plan
+        $plan.$oldField=switch($oldField) {
+            Stage {'AccountSyncB1a'}
+            EvidenceDirectory {Join-Path (Split-Path -Parent $plan.EvidenceDirectory) 'run20261010accountsyncb1a'}
+            CandidateDirectory {'artifacts/account-sync-b1a-candidate/bin/Dango.AccountSyncReview.Tests/release'}
+            ApprovalVariable {'DANGO_BACKEND_ACCOUNTSYNC_B1A_APPROVED'}
+            TrxFileName {'account-sync-b1a.trx'}
+        }
+        Rejected {Assert-DangoAccountSyncFixedPlan $plan} 'accountsync_fixed_plan_rejected'
+    }
+}
+Check 'ImportedProfileHelperRejectsConsumedB1aDispatch' {
+    $plan=Plan;$plan.Stage='AccountSyncB1a'
+    Rejected {Get-DangoProfileFixedPlan $plan} 'profile_run_fixed_plan_rejected'
 }
 
 Check 'ExactReadOnlySqlHashesAllTwentyTwoCompleteRowsIncludingUserNicknameAndVersion' {
@@ -225,6 +246,15 @@ Check 'ProfileProcessRejectsTamperedStartBeforeNativeBoundary' {
 }
 Check 'ProfileProcessRejectsTamperedEvidenceBeforeNativeBoundary' {
     (ProbeProfileLaunchBoundary (EvidenceContract) Evidence -Tamper) -ceq 'accountsync_evidence_contract_rejected'
+}
+Check 'ProfileProcessRejectsConsumedB1aStageBeforeNativeBoundary' {
+    $contract=StartContract;$contract.Plan.Stage='AccountSyncB1a'
+    (ProbeProfileLaunchBoundary $contract Start) -ceq 'accountsync_fixed_plan_rejected'
+}
+Check 'ProfileProcessRejectsConsumedB1aLogDirectoryBeforeNativeBoundary' {
+    $contract=StartContract
+    $contract.Arguments[4]=Join-Path (Join-Path (Split-Path -Parent $contract.Plan.EvidenceDirectory) 'run20261010accountsyncb1a') 'postgresql.log'
+    (ProbeProfileLaunchBoundary $contract Start) -ceq 'accountsync_start_contract_rejected'
 }
 
 Check 'TargetAcceptsExactlySevenReviewedMigrationIds' {Assert-DangoAccountSyncTarget (Plan) (Target);$true}
@@ -319,7 +349,7 @@ foreach($case in @('eighteen','twenty','duplicate_sequence','unknown_operation',
         Rejected {Assert-DangoAccountSyncAttempts (Plan) $taskOwner $rows} $code
     }
 }
-Check 'ResourceLedgerAcceptsExactTenAndAllCleanupFacts' {$r=Assert-DangoAccountSyncResources $taskOwner (Resources);$r.HttpsHosts -eq 1 -and $r.Certificates -eq 1 -and $r.DesktopHosts -eq 3 -and $r.NativeCleanupConfirmed -eq $true}
+Check 'ResourceLedgerAcceptsExactTenAndAllCleanupFacts' {$r=Assert-DangoAccountSyncResources $taskOwner (Resources);$r.HttpsHosts -eq 1 -and $r.Certificates -eq 1 -and $r.DesktopHosts -eq 3 -and $r.NativeCleanupConfirmed -eq $true -and $r.UiaWorkersCleanupConfirmed -eq $true}
 foreach($field in @('Version','OwnerId','Sequence','Phase','Facts')) {
     Check ('ResourceLedgerRejectsMissingField_'+$field) {$rows=Resources;$rows[0].PSObject.Properties.Remove($field);Rejected {Assert-DangoAccountSyncResources $taskOwner $rows} $null}
     Check ('ResourceLedgerRejectsFieldCase_'+$field) {
@@ -347,6 +377,7 @@ for($resourceIndex=0;$resourceIndex -lt 10;$resourceIndex++) {
     }
 }
 foreach($case in @('nine','eleven','duplicate_sequence','wrong_owner','wrong_phase','wrong_index','hwnd_open','not_disposed','pump_running',
+    'uia_worker_1','uia_worker_2','uia_worker_3','string_uia_worker',
     'host_running','inflight','native_identity_missing','native_key_present','native_probe_failed','certificate_invalid','tls_port_zero','host_port_mismatch','workers_enabled','desktop_attempt_false',
     'string_version','string_sequence','string_port','string_index','string_hwnd','string_inflight','string_native_cleanup','string_native_probe')) {
     Check ('ResourceLedgerRejects_'+$case) {
@@ -361,6 +392,10 @@ foreach($case in @('nine','eleven','duplicate_sequence','wrong_owner','wrong_pha
             hwnd_open {$rows[3].Facts.HwndClosed=$false;$code='accountsync_desktop_cleanup_rejected'}
             not_disposed {$rows[5].Facts.Disposed=$false;$code='accountsync_desktop_cleanup_rejected'}
             pump_running {$rows[7].Facts.ConfigurationPumpDrained=$false;$code='accountsync_desktop_cleanup_rejected'}
+            uia_worker_1 {$rows[3].Facts.UiaWorkerSettled=$false;$code='accountsync_desktop_cleanup_rejected'}
+            uia_worker_2 {$rows[5].Facts.UiaWorkerSettled=$false;$code='accountsync_desktop_cleanup_rejected'}
+            uia_worker_3 {$rows[7].Facts.UiaWorkerSettled=$false;$code='accountsync_desktop_cleanup_rejected'}
+            string_uia_worker {$rows[3].Facts.UiaWorkerSettled='true';$code='accountsync_desktop_cleanup_rejected'}
             host_running {$rows[8].Facts.Stopped=$false;$code='accountsync_native_cleanup_rejected'}
             inflight {$rows[8].Facts.InFlightRequests=1;$code='accountsync_native_cleanup_rejected'}
             native_identity_missing {$rows[9].Facts.NativeKeyIdentityCaptured=$false;$code='accountsync_native_cleanup_rejected'}
@@ -418,7 +453,11 @@ foreach($empty in @('UserId','Epoch','OwnerId')) {
 
 $taskTestName='FullApplicationHostRegistersNamesComparesEveryLoginAndSynchronizesRealSavedAppearance'
 $taskTrx='<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010"><Results><UnitTestResult testName="'+$taskTestName+'" outcome="Passed" /></Results><ResultSummary><Counters total="1" executed="1" passed="1" failed="0" notExecuted="0" /></ResultSummary></TestRun>'
-Check 'TrxAcceptsExactlyOneNamedPassedResult' {$path=WriteFixture 'artifacts/one-pass.trx' $taskTrx;Assert-DangoAccountSyncTrx $path;$true}
+Check 'TrxAcceptsExactlyOneNamedPassedResult' {$path=WriteFixture 'artifacts/trx-pass/account-sync-b1a2.trx' $taskTrx;Assert-DangoAccountSyncTrx $path;$true}
+Check 'TrxRejectsConsumedB1aResultFileName' {
+    $path=WriteFixture 'artifacts/account-sync-b1a.trx' $taskTrx
+    Rejected {Assert-DangoAccountSyncTrx $path} 'accountsync_trx_stage_path_rejected'
+}
 foreach($case in @('zero','two','failed','skipped','wrong_name','counter_total','counter_executed','counter_passed','counter_failed','counter_skipped','missing_counters','dtd')) {
     Check ('TrxRejects_'+$case) {
         $xml=$taskTrx;$code='accountsync_trx_not_exactly_one_passed'
@@ -432,7 +471,7 @@ foreach($case in @('zero','two','failed','skipped','wrong_name','counter_total',
             missing_counters {$xml=$xml.Replace('<Counters total="1" executed="1" passed="1" failed="0" notExecuted="0" />','')}
             dtd {$xml='<!DOCTYPE TestRun [<!ENTITY fictional "offline">]>'+$xml;$code=$null}
         }
-        $path=WriteFixture ('artifacts/trx-'+$case+'.trx') $xml
+        $path=WriteFixture ('artifacts/trx-'+$case+'/account-sync-b1a2.trx') $xml
         Rejected {Assert-DangoAccountSyncTrx $path} $code
     }
 }
@@ -461,6 +500,30 @@ Check 'FrozenInputsContainAllEntrypointsHostInjectionNativeAndCandidateFiles' {
     $taskInputs.MissingInputs.Count -eq 0 -and @($expected|Where-Object {-not $taskInputs.Hashes.Contains($_)}).Count -eq 0
 }
 Check 'FictionalFrozenManifestAcceptsUnchangedInputs' {[void](Assert-DangoAccountSyncApproval $taskPlan $taskReviewPath $taskReview.Sha256);$true}
+Check 'FrozenInputsDoNotIncludeAnExistingConsumedB1aCandidate' {
+    $old='artifacts/account-sync-b1a-candidate/bin/Dango.AccountSyncReview.Tests/release/Dango.AccountSyncReview.Tests.dll'
+    [void](WriteFixture $old 'fictional-consumed-b1a-candidate')
+    $current=Get-DangoAccountSyncInputs $taskPlan
+    -not $current.Hashes.Contains($old) -and
+        $current.Hashes.Contains($taskPlan.CandidateDirectory+'/Dango.AccountSyncReview.Tests.dll')
+}
+Check 'FrozenManifestRejectsConsumedB1aOuterStageEvenWithItsOwnMatchingDigest' {
+    $old=Clone $taskReview.Inputs;$old.Stage='AccountSyncB1a'
+    $path=Join-Path $taskSandbox 'artifacts/fictional-consumed-b1a-stage.json'
+    Write-DangoProfileJson $path $old -CreateNew
+    $digest=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+    Rejected {Assert-DangoAccountSyncApproval $taskPlan $path $digest} 'accountsync_approval_invalid'
+}
+Check 'FrozenManifestRejectsConsumedB1aInnerPlanEvenWithItsOwnMatchingDigest' {
+    $old=Clone $taskReview.Inputs;$old.Plan.Stage='AccountSyncB1a'
+    $old.Plan.EvidenceDirectory=Join-Path (Split-Path -Parent $old.Plan.EvidenceDirectory) 'run20261010accountsyncb1a'
+    $old.Plan.CandidateDirectory='artifacts/account-sync-b1a-candidate/bin/Dango.AccountSyncReview.Tests/release'
+    $old.Plan.ApprovalVariable='DANGO_BACKEND_ACCOUNTSYNC_B1A_APPROVED';$old.Plan.TrxFileName='account-sync-b1a.trx'
+    $path=Join-Path $taskSandbox 'artifacts/fictional-consumed-b1a-plan.json'
+    Write-DangoProfileJson $path $old -CreateNew
+    $digest=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+    Rejected {Assert-DangoAccountSyncApproval $taskPlan $path $digest} 'accountsync_approved_plan_changed'
+}
 foreach($relative in $taskInputs.Hashes.Keys) {
     Check ('FrozenSourceRejectsModification_'+$relative) {
         $path=Join-Path $taskSandbox $relative;$original=[IO.File]::ReadAllBytes($path)
@@ -491,6 +554,6 @@ $taskResult=[pscustomobject]@{ExecutedDatabase=$false;RunnerEntryExecuted=$false
     SystemTrustOrCredentialsAccessed=$false;Sandbox=$taskSandbox;Passed=$taskPassed;Total=$taskChecks.Count;Checks=@($taskChecks)}
 Write-DangoProfileJson (Join-Path $taskSandbox 'offline-results.json') $taskResult -CreateNew
 $taskChecks|Where-Object {-not $_.Passed}|Select-Object Name,Failure|Format-Table -AutoSize
-Write-Output ('accountsync_b1a_offline_evidence:'+ (Join-Path $taskSandbox 'offline-results.json'))
-if($taskPassed -ne $taskChecks.Count) {throw ('accountsync_b1a_offline_failed:'+$taskPassed+'/'+$taskChecks.Count)}
-Write-Output ('accountsync_b1a_offline_passed:'+$taskPassed+'/'+$taskChecks.Count)
+Write-Output ('accountsync_b1a2_offline_evidence:'+ (Join-Path $taskSandbox 'offline-results.json'))
+if($taskPassed -ne $taskChecks.Count) {throw ('accountsync_b1a2_offline_failed:'+$taskPassed+'/'+$taskChecks.Count)}
+Write-Output ('accountsync_b1a2_offline_passed:'+$taskPassed+'/'+$taskChecks.Count)

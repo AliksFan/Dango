@@ -170,7 +170,7 @@ $taskSyncStopAttempted=$false;$taskSyncFailure=$null;$taskSyncCleanup=$false;$ta
 $taskSyncPassword=$null;$taskSyncConnection=$null;$taskSyncTestEnvironment=$null;$taskSyncPsqlEnvironment=$null
 $taskSyncAudit=$null;$taskSyncResources=$null;$taskSyncScopedGraph=$null;$taskSyncJourney=$null
 $taskSyncTestsAttempted=$false;$taskSyncInputsFrozen=$false;$taskSyncBefore=$null;$taskSyncAfter=$null
-$taskSyncTrx=Join-Path $taskSyncPlan.EvidenceDirectory 'account-sync-b1a.trx'
+$taskSyncTrx=Join-Path $taskSyncPlan.EvidenceDirectory $taskSyncPlan.TrxFileName
 try {
     foreach($name in @('state.json','credential.dpapi','b1test-state.json','b1tests-keys')) {
         $path=Join-Path $taskSyncPlan.StateDirectory $name;Assert-DangoProfileRegularPath $path
@@ -241,17 +241,17 @@ try {
     $taskSyncPsqlEnvironment=@{PGPASSWORD=$taskSyncPassword;PGCLIENTENCODING='UTF8'}
     $taskSyncBefore=Invoke-DangoAccountSyncSnapshot 'before'
     $taskSyncConnection="Host=127.0.0.1;Port=63237;Database=dango_backend_b0;Username=dango_b0_owner;Password=$taskSyncPassword;Include Error Detail=false"
-    $taskSyncTestEnvironment=@{DANGO_BACKEND_ACCOUNTSYNC_B1A_APPROVED='1';
-        DANGO_BACKEND_ACCOUNTSYNC_B1A_OWNER_ID=$taskSyncReservation.OwnerId.ToString('D');
-        DANGO_BACKEND_ACCOUNTSYNC_B1A_OWNER_PID=[string]$taskSyncReservation.Owner.OwnerPid;
-        DANGO_BACKEND_ACCOUNTSYNC_B1A_RUN_DIRECTORY=$taskSyncPlan.EvidenceDirectory;
-        DANGO_BACKEND_ACCOUNTSYNC_B1A_OWNER_MANIFEST_SHA256=$taskSyncReservation.ManifestSha256;
+    $taskSyncTestEnvironment=@{DANGO_BACKEND_ACCOUNTSYNC_B1A2_APPROVED='1';
+        DANGO_BACKEND_ACCOUNTSYNC_B1A2_OWNER_ID=$taskSyncReservation.OwnerId.ToString('D');
+        DANGO_BACKEND_ACCOUNTSYNC_B1A2_OWNER_PID=[string]$taskSyncReservation.Owner.OwnerPid;
+        DANGO_BACKEND_ACCOUNTSYNC_B1A2_RUN_DIRECTORY=$taskSyncPlan.EvidenceDirectory;
+        DANGO_BACKEND_ACCOUNTSYNC_B1A2_OWNER_MANIFEST_SHA256=$taskSyncReservation.ManifestSha256;
         DANGO_BACKEND_TEST_CONNECTION=$taskSyncConnection;DANGO_BACKEND_TEST_DATA_DIRECTORY=$taskSyncPlan.DataDirectory;
         DANGO_BACKEND_B1_KEY_DIRECTORY=(Join-Path $taskSyncPlan.StateDirectory 'b1tests-keys');
         DANGO_BACKEND_B1_RECOVERY_EPOCH=$taskSyncFacts.Epoch.ToString('D')}
     Assert-DangoAccountSyncFrozenInputs;$taskSyncTestsAttempted=$true
     $test=Invoke-DangoAccountSyncTool 'vstest' $taskSyncDotnet @('vstest',$taskSyncTestDll,('--TestCaseFilter:'+$taskSyncPlan.Filter),
-        '--Logger:trx;LogFileName=account-sync-b1a.trx',('--ResultsDirectory:'+$taskSyncPlan.EvidenceDirectory)) $taskSyncTestEnvironment `
+        ('--Logger:trx;LogFileName='+$taskSyncPlan.TrxFileName),('--ResultsDirectory:'+$taskSyncPlan.EvidenceDirectory)) $taskSyncTestEnvironment `
         -TimeoutSeconds 300 -KillOwnedTree
     if ($test.ExitCode -ne 0) { throw 'accountsync_run_tests_failed_no_retry' }
     Assert-DangoAccountSyncTrx $taskSyncTrx
@@ -315,6 +315,7 @@ try {
             $null -ne $taskSyncScopedGraph -and $null -ne $taskSyncJourney);
         AttemptEvidence=$taskSyncAudit;FixturesAttempted=$taskSyncTestsAttempted;FixtureResourceEvidence=$taskSyncResources;
         FixtureNativeCleanupConfirmed=($null -ne $taskSyncResources -and $taskSyncResources.NativeCleanupConfirmed);
+        FixtureUiaWorkersCleanupConfirmed=($null -ne $taskSyncResources -and $taskSyncResources.UiaWorkersCleanupConfirmed);
         StartupObservation=$taskSyncStartupObservation;MaximumHttpRequests=512;MaximumDurationMinutes=10;TestProcessTimeoutSeconds=300;
         WholeSuiteReserved=$true;RetryAllowed=$false;DataRetained=[IO.Directory]::Exists($taskSyncPlan.DataDirectory);
         KeysAndEpochRetained=([IO.Directory]::Exists((Join-Path $taskSyncPlan.StateDirectory 'b1tests-keys')) -and
