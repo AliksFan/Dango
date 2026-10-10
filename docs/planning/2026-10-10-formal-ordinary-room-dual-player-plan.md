@@ -50,6 +50,8 @@ P1 不解除家具单团子 guard，不接服务器正式账号，不升级 body
 
 ## 4. P1：服务器玩法物理准入
 
+2026-10-11恢复改约：[安全出生ADR](../adr/proposals/2026-10-11-world-loss-safe-spawn.md)已批准。下列完整solver checkpoint导入／续步对照为原要求，失败证据保留但不再作为修订后首版恢复准入项；须以另行冻结的world丢失／释放后安全出生及领域恢复语义门替代，不把旧红灯补成绿灯。当前仅开展[R0自身约束诊断](2026-10-11-dual-player-p1-r0-contract.md)，尚未实现该恢复路径，P2仍停止。
+
 目标模块：`eng/native/box2d/dango_physics_module.h`、`dango_collision_review.c`、独立 headless 验证工具、`src/Dango.Physics` 的中立 adapter 与对应测试。新增能力采用独立版本化可选 ABI；旧导出签名、状态槽和无变化单人路径保留，不能靠改既有帧尺寸迫使日常 DLL 失效。
 
 输入来自两份独立虚构控制流，由唯一线程按固定步送入同一个世界。增加可校验的中心速度、支撑／接触输出以及整房内部 checkpoint export／import；checkpoint 无句柄／地址、包含完整恢复必要状态及版本，导入先验证再原子应用，失败保留旧世界与最后安全帧。
