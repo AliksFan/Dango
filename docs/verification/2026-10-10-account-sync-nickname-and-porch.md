@@ -52,4 +52,8 @@
 
 正式 options factory 的 `IHistoryRepository.GetCreateScript()` 离线元数据检查 **1/1**，`profile-history-metadata.trx`：历史表是 `dango.__ef_migrations_history`，列为带引号的 `"MigrationId"` 和 `"ProductVersion"`。业务实体的 snake_case 规则不作用于该历史表；新运行器历史查询必须使用真实列名。
 
+Profile 专用保护已整合。固定 7 个用例共享一次 owner；邀请、注册、登录、直接 Update 和 HTTP 发送均先预留、持久记录尝试，再进入正式边界。每个用例与全局的 67 次变更尝试、22 次 HTTP 请求、7 个夹具／28 行资源回执有固定限额，短锁不包住真正的并发业务。每个夹具在种子前复核原 state／keys／epoch 和实际数据库角色、监听、端口；外来请求 URI 拒绝转发，但坏 CSRF／Origin／JSON 保持原样进入正式服务。失败记录不输出 security stamp。owner 或回执失败后停止后续调用，正常 Dispose 与无法确认的清理分别记录。
+
+整合后新增 13 项无数据库反例随非 PostgreSQL 的 Server 门禁执行，当前 **209/209、零跳过**，`server-profile-boundary-nondatabase.trx`。独立清空 Profile 与 B1 批准后，精确 Profile 类 **7 项全部 skipped/inconclusive、零 failed**，`profile-unapproved-gate.trx`；初始化未通过时 cleanup 不再重新访问 owner。这是禁止未批准执行的证据，不能称 7 项真实数据库业务已通过。
+
 后续真实验证拆为 A-only 昵称迁移与固定 7 项测试、以及另行准备的联合 UIA／双客户端／门廊验证。前一段批准不会开放后一段写入。全量草案仍为未批准规划，测试 owner 异常即停止，不声明崩溃续跑已实现。
