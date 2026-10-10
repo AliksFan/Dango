@@ -31,7 +31,8 @@ public static class FormalHost
 
     public static WebApplication Create(FormalServerOptions options, AccountEnvironment environment,
         X509Certificate2 certificate, Action<IServiceCollection>? configure = null, bool enableEmailWorker = true,
-        bool enableRoomExpiryWorker = false, bool enableRoomLiveWorkers = false)
+        bool enableRoomExpiryWorker = false, bool enableRoomLiveWorkers = false,
+        Action<WebApplication>? configureRequestBoundary = null)
     {
         if (environment.RecoveryEpoch == Guid.Empty) throw new InvalidOperationException("recovery_epoch_required");
         if (!FormalServerOptions.TryCreate(options.DatabaseName, options.ConnectionString, options.KeyDirectory,
@@ -195,6 +196,7 @@ public static class FormalHost
             await next();
         });
         app.UseAuthorization();
+        configureRequestBoundary?.Invoke(app);
         app.MapGet("/health/ready", async (DangoDbContext db, CancellationToken ct) =>
             (await db.Database.GetPendingMigrationsAsync(ct)).Any()
                 ? Results.Json(new { code = "database_migration_required" }, statusCode: 503)
