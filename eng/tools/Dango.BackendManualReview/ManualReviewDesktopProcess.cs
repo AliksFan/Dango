@@ -7,7 +7,8 @@ namespace Dango.BackendManualReview;
 public sealed record VerifiedManualReviewCandidate(string SourceRoot, string CandidateRoot, string ExecutablePath,
     string ExecutableSha256, string NativeModulePath, string NativeModuleSha256);
 public sealed record ManualReviewDesktopLaunch(string ExecutablePath, string WorkingDirectory, string Argument, Uri Origin);
-public sealed record ManualReviewDesktopReceipt(int ProcessId, DateTimeOffset CreationTimeUtc, string ExecutablePath, Uri Origin, int LaunchNumber);
+public sealed record ManualReviewDesktopReceipt(int ProcessId, DateTimeOffset CreationTimeUtc, string ExecutablePath, Uri Origin, int LaunchNumber,
+    Guid? CapabilityId = null, bool IdentityVerified = true, string? IdentityObservationFailure = null);
 public interface IManualReviewProcess : IDisposable
 {
     int ProcessId { get; }
@@ -25,8 +26,9 @@ public interface IManualReviewDesktopResources
 public sealed class OwnedDesktopProcess(IManualReviewProcess process, ManualReviewDesktopReceipt receipt)
 {
     public IManualReviewProcess Process { get; } = process;
-    public ManualReviewDesktopReceipt Receipt { get; } = receipt;
+    public ManualReviewDesktopReceipt Receipt { get; private set; } = receipt;
     internal SemaphoreSlim ExitGate { get; } = new(1, 1);
+    internal void ReplaceReceipt(ManualReviewDesktopReceipt replacement) => Receipt = replacement;
 }
 public sealed class ManualReviewDesktopProcess(IManualReviewDesktopResources? resources = null)
 {
@@ -68,11 +70,26 @@ public sealed class ManualReviewDesktopProcess(IManualReviewDesktopResources? re
             fixedOrigin ??= origin; fixedCandidate ??= candidate;
             launches++;
             var process = backend.Start(new(candidate.ExecutablePath, candidate.CandidateRoot, "--local-room-review", fixedOrigin));
-            var receipt = new ManualReviewDesktopReceipt(process.ProcessId, process.CreationTimeUtc, process.ExecutablePath, fixedOrigin, launches);
+            // Register the returned handle before any fallible identity observation.
+            // The provisional receipt reports a started capability, not a proven PID identity.
+            var receipt = new ManualReviewDesktopReceipt(0, DateTimeOffset.MinValue, candidate.ExecutablePath, fixedOrigin, launches,
+                Guid.NewGuid(), false, "manual_desktop_identity_observation_incomplete");
             var owned = new OwnedDesktopProcess(process, receipt);
             ownedProcesses.Add(owned);
-            if (receipt.ProcessId <= 0 || !receipt.ExecutablePath.Equals(candidate.ExecutablePath, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("manual_desktop_start_identity_mismatch");
+            try
+            {
+                owned.ReplaceReceipt(owned.Receipt with { ProcessId = process.ProcessId });
+                owned.ReplaceReceipt(owned.Receipt with { CreationTimeUtc = process.CreationTimeUtc });
+                owned.ReplaceReceipt(owned.Receipt with { ExecutablePath = process.ExecutablePath });
+                if (owned.Receipt.ProcessId <= 0 || !owned.Receipt.ExecutablePath.Equals(candidate.ExecutablePath, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("manual_desktop_start_identity_mismatch");
+                owned.ReplaceReceipt(owned.Receipt with { IdentityVerified = true, IdentityObservationFailure = null });
+            }
+            catch
+            {
+                owned.ReplaceReceipt(owned.Receipt with { IdentityObservationFailure = "manual_desktop_identity_observation_failed" });
+                throw;
+            }
             return owned;
         }
     }
@@ -85,6 +102,7 @@ public sealed class ManualReviewDesktopProcess(IManualReviewDesktopResources? re
         {
             if (!ownedProcesses.Contains(owned)) throw new InvalidOperationException("manual_desktop_ownership_unproven");
             if (completedProcesses.Contains(owned)) return Task.FromResult(true);
+            if (!owned.Receipt.IdentityVerified) throw new InvalidOperationException("manual_desktop_identity_unproven");
             if (owned.Process.ProcessId != owned.Receipt.ProcessId || owned.Process.CreationTimeUtc != owned.Receipt.CreationTimeUtc
                 || !owned.Process.ExecutablePath.Equals(owned.Receipt.ExecutablePath, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("manual_desktop_process_identity_changed");

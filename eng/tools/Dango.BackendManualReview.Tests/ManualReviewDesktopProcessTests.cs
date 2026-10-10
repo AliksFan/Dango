@@ -104,20 +104,38 @@ public sealed class ManualReviewDesktopProcessTests
         CollectionAssert.AreEqual(new[]{true,true},await Task.WhenAll(first,second));
         Assert.AreEqual(1,((Process)owned.Process).DisposeCount);
     }
+    [TestMethod] public void StartIdentityFailureStillRetainsStartedCapabilityAndRejectsCleanup()
+    {
+        foreach(var field in new[]{"pid","created","path"})
+        {
+            var fake=new Resources{FailureField=field};var service=new ManualReviewDesktopProcess(fake);
+            Assert.ThrowsExactly<IOException>(()=>service.Launch(true,Candidate,Origin));
+            Assert.AreEqual(1,fake.Starts.Count);
+            var owned=service.SnapshotOwnedProcesses().Single();
+            Assert.IsFalse(owned.Receipt.IdentityVerified);
+            Assert.IsNotNull(owned.Receipt.CapabilityId);
+            Assert.AreEqual("manual_desktop_identity_observation_failed",owned.Receipt.IdentityObservationFailure);
+            Assert.ThrowsExactly<InvalidOperationException>(()=>service.WaitForOwnedExitAsync(true,owned,TimeSpan.FromSeconds(1)));
+            Assert.IsFalse(((Process)owned.Process).Disposed);
+            Assert.ThrowsExactly<InvalidOperationException>(()=>service.Launch(true,Candidate,Origin));
+            Assert.AreEqual(1,fake.Starts.Count);
+        }
+    }
     private sealed class Resources : IManualReviewDesktopResources
     {
-        public int VerifyCount { get; private set; } public int MutexReads { get; private set; } public bool Existing { get; init; }
+        public int VerifyCount { get; private set; } public int MutexReads { get; private set; } public bool Existing { get; init; } public string? FailureField {get;init;}
         public List<ManualReviewDesktopLaunch> Starts { get; } = [];
         public void VerifyCandidate(VerifiedManualReviewCandidate candidate) => VerifyCount++;
         public bool LocalRoomReviewExists() { MutexReads++; return Existing; }
-        public IManualReviewProcess Start(ManualReviewDesktopLaunch launch) { Starts.Add(launch); return new Process { Path = launch.ExecutablePath }; }
+        public IManualReviewProcess Start(ManualReviewDesktopLaunch launch) { Starts.Add(launch); return new Process { Path = launch.ExecutablePath,FailureField=FailureField }; }
     }
     private sealed class Process : IManualReviewProcess
     {
-        public int ProcessId => 4242; public DateTimeOffset Created { get; set; } = DateTimeOffset.UtcNow;
-        public DateTimeOffset CreationTimeUtc => Created; public string Path { get; set; } = Candidate.ExecutablePath;
+        public string? FailureField {get;init;}
+        public int ProcessId => FailureField!="pid"?4242:throw new IOException(); public DateTimeOffset Created { get; set; } = DateTimeOffset.UtcNow;
+        public DateTimeOffset CreationTimeUtc => FailureField!="created"?Created:throw new IOException(); public string Path { get; set; } = Candidate.ExecutablePath;
         private readonly TaskCompletionSource exitCompletion=new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public string ExecutablePath => Path; public bool Exited { get; set; } public bool HasExited => !Disposed?Exited:throw new ObjectDisposedException(nameof(Process));
+        public string ExecutablePath => FailureField!="path"?Path:throw new IOException(); public bool Exited { get; set; } public bool HasExited => !Disposed?Exited:throw new ObjectDisposedException(nameof(Process));
         public bool Disposed { get; private set; } public int DisposeCount {get;private set;}
         public async Task WaitForExitAsync(CancellationToken ct) { if (!Exited) await exitCompletion.Task.WaitAsync(ct); }
         public void CompleteExit(){Exited=true;exitCompletion.TrySetResult();}

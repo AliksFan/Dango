@@ -25,6 +25,7 @@ public interface IManualReviewTlsResources
     void VerifyOwnedDirectory(ManualReviewOwnedDirectory directory);
     byte[] ProtectForCurrentUser(byte[] bytes, Guid ownerId);
     void WriteNewFile(string path, byte[] bytes);
+    X509Certificate2 LoadServerCertificate(byte[] pfx, string password, X509KeyStorageFlags flags);
     IReadOnlyList<X509Certificate2> FindCurrentUserRoot(string thumbprint);
     void AddCurrentUserRoot(X509Certificate2 publicCertificate);
     void RemoveCurrentUserRoot(X509Certificate2 publicCertificate);
@@ -58,7 +59,8 @@ public sealed class ManualReviewTls(IManualReviewTlsResources? resources = null)
             var san = new SubjectAlternativeNameBuilder(); san.AddIpAddress(IPAddress.Loopback);
             request.CertificateExtensions.Add(san.Build());
             var start = now.AddMinutes(-5);
-            var certificate = request.CreateSelfSigned(start, start.AddDays(3));
+            using var certificate = request.CreateSelfSigned(start, start.AddDays(3));
+            X509Certificate2? serverCertificate = null;
             try
             {
                 ValidateCertificate(certificate);
@@ -74,6 +76,12 @@ public sealed class ManualReviewTls(IManualReviewTlsResources? resources = null)
                     try { encrypted = backend.ProtectForCurrentUser(passwordUtf8, directory.OwnerId); }
                     finally { CryptographicOperations.ZeroMemory(passwordUtf8); }
                     exported = certificate.Export(X509ContentType.Pfx, password);
+                    // Reload precisely this newly generated PFX. Schannel cannot serve the
+                    // request's ephemeral key; DefaultKeySet creates a temporary native key
+                    // container, owned and removed by the returned certificate's Dispose.
+                    serverCertificate = backend.LoadServerCertificate(exported, password, X509KeyStorageFlags.DefaultKeySet);
+                    ValidateMatchingCertificate(serverCertificate, receipt);
+                    if (!serverCertificate.HasPrivateKey) throw new InvalidDataException("manual_tls_server_private_key_missing");
                     backend.WriteNewFile(Path.Combine(directory.Path, "tls-password.dpapi"), encrypted);
                     backend.WriteNewFile(Path.Combine(directory.Path, "tls-server.pfx"), exported);
                     backend.WriteNewFile(Path.Combine(directory.Path, "tls-public.cer"), certificate.RawData);
@@ -85,9 +93,9 @@ public sealed class ManualReviewTls(IManualReviewTlsResources? resources = null)
                     if (exported is not null) CryptographicOperations.ZeroMemory(exported);
                 }
                 owned.Add(receipt, new TrustOwnership());
-                return new(certificate, receipt);
+                return new(serverCertificate!, receipt);
             }
-            catch { certificate.Dispose(); throw; }
+            catch { serverCertificate?.Dispose(); throw; }
         }
     }
 
@@ -186,6 +194,12 @@ public sealed class ManualReviewTls(IManualReviewTlsResources? resources = null)
 
     private sealed class WindowsTlsResources : IManualReviewTlsResources
     {
+        public X509Certificate2 LoadServerCertificate(byte[] pfx, string password, X509KeyStorageFlags flags)
+        {
+            if (flags != X509KeyStorageFlags.DefaultKeySet) throw new InvalidOperationException("manual_tls_server_key_flags_invalid");
+            // Schannel needs a native key container. No PersistKeySet: certificate disposal removes this temporary key.
+            return X509CertificateLoader.LoadPkcs12(pfx, password, flags);
+        }
         public void VerifyOwnedDirectory(ManualReviewOwnedDirectory directory)
         {
             var expected = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Dango", "BackendDevelopment", "run20261010b5cmanual");

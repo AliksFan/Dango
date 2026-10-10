@@ -93,6 +93,8 @@ public sealed class ManualReviewTlsTests
         var fake = new Resources { FailWrite = true }; var service = new ManualReviewTls(fake);
         Assert.ThrowsExactly<IOException>(()=>service.Prepare(true,Directory,DateTimeOffset.UtcNow));
         Assert.AreEqual(0,fake.Root.Count);
+        Assert.IsNotNull(fake.LoadedCertificate);
+        Assert.AreEqual(IntPtr.Zero,fake.LoadedCertificate.Handle);
     }
     [TestMethod] public void AmbiguousImportFailureStillAllowsOnlyThisNewPublicTrustCleanup()
     {
@@ -112,10 +114,35 @@ public sealed class ManualReviewTlsTests
         Assert.ThrowsExactly<InvalidOperationException>(()=>service.Prepare(true,directory,DateTimeOffset.UtcNow));
         Assert.AreEqual(operations,fake.Operations);
     }
+    [TestMethod] public void PreparedServerCertificateReloadsSameEncryptedPfxWithTemporaryNativeKeyPolicy()
+    {
+        var fake=new Resources();var service=new ManualReviewTls(fake);
+        using var material=service.Prepare(true,Directory,DateTimeOffset.UtcNow);
+        Assert.AreEqual(1,fake.Loads);
+        Assert.AreEqual(X509KeyStorageFlags.DefaultKeySet,fake.LastStorageFlags);
+        Assert.AreSame(fake.LoadedCertificate,material.Certificate);
+        Assert.IsTrue(material.Certificate.HasPrivateKey);
+        CollectionAssert.AreEqual(fake.LoadedPfx!,fake.Files.Single(file=>file.Key.EndsWith("tls-server.pfx",StringComparison.Ordinal)).Value);
+    }
+    [TestMethod] public void MaterialDisposalOwnsTheReloadedServerCertificateLifetime()
+    {
+        var fake=new Resources();var service=new ManualReviewTls(fake);
+        var material=service.Prepare(true,Directory,DateTimeOffset.UtcNow);
+        Assert.AreNotEqual(IntPtr.Zero,fake.LoadedCertificate!.Handle);
+        material.Dispose();
+        Assert.AreEqual(IntPtr.Zero,fake.LoadedCertificate.Handle);
+    }
     private sealed class Resources : IManualReviewTlsResources
     {
         public int Operations {get;private set;} public int ProtectedCount {get;private set;} public int Removes {get;private set;} public bool FailWrite {get;init;} public bool FailAfterAdd {get;init;}
         public Dictionary<string,byte[]> Files {get;}=[]; public List<X509Certificate2> Root {get;}=[];
+        public int Loads {get;private set;} public X509KeyStorageFlags LastStorageFlags {get;private set;} public X509Certificate2? LoadedCertificate {get;private set;} public byte[]? LoadedPfx {get;private set;}
+        public X509Certificate2 LoadServerCertificate(byte[] pfx,string password,X509KeyStorageFlags flags)
+        {
+            Operations++;Loads++;LastStorageFlags=flags;LoadedPfx=pfx.ToArray();
+            // Static tests retain keys only in memory rather than creating an actual native container.
+            return LoadedCertificate=X509CertificateLoader.LoadPkcs12(pfx,password,X509KeyStorageFlags.EphemeralKeySet);
+        }
         public void VerifyOwnedDirectory(ManualReviewOwnedDirectory directory)=>Operations++;
         public byte[] ProtectForCurrentUser(byte[] bytes,Guid ownerId) { Operations++;ProtectedCount++;return [1,2,3]; }
         public void WriteNewFile(string path,byte[] bytes) {Operations++;if(FailWrite)throw new IOException();Files.Add(path,bytes.ToArray());}
