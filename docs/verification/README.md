@@ -4,6 +4,8 @@
 
 ## 阶段记录
 
+- [正式普通房双人P0–P1隔离验证](2026-10-11-dual-player-physics-admission.md)：authority共同语义、原轨迹、角色／故障反例与独立headless证据；完整恢复和实际绘制接触未通过，Linux未验证，正式服务与人工双机未开始。
+
 - [DIY 配饰第一版本地 main 整合](2026-10-09-accessory-v1-main-integration.md)：用户确认第一版设计收口、人工验收通过；两处分叉冲突、独立桌宠窗口配饰接线、专项反例和共同回归分别记录，保留原失败与未验证边界。
 
 - [DIY 配饰第二轮界面与实时预览](2026-10-08-accessory-ui-refinement.md)：左侧四分组图标、真实四列素材图、创建取消边界及 native 自由地面候选；保留历次失败，自动／进程／人工状态分别记录。[首版本地实施](2026-10-07-accessory-diy-implementation.md)的 A0–A4、性能波动与宿主未验证边界继续保留。

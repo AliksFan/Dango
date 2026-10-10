@@ -51,6 +51,8 @@ public enum DangoPhysicsFailureKind
     CapacityExceeded,
     InvalidEntity,
     NativeFailure,
+    UnsupportedCapability,
+    ModeConflict,
 }
 
 public sealed class DangoPhysicsException : InvalidOperationException
@@ -153,6 +155,8 @@ public sealed partial class DangoPhysicsWorld : IDisposable
             throw Map(-412, "输入必须恰好覆盖世界中的有效实体。实体不能缺失、重复或过期。");
         foreach (var input in inputs)
         {
+            if (presentationMode && (input.Horizontal != 0 || input.Downward != 0 || input.JumpPressed || input.DragActive))
+                throw Map(-421, "呈现世界只能使用 neutral 输入，不能提交玩家操作。");
             if (!double.IsFinite(input.Horizontal) || input.Horizontal is < -1 or > 1 ||
                 !double.IsFinite(input.Downward) || input.Downward is < 0 or > 1 ||
                 !double.IsFinite(input.DragTargetX) || !double.IsFinite(input.DragTargetY))
@@ -312,6 +316,8 @@ public sealed partial class DangoPhysicsWorld : IDisposable
         -410 => new(DangoPhysicsFailureKind.InvalidConfiguration, message, error),
         -411 => new(DangoPhysicsFailureKind.CapacityExceeded, message, error),
         -412 => new(DangoPhysicsFailureKind.InvalidEntity, message, error),
+        -420 => new(DangoPhysicsFailureKind.UnsupportedCapability, message, error),
+        -421 => new(DangoPhysicsFailureKind.ModeConflict, message, error),
         _ => new(DangoPhysicsFailureKind.NativeFailure, message, error),
     };
 
@@ -346,6 +352,7 @@ public sealed partial class DangoPhysicsWorld : IDisposable
             SetStaticPlatform = setStaticPlatform;
             ClearStaticPlatform = clearStaticPlatform;
             ReadStaticPlatformContact = readStaticPlatformContact;
+            LoadAuthorityExports();
         }
 
         internal static NativeApi Load(string path)

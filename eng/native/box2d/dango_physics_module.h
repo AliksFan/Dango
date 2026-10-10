@@ -3,6 +3,7 @@
 
 #include "dango_self_physics_internal.h"
 #include "dango_round_ball_types.h"
+#include "dango_authority_types.h"
 
 #define DANGO_PHYSICS_MODULE_ABI_VERSION 1
 #define DANGO_PHYSICS_MAX_BODIES 3
@@ -45,6 +46,19 @@ DANGO_API int dango_physics_world_clear_static_platform(void* handle);
 // Six floats: enabled, touching, supported, outward normal X/Y, signed gap.
 DANGO_API int dango_physics_world_get_static_platform_contact(void* handle,int entity_id,float* values,int capacity);
 DANGO_API int dango_physics_get_allocated_bytes(void);
+
+// Additive semantic authority ABI. Explicit enable must precede stepping.
+DANGO_API int dango_physics_get_authority_abi_version(void);
+DANGO_API int dango_physics_get_authority_frame_size(void);
+DANGO_API int dango_physics_get_authority_capabilities(void);
+DANGO_API int dango_physics_world_enable_authority(void* handle);
+DANGO_API int dango_physics_world_get_authority_frame(void* handle,dango_authority_frame* frame,int frame_size);
+// Complete solver recovery is intentionally unavailable in this candidate.
+DANGO_API int dango_physics_world_export_checkpoint(void* handle,void* buffer,int capacity,int* written);
+DANGO_API int dango_physics_world_import_checkpoint(void* handle,const void* buffer,int size);
+DANGO_API int dango_physics_get_presentation_target_size(void);
+DANGO_API int dango_physics_world_apply_presentation_targets(void* handle,
+    const dango_presentation_target* targets,int count,int target_size);
 
 // Optional round-ball ABI. Get checks exact frame_size before any output write.
 DANGO_API int dango_physics_get_round_ball_abi_version(void);
