@@ -25,6 +25,68 @@ static void candidate_write_available_number(FILE* file, const char* name, doubl
     if (available) fprintf(file, "%.17g", value); else fputs("null", file);
 }
 
+#if defined(DANGO_MATERIAL_CONTACT_BLOCK_CANDIDATE)
+static void candidate_write_block_modes(FILE* file, const dango_material_contact_block_mode* modes, int count)
+{
+    fputc('[', file);
+    for (int i = 0; i < count; ++i) fprintf(file, "%s%d", i ? "," : "", modes[i]);
+    fputc(']', file);
+}
+
+static void candidate_write_block_vector(FILE* file, const double* values, int count, bool available)
+{
+    if (!available) { fputs("null", file); return; }
+    fputc('[', file);
+    for (int i = 0; i < count; ++i) fprintf(file, "%s%.17g", i ? "," : "", values[i]);
+    fputc(']', file);
+}
+
+static void candidate_write_block_matrix(FILE* file, const double matrix[16][16], int count, bool available)
+{
+    if (!available) { fputs("null", file); return; }
+    fputc('[', file);
+    for (int i = 0; i < count; ++i)
+    {
+        if (i) fputc(',', file);
+        candidate_write_block_vector(file, matrix[i], count, true);
+    }
+    fputc(']', file);
+}
+
+static void candidate_write_block_report(FILE* file, const dango_material_contact_block_report* r)
+{
+    int count = r->active_count < 16 ? r->active_count : 16;
+    const char* status_names[] = {"ok", "invalid-input", "build", "capacity", "nonfinite", "rank", "repeated-mode", "budget", "final"};
+    const char* status = r->status >= 0 && r->status <= DANGO_MATERIAL_CONTACT_BLOCK_FINAL ? status_names[r->status] : "unknown";
+    fprintf(file, "{\"status\":%d,\"statusName\":\"%s\",\"capacity\":%d,\"solveLimit\":%d,\"activeCount\":%d,\"matrixDimension\":%d,\"linearSolveAttempts\":%d,\"doubleFullChecks\":%d,\"floatPublicationChecks\":%d,\"pivotSearches\":%llu,\"pivotEliminations\":%llu,\"matrixAvailable\":%s,\"solutionAvailable\":%s,\"ratesAvailable\":%s,\"matrixModeIndex\":%d,\"solutionModeIndex\":%d,\"ratesModeIndex\":%d,\"activeRowIdsPrefix\":[",
+        r->status, status, r->capacity, r->solve_limit, r->active_count, r->matrix_dimension, r->linear_solves,
+        r->full_checks, r->float_checks, (unsigned long long)r->pivot_searches, (unsigned long long)r->pivot_eliminations,
+        r->matrix_available ? "true" : "false", r->linear_solution_available ? "true" : "false", r->row_rates_available ? "true" : "false",
+        r->matrix_mode_index, r->solution_mode_index, r->rates_mode_index);
+    for (int i = 0; i < count; ++i) fprintf(file, "%s%d", i ? "," : "", r->active_row_ids[i]);
+    fputs("],\"currentOrPendingModes\":", file); candidate_write_block_modes(file, r->modes, count);
+    fputs(",\"attemptedModeHistory\":[", file);
+    for (int i = 0; i < r->mode_history_count; ++i)
+    {
+        if (i) fputc(',', file);
+        candidate_write_block_modes(file, r->mode_history[i], count);
+    }
+    fputs("]", file);
+    candidate_write_available_number(file, "elapsedSeconds", r->elapsed_seconds, r->time_available);
+    candidate_write_available_number(file, "matrixInfinityNorm", r->matrix_infinity_norm, r->matrix_available);
+    candidate_write_available_number(file, "pivotThreshold", r->pivot_threshold, r->matrix_available);
+    fputs(",\"scaling\":", file); candidate_write_block_vector(file, r->scaling, count, r->matrix_available);
+    fputs(",\"rawMatrix\":", file); candidate_write_block_matrix(file, r->raw_matrix, count, r->matrix_available);
+    fputs(",\"scaledMatrix\":", file); candidate_write_block_matrix(file, r->scaled_matrix, count, r->matrix_available);
+    fputs(",\"rawRhs\":", file); candidate_write_block_vector(file, r->raw_rhs, count, r->matrix_available);
+    fputs(",\"scaledRhs\":", file); candidate_write_block_vector(file, r->scaled_rhs, count, r->matrix_available);
+    fputs(",\"linearSolution\":", file); candidate_write_block_vector(file, r->linear_solution, count, r->linear_solution_available);
+    fputs(",\"rawMultipliers\":", file); candidate_write_block_vector(file, r->raw_multipliers, count, r->linear_solution_available);
+    fputs(",\"doubleRowRates\":", file); candidate_write_block_vector(file, r->all_row_rates, 160, r->row_rates_available);
+    fputs(",\"modeDataScope\":\"History entries are attempted systems. Each available matrix, solution, and double-rate vector names its own history index; current modes may be pending after a guard failure. Index -1 with zero active rows means no matrix solve.\"}", file);
+}
+#endif
+
 static void candidate_write_diagnostic(FILE* file, const dango_material_contact_diagnostic* d)
 {
     const bool output_available = d->phase >= 5 && d->final_speed_scale > 0;
@@ -45,10 +107,24 @@ static void candidate_write_diagnostic(FILE* file, const dango_material_contact_
     for (int n = 0; n < 17; ++n) fprintf(file, "%s[%.17g,%.17g]", n ? "," : "", d->solver.velocities[n].x, d->solver.velocities[n].y);
     fputc(']', file);
     const dango_material_contact_report* r = &d->report;
-    fprintf(file, ",\"velocityReport\":{\"status\":%d,\"sweeps\":%d,\"rowVisits\":%llu,\"coneRetractions\":%llu,\"activeShapeRows\":%d,\"activeNormalRows\":%d,\"activeTangentRows\":%d,\"geometryResidual\":%.17g,\"relativeLinearClosing\":%.17g,\"angularClosing\":%.17g,\"relativeLinearComplementarity\":%.17g,\"angularComplementarity\":%.17g,\"relativeFrictionRate\":%.17g,\"frictionConeExcess\":%.17g,\"receiptConeSlack\":%.17g,\"ledgerEvaluated\":%s",
+#if defined(DANGO_MATERIAL_CONTACT_BLOCK_CANDIDATE)
+    const bool rates_available = d->block_report.row_rates_available;
+#else
+    const bool rates_available = d->report_valid && r->sweeps > 0;
+#endif
+    fprintf(file, ",\"velocityReport\":{\"status\":%d,\"sweeps\":%d,\"rowVisits\":%llu,\"coneRetractions\":%llu,\"activeShapeRows\":%d,\"activeNormalRows\":%d,\"activeTangentRows\":%d,\"geometryResidual\":%.17g,\"receiptConeSlack\":%.17g,\"ratesEvaluated\":%s,\"ledgerEvaluated\":%s",
         r->status, r->sweeps, (unsigned long long)r->row_visits, (unsigned long long)r->cone_retractions, r->active_shape_rows, r->active_normal_rows, r->active_tangent_rows,
-        r->geometry_residual, r->maximum_relative_linear_closing, r->maximum_angular_closing, r->maximum_relative_linear_complementarity, r->maximum_angular_complementarity,
-        r->maximum_relative_friction_rate, r->maximum_friction_cone_excess, r->maximum_receipt_cone_slack, r->ledger_evaluated ? "true" : "false");
+        r->geometry_residual, r->maximum_receipt_cone_slack, rates_available ? "true" : "false", r->ledger_evaluated ? "true" : "false");
+    fprintf(file, ",\"adjudicationPassed\":%s", d->phase >= 5 ? "true" : "false");
+#if defined(DANGO_MATERIAL_CONTACT_BLOCK_CANDIDATE)
+    fputs(",\"statusScope\":\"Original row build/validation status only. Before rates or ledger are evaluated, status 0 may mean successful build; blockReport.status determines the block attempt result.\"", file);
+#endif
+    candidate_write_available_number(file, "relativeLinearClosing", r->maximum_relative_linear_closing, rates_available);
+    candidate_write_available_number(file, "angularClosing", r->maximum_angular_closing, rates_available);
+    candidate_write_available_number(file, "relativeLinearComplementarity", r->maximum_relative_linear_complementarity, rates_available);
+    candidate_write_available_number(file, "angularComplementarity", r->maximum_angular_complementarity, rates_available);
+    candidate_write_available_number(file, "relativeFrictionRate", r->maximum_relative_friction_rate, rates_available);
+    candidate_write_available_number(file, "frictionConeExcess", r->maximum_friction_cone_excess, rates_available);
     candidate_write_available_number(file, "energyBefore", r->energy_before, r->ledger_evaluated);
     candidate_write_available_number(file, "energyAfter", r->energy_after, r->ledger_evaluated);
     candidate_write_available_number(file, "energyAllowance", r->energy_allowance, r->ledger_evaluated);
@@ -69,7 +145,13 @@ static void candidate_write_diagnostic(FILE* file, const dango_material_contact_
         for (int i = 0; i < row->count; ++i) fprintf(file, "%s{\"id\":%d,\"gradient\":[%.17g,%.17g]}", i ? "," : "", row->ids[i], row->gradients[i].x, row->gradients[i].y);
         fputs("]}", file);
     }
+#if defined(DANGO_MATERIAL_CONTACT_BLOCK_CANDIDATE)
+    fputs("],\"blockReport\":", file);
+    if (d->phase >= 4) candidate_write_block_report(file, &d->block_report); else fputs("null", file);
+    fputs(",\"speedCapReport\":", file);
+#else
     fputs("],\"speedCapReport\":", file);
+#endif
     if (!output_available) { fputs("null}", file); return; }
     fprintf(file, "{\"status\":%d,\"scale\":%.9g,\"maximumBefore\":%.9g,\"maximumAfter\":%.9g,\"energyBefore\":%.17g,\"energyAfter\":%.17g,\"energyAllowance\":%.17g,\"momentumChange\":[%.17g,%.17g],\"angularMomentumChange\":%.17g,\"contactOutputChecked\":%s,\"exactCommonScaleChecked\":%s}}",
         d->cap_report.status, (double)d->cap_report.scale, (double)d->cap_report.maximum_before, (double)d->cap_report.maximum_after,

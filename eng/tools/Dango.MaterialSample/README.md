@@ -156,6 +156,14 @@
 
 新诊断入口 `dango_material_candidate_diagnostics <全新报告.json> default|forward|mirror` 与实际 DLL 的 `--diagnose-post-drag-idle` 均复现失败。私有诊断完整保留 17 体输入、全部 160 行及 double 速度；未生成的 uncapped／output／speed-cap 报告为 `null`，未检查的能量／动量账本为 `ledgerEvaluated=false` 与 `null`。旧报告保留。按已批准停止点保存结果并复核设计，形成[待批准的有限活动块候选](../../../docs/planning/2026-10-10-round-material-contact-block-candidate.md)。没有切换生产、合并、推送或更新日常安装。
 
+## 已批准的有限活动块候选
+
+用户随后明确“同意”，批准[最多 16 行／32 次裁定的活动块方案](../../../docs/planning/2026-10-10-round-material-contact-block-candidate.md)。独立夹具最终通过 **30,158 项检查、29 个固定正例、16 个拒绝负例**；真实第 29 帧由旧算法失败变为一次块裁定通过。统一限速后的实际 float 模式另有能区分旧门禁与新门禁的固定负例。
+
+第 3 项真实候选仍**失败**：原生默认／正向／镜像及实际 DLL 两向均只完成 146 个合法帧，第 147 帧初次落地、未到甩动入口就触发 `-96 / rank`。9 行中的水平周长上限恰好依赖于两个接触点的粘着切向条件；独立固定帧数学及原全行／账本检查证明存在合法解，反力可以重分配，但当前批准算法要求满秩。故障锁存／三类主动输入保持／显式 reset 重现通过 **1,355 项检查**，不能当作物理通过。默认无宏模块限定兼容回归仍为 **11／11**。
+
+按原计划第 5 项停止并保留全部失败证据，见[结果与复核](../../../docs/verification/2026-10-10-round-material-contact-block-result.md)。下一[一维冗余反力候选](../../../docs/planning/2026-10-10-round-material-contact-null-reaction-candidate.md)待用户批准、未实施。原逐行失败证据及模式 7 的镜像长时失败均保留；新候选长期、九组参数、35＋35 和 WPF 人工验收未通过。生产捏脸、正式 DLL、安装、合并及推送不在本次批准范围。
+
 ## 运行
 
 按 `docs/phase-1-physics-module.md` 在新隔离目录构建当前 native 模块。本小样不调用会替换正式 DLL 的 `build-box2d.ps1`，没有新依赖。

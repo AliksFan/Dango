@@ -4,6 +4,9 @@
 // Private single-body experiment only. Included after passive_spin is defined.
 #include "dango_material_contact_solver.h"
 #include "dango_material_forces.h"
+#if defined(DANGO_MATERIAL_CONTACT_BLOCK_CANDIDATE)
+#include "dango_material_contact_block.h"
+#endif
 
 typedef struct dango_material_contact_diagnostic
 {
@@ -16,6 +19,10 @@ typedef struct dango_material_contact_diagnostic
     dango_material_contact_solver solver;
     dango_material_contact_report report;
     dango_material_contact_cap_report cap_report;
+#if defined(DANGO_MATERIAL_CONTACT_BLOCK_CANDIDATE)
+    dango_material_contact_block block;
+    dango_material_contact_block_report block_report;
+#endif
 } dango_material_contact_diagnostic;
 
 static b2BodyId dango_mca_id(dango_self_soft_body* body, int n)
@@ -117,8 +124,18 @@ static int dango_material_contact_substep(dango_self_soft_body* body, const dang
     }
     diagnostic->damped = state; diagnostic->phase = 4;
     diagnostic->report_valid = true;
+#if defined(DANGO_MATERIAL_CONTACT_BLOCK_CANDIDATE)
+    bool block_built = dango_material_contact_block_build(&state, diagnostic->receipts, diagnostic->receipt_count,
+        dt, &diagnostic->block, &diagnostic->block_report);
+    bool block_solved = block_built && dango_material_contact_block_solve(&diagnostic->block,
+        &diagnostic->uncapped, &diagnostic->block_report);
+    diagnostic->solver = diagnostic->block.contact;
+    diagnostic->report = diagnostic->block_report.final_rows;
+    if (!block_solved) return dango_mca_failure(diagnostic, -96);
+#else
     if (!dango_material_contact_build(&state, diagnostic->receipts, diagnostic->receipt_count, dt, &diagnostic->solver, &diagnostic->report)) return dango_mca_failure(diagnostic, -96);
     if (!dango_material_contact_solve(&diagnostic->solver, &diagnostic->uncapped, &diagnostic->report)) return dango_mca_failure(diagnostic, -96);
+#endif
     state = diagnostic->uncapped; diagnostic->phase = 5;
     if (!dango_mca_geometry(&state)) return dango_mca_failure(diagnostic, -91);
     // A common positive scale preserves every homogeneous rate inequality.
@@ -129,8 +146,13 @@ static int dango_material_contact_substep(dango_self_soft_body* body, const dang
     if (diagnostic->final_speed_scale < 1)
         for (int n = 0; n < 17; ++n) state.velocities[n] = b2MulSV(diagnostic->final_speed_scale, state.velocities[n]);
     diagnostic->output = state;
+#if defined(DANGO_MATERIAL_CONTACT_BLOCK_CANDIDATE)
+    if (!dango_material_contact_block_validate_after_uniform_scale(&diagnostic->block, &diagnostic->uncapped,
+        &state, diagnostic->final_speed_scale, config->maximum_speed, &diagnostic->cap_report)) return dango_mca_failure(diagnostic, -87);
+#else
     if (!dango_material_contact_validate_after_uniform_scale(&diagnostic->solver, &diagnostic->uncapped,
         &state, diagnostic->final_speed_scale, config->maximum_speed, &diagnostic->cap_report)) return dango_mca_failure(diagnostic, -87);
+#endif
     // No candidate position/velocity is written before all stages pass.
     body->grounded = false;
     for (int n = 0; n < 17; ++n)

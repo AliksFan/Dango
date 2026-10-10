@@ -1,6 +1,6 @@
 # 圆形材料：有限活动块裁定候选
 
-2026-10-10。**待批准设计，尚未实现。** 用户此前批准的是[逐行接触末态候选](2026-10-10-round-material-contact-solver-candidate.md)；其真实第 29 帧失败后按计划进入[设计复核](../verification/2026-10-10-round-material-contact-candidate-result.md)。本文件请求批准下列新的有限结构与实施顺序，不默认延续上一算法的授权。
+2026-10-10。**用户明确回复“同意”，批准本方案与隔离实施顺序。第 1 项独立夹具及第 2 项私有集成通过；第 3 项真实自然落地在第 147 帧秩不足，依第 5 项停止并完成设计复核，第 4 项未开始。** 详见[结果与复核](../verification/2026-10-10-round-material-contact-block-result.md)。用户此前批准的是[逐行接触末态候选](2026-10-10-round-material-contact-solver-candidate.md)；其真实第 29 帧失败后按计划进入[设计复核](../verification/2026-10-10-round-material-contact-candidate-result.md)，本次批准覆盖下列新的有限结构与实施顺序，不代表新物理或人工验收通过。
 
 ## 问题与取舍
 
