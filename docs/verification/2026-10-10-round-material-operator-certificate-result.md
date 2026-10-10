@@ -39,6 +39,8 @@
 
 随后用匹配四个候选宏／同源 header 的私有读取程序动态加载**实际 DLL**，只跑固定第 6,301 帧并调用其诊断导出；create／add／step／diagnostic／destroy 全由 `GetProcAddress` 指针执行，没有本地世界 fallback。诊断布局 87,016 bytes、配置 164 bytes，前后 canary 完好，100,816 个小步、96 个截至该帧的原样本、错误 0、销毁及卸载成功。42 个公开 float 逐位相同；整个首超限诊断与源码等效记录一致，仅排除实际耗时及新增非有限编码元数据。完整长测的 6 个检查点另有 252 个 float 位检查全部一致。诊断程序退出 0 表示成功保存这个已失败验收的证据。
 
+实际 DLL 捕获另经 72 项独立证据检查：全部 160 行 double `Jv`、实际乘子重建的 34 个速度分量逐值一致；全部 float 行、17 体账本及物理指标满足原门槛。文件清单记录读取前后 DLL／源／header／静态库／EXE 哈希、四宏、编译选项及清理结果，均未在运行期间变化。此审查只读取固定证据，没有再次运行世界。
+
 这两份最后小步证据不能证明所有早期小步 α 都为零，也不能确定水平漂移的单一原因。首超限小步核心位置校正约 `+7.22e-9`，输出水平速度接近零；不能把这个局部量直接解释成全程向左漂移。下一设计应先定位同一帧各小步中的材料／Box2D 积分、位置校正、耗散和接触裁定如何累计水平位移；尚未批准新算法、更多维数或参数调整。
 
 ## 证据与过程修正
@@ -55,6 +57,7 @@
 - `contact-operator-actual-default-first.json/.log`：实际 DLL 的 36,000 帧、全绘制及 1,180 样本，含文件 SHA256 与显式基线。
 - `contact-operator-default-evidence-review.json`：实际长测／原生长测／首超限及 252 个检查点 float 位核对，明确 `candidateLongTermPassed=false`。
 - `contact-operator-actual-dll-frame6301.c/.json`、`actual-dll-frame6301-build/`：宏布局匹配的实际 DLL 首超限读取程序、构建及清理证据；`contact-operator-actual-dll-frame6301-root-review.json` 核对全部诊断。
+- `contact-operator-actual-dll-frame6301-review.py/.json`、`contact-operator-actual-dll-frame6301-manifest.json`：72 项独立复核及完整来源／哈希清单。
 
 根任务第一次数学诊断程序误用不存在的 `block.solver` 成员，编译失败；另一个新文件改为实际 `block.contact` 与 `block_report.final_rows` 后通过，没有改求解器。首次 Python 复核的逐位比较使用新版 Python 的补偿 `sum`，与 C 左到右 double 累加不同；显式使用同运算顺序后 118 项通过，保留原失败报告。均为验证工具修正，不是调整候选或门槛。
 
