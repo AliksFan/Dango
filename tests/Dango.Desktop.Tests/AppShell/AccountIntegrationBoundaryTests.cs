@@ -49,6 +49,56 @@ public sealed class AccountIntegrationBoundaryTests
     }
 
     [STATestMethod]
+    public void EqualLoginConfigurationIsReadyWithoutChoiceOrWrites()
+    {
+        WithDispatcher(() =>
+        {
+            var view = new AccountPanelView(); var local = new Local { Current = Cream }; var receiver = new Receiver();
+            using var controller = Controller(view, local, () => receiver);
+            controller.Open(); Login(view, "equal@dango.invalid");
+            PumpUntil(() => controller.IsLoggedIn && Field<Button>(view, "AccountPrimary").IsEnabled);
+            Assert.IsTrue(controller.ConfigurationReady, "Equal configurations should establish a ready baseline without choosing.");
+            Assert.IsNull(view.FindName("AccountCloudChoice"));
+            Assert.AreEqual(0, local.Applied, "An equal login must not rewrite the local save.");
+            Assert.AreEqual(0, receiver.ConfigurationWrites);
+        });
+    }
+
+    [STATestMethod]
+    public void RememberedLoginAlsoComparesAndPreservesDifferentConfigurations()
+    {
+        WithDispatcher(() =>
+        {
+            var store = new MemorySecrets(); var local = new Local(); var firstReceiver = new Receiver();
+            DesktopAccountController RememberingController(AccountPanelView view, Receiver receiver) =>
+                new(view, Origin, store, remote => new(remote, local, new Journal()), local.CaptureAsync,
+                    () => { }, (_, _) => { }, (origin, secrets) =>
+                    {
+                        receiver.Cookies = new CookieContainer();
+                        return FormalAccountClient.ForTesting(origin, receiver, receiver.Cookies, secrets);
+                    });
+            var firstView = new AccountPanelView();
+            using (var first = RememberingController(firstView, firstReceiver))
+            {
+                first.Open(); Field<CheckBox>(firstView, "AccountRememberLogin").IsChecked = true;
+                Login(firstView, "remembered@dango.invalid");
+                PumpUntil(() => firstView.FindName("AccountCloudChoice") is not null);
+            }
+            var restoredReceiver = new Receiver { UserId = firstReceiver.UserId, PetId = firstReceiver.PetId };
+            var restoredView = new AccountPanelView();
+            using var restored = RememberingController(restoredView, restoredReceiver);
+            restored.Open();
+            PumpUntil(() => restored.IsLoggedIn && (restoredView.FindName("AccountCloudChoice") is not null
+                || Field<Button>(restoredView, "AccountPrimary").IsEnabled));
+            Assert.IsNotNull(restoredView.FindName("AccountCloudChoice"), "A remembered session must compare the actual local and account saves.");
+            Assert.IsFalse(restored.ConfigurationReady);
+            Assert.AreEqual(0, local.Applied);
+            Assert.AreEqual(0, restoredReceiver.ConfigurationWrites);
+            Assert.IsTrue(AppearanceContract.Equivalent(White, local.Current));
+        });
+    }
+
+    [STATestMethod]
     public void LoginOnlyReadsConfigurationsAndCloudChangesLocalOnlyAfterExplicitConfirmation()
     {
         WithDispatcher(() =>
@@ -421,6 +471,7 @@ public sealed class AccountIntegrationBoundaryTests
         internal bool DelayLogout, LogoutStarted;
         internal int IdentityReads;
         internal int PetReads, DelayPetReadNumber;
+        internal int ConfigurationWrites;
         internal CookieContainer? Cookies;
         internal bool RegisterFlow;
         internal bool RejectRegistration;
@@ -434,6 +485,7 @@ public sealed class AccountIntegrationBoundaryTests
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             var path = request.RequestUri!.AbsolutePath;
+            if (request.Method == HttpMethod.Patch && path == "/api/v1/me/pet/configuration") ConfigurationWrites++;
             if (RegisterFlow && path.StartsWith("/api/v1/auth/registrations", StringComparison.Ordinal))
             {
                 if (path == "/api/v1/auth/registrations")
