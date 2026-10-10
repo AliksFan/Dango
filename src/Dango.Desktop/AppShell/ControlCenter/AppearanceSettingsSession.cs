@@ -41,6 +41,8 @@ public sealed class AppearanceSettingsSession
     public bool IsWriteProtected { get; private set; }
     public string? StartupWarning { get; }
     public string StatusMessage { get; private set; }
+    /// <summary>Only a successful local user save emits this signal; preview and remote application do not.</summary>
+    public event Action? SavedToDisk;
 
     public void StageBodyPreview(OpaqueSrgbColor color) =>
         DraftAppearance = new(color, DraftAppearance.EyeColor, DraftAppearance.EyeLayout);
@@ -98,14 +100,18 @@ public sealed class AppearanceSettingsSession
             SavedAppearance = DraftAppearance;
             pendingSave = false;
             StatusMessage = "外观已保存到本机。";
-            return true;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or FormatException)
         {
             StatusMessage = $"外观预览仍保留，但未保存（{exception.GetType().Name}）。可重试或取消预览。";
             return false;
         }
+        // Observers see committed disk and memory. Their errors must not reclassify a durable save as failed.
+        PublishSuccessfulLocalSave();
+        return true;
     }
+
+    private void PublishSuccessfulLocalSave() => SavedToDisk?.Invoke();
 
     internal void AcceptExternalSave(DangoAppearanceConfiguration configuration)
     {

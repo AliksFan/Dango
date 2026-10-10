@@ -9,6 +9,39 @@ namespace Dango.Desktop.Tests.AppShell;
 public sealed class AppearanceSettingsSessionTests
 {
     [TestMethod]
+    public void SynchronizationSignalRequiresSuccessfulChangedSaveAndFollowsDiskCommit()
+    {
+        var path = NewPath(); var session = new AppearanceSettingsSession(path); var signals = 0;
+        session.SavedToDisk += () =>
+        {
+            signals++;
+            Assert.IsFalse(session.IsDirty);
+            Assert.AreEqual(session.SavedAppearance, new AppearanceSettingsStore().Load(path).Configuration);
+        };
+        session.StagePreview(NondefaultAppearance());
+        Assert.AreEqual(0, signals, "A preview must not publish an online save intent.");
+        Assert.IsTrue(session.TrySave());
+        Assert.AreEqual(1, signals);
+        Assert.IsTrue(session.TrySave());
+        session.StagePreview(DangoAppearanceConfiguration.Default); session.CancelPreview();
+        Assert.AreEqual(1, signals, "Unchanged save and cancelled preview must not upload again.");
+    }
+
+    [TestMethod]
+    public void FailedSaveAndRemoteApplicationDoNotPublishLocalSaveIntent()
+    {
+        var path = NewPath(); var writer = new SwitchableWriter();
+        var session = new AppearanceSettingsSession(path, new AppearanceSettingsStore(writer)); var signals = 0;
+        session.SavedToDisk += () => signals++;
+        session.StagePreview(NondefaultAppearance());
+        Assert.IsFalse(session.TrySave());
+        Assert.AreEqual(0, signals);
+        session.CancelPreview();
+        session.AcceptExternalSave(NondefaultAppearance());
+        Assert.AreEqual(0, signals, "Applying an account configuration must not create an echo upload.");
+    }
+
+    [TestMethod]
     public void PreviewCancelDefaultAndSaveKeepTheThreeStatesSeparate()
     {
         var path = NewPath();

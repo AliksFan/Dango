@@ -2,6 +2,7 @@ using System.IO;
 using Dango.Client.Sync.Accounts;
 using Dango.Client.Sync.Pets;
 using Dango.Client.Sync.Rooms;
+using Dango.Protocol;
 
 namespace Dango.Desktop.AppShell.ControlCenter;
 
@@ -91,7 +92,11 @@ internal sealed class DesktopAccountController : IDisposable
             ct.ThrowIfCancellationRequested();
             registration = savedRegistration;
             restored = true;
-            if (account is not null) AcceptIdentity(active, account);
+            if (account is not null)
+            {
+                AcceptIdentity(active, account);
+                await BeginChoice(active, ct);
+            }
             else if (registration?.RegistrationId is not null) await RefreshRegistration(active, ct);
             else Show(AccountPanelPage.Login, registration is null ? null : "保留了上次注册请求。进入受邀注册后将使用原请求继续。");
         });
@@ -257,6 +262,15 @@ internal sealed class DesktopAccountController : IDisposable
             throw new InvalidDataException("authentication_required");
         var loadedReview = await choice.BeginAsync(ct);
         ct.ThrowIfCancellationRequested();
+        if (AppearanceContract.Equivalent(loadedReview.Originals.Local.NormalizedConfiguration,
+            loadedReview.Originals.Cloud.Configuration))
+        {
+            review = null;
+            configurationReady = true;
+            changed(true, true);
+            Show(AccountPanelPage.Account, "本机与账号外观一致。");
+            return;
+        }
         review = loadedReview;
         Show(AccountPanelPage.ConfigurationChoice);
     }
