@@ -1,5 +1,6 @@
 [CmdletBinding()]
-param([string]$ModulePath=(Join-Path $PSScriptRoot 'Dango.AccountProfilePostgres.psm1'))
+param([string]$ModulePath=(Join-Path $PSScriptRoot 'Dango.AccountProfilePostgres.psm1'),
+    [string]$RunnerPath=(Join-Path $PSScriptRoot 'invoke-account-profile-postgres-tests.ps1'))
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 Import-Module $ModulePath -Force
@@ -13,7 +14,7 @@ function Rejected([scriptblock]$Body, [string]$Code) {
     try { [void](& $Body); return $false } catch { return $_.Exception.Message -like ('*'+$Code+'*') }
 }
 $taskRepo=Split-Path -Parent $PSScriptRoot
-$taskRunner=Join-Path $PSScriptRoot 'invoke-account-profile-postgres-tests.ps1'
+$taskRunner=[IO.Path]::GetFullPath($RunnerPath)
 $taskSandbox=Join-Path $taskRepo ('artifacts/account-profile-offline/'+[Guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($taskSandbox)
 $taskBin=Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'PostgreSQL/18/bin'
@@ -106,11 +107,17 @@ using System; using System.IO;
 public sealed class DangoProfileFakeModule { public string FileName {get;set;} }
 public sealed class DangoProfileFakeProcess : IDisposable {
  public string Scenario; public string Executable; public int Waits; public bool Killed; public bool Tree; public bool Disposed;
+ public int ProbeCalls; public bool NativePreloadedAtStart; public bool ReadersAccessed; public bool InitialQueryBeforeReaders;
  public int Id => 30000; public DateTime StartTime {get;}=DateTime.UtcNow; public int ExitCode=>0;
- public DangoProfileFakeModule MainModule => new DangoProfileFakeModule { FileName=Scenario=="changed" && Waits>0? Executable+"other":Executable };
+ public DateTime ExitTime => StartTime.AddMilliseconds(1);
+ public bool HasExited => Killed || Scenario=="normal" || Scenario=="null_module" || Scenario=="final_image_error" || Scenario=="initial_unknown_then_exited" && Waits>=2;
+ public DangoProfileFakeModule MainModule => Scenario=="null_module" ? null : new DangoProfileFakeModule { FileName=Scenario=="changed" && Waits>0? Executable+"other":Executable };
  public TextWriter StandardInput {get;}=new StringWriter();
- public TextReader StandardOutput {get;set;}=new StringReader("ok"); public TextReader StandardError {get;}=new StringReader("");
- public bool Start()=>true; public bool WaitForExit(int milliseconds) {Waits++; return Killed || Scenario=="normal";}
+ private TextReader output=new StringReader("ok"); private readonly TextReader error=new StringReader("");
+ public TextReader StandardOutput {get {ReadersAccessed=true;return output;} set {output=value;}}
+ public TextReader StandardError {get {ReadersAccessed=true;return error;}}
+ public bool Start(){NativePreloadedAtStart=Array.Exists(AppDomain.CurrentDomain.GetAssemblies(),a=>a.GetType("DangoProfileRunNativeV2")!=null);return true;}
+ public bool WaitForExit(int milliseconds) {Waits++; return Killed || Scenario=="normal" || Scenario=="null_module" || Scenario=="final_image_error" || Scenario=="initial_unknown_then_exited" && Waits>=2;}
  public void Kill(bool tree){Killed=true;Tree=tree;} public void Dispose(){Disposed=true;}
 }
 '@
@@ -120,30 +127,145 @@ function FakeProcess([string]$Scenario, [switch]$Overflow) {
     if ($Overflow) { $fake.StandardOutput=[IO.StringReader]::new(('x'*131073)) }
     return $fake
 }
+function FakeIdentity($Process, [string]$ExpectedExecutable) {
+    # Deliberately ignore MainModule and StartInfo. These answers model the native
+    # image query made against the retained handle; they are never production grants.
+    $Process.ProbeCalls++
+    if ($Process.ProbeCalls -eq 1) { $Process.InitialQueryBeforeReaders=-not $Process.ReadersAccessed }
+    $finalError=$Process.Scenario -ceq 'final_image_error' -and $Process.Waits -gt 0
+    $unknown=$finalError -or $Process.Scenario -ceq 'unknown_image' -or
+        ($Process.Scenario -ceq 'initial_unknown_then_exited' -and $Process.Waits -eq 0)
+    $image=if ($unknown) { '' } elseif ($Process.Scenario -ceq 'wrong_image' -or
+        ($Process.Scenario -ceq 'changed' -and $Process.Waits -gt 0)) { $Process.Executable+'other' }
+        else { $Process.Executable }
+    [pscustomobject]@{Verified=(-not $unknown -and (Test-DangoProfilePath $image $ExpectedExecutable));
+        ImagePath=$image;NativeErrorCode=if ($finalError) { 31 } elseif ($unknown) { 5 } else { 0 };
+        Pid=if ($Process.Scenario -ceq 'handle_pid_reused') { $Process.Id+1 } else { $Process.Id };
+        CreatedAt=if ($Process.Scenario -ceq 'handle_creation_reused') { $Process.StartTime.ToUniversalTime().AddSeconds(-1) }
+            else { $Process.StartTime.ToUniversalTime() }}
+}
+$taskFakeIdentity={param($process,$expectedExe) FakeIdentity $process $expectedExe}
 Check 'FakeNormalProcessProducesCapabilityReceipt' {
     $fake=FakeProcess normal; $receipts=[Collections.Generic.List[object]]::new()
-    $result=Invoke-DangoProfileProcess $fake.Executable @('only') $taskSandbox -Receipts $receipts -ProcessFactory {param($info) $fake}
-    $result.Output -ceq 'ok' -and $receipts.Count -eq 1 -and $receipts[0].IdentityVerified -and $receipts[0].CleanupConfirmed -and $fake.Disposed
+    $result=Invoke-DangoProfileProcess $fake.Executable @('only') $taskSandbox -Receipts $receipts -ProcessFactory {param($info) $fake} -IdentityProbe $taskFakeIdentity
+    $result.Output -ceq 'ok' -and $receipts.Count -eq 1 -and $receipts[0].IdentityVerified -and $receipts[0].CleanupConfirmed -and
+        $fake.NativePreloadedAtStart -and $fake.InitialQueryBeforeReaders -and $fake.Disposed
 }
 Check 'PgCtlTimeoutKillsOnlyOwnedToolHandle' {
     $fake=FakeProcess timeout; $receipts=[Collections.Generic.List[object]]::new()
-    $rejected=Rejected { Invoke-DangoProfileProcess $fake.Executable @() $taskSandbox -TimeoutSeconds 1 -Receipts $receipts -ProcessFactory {param($info) $fake} } 'profile_run_tool_timeout'
+    $rejected=Rejected { Invoke-DangoProfileProcess $fake.Executable @() $taskSandbox -TimeoutSeconds 1 -Receipts $receipts -ProcessFactory {param($info) $fake} -IdentityProbe $taskFakeIdentity } 'profile_run_tool_timeout'
     $rejected -and $fake.Killed -and -not $fake.Tree -and $receipts[0].CleanupConfirmed
 }
 Check 'VstestTimeoutMayKillOwnedTestTreeWithoutClaimingFixtureDisposal' {
     $fake=FakeProcess timeout; $receipts=[Collections.Generic.List[object]]::new()
-    $rejected=Rejected { Invoke-DangoProfileProcess $fake.Executable @() $taskSandbox -TimeoutSeconds 1 -KillOwnedTree -Receipts $receipts -ProcessFactory {param($info) $fake} } 'profile_run_tool_timeout'
+    $rejected=Rejected { Invoke-DangoProfileProcess $fake.Executable @() $taskSandbox -TimeoutSeconds 1 -KillOwnedTree -Receipts $receipts -ProcessFactory {param($info) $fake} -IdentityProbe $taskFakeIdentity } 'profile_run_tool_timeout'
     $rejected -and $fake.Killed -and $fake.Tree -and -not ($receipts[0].PSObject.Properties.Name -contains 'NativeCleanupConfirmed')
 }
 Check 'IdentityDriftDoesNotKillUnprovenProcess' {
     $fake=FakeProcess changed; $receipts=[Collections.Generic.List[object]]::new()
-    $rejected=Rejected { Invoke-DangoProfileProcess $fake.Executable @() $taskSandbox -TimeoutSeconds 1 -Receipts $receipts -ProcessFactory {param($info) $fake} } 'profile_run_tool_timeout'
+    $rejected=Rejected { Invoke-DangoProfileProcess $fake.Executable @() $taskSandbox -TimeoutSeconds 1 -Receipts $receipts -ProcessFactory {param($info) $fake} -IdentityProbe $taskFakeIdentity } 'profile_run_tool_timeout'
     $rejected -and -not $fake.Killed -and -not $receipts[0].CleanupConfirmed
 }
 Check 'ReaderStopsAtOutputBound' {
     $fake=FakeProcess overflow -Overflow; $receipts=[Collections.Generic.List[object]]::new()
-    $rejected=Rejected { Invoke-DangoProfileProcess $fake.Executable @() $taskSandbox -TimeoutSeconds 1 -Receipts $receipts -ProcessFactory {param($info) $fake} } 'profile_run_tool_output_bound_exceeded'
+    $rejected=Rejected { Invoke-DangoProfileProcess $fake.Executable @() $taskSandbox -TimeoutSeconds 1 -Receipts $receipts -ProcessFactory {param($info) $fake} -IdentityProbe $taskFakeIdentity } 'profile_run_tool_output_bound_exceeded'
     $rejected -and $fake.Killed -and -not $fake.Tree
+}
+Check 'NullMainModuleUsesNativeImageIdentity' {
+    $fake=FakeProcess null_module; $receipts=[Collections.Generic.List[object]]::new()
+    $result=Invoke-DangoProfileProcess $fake.Executable @('only') $taskSandbox -Receipts $receipts -ProcessFactory {param($info) $fake} -IdentityProbe $taskFakeIdentity
+    $result.ExitCode -eq 0 -and $receipts[0].IdentityVerified -and $receipts[0].CleanupConfirmed -and $fake.Disposed
+}
+Check 'WrongNativeImageCannotAuthorizeKill' {
+    $fake=FakeProcess wrong_image; $receipts=[Collections.Generic.List[object]]::new()
+    $rejected=Rejected { Invoke-DangoProfileProcess $fake.Executable @() $taskSandbox -TimeoutSeconds 1 -Receipts $receipts -ProcessFactory {param($info) $fake} -IdentityProbe $taskFakeIdentity } 'profile_run_tool_identity_unconfirmed'
+    $rejected -and -not $fake.Killed -and -not $receipts[0].IdentityVerified -and -not $receipts[0].CleanupConfirmed -and $fake.Disposed
+}
+Check 'UnknownNativeImageCannotAuthorizeKillOrCleanup' {
+    $fake=FakeProcess unknown_image; $receipts=[Collections.Generic.List[object]]::new()
+    $rejected=Rejected { Invoke-DangoProfileProcess $fake.Executable @() $taskSandbox -TimeoutSeconds 1 -Receipts $receipts -ProcessFactory {param($info) $fake} -IdentityProbe $taskFakeIdentity } 'profile_run_tool_identity_unconfirmed'
+    $rejected -and -not $fake.Killed -and -not $receipts[0].IdentityVerified -and -not $receipts[0].CleanupConfirmed -and
+        $receipts[0].ImageQueryError -ne 0 -and $fake.Disposed
+}
+Check 'InitialImageFailureStillWaitsAndRechecksOwnedHandle' {
+    $fake=FakeProcess initial_unknown_then_exited; $receipts=[Collections.Generic.List[object]]::new()
+    $rejected=Rejected { Invoke-DangoProfileProcess $fake.Executable @() $taskSandbox -TimeoutSeconds 1 -Receipts $receipts -ProcessFactory {param($info) $fake} -IdentityProbe $taskFakeIdentity } 'profile_run_tool_identity_unconfirmed'
+    $rejected -and $fake.Waits -ge 2 -and -not $fake.Killed -and $receipts[0].Exited -and
+        $receipts[0].CleanupConfirmed -and $null -ne $receipts[0].ExitedAt -and $fake.Disposed
+}
+Check 'InitialFailureAndRecoveryKeepSeparateImageErrors' {
+    $fake=FakeProcess initial_unknown_then_exited; $receipts=[Collections.Generic.List[object]]::new()
+    $rejected=Rejected { Invoke-DangoProfileProcess $fake.Executable @() $taskSandbox -TimeoutSeconds 1 -Receipts $receipts -ProcessFactory {param($info) $fake} -IdentityProbe $taskFakeIdentity } 'profile_run_tool_identity_unconfirmed'
+    $rejected -and $receipts[0].InitialImageQueryError -eq 5 -and $receipts[0].FinalImageQueryError -eq 0 -and
+        $receipts[0].ImageQueryError -eq 0 -and $receipts[0].IdentityVerified -and $receipts[0].Exited -and
+        $receipts[0].ExitedAt -eq $fake.ExitTime.ToUniversalTime() -and $receipts[0].CleanupConfirmed -and -not $fake.Killed
+}
+Check 'ValidatedNaturalExitKeepsProofWhenFinalImageQueryFails' {
+    $fake=FakeProcess final_image_error; $receipts=[Collections.Generic.List[object]]::new()
+    $result=Invoke-DangoProfileProcess $fake.Executable @() $taskSandbox -TimeoutSeconds 1 -Receipts $receipts -ProcessFactory {param($info) $fake} -IdentityProbe $taskFakeIdentity
+    $result.ExitCode -eq 0 -and $receipts[0].InitialImageQueryError -eq 0 -and $receipts[0].FinalImageQueryError -eq 31 -and
+        $receipts[0].ImageQueryError -eq 31 -and $receipts[0].IdentityVerified -and $receipts[0].Exited -and
+        $receipts[0].ExitedAt -eq $fake.ExitTime.ToUniversalTime() -and $receipts[0].CleanupConfirmed -and -not $fake.Killed
+}
+Check 'OwnSafeProcessHandleReportsExactNativeImage' {
+    # Inspect only this offline test host's retained process handle. No tool starts.
+    $process=[Diagnostics.Process]::GetCurrentProcess()
+    try {
+        $identity=Get-DangoProfileProcessIdentity $process ([Environment]::ProcessPath)
+        $identity.Verified -and $identity.NativeErrorCode -eq 0 -and
+            (Test-DangoProfilePath $identity.ImagePath ([Environment]::ProcessPath))
+    } finally { $process.Dispose() }
+}
+Check 'WrongExpectedImageFailsNativeHandleComparison' {
+    $process=[Diagnostics.Process]::GetCurrentProcess()
+    try {
+        $identity=Get-DangoProfileProcessIdentity $process (([Environment]::ProcessPath)+'other')
+        -not $identity.Verified -and $identity.NativeErrorCode -eq 0 -and
+            (Test-DangoProfilePath $identity.ImagePath ([Environment]::ProcessPath))
+    } finally { $process.Dispose() }
+}
+Check 'UnavailableSafeHandleIdentityIsUnknown' {
+    $process=[Diagnostics.Process]::GetCurrentProcess(); $process.Dispose()
+    $identity=Get-DangoProfileProcessIdentity $process ([Environment]::ProcessPath)
+    -not $identity.Verified -and $identity.NativeErrorCode -ne 0
+}
+foreach ($case in @('handle_pid_reused','handle_creation_reused')) {
+    Check ('NativeHandleLifetimeMismatchRejects_'+$case) {
+        $fake=FakeProcess $case; $receipts=[Collections.Generic.List[object]]::new()
+        $rejected=Rejected { Invoke-DangoProfileProcess $fake.Executable @() $taskSandbox -TimeoutSeconds 1 -Receipts $receipts -ProcessFactory {param($info) $fake} -IdentityProbe $taskFakeIdentity } 'profile_run_tool_identity_unconfirmed'
+        $rejected -and -not $fake.Killed -and -not $receipts[0].CleanupConfirmed
+    }
+}
+Check 'JsonZDateTimeConversionLosesPrecisionThroughStringReparse' {
+    # Preserve the failing diagnosis: ConvertFrom-Json already produced a UTC
+    # DateTime, but culture formatting removes its timezone and subsecond ticks.
+    $json='{"CreatedAt":"2026-10-10T03:04:05.1234567Z"}'
+    $value=($json | ConvertFrom-Json).CreatedAt
+    $bad=[DateTimeOffset]::Parse([string]$value)
+    $value -is [DateTime] -and $value.Kind -eq [DateTimeKind]::Utc -and $bad.UtcTicks -ne $value.Ticks
+}
+Check 'UtcDateTimeAndZStringPreserveExactTicks' {
+    $text='2026-10-10T03:04:05.1234567Z'; $value=('{"CreatedAt":"'+$text+'"}' | ConvertFrom-Json).CreatedAt
+    $fromDate=ConvertTo-DangoProfileUtc $value; $fromText=ConvertTo-DangoProfileUtc $text
+    $fromOffset=ConvertTo-DangoProfileUtc ([DateTimeOffset]::new($value))
+    $fromDate.Ticks -eq $value.Ticks -and $fromText.Ticks -eq $value.Ticks -and $fromOffset.Ticks -eq $value.Ticks
+}
+Check 'ExplicitZeroOffsetStringPreservesExactTicks' {
+    $text='2026-10-10T03:04:05.1234567+00:00'
+    (ConvertTo-DangoProfileUtc $text).Ticks -eq ([DateTimeOffset]::Parse($text)).UtcTicks
+}
+foreach ($case in @('unspecified_kind','local_kind','timezone_missing','nonutc_offset','nonutc_text','invalid_text')) {
+    Check ('AmbiguousOrInvalidTimeIsRejected_'+$case) {
+        $value=switch ($case) {
+            unspecified_kind { [DateTime]::SpecifyKind([DateTime]::new(2026,10,10,3,4,5),[DateTimeKind]::Unspecified) }
+            local_kind { [DateTime]::SpecifyKind([DateTime]::new(2026,10,10,3,4,5),[DateTimeKind]::Local) }
+            timezone_missing { '2026-10-10T03:04:05.1234567' }
+            nonutc_offset { [DateTimeOffset]::new(2026,10,10,3,4,5,[TimeSpan]::FromHours(8)) }
+            nonutc_text { '2026-10-10T03:04:05.1234567+08:00' }
+            invalid_text { 'not-a-date' }
+        }
+        Rejected { ConvertTo-DangoProfileUtc $value } 'profile_run_utc_time_required'
+    }
 }
 Check 'OnlyVstestRequestsTreeKill' {
     $tokens=$null; $errors=$null; $ast=[Management.Automation.Language.Parser]::ParseFile($taskRunner,[ref]$tokens,[ref]$errors)
@@ -153,18 +275,33 @@ Check 'OnlyVstestRequestsTreeKill' {
 }
 
 $taskNow=[DateTime]::UtcNow; $taskPg=Join-Path $taskBin 'postgres.exe'; $taskData=Join-Path $taskSandbox 'fictional-pgdata'
+$taskProofPlan=$taskPlan.PSObject.Copy(); $taskProofPlan.DataDirectory=$taskData; $taskProofPlan.EvidenceDirectory=$taskSandbox
+$taskControl=Join-Path $taskBin 'pg_ctl.exe'
+$taskStartArguments=@('start','-D',$taskData,'-l',(Join-Path $taskSandbox 'postgresql.log'),'-o','-h 127.0.0.1 -p 23456','-w','-t','30')
 $taskProof=[pscustomobject]@{ControlExitCode=0;Pid=1234;CreatedAt=$taskNow;Executable=$taskPg;
-    Arguments=@($taskPg,'-D',$taskData,'-h','127.0.0.1','-p','23456');ParentProcessId=2222;ControlPid=2222;ControlIdentityVerified=$true}
-function Proven($proof) { Test-DangoProfilePostgresProof $proof $taskPg $taskData 23456 $taskNow.AddSeconds(-1) $taskNow.AddSeconds(1) }
+    Arguments=@($taskPg,'-D',$taskData,'-h','127.0.0.1','-p','23456');ParentProcessId=2222;ControlPid=2222;ControlIdentityVerified=$true;
+    ControlCreatedAt=$taskNow.AddMilliseconds(-20);ControlExecutable=$taskControl;ControlExitedAt=$taskNow.AddMilliseconds(50);
+    ControlArguments=$taskStartArguments;ShellBridge=$null}
+function Proven($proof) { Test-DangoProfilePostgresProof $proof $taskPg $taskData 23456 $taskNow.AddSeconds(-1) $taskNow.AddSeconds(1) $taskProofPlan }
+function CmdBridgeProof {
+    $proof=$taskProof | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $command=Get-DangoProfileWindowsStartCommand $taskProofPlan 23456
+    Get-DangoProfileNativeType
+    $proof.ControlExitCode=-1; $proof.ParentProcessId=3333
+    $proof.ShellBridge=[pscustomobject]@{Pid=3333;ParentProcessId=2222;CreatedAt=$taskNow.AddMilliseconds(-5);
+        Executable=(Join-Path ([Environment]::SystemDirectory) 'cmd.exe');CommandLine=$command;
+        Arguments=@([DangoProfileRunNativeV2]::Arguments($command))}
+    return $proof
+}
 Check 'SuccessfulAndFailedStartRequireExactPgProof' {
-    $success=Proven $taskProof; $copy=$taskProof | ConvertTo-Json | ConvertFrom-Json; $copy.CreatedAt=$taskNow; $copy.ControlExitCode=-1
+    $copy=CmdBridgeProof; $copy.ControlExitCode=0; $success=Proven $copy; $copy.ControlExitCode=-1
     $success -and (Proven $copy)
 }
 foreach ($case in @('foreign_parent','reused_pid_time','future_time','suffix_path','foreign_host','extra_argument','wrong_executable','unverified_control')) {
     Check ('RejectsPgProof_'+$case) {
-        $copy=$taskProof | ConvertTo-Json | ConvertFrom-Json; $copy.CreatedAt=$taskNow
+        $copy=CmdBridgeProof
         switch ($case) {
-            foreign_parent { $copy.ControlExitCode=-1; $copy.ParentProcessId=3333 }
+            foreign_parent { $copy.ControlExitCode=-1; $copy.ParentProcessId=4444 }
             reused_pid_time { $copy.CreatedAt=$taskNow.AddSeconds(-2) }
             future_time { $copy.CreatedAt=$taskNow.AddSeconds(2) }
             suffix_path { $copy.Arguments[2]+='-other' }
@@ -175,6 +312,91 @@ foreach ($case in @('foreign_parent','reused_pid_time','future_time','suffix_pat
         }
         -not (Proven $copy)
     }
+}
+Check 'SuccessfulPgCtlExitCannotBypassForeignParentProof' {
+    $copy=$taskProof | ConvertTo-Json -Depth 8 | ConvertFrom-Json; $copy.ParentProcessId=3333
+    -not (Proven $copy)
+}
+Check 'ExactWindowsCmdBridgeProvesOwnedFailedStart' { Proven (CmdBridgeProof) }
+Check 'JsonRoundTrippedUtcBridgeTimesPreserveOwnership' {
+    $proof=(CmdBridgeProof) | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+    $proof.CreatedAt -is [DateTime] -and $proof.CreatedAt.Kind -eq [DateTimeKind]::Utc -and (Proven $proof)
+}
+foreach ($case in @('foreign_command','foreign_shell_image','wrong_shell_parent','wrong_pg_parent','bridge_before_control',
+    'bridge_after_pg','bridge_after_control_exit','unknown_control_exit','control_exit_before_creation','control_exit_after_observation',
+    'control_pid_reused','control_time_kind','extra_shell_operation','extra_redirect',
+    'wrong_shell_argv','missing_bridge','wrong_control_argv','wrong_control_image')) {
+    Check ('CmdBridgeRejects_'+$case) {
+        $proof=CmdBridgeProof
+        switch ($case) {
+            foreign_command {
+                $originalCommand=$proof.ShellBridge.CommandLine
+                $normalizedPg=$taskPg.Replace('\','/')
+                $proof.ShellBridge.CommandLine=$originalCommand.Replace($normalizedPg,$normalizedPg+'other')
+                if ($proof.ShellBridge.CommandLine -ceq $originalCommand) { throw 'offline_foreign_command_mutation_missing' }
+            }
+            foreign_shell_image { $proof.ShellBridge.Executable=$taskControl }
+            wrong_shell_parent { $proof.ShellBridge.ParentProcessId=4444 }
+            wrong_pg_parent { $proof.ParentProcessId=4444 }
+            bridge_before_control { $proof.ShellBridge.CreatedAt=$proof.ControlCreatedAt.AddMilliseconds(-1) }
+            bridge_after_pg { $proof.ShellBridge.CreatedAt=$proof.CreatedAt.AddMilliseconds(1) }
+            bridge_after_control_exit { $proof.ControlExitedAt=$proof.ShellBridge.CreatedAt.AddMilliseconds(-1) }
+            unknown_control_exit { $proof.ControlExitedAt=$null }
+            control_exit_before_creation { $proof.ControlExitedAt=$proof.ControlCreatedAt.AddMilliseconds(-1) }
+            control_exit_after_observation { $proof.ControlExitedAt=$taskNow.AddSeconds(2) }
+            control_pid_reused { $proof.ControlCreatedAt=$proof.ShellBridge.CreatedAt.AddMilliseconds(1) }
+            control_time_kind { $proof.ControlCreatedAt=[DateTime]::SpecifyKind($proof.ControlCreatedAt,[DateTimeKind]::Unspecified) }
+            extra_shell_operation { $proof.ShellBridge.CommandLine+=' & echo unrelated' }
+            extra_redirect { $proof.ShellBridge.CommandLine+=' >> "another.log"' }
+            wrong_shell_argv { $proof.ShellBridge.Arguments+=@('/K','unrelated') }
+            missing_bridge { $proof.ShellBridge=$null }
+            wrong_control_argv { $proof.ControlArguments+=@('--extra') }
+            wrong_control_image { $proof.ControlExecutable=$taskControl+'other' }
+        }
+        -not (Proven $proof)
+    }
+}
+function ObservationState {
+    [pscustomobject]@{At=$taskNow;Reads=0;Delays=0}
+}
+function ObservationControl {
+    [pscustomobject]@{Started=$true;Pid=2222;CreatedAt=$taskProof.ControlCreatedAt;Executable=$taskControl;
+        IdentityVerified=$true;Exited=$true;ExitedAt=$taskProof.ControlExitedAt;Arguments=$taskStartArguments}
+}
+Check 'LatePidfileIsObservedWithinBoundWithoutRestart' {
+    $state=ObservationState; $control=ObservationControl; $proof=CmdBridgeProof
+    $proof.CreatedAt=$taskNow.AddMilliseconds(100)
+    $reader={param($plan,$port,$exit,$receipt) $state.Reads++; if ($state.Reads -ge 3) { $proof } else { $null }}
+    $delay={param($milliseconds) $state.Delays++; $state.At=$state.At.AddMilliseconds($milliseconds)}
+    $clock={ $state.At }
+    $result=Observe-DangoProfileStartup $taskProofPlan 23456 -1 $control $taskNow.AddSeconds(-1) -ObservationSeconds 3 -ProofReader $reader -Delay $delay -Clock $clock
+    $result.Verified -and $result.Proof.Pid -eq 1234 -and $state.Reads -ge 3 -and $state.Delays -ge 2 -and
+        $result.ObservedUntil -le $taskNow.AddSeconds(3) -and -not $result.NoResourcesConfirmed
+}
+Check 'LatePidfileWithMissingBridgeRemainsUnconfirmed' {
+    $state=ObservationState; $control=ObservationControl; $proof=CmdBridgeProof; $proof.ShellBridge=$null
+    $proof.CreatedAt=$taskNow.AddMilliseconds(100)
+    $reader={param($plan,$port,$exit,$receipt) $state.Reads++; if ($state.Reads -ge 3) { $proof } else { $null }}
+    $delay={param($milliseconds) $state.Delays++; $state.At=$state.At.AddMilliseconds($milliseconds)}
+    $result=Observe-DangoProfileStartup $taskProofPlan 23456 -1 $control $taskNow.AddSeconds(-1) -ObservationSeconds 3 -ProofReader $reader -Delay $delay -Clock { $state.At }
+    -not $result.Verified -and $result.ControlExited -and -not $result.NoResourcesConfirmed -and
+        $result.ObservedUntil -le $taskNow.AddSeconds(3)
+}
+Check 'EmptyStartupWindowDoesNotRefundStartedCapability' {
+    $state=ObservationState; $control=ObservationControl
+    $reader={param($plan,$port,$exit,$receipt) $state.Reads++; $null }
+    $delay={param($milliseconds) $state.Delays++; $state.At=$state.At.AddMilliseconds($milliseconds)}
+    $result=Observe-DangoProfileStartup $taskProofPlan 23456 -1 $control $taskNow.AddSeconds(-1) -ObservationSeconds 3 -ProofReader $reader -Delay $delay -Clock { $state.At }
+    -not $result.Verified -and $result.ControlExited -and -not $result.NoResourcesConfirmed -and $state.Reads -gt 1 -and
+        $result.ObservedUntil -le $taskNow.AddSeconds(3)
+}
+Check 'RunningControlAndNoPidfileCannotClaimNoResources' {
+    $state=ObservationState; $control=ObservationControl; $control.Exited=$false; $control.ExitedAt=$null
+    $reader={param($plan,$port,$exit,$receipt) $state.Reads++; $null }
+    $delay={param($milliseconds) $state.Delays++; $state.At=$state.At.AddMilliseconds($milliseconds)}
+    $result=Observe-DangoProfileStartup $taskProofPlan 23456 -1 $control $taskNow.AddSeconds(-1) -ObservationSeconds 3 -ProofReader $reader -Delay $delay -Clock { $state.At }
+    -not $result.Verified -and -not $result.ControlExited -and -not $result.NoResourcesConfirmed -and
+        $result.ObservedUntil -le $taskNow.AddSeconds(3)
 }
 
 $taskLines=[Collections.Generic.List[string]]::new(); $taskUsed=@{}; $taskSeq=0

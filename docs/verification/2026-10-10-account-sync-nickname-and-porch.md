@@ -1,6 +1,6 @@
 # 登录同步、昵称与门廊修订验证
 
-日期：2026-10-10。状态：核心与 Desktop 接线已整合，真实窗口 UIA 已通过；正在准备独立昵称数据库验证，新真实数据库验证和主观验收尚未通过。
+日期：2026-10-10。状态：核心与 Desktop 接线已整合，真实窗口 UIA 已通过；独立昵称数据库验证首次已批准执行，在启动资源守卫处失败并完成收尾，新真实数据库业务验证和主观验收尚未通过。
 
 ## 登录比较与成功保存边界
 
@@ -60,4 +60,6 @@ Profile 专用保护已整合。固定 7 个用例共享一次 owner；邀请、
 
 独立 A-only 运行器整合为 `377b557`，根 `eng/test-account-profile-postgres-boundary.ps1` **66/66**、旧阶段隔离 **2/2**；本轮非秘密离线回执为 `artifacts/account-profile-offline/93e4532dccba41d4a34390389b5adce2/offline-results.json`，`ExecutedDatabase=false`。覆盖固定 digest、文件及旁依赖变更拒绝、精确目标、进程超时及归属、不可退款的尝试、证书销毁回执、TRX 精确七项、只读 JSON framing、旧图保留和本轮图／零发信证据。代理故障副本去掉批准摘要校验后，仅针对清单与DLL同时变更的反例失败（65/66），没有修改根正式实现或启动数据库。
 
-[A-only 精确计划](../planning/2026-10-10-account-profile-postgres-a-plan.md)已可审查，批准仍待用户给出。固定清单 `artifacts/account-profile-a-approved.json` 冻结 294 份输入，SHA256 `195596BA3F9D334EF71EEA33F75844C88DE492276FA8FD19AD33FD03D7AFE21A`；根实查与当前输入一致。仅准备清单和离线检查，未创建新的受保护数据运行目录、读取真实数据库凭据、探测本轮 PostgreSQL 端口、启动实例或执行迁移／种子。此固定输入仅用于 A-only，不授权后续联合 UIA、房间业务写入或系统凭据操作。
+[A-only 精确计划](../planning/2026-10-10-account-profile-postgres-a-plan.md)已获用户批准并执行一次。原固定清单 `artifacts/account-profile-a-approved.json` 冻结 294 份输入，SHA256 `195596BA3F9D334EF71EEA33F75844C88DE492276FA8FD19AD33FD03D7AFE21A`，执行前与输入匹配；此后修复源码变动不再使用它执行。已创建受保护证据目录、在内存读取批准的 DPAPI 凭据并启动精确 PostgreSQL；因工具身份守卫失败，尚未运行 SQL 探针、迁移、种子、夹具或七项真实测试。业务尝试账本与资源账本均为空。原失败回执保留，根补充完整 Windows CMD 桥链证据后精确停止本次实例，PG／CMD／pidfile／端口已退出。见[首次失败与收尾](2026-10-10-account-profile-a-startup-failure.md)。原一次性额度已消耗，不能自动重跑；此固定输入不授权联合 UIA、房间业务写入或系统凭据操作。
+
+启动归属修复已整合，根最终离线 **111/111**、真实冷版本工具生命周期 smoke 通过；测试 owner 的 A2 固定目录已构建，关闭批准后七项全部跳过。独立审查没有发现新的误停止路径；CMD 桥先于 PG 消失时保守报告未确认的限制已记录。第二次候选的[A2 精确计划](../planning/2026-10-10-account-profile-postgres-a2-plan.md)与新固定清单已完成，SHA256 `D38FF1D2381AAE9806A6CD541935EA8E29BB552F9ED13CF1F4CE1F00208AD94F`、294 输入；新 A2 目录尚未创建，未开始再次真实执行。离线及工具结果不代表新的昵称数据库业务、联合同步或门廊技术验证通过。

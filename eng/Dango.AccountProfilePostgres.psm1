@@ -10,7 +10,7 @@ function Get-DangoProfilePlan {
     return [pscustomobject]@{
         Version=1; Stage='AccountProfileA'; RunName=$RunName; Executed=$false
         StateDirectory=$state; DataDirectory=(Join-Path $state 'pgdata')
-        EvidenceDirectory=(Join-Path (Split-Path -Parent $state) 'run20261010profilea')
+        EvidenceDirectory=(Join-Path (Split-Path -Parent $state) 'run20261010profilea2')
         Database='dango_backend_b0'; Role='dango_b0_owner'; PostgresBinDirectory=$expectedBin
         Repository=[IO.Path]::GetFullPath($Repository)
         Migration='20261010055529_AccountProfile'
@@ -157,51 +157,95 @@ function New-DangoProfileProcessInfo {
     return $info
 }
 
+function ConvertTo-DangoProfileUtc {
+    param($Value)
+    if ($Value -is [DateTime]) {
+        if ($Value.Kind -ne [DateTimeKind]::Utc) { throw 'profile_run_utc_time_required' }
+        return $Value
+    }
+    if ($Value -is [DateTimeOffset]) {
+        if ($Value.Offset -ne [TimeSpan]::Zero) { throw 'profile_run_utc_time_required' }
+        return $Value.UtcDateTime
+    }
+    $parsed=[DateTimeOffset]::MinValue
+    if ($Value -isnot [string] -or $Value -cnotmatch '(?:Z|\+00:00)$' -or
+        -not [DateTimeOffset]::TryParse($Value,[Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::None,[ref]$parsed) -or $parsed.Offset -ne [TimeSpan]::Zero) {
+        throw 'profile_run_utc_time_required'
+    }
+    return $parsed.UtcDateTime
+}
+
+function Get-DangoProfileProcessIdentity {
+    param($Process, [string]$ExpectedExecutable)
+    Get-DangoProfileNativeType
+    $errorCode=0; $image=$null; $nativePid=0; $createdAt=[DateTime]::MinValue
+    try {
+        # Query the retained handle returned by Start(), not a reopened PID or module list.
+        $image=[DangoProfileRunNativeV2]::QueryImage($Process.SafeHandle,[ref]$errorCode)
+        if ($errorCode -eq 0) {
+            $nativePid=[DangoProfileRunNativeV2]::IdentityPid($Process.SafeHandle,[ref]$createdAt,[ref]$errorCode)
+        }
+    } catch { $errorCode=if ($_.Exception -is [ComponentModel.Win32Exception]) { $_.Exception.NativeErrorCode } else { -1 } }
+    $verified=$errorCode -eq 0 -and -not [string]::IsNullOrEmpty($image) -and $nativePid -gt 0 -and
+        $createdAt.Kind -eq [DateTimeKind]::Utc -and (Test-DangoProfilePath $image $ExpectedExecutable)
+    return [pscustomobject]@{ Verified=$verified; ImagePath=$image; NativeErrorCode=$errorCode; Pid=$nativePid; CreatedAt=$createdAt }
+}
+
+function Test-DangoProfileToolIdentity {
+    param($Identity, [int]$PidValue, [DateTime]$CreatedAt, [string]$Executable)
+    try {
+        return $Identity.Verified -eq $true -and $Identity.NativeErrorCode -eq 0 -and $Identity.Pid -eq $PidValue -and
+            (ConvertTo-DangoProfileUtc $Identity.CreatedAt) -eq $CreatedAt -and
+            (Test-DangoProfilePath $Identity.ImagePath $Executable)
+    } catch { return $false }
+}
+
+function Get-DangoProfileExitedTime {
+    param($Process)
+    try { return ConvertTo-DangoProfileUtc $Process.ExitTime.ToUniversalTime() }
+    catch { return $null }
+}
+
 function Invoke-DangoProfileProcess {
     param([string]$Executable, [string[]]$Arguments, [string]$WorkingDirectory,
         [hashtable]$EnvironmentValues=@{}, [ValidateRange(1,300)][int]$TimeoutSeconds=30,
         [switch]$KillOwnedTree,
         [Collections.Generic.List[object]]$Receipts,
+        [scriptblock]$IdentityProbe={ param($process,$expected) Get-DangoProfileProcessIdentity $process $expected },
         [scriptblock]$ProcessFactory={ param($info) $process=[Diagnostics.Process]::new(); $process.StartInfo=$info; return $process })
+    # Compile the Win32 query before launch; a short-lived tool can exit during Add-Type.
+    Get-DangoProfileNativeType
     $info=New-DangoProfileProcessInfo $Executable $Arguments $WorkingDirectory $EnvironmentValues
     $process=& $ProcessFactory $info
-    $receipt=[pscustomobject]@{ Capability=[Guid]::NewGuid(); Pid=0; CreatedAt=$null; Executable=$Executable;
-        IdentityVerified=$false; Exited=$false; TimedOut=$false; CleanupConfirmed=$false }
+    $receipt=[pscustomobject]@{ Capability=[Guid]::NewGuid(); Pid=0; CreatedAt=$null; Executable=$Executable; Arguments=@($Arguments);
+        Started=$false; IdentityVerified=$false; ImageQueryError=0; InitialImageQueryError=$null; FinalImageQueryError=$null;
+        Exited=$false; ExitedAt=$null; TimedOut=$false; CleanupConfirmed=$false }
     if ($null -ne $Receipts) { $Receipts.Add($receipt) }
+    $timer=[Diagnostics.Stopwatch]::new(); $output=$null; $error=$null
     try {
         if (-not $process.Start()) { throw 'profile_run_tool_start_failed' }
+        $receipt.Started=$true; $timer.Start()
         $receipt.Pid=$process.Id
         $receipt.CreatedAt=$process.StartTime.ToUniversalTime()
-        try { $receipt.IdentityVerified=Test-DangoProfilePath $process.MainModule.FileName $Executable }
-        catch {
-            # A fast tool may already have exited; its retained Start() handle cannot be PID-reused.
-            # Only the real Process started with this exact full path gets this exited-handle fallback.
-            $receipt.IdentityVerified=$process -is [Diagnostics.Process] -and $process.HasExited -and
-                (Test-DangoProfilePath $process.StartInfo.FileName $Executable)
-        }
+        $identity=& $IdentityProbe $process $Executable
+        $receipt.InitialImageQueryError=$identity.NativeErrorCode
+        $receipt.ImageQueryError=$identity.NativeErrorCode
+        $receipt.IdentityVerified=Test-DangoProfileToolIdentity $identity $receipt.Pid $receipt.CreatedAt $Executable
         if (-not $receipt.IdentityVerified) { throw 'profile_run_tool_identity_unconfirmed' }
         $process.StandardInput.Close()
-        Get-DangoProfileNativeType
-        $output=[DangoProfileRunNative]::ReadBoundedAsync($process.StandardOutput,131072)
-        $error=[DangoProfileRunNative]::ReadBoundedAsync($process.StandardError,131072)
-        $timer=[Diagnostics.Stopwatch]::StartNew()
+        $output=[DangoProfileRunNativeV2]::ReadBoundedAsync($process.StandardOutput,131072)
+        $error=[DangoProfileRunNativeV2]::ReadBoundedAsync($process.StandardError,131072)
         $exited=$process.WaitForExit(100)
         while (-not $exited -and $timer.Elapsed.TotalSeconds -lt $TimeoutSeconds -and -not $output.IsFaulted -and -not $error.IsFaulted) {
             $exited=$process.WaitForExit(100)
         }
         if (-not $exited) {
             $receipt.TimedOut=-not $output.IsFaulted -and -not $error.IsFaulted
-            # This handle was started here and proven before timeout; never find/kill by name.
-            if ($process.Id -eq $receipt.Pid -and $process.StartTime.ToUniversalTime() -eq $receipt.CreatedAt -and
-                (Test-DangoProfilePath $process.MainModule.FileName $Executable)) {
-                $process.Kill([bool]$KillOwnedTree)
-                $receipt.Exited=$process.WaitForExit(5000)
-                $receipt.CleanupConfirmed=$receipt.Exited
-            }
             if ($output.IsFaulted -or $error.IsFaulted) { throw 'profile_run_tool_output_bound_exceeded' }
             throw 'profile_run_tool_timeout'
         }
-        $receipt.Exited=$true; $receipt.CleanupConfirmed=$true
+        $receipt.Exited=$true; $receipt.ExitedAt=Get-DangoProfileExitedTime $process; $receipt.CleanupConfirmed=$true
         if ($output.IsFaulted -or $error.IsFaulted) { throw 'profile_run_tool_output_bound_exceeded' }
         if (-not $output.Wait(1000) -or -not $error.Wait(1000)) { throw 'profile_run_tool_output_incomplete' }
         $text=$output.GetAwaiter().GetResult()
@@ -209,36 +253,113 @@ function Invoke-DangoProfileProcess {
         if ($error.Wait(1000)) { [void]$error.GetAwaiter().GetResult() }
         if ($text.Length -gt 131072) { throw 'profile_run_tool_output_bound_exceeded' }
         return [pscustomobject]@{ ExitCode=$process.ExitCode; Output=$text.Trim(); Receipt=$receipt }
-    } finally { $process.Dispose() }
+    } finally {
+        if ($receipt.Started) {
+            try {
+                # Even a failed initial identity guard must close this launch window before
+                # the caller observes descendants; Dispose alone never stops a started tool.
+                while (-not $receipt.Exited -and $timer.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+                    if ($process.WaitForExit(100)) { $receipt.Exited=$true; $receipt.ExitedAt=Get-DangoProfileExitedTime $process }
+                }
+                $identity=& $IdentityProbe $process $Executable
+                $receipt.FinalImageQueryError=$identity.NativeErrorCode
+                $receipt.ImageQueryError=$identity.NativeErrorCode
+                $currentIdentity=Test-DangoProfileToolIdentity $identity $receipt.Pid $receipt.CreatedAt $Executable
+                if ($currentIdentity) { $receipt.IdentityVerified=$true }
+                elseif (-not $receipt.Exited) { $receipt.IdentityVerified=$false }
+                if (-not $receipt.Exited -and $currentIdentity -and $process.Id -eq $receipt.Pid -and
+                    $process.StartTime.ToUniversalTime() -eq $receipt.CreatedAt) {
+                    $process.Kill([bool]$KillOwnedTree)
+                    $receipt.Exited=$process.WaitForExit(5000)
+                    if ($receipt.Exited) { $receipt.ExitedAt=Get-DangoProfileExitedTime $process }
+                }
+                $receipt.CleanupConfirmed=$receipt.Exited
+            } catch { $receipt.CleanupConfirmed=$false }
+        }
+        $process.Dispose()
+    }
+}
+
+function Get-DangoProfileWindowsStartCommand {
+    param($Plan, [int]$Port)
+    $cmd=Join-Path ([Environment]::SystemDirectory) 'cmd.exe'
+    $postgres=(Join-Path $Plan.PostgresBinDirectory 'postgres.exe').Replace('\','/')
+    $data=$Plan.DataDirectory.Replace('\','/')
+    $log=Join-Path $Plan.EvidenceDirectory 'postgresql.log'
+    return '"'+$cmd+'" /C ""'+$postgres+'" -D "'+$data+'" -h 127.0.0.1 -p '+$Port+' < "nul" >> "'+$log+'" 2>&1"'
 }
 
 function Test-DangoProfilePostgresProof {
     param($Proof, [string]$Executable, [string]$DataDirectory, [int]$Port,
-        [DateTime]$AttemptedAt, [DateTime]$ReturnedAt)
-    $controlProven=$Proof.ControlExitCode -eq 0 -or ($Proof.ControlPid -gt 0 -and
-        $Proof.ControlIdentityVerified -and $Proof.ParentProcessId -eq $Proof.ControlPid)
-    if (-not $controlProven -or $Proof.Pid -le 0 -or $Proof.CreatedAt -lt $AttemptedAt -or
-        $Proof.CreatedAt -gt $ReturnedAt -or -not (Test-DangoProfilePath $Proof.Executable $Executable) -or
-        $Proof.Arguments.Count -ne 7 -or -not (Test-DangoProfilePath $Proof.Arguments[0] $Executable)) { return $false }
-    $values=@{}
-    for ($index=1; $index -lt 7; $index+=2) {
-        $key=$Proof.Arguments[$index]
-        if ($key -cnotin @('-D','-h','-p') -or $values.ContainsKey($key)) { return $false }
-        $values[$key]=$Proof.Arguments[$index+1]
-    }
-    return (Test-DangoProfilePath $values['-D'] $DataDirectory) -and
-        $values['-h'] -ceq '127.0.0.1' -and $values['-p'] -ceq [string]$Port
+        $AttemptedAt, $ReturnedAt, $Plan)
+    try {
+        $attempt=ConvertTo-DangoProfileUtc $AttemptedAt; $returned=ConvertTo-DangoProfileUtc $ReturnedAt
+        $pgCreated=ConvertTo-DangoProfileUtc $Proof.CreatedAt; $controlCreated=ConvertTo-DangoProfileUtc $Proof.ControlCreatedAt
+        $bridge=$Proof.ShellBridge; $bridgeCreated=ConvertTo-DangoProfileUtc $bridge.CreatedAt
+        if ($null -eq $Plan -or $attempt -gt $returned -or $Proof.Pid -le 0 -or $Proof.ControlPid -le 0 -or
+            -not $Proof.ControlIdentityVerified -or $controlCreated -lt $attempt -or $pgCreated -lt $controlCreated -or $pgCreated -gt $returned -or
+            $bridge.Pid -le 0 -or $Proof.ParentProcessId -ne $bridge.Pid -or $bridge.ParentProcessId -ne $Proof.ControlPid -or
+            $bridgeCreated -lt $controlCreated -or $bridgeCreated -gt $pgCreated -or
+            -not (Test-DangoProfilePath $Proof.ControlExecutable (Join-Path $Plan.PostgresBinDirectory 'pg_ctl.exe')) -or
+            -not (Test-DangoProfilePath $bridge.Executable (Join-Path ([Environment]::SystemDirectory) 'cmd.exe')) -or
+            -not (Test-DangoProfilePath $Proof.Executable $Executable) -or $Proof.Arguments.Count -ne 7 -or
+            -not (Test-DangoProfilePath $Proof.Arguments[0] $Executable)) { return $false }
+        if ($null -eq $Proof.ControlExitedAt) { return $false }
+        $controlExited=ConvertTo-DangoProfileUtc $Proof.ControlExitedAt
+        if ($controlExited -lt $controlCreated -or $controlExited -gt $returned -or $bridgeCreated -gt $controlExited) { return $false }
+        $values=@{}
+        for ($index=1; $index -lt 7; $index+=2) {
+            $key=$Proof.Arguments[$index]
+            if ($key -cnotin @('-D','-h','-p') -or $values.ContainsKey($key)) { return $false }
+            $values[$key]=$Proof.Arguments[$index+1]
+        }
+        if (-not (Test-DangoProfilePath $values['-D'] $DataDirectory) -or $values['-h'] -cne '127.0.0.1' -or
+            $values['-p'] -cne [string]$Port -or -not (Test-DangoProfilePath $Plan.DataDirectory $DataDirectory)) { return $false }
+        $expectedControl=@('start','-D',$DataDirectory,'-l',(Join-Path $Plan.EvidenceDirectory 'postgresql.log'),
+            '-o',"-h 127.0.0.1 -p $Port",'-w','-t','30')
+        if ($Proof.ControlArguments.Count -ne $expectedControl.Count) { return $false }
+        for ($index=0; $index -lt $expectedControl.Count; $index++) {
+            if ($Proof.ControlArguments[$index] -cne $expectedControl[$index]) { return $false }
+        }
+        $expectedCommand=Get-DangoProfileWindowsStartCommand $Plan $Port
+        if (-not [string]::Equals($bridge.CommandLine,$expectedCommand,[StringComparison]::OrdinalIgnoreCase)) { return $false }
+        Get-DangoProfileNativeType
+        $expectedArguments=@([DangoProfileRunNativeV2]::Arguments($expectedCommand))
+        if ($bridge.Arguments.Count -ne $expectedArguments.Count) { return $false }
+        for ($index=0; $index -lt $expectedArguments.Count; $index++) {
+            if (-not [string]::Equals($bridge.Arguments[$index],$expectedArguments[$index],[StringComparison]::OrdinalIgnoreCase)) { return $false }
+        }
+        return $true
+    } catch { return $false }
 }
 
 function Get-DangoProfileNativeType {
-    if (-not ('DangoProfileRunNative' -as [type])) {
+    if (-not ('DangoProfileRunNativeV2' -as [type])) {
         Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
-public static class DangoProfileRunNative {
+using Microsoft.Win32.SafeHandles;
+public static class DangoProfileRunNativeV2 {
+ [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+ [return:MarshalAs(UnmanagedType.Bool)] private static extern bool QueryFullProcessImageNameW(SafeProcessHandle process, uint flags, StringBuilder image, ref uint size);
+ [DllImport("kernel32.dll", SetLastError=true)] private static extern uint GetProcessId(SafeProcessHandle process);
+ [DllImport("kernel32.dll", SetLastError=true)]
+ [return:MarshalAs(UnmanagedType.Bool)] private static extern bool GetProcessTimes(SafeProcessHandle process, out long created, out long exited, out long kernel, out long user);
+ public static string QueryImage(SafeProcessHandle process, out int error) {
+  error=0; var image=new StringBuilder(32768); uint size=32768;
+  if(!QueryFullProcessImageNameW(process,0,image,ref size)){error=Marshal.GetLastWin32Error();return null;}
+  return image.ToString();
+ }
+ public static int IdentityPid(SafeProcessHandle process, out DateTime createdAt, out int error) {
+  createdAt=DateTime.MinValue; error=0; var pid=GetProcessId(process);
+  if(pid==0){error=Marshal.GetLastWin32Error();return 0;}
+  long created, exited, kernel, user;
+  if(!GetProcessTimes(process,out created,out exited,out kernel,out user)){error=Marshal.GetLastWin32Error();return 0;}
+  createdAt=DateTime.FromFileTimeUtc(created);return checked((int)pid);
+ }
  [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
  [return:MarshalAs(UnmanagedType.Bool)] public static extern bool CreateDirectoryW(string path, IntPtr security);
  [DllImport("shell32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
@@ -266,7 +387,7 @@ function New-DangoProfileReservation {
     param($Plan)
     Assert-DangoProfileRegularPath $Plan.EvidenceDirectory
     Get-DangoProfileNativeType
-    if (-not [DangoProfileRunNative]::CreateDirectoryW($Plan.EvidenceDirectory,[IntPtr]::Zero)) {
+    if (-not [DangoProfileRunNativeV2]::CreateDirectoryW($Plan.EvidenceDirectory,[IntPtr]::Zero)) {
         throw 'profile_run_already_reserved'
     }
     $sid=[Security.Principal.WindowsIdentity]::GetCurrent().User
@@ -311,13 +432,71 @@ function Get-DangoProfilePostgresProof {
         $lines[3] -cne [string]$Port) { throw 'profile_run_postmaster_proof_rejected' }
     $ownedPid=0
     if (-not [int]::TryParse($lines[0],[ref]$ownedPid) -or $ownedPid -le 0) { throw 'profile_run_postmaster_proof_rejected' }
-    $process=Get-CimInstance Win32_Process -Filter "ProcessId = $ownedPid"
-    if ($null -eq $process) { throw 'profile_run_postmaster_proof_rejected' }
+    Get-DangoProfileNativeType
+    $process=Get-DangoProfileExistingProcessRecord $ownedPid (Join-Path $Plan.PostgresBinDirectory 'postgres.exe')
+    $bridge=Get-DangoProfileExistingProcessRecord $process.ParentProcessId (Join-Path ([Environment]::SystemDirectory) 'cmd.exe')
     return [pscustomobject]@{ ControlExitCode=$ControlExitCode; Pid=$ownedPid;
-        CreatedAt=$process.CreationDate.ToUniversalTime(); Executable=$process.ExecutablePath;
-        Arguments=@([DangoProfileRunNative]::Arguments($process.CommandLine)); ParentProcessId=$process.ParentProcessId;
+        CreatedAt=$process.CreatedAt; Executable=$process.Executable;
+        Arguments=$process.Arguments; ParentProcessId=$process.ParentProcessId; ShellBridge=$bridge;
         ControlPid=if ($null -ne $ControlReceipt) { $ControlReceipt.Pid } else { 0 };
+        ControlCreatedAt=if ($null -ne $ControlReceipt) { $ControlReceipt.CreatedAt } else { $null };
+        ControlExitedAt=if ($null -ne $ControlReceipt) { $ControlReceipt.ExitedAt } else { $null };
+        ControlExecutable=if ($null -ne $ControlReceipt) { $ControlReceipt.Executable } else { '' };
+        ControlArguments=if ($null -ne $ControlReceipt) { $ControlReceipt.Arguments } else { @() };
         ControlIdentityVerified=$null -ne $ControlReceipt -and $ControlReceipt.IdentityVerified }
+}
+
+function Get-DangoProfileExistingProcessRecord {
+    param([int]$ProcessIdValue, [string]$ExpectedExecutable)
+    $first=Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessIdValue"
+    if ($null -eq $first) { throw 'profile_run_process_record_unconfirmed' }
+    $handleProcess=[Diagnostics.Process]::GetProcessById($ProcessIdValue)
+    try {
+        $identity=Get-DangoProfileProcessIdentity $handleProcess $ExpectedExecutable
+        if (-not $identity.Verified -or $identity.Pid -ne $ProcessIdValue) { throw 'profile_run_process_native_identity_unconfirmed' }
+        $second=Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessIdValue"
+        if ($null -eq $second -or $first.ProcessId -ne $second.ProcessId -or $first.ParentProcessId -ne $second.ParentProcessId -or
+            $first.ExecutablePath -cne $second.ExecutablePath -or $first.CommandLine -cne $second.CommandLine -or
+            $first.CreationDate.ToUniversalTime() -ne $second.CreationDate.ToUniversalTime() -or
+            -not (Test-DangoProfilePath $second.ExecutablePath $identity.ImagePath)) { throw 'profile_run_process_record_changed' }
+        # CIM DATETIME has exactly microsecond precision; compare that representation
+        # to the retained native handle's timestamp without a guessed time tolerance.
+        $nativeMicroseconds=$identity.CreatedAt.Ticks-($identity.CreatedAt.Ticks%10)
+        if ($second.CreationDate.ToUniversalTime().Ticks -ne $nativeMicroseconds) { throw 'profile_run_process_record_changed' }
+        return [pscustomobject]@{ Pid=$identity.Pid; CreatedAt=$identity.CreatedAt; Executable=$identity.ImagePath;
+            ParentProcessId=$second.ParentProcessId; CommandLine=$second.CommandLine;
+            Arguments=@([DangoProfileRunNativeV2]::Arguments($second.CommandLine)) }
+    } finally { $handleProcess.Dispose() }
+}
+
+function Observe-DangoProfileStartup {
+    param($Plan, [int]$Port, [int]$ControlExitCode, $ControlReceipt, $AttemptedAt,
+        [ValidateRange(1,10)][int]$ObservationSeconds=3,
+        [scriptblock]$ProofReader={ param($plan,$port,$code,$receipt) Get-DangoProfilePostgresProof $plan $port $code $receipt },
+        [scriptblock]$Delay={ param($milliseconds) [Threading.Thread]::Sleep($milliseconds) },
+        [scriptblock]$Clock={ [DateTime]::UtcNow })
+    $started=ConvertTo-DangoProfileUtc (& $Clock)
+    $until=$started; $proof=$null; $verified=$false
+    # Fixed iterations also bound a broken injected clock; this is observation, never a retry grant.
+    for ($iteration=0; $iteration -le ($ObservationSeconds*10); $iteration++) {
+        $until=ConvertTo-DangoProfileUtc (& $Clock)
+        try {
+            $observed=& $ProofReader $Plan $Port $ControlExitCode $ControlReceipt
+            if ($null -ne $observed) {
+                $proof=$observed
+                $verified=Test-DangoProfilePostgresProof $proof (Join-Path $Plan.PostgresBinDirectory 'postgres.exe') `
+                    $Plan.DataDirectory $Port $AttemptedAt $until $Plan
+                if ($verified) { break }
+            }
+        } catch { $verified=$false }
+        if (($until-$started).TotalSeconds -ge $ObservationSeconds) { break }
+        & $Delay 100
+    }
+    return [pscustomobject]@{ Proof=$proof; Verified=$verified; ObservedUntil=$until;
+        ControlExited=($null -ne $ControlReceipt -and $ControlReceipt.Exited);
+        # A CMD descendant can still launch after pg_ctl exits and after this observation.
+        # Only a proved PostgreSQL stop closes that capability; absence alone is insufficient.
+        NoResourcesConfirmed=$false }
 }
 
 function Test-DangoProfileListener {
