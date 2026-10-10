@@ -11,6 +11,19 @@ namespace Dango.Server.Tests.Accounts;
 public sealed class AccountProfileModelTests
 {
     [TestMethod]
+    public void MigrationHistoryKeepsEfColumnNamesIndependentlyOfEntityNaming()
+    {
+        using var db = new DangoDbContextFactory().CreateDbContext([]);
+        var sql = db.GetService<IHistoryRepository>().GetCreateScript();
+        Assert.Contains("dango.__ef_migrations_history", sql);
+        Assert.Contains("\"MigrationId\"", sql);
+        Assert.Contains("\"ProductVersion\"", sql);
+        Assert.DoesNotContain("migration_id", sql);
+        // Only schema metadata, generated without a database connection.
+        Console.WriteLine(sql);
+    }
+
+    [TestMethod]
     public void LegacyAccountsMayHaveNoNicknameAndProfileVersionHasOwnConcurrencyToken()
     {
         using var db = new DangoDbContextFactory().CreateDbContext([]);

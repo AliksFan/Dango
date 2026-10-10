@@ -50,4 +50,6 @@
 
 精确单迁移命令现在向正式 `IMigrator` 传入批准目标。单个 pending 与目标不符或有额外 pending 时拒绝；目标已应用则零迁移调用，避免向后执行。迁移失败继续作为失败返回。提取原无目标调用作为反例后，离线 4 项中 2 项失败；显式传目标后 **4/4**，`formal-single-migration-confirmed.trx`，原反例 `formal-single-migration-before.trx` 保留。此检查使用 recording migrator，不连接数据库；并不表示新增真实迁移已经执行。
 
+正式 options factory 的 `IHistoryRepository.GetCreateScript()` 离线元数据检查 **1/1**，`profile-history-metadata.trx`：历史表是 `dango.__ef_migrations_history`，列为带引号的 `"MigrationId"` 和 `"ProductVersion"`。业务实体的 snake_case 规则不作用于该历史表；新运行器历史查询必须使用真实列名。
+
 后续真实验证拆为 A-only 昵称迁移与固定 7 项测试、以及另行准备的联合 UIA／双客户端／门廊验证。前一段批准不会开放后一段写入。全量草案仍为未批准规划，测试 owner 异常即停止，不声明崩溃续跑已实现。
