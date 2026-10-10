@@ -29,7 +29,7 @@ Native owner 修改 collision module、可选 ABI、managed world binding 和 Au
 - `logicalCenterX = 1080 + 80 * nativeCoreX`；`logicalCenterHeight = 60 * (nativeCoreY + .72)`。
 - 逆映射分别为 `(x - 1080) / 80`、`height / 60 - .72`；中心与碰撞脚底分开，`0,0` 不是旧资料的合法猜测出生。
 - 地面逻辑高度0。左右碰撞界24与2136，native为 `-13.2` 与 `13.2`。首批自然出生 anchor 为 `(-1.4,0)` 与 `(1.4,0)`，保留原 DropHeight；实际初始中心由首个成功步输出。堆叠测试的上层 anchor 为 `(0,1.65)`，不作为产品出生区。
-- 名义60 Hz固定步沿用旧 managed adapter：`TimeSpan.FromSeconds(1d/60)`，送入 native 的 float 来自其 `TotalSeconds`（约 `.0166667`）。不能在新 host 改用另一浮点 dt 后称旧轨迹逐位相同。
+- 名义60 Hz固定步沿用旧 managed adapter：`TimeSpan.FromSeconds(1d/60)`，送入 native 的 float 来自其 `TotalSeconds`。2026-10-11 .NET10实际probe确认ticks为166666、TotalSeconds为`.0166666`、float bits为`0x3C888865`；先前文字近似`.0166667`不代表实际bit值，现作事实更正，未改变adapter。旧native coldpose独立实验使用的`.0166667f`只代表其自身同构建对照，不等同managed时间轨迹。不能在新host改用另一浮点dt后称旧轨迹逐位相同。
 - Tick 是成功步编号，事件单独计数。故障不推进安全 Tick；所有实体一次读自同一成功步。单调时钟调度，墙钟不决定步长。
 
 ## 3. 独立可选 ABI 与恢复停止点
