@@ -202,7 +202,7 @@ public sealed class ManualReviewTls(IManualReviewTlsResources? resources = null)
         }
         public void VerifyOwnedDirectory(ManualReviewOwnedDirectory directory)
         {
-            var expected = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Dango", "BackendDevelopment", "run20261010b5cmanual");
+            var expected = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Dango", "BackendDevelopment", ManualReviewTarget.ManualRun);
             var path = Path.GetFullPath(directory.Path);
             if (!path.Equals(expected, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("manual_tls_directory_target_invalid");
             AssertNoReparsePoints(path);
@@ -218,7 +218,7 @@ public sealed class ManualReviewTls(IManualReviewTlsResources? resources = null)
             var ownerPath = Path.Combine(path, "owner-receipt.json"); AssertNoReparsePoints(ownerPath);
             using var receipt = JsonDocument.Parse(File.ReadAllBytes(ownerPath));
             var root = receipt.RootElement;
-            if (root.GetProperty("Version").GetInt32() != 1 || root.GetProperty("RunName").GetString() != "run20261010b5cmanual"
+            if (root.GetProperty("Version").GetInt32() != 1 || root.GetProperty("RunName").GetString() != ManualReviewTarget.ManualRun
                 || root.GetProperty("OwnerId").GetGuid() != directory.OwnerId
                 || !string.Equals(root.GetProperty("Directory").GetString(), path, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("manual_tls_directory_owner_invalid");

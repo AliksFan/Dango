@@ -1,5 +1,7 @@
 using System.IO;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Dango.BackendManualReview.Tests;
@@ -12,6 +14,14 @@ public sealed class ManualReviewTargetTests
     [TestMethod]
     public void MissingApprovalRejectsBeforeAnyTargetAccess() =>
         Assert.ThrowsExactly<ManualReviewRejected>(() => ManualReviewTarget.Load(false, "invalid\0path", "invalid\0path"));
+
+    [TestMethod]
+    public void DatabaseValidationUsesTheFormalDangoMigrationHistorySchema()
+    {
+        using var context = ManualReviewTarget.CreateValidationContext("Host=127.0.0.1;Database=dango_static_invalid;Username=static;Password=not-a-real-credential");
+        var historyScript = context.GetService<IHistoryRepository>().GetCreateScript();
+        StringAssert.Contains(historyScript, "dango.__ef_migrations_history");
+    }
 
     [TestMethod]
     [DataRow("Database", "unapproved")]

@@ -12,7 +12,7 @@
 
 资源工具对本次临时证书、两个 WinCred 槽及候选进程持有明确归属。PFX 用 `DefaultKeySet` 重载以满足 Schannel；不使用 `PersistKeySet`。Root 只导入公钥，删除需核验原不存在及本次 Add 的证据。进程 Start 成功立刻保留 capability，再观察 PID／时间／路径；观察失败阻止声称已退出。PostgreSQL 只有本次成功控制调用且创建时间处于启动窗口、实际参数与目标均匹配，才取得停止权。
 
-最后静态门禁 **124／124 通过，零失败／跳过**，构建零警告／错误，`git diff --check` 通过。结果：`artifacts/backend-b5c/manual-static/manual-static-start-gate.trx`。组成是预算／HTTP／Hub 51 项、资源 33 项、目标／进程证明 18 项、挑战确认 22 项。这些测试使用内存／fake 资源；没有通过测试启动真实数据库、导入系统证书或读写真实 WinCred。
+首轮工具静态门禁 **124／124 通过，零失败／跳过**，构建零警告／错误，`git diff --check` 通过。结果：`artifacts/backend-b5c/manual-static/manual-static-start-gate.trx`。组成是预算／HTTP／Hub 51 项、资源 33 项、目标／进程证明 18 项、挑战确认 22 项。这些测试使用内存／fake 资源；没有通过测试启动真实数据库、导入系统证书或读写真实 WinCred。
 
 失败证据保留于预算及资源隔离工作树：缺 guard 的三个反例、旧注册取消恢复的两个反例、缺资源保护的初始23项反例、启动后身份观察遗漏及未重载服务私钥两个反例均确实失败，再由修复使相应门禁通过。不能把这些静态反例称为真实进程强杀恢复或完整系统验收。
 
@@ -24,6 +24,10 @@
 
 ## 当前阶段
 
-准备工具与静态审查已完成。真实人工环境尚未启动，账号注册、系统 TLS／WinCred 实际使用、Windows 操作、重开及资源收尾尚未验证。下一动作是在批准范围内启动助手及现有候选，随后停在用户人工验收门禁。
+原计划已实际尝试：用户核对系统提示并确认公钥信任，既有 PostgreSQL 成功启动。维护目标检查使用默认 provider options，错误查询默认 `__EFMigrationsHistory`；正式迁移表是 `dango.__ef_migrations_history`。现有结构不需要变更，此次在签发邀请之前停止，没有本轮账号／挑战／邮件／房间／会话或 Desktop 候选启动。
+
+前次助手回执为 `stopped`、ResourceCleanupComplete=true、ServerKeyDisposed=true、无 Problems，InvitationId为空，预算与候选进程均为空。随后根实查本次 PostgreSQL PID退出、两个记录端口无监听、pidfile消失、该 thumbprint 在 CurrentUser Root 不存在，并仅对已核验路径／创建时间且资源已清理的助手请求正常关闭，进程实际退出。受保护文件及原库保留。本次验证了环境准备失败的资源收尾，未验证真实账号或端到端客户端 TLS／WinCred 使用。
+
+新增离线 metadata SQL 反例 `DatabaseValidationUsesTheFormalDangoMigrationHistorySchema`：旧实现1／1真实失败，`manual-history-schema-before.trx` 保留。维护上下文改为正式共用 `DangoDatabaseOptions.Create`；修后完整工具 **125／125** 通过，`manual-history-schema-fixed-r2.trx`。新增非秘密启动阶段／稳定错误码回执。下一次新目录及新证书按[R2 精确计划](../planning/2026-10-10-backend-b5c-windows-manual-r2-plan.md)准备，尚未获批或启动。
 
 本阶段不改变正式多人移动／动作／场景协议，不能关闭完整 B5。没有 main 合并、推送、部署、日常安装或生产 DLL 替换。

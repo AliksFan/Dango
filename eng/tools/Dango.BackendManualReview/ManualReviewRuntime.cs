@@ -48,6 +48,8 @@ public sealed class ManualReviewRuntime
     private string? confirmationProof;
     private bool credentialsCleared;
     private bool certificateDisposed;
+    private string startupPhase = "not_started";
+    private string? startupFailure;
 
     public ManualReviewRuntime(ManualReviewTarget target)
     { this.target = target; postgres = new(target); }
@@ -66,12 +68,17 @@ public sealed class ManualReviewRuntime
         try
         {
             if (directoryOwned || stopped) throw new ManualReviewRejected("manual_review_restart_rejected");
+            startupPhase = "postgres_preflight";
             await postgres.CheckStoppedAsync(true);
             // Reject another review-mode Desktop before creating any resources.
             desktop.AssertNoReviewModeProcess();
             target.CreateOwnedDirectory(true, ownerId); directoryOwned = true;
+            startupPhase = "tls_prepare";
             material = tls.Prepare(true, new(target.ManualDirectory, ownerId, true, true), DateTimeOffset.UtcNow);
+            startupPhase = "tls_trust";
+            WriteReceipt("tls_prepared");
             tls.Trust(true, material);
+            startupPhase = "origin_reserve";
             for (var attempt = 0; attempt < 16 && slots is null; attempt++)
             {
                 var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start();
@@ -82,10 +89,12 @@ public sealed class ManualReviewRuntime
             }
             if (slots is null) throw new ManualReviewRejected("manual_review_unused_origin_unavailable");
             WriteReceipt("preparing");
+            startupPhase = "postgres_start";
             await postgres.StartAsync(true);
             WriteReceipt("postgres_started");
             var connection = target.ReadConnection(true);
             connectionString = connection;
+            startupPhase = "database_target_and_history";
             await target.ValidateDatabaseAsync(connection);
             if (!FormalServerOptions.TryCreate(ManualReviewTarget.Database, connection, target.KeyDirectory,
                 slots.Origin.AbsoluteUri, target.SourceRoot, out var options, out _))
@@ -94,6 +103,7 @@ public sealed class ManualReviewRuntime
             var randomProof = RandomNumberGenerator.GetBytes(32);
             try { InvitationProof = Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlEncode(randomProof); }
             finally { CryptographicOperations.ZeroMemory(randomProof); }
+            startupPhase = "formal_host_build";
             host = FormalHost.Create(options!, new(target.RecoveryEpoch), material.Certificate,
                 services =>
                 {
@@ -104,14 +114,23 @@ public sealed class ManualReviewRuntime
                 configureRequestBoundary: app => app.UseMiddleware<ManualReviewHttpGuard>());
             if (host.Services.GetServices<IHostedService>().Any(worker => worker is EmailWorker or RoomExpiryWorker or RoomLiveWorker or RoomOutboxWorker))
                 throw new ManualReviewRejected("manual_review_background_worker_rejected");
+            startupPhase = "invitation_issue";
             using (var scope = host.Services.CreateScope())
                 InvitationId = await scope.ServiceProvider.GetRequiredService<InvitationService>()
                     .IssueAsync(Email, InvitationProof, DateTimeOffset.UtcNow.AddDays(1), CancellationToken.None);
             Budget = new(Email, InvitationId, ResolveIdentityAsync);
             WriteReceipt("invitation_issued");
+            startupPhase = "https_start";
             await host.StartAsync();
             ready = true;
+            startupPhase = "ready";
             WriteReceipt("ready");
+        }
+        catch (Exception error)
+        {
+            startupFailure = Program.SafeError(error);
+            try { WriteReceipt("start_failed"); } catch { }
+            throw;
         }
         finally { operations.Release(); }
     }
@@ -297,6 +316,7 @@ public sealed class ManualReviewRuntime
         var receipt = new
         {
             Version = 1, RunName = ManualReviewTarget.ManualRun, OwnerId = ownerId, Status = status, UpdatedAt = DateTimeOffset.UtcNow,
+            StartupPhase = startupPhase, StartupFailure = startupFailure,
             HostPid = Environment.ProcessId, Origin = slots?.Origin.AbsoluteUri, InvitationId,
             PendingRegistrationId = Budget?.PendingRegistrationId, Identity = Budget?.Identity,
             Counts = Budget?.Snapshot().ToDictionary(entry => entry.Key.ToString(), entry => entry.Value),

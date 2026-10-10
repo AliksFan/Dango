@@ -21,7 +21,7 @@ public sealed record ManualReviewTarget(string SourceRoot, string StateDirectory
     Guid RecoveryEpoch, string KeyDirectory)
 {
     public const string ExistingRun = "run20261008b0";
-    public const string ManualRun = "run20261010b5cmanual";
+    public const string ManualRun = "run20261010b5cmanualr2";
     public const string Database = "dango_backend_b0";
     public const string DatabaseRole = "dango_b0_owner";
     public const string ProtectedNativeHash = "6712D66ECEF9588123CAFCD868455080598B5B58711A698FB8AF022A0CDA191A";
@@ -118,11 +118,12 @@ public sealed record ManualReviewTarget(string SourceRoot, string StateDirectory
                 || !SamePath(reader.GetString(3), DataDirectory) || reader.GetString(4) != "127.0.0.1")
                 throw new ManualReviewRejected("manual_review_actual_database_rejected");
         }
-        var options = new DbContextOptionsBuilder<DangoDbContext>().UseNpgsql(connection).Options;
-        await using var context = new DangoDbContext(options);
+        await using var context = CreateValidationContext(connection);
         if ((await context.Database.GetPendingMigrationsAsync(ct)).Any())
             throw new ManualReviewRejected("manual_review_migration_required");
     }
+
+    public static DangoDbContext CreateValidationContext(string connection) => new(DangoDatabaseOptions.Create(connection));
 
     public void CreateOwnedDirectory(bool approved, Guid ownerId)
     {
