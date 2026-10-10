@@ -103,19 +103,29 @@ Check 'ChildEnvironmentDropsInheritedStagesAndPgSecrets' {
 # Fake processes expose the same narrow capability interface, without launching a process.
 if (-not ('DangoProfileFakeProcess' -as [type])) {
     Add-Type -TypeDefinition @'
-using System; using System.IO;
+using System; using System.IO; using System.Threading.Tasks;
 public sealed class DangoProfileFakeModule { public string FileName {get;set;} }
+public sealed class DangoProfilePendingReader : TextReader {
+ private readonly TaskCompletionSource<int> end=new(TaskCreationOptions.RunContinuationsAsynchronously);
+ public int ReadCalls; public bool Closed; public bool FailClose;
+ public override Task<int> ReadAsync(char[] buffer,int index,int count){ReadCalls++;return end.Task;}
+ protected override void Dispose(bool disposing){if(FailClose)throw new IOException("fictional_stream_close_failure");Closed=true;end.TrySetResult(0);base.Dispose(disposing);}
+}
+public sealed class DangoProfileTrackedReader : StringReader {
+ public bool Closed; public DangoProfileTrackedReader(string value):base(value){}
+ protected override void Dispose(bool disposing){Closed=true;base.Dispose(disposing);}
+}
 public sealed class DangoProfileFakeProcess : IDisposable {
  public string Scenario; public string Executable; public int Waits; public bool Killed; public bool Tree; public bool Disposed;
  public int ProbeCalls; public bool NativePreloadedAtStart; public bool ReadersAccessed; public bool InitialQueryBeforeReaders;
- public int Id => 30000; public DateTime StartTime {get;}=DateTime.UtcNow; public int ExitCode=>0;
+ public int Id => 30000; public DateTime StartTime {get;}=DateTime.UtcNow; public int PlannedExitCode; public int ExitCode=>PlannedExitCode;
  public DateTime ExitTime => StartTime.AddMilliseconds(1);
  public bool HasExited => Killed || Scenario=="normal" || Scenario=="null_module" || Scenario=="final_image_error" || Scenario=="initial_unknown_then_exited" && Waits>=2;
  public DangoProfileFakeModule MainModule => Scenario=="null_module" ? null : new DangoProfileFakeModule { FileName=Scenario=="changed" && Waits>0? Executable+"other":Executable };
  public TextWriter StandardInput {get;}=new StringWriter();
- private TextReader output=new StringReader("ok"); private readonly TextReader error=new StringReader("");
+ private TextReader output=new StringReader("ok"); private TextReader error=new StringReader("");
  public TextReader StandardOutput {get {ReadersAccessed=true;return output;} set {output=value;}}
- public TextReader StandardError {get {ReadersAccessed=true;return error;}}
+ public TextReader StandardError {get {ReadersAccessed=true;return error;} set {error=value;}}
  public bool Start(){NativePreloadedAtStart=Array.Exists(AppDomain.CurrentDomain.GetAssemblies(),a=>a.GetType("DangoProfileRunNativeV2")!=null);return true;}
  public bool WaitForExit(int milliseconds) {Waits++; return Killed || Scenario=="normal" || Scenario=="null_module" || Scenario=="final_image_error" || Scenario=="initial_unknown_then_exited" && Waits>=2;}
  public void Kill(bool tree){Killed=true;Tree=tree;} public void Dispose(){Disposed=true;}
@@ -235,6 +245,101 @@ foreach ($case in @('handle_pid_reused','handle_creation_reused')) {
         $rejected=Rejected { Invoke-DangoProfileProcess $fake.Executable @() $taskSandbox -TimeoutSeconds 1 -Receipts $receipts -ProcessFactory {param($info) $fake} -IdentityProbe $taskFakeIdentity } 'profile_run_tool_identity_unconfirmed'
         $rejected -and -not $fake.Killed -and -not $receipts[0].CleanupConfirmed
     }
+}
+function PendingPipeProcess([string]$Executable, [string]$Scenario='normal') {
+    $fake=FakeProcess $Scenario; $fake.Executable=$Executable
+    $fake.StandardOutput=[DangoProfilePendingReader]::new()
+    $fake.StandardError=[DangoProfileTrackedReader]::new('')
+    return $fake
+}
+function StartPipeArguments($Plan, [int]$Port) {
+    @('start','-D',$Plan.DataDirectory,'-l',(Join-Path $Plan.EvidenceDirectory 'postgresql.log'),
+        '-o',"-h 127.0.0.1 -p $Port",'-w','-t','30')
+}
+$taskPipeControl=Join-Path $taskBin 'pg_ctl.exe'; $taskPipePort=23456
+Check 'ExitedControlWithOpenInheritedPipeReproducesStrictEofFailure' {
+    $fake=PendingPipeProcess $taskPipeControl; $receipts=[Collections.Generic.List[object]]::new()
+    $rejected=Rejected { Invoke-DangoProfileProcess $taskPipeControl (StartPipeArguments $taskPlan $taskPipePort) $taskSandbox -TimeoutSeconds 1 -IdentityProbe $taskFakeIdentity -ProcessFactory {param($info) $fake} -Receipts $receipts } 'profile_run_tool_output_incomplete'
+    $rejected -and $receipts[0].IdentityVerified -and $receipts[0].Exited -and $receipts[0].CleanupConfirmed -and
+        $fake.StandardOutput.ReadCalls -gt 0 -and -not $receipts[0].OutputComplete
+}
+Check 'ExactPgStartDiscardsInheritedOutputWithoutReaderTasks' {
+    $fake=PendingPipeProcess $taskPipeControl; $receipts=[Collections.Generic.List[object]]::new()
+    $result=Invoke-DangoProfileProcess $taskPipeControl (StartPipeArguments $taskPlan $taskPipePort) $taskSandbox -TimeoutSeconds 1 -IdentityProbe $taskFakeIdentity -ProcessFactory {param($info) $fake} -Receipts $receipts -OutputContract PostgresStartIgnored -PostgresStartPlan $taskPlan -PostgresStartPort $taskPipePort
+    $result.ExitCode -eq 0 -and $result.Output -ceq '' -and $receipts[0].OutputContract -ceq 'PostgresStartIgnored' -and
+        $receipts[0].ReaderTasksStarted -eq 0 -and $fake.StandardOutput.ReadCalls -eq 0 -and
+        -not $receipts[0].OutputCaptured -and -not $receipts[0].OutputComplete -and $receipts[0].OutputDiscarded -and
+        $receipts[0].IdentityVerified -and $receipts[0].ExitCodeRecorded -and $receipts[0].ExitCode -eq 0 -and
+        $receipts[0].ExitedAt -eq $fake.ExitTime.ToUniversalTime() -and $receipts[0].CleanupConfirmed -and
+        $receipts[0].StandardOutputClosed -and $receipts[0].StandardErrorClosed -and $receipts[0].OutputStreamsClosed -and
+        $fake.StandardOutput.Closed -and $fake.StandardError.Closed
+}
+Check 'IgnoredPgStartStillRecordsNonzeroExitAsFailureEvidence' {
+    $fake=PendingPipeProcess $taskPipeControl; $fake.PlannedExitCode=23; $receipts=[Collections.Generic.List[object]]::new()
+    $result=Invoke-DangoProfileProcess $taskPipeControl (StartPipeArguments $taskPlan $taskPipePort) $taskSandbox -TimeoutSeconds 1 -IdentityProbe $taskFakeIdentity -ProcessFactory {param($info) $fake} -Receipts $receipts -OutputContract PostgresStartIgnored -PostgresStartPlan $taskPlan -PostgresStartPort $taskPipePort
+    $result.ExitCode -eq 23 -and $receipts[0].ExitCodeRecorded -and $receipts[0].ExitCode -eq 23 -and
+        $receipts[0].ExitedAt -eq $fake.ExitTime.ToUniversalTime() -and $receipts[0].ReaderTasksStarted -eq 0 -and
+        $receipts[0].OutputStreamsClosed -and -not $receipts[0].OutputComplete
+}
+foreach ($case in @('migration','sql','vstest','version','status','stop','extra_argv','wrong_data','wrong_log','wrong_options',
+    'wrong_workdir','wrong_plan','extra_plan_property','wrong_port','extra_environment','tree_kill','missing_plan')) {
+    Check ('IgnoredOutputContractRejectsBeforeFactory_'+$case) {
+        $plan=$taskPlan.PSObject.Copy(); $exe=$taskPipeControl; $arguments=StartPipeArguments $plan $taskPipePort
+        $directory=$taskSandbox; $environment=@{}; $tree=$false; $port=$taskPipePort; $calls=[pscustomobject]@{Factories=0}
+        switch ($case) {
+            migration { $exe=Join-Path $taskSandbox 'dotnet.exe'; $arguments=@('Dango.Server.dll','--formal-migrate') }
+            sql { $exe=Join-Path $taskBin 'psql.exe'; $arguments=@('-c','SELECT 1') }
+            vstest { $exe=Join-Path $taskSandbox 'dotnet.exe'; $arguments=@('vstest','tests.dll') }
+            version { $arguments=@('--version') }
+            status { $arguments=@('status','-D',$plan.DataDirectory) }
+            stop { $arguments=@('stop','-D',$plan.DataDirectory,'-m','fast') }
+            extra_argv { $arguments+=@('--extra') }
+            wrong_data { $arguments[2]=$arguments[2]+'-other' }
+            wrong_log { $arguments[4]=$arguments[4]+'-other' }
+            wrong_options { $arguments[6]='-h 0.0.0.0 -p 23456' }
+            wrong_workdir { $directory=$taskSandbox+'-other' }
+            wrong_plan { $plan.EvidenceDirectory=$plan.EvidenceDirectory+'-other'; $arguments=StartPipeArguments $plan $port }
+            extra_plan_property { $plan | Add-Member ExtraPolicy 'fictional' }
+            wrong_port { $port=0 }
+            extra_environment { $environment=@{FICTIONAL_EXTRA='not-allowed'} }
+            tree_kill { $tree=$true }
+            missing_plan { $plan=$null }
+        }
+        $rejected=Rejected { Invoke-DangoProfileProcess $exe $arguments $directory -EnvironmentValues $environment -TimeoutSeconds 1 -KillOwnedTree:$tree -IdentityProbe $taskFakeIdentity -ProcessFactory {param($info) $calls.Factories++; throw 'offline_factory_must_not_run'} -OutputContract PostgresStartIgnored -PostgresStartPlan $plan -PostgresStartPort $port } 'profile_run_start_output_contract_rejected'
+        $rejected -and $calls.Factories -eq 0
+    }
+}
+Check 'IgnoredStartTimeoutKillsOnlyOwnedControlAndClosesStreams' {
+    $fake=PendingPipeProcess $taskPipeControl timeout; $receipts=[Collections.Generic.List[object]]::new()
+    $rejected=Rejected { Invoke-DangoProfileProcess $taskPipeControl (StartPipeArguments $taskPlan $taskPipePort) $taskSandbox -TimeoutSeconds 1 -IdentityProbe $taskFakeIdentity -ProcessFactory {param($info) $fake} -Receipts $receipts -OutputContract PostgresStartIgnored -PostgresStartPlan $taskPlan -PostgresStartPort $taskPipePort } 'profile_run_tool_timeout'
+    $rejected -and $fake.Killed -and -not $fake.Tree -and $receipts[0].TimedOut -and $receipts[0].Exited -and
+        $receipts[0].ExitCodeRecorded -and $receipts[0].ExitedAt -eq $fake.ExitTime.ToUniversalTime() -and
+        $receipts[0].ReaderTasksStarted -eq 0 -and $receipts[0].OutputStreamsClosed -and $receipts[0].CleanupConfirmed
+}
+Check 'IgnoredOutputCannotHideUnknownControlIdentity' {
+    $fake=PendingPipeProcess $taskPipeControl unknown_image; $receipts=[Collections.Generic.List[object]]::new()
+    $rejected=Rejected { Invoke-DangoProfileProcess $taskPipeControl (StartPipeArguments $taskPlan $taskPipePort) $taskSandbox -TimeoutSeconds 1 -IdentityProbe $taskFakeIdentity -ProcessFactory {param($info) $fake} -Receipts $receipts -OutputContract PostgresStartIgnored -PostgresStartPlan $taskPlan -PostgresStartPort $taskPipePort } 'profile_run_tool_identity_unconfirmed'
+    $rejected -and -not $fake.Killed -and -not $receipts[0].IdentityVerified -and -not $receipts[0].CleanupConfirmed -and
+        $receipts[0].ReaderTasksStarted -eq 0 -and $receipts[0].OutputStreamsClosed
+}
+Check 'StartupReaderCloseFailureCannotContinueAsSuccess' {
+    $fake=PendingPipeProcess $taskPipeControl; $fake.StandardOutput.FailClose=$true; $receipts=[Collections.Generic.List[object]]::new()
+    $rejected=Rejected { Invoke-DangoProfileProcess $taskPipeControl (StartPipeArguments $taskPlan $taskPipePort) $taskSandbox -TimeoutSeconds 1 -IdentityProbe $taskFakeIdentity -ProcessFactory {param($info) $fake} -Receipts $receipts -OutputContract PostgresStartIgnored -PostgresStartPlan $taskPlan -PostgresStartPort $taskPipePort } 'profile_run_tool_output_close_unconfirmed'
+    $rejected -and $receipts[0].ExitCodeRecorded -and $receipts[0].Exited -and -not $receipts[0].StandardOutputClosed -and
+        $receipts[0].StandardErrorClosed -and -not $receipts[0].OutputStreamsClosed -and $fake.StandardError.Closed
+}
+foreach ($tool in @('migration','sql','vstest')) {
+    Check ('CompleteEofStillRequiredFor_'+$tool) {
+        $exe=Join-Path $taskSandbox ($tool+'.exe'); $fake=PendingPipeProcess $exe; $receipts=[Collections.Generic.List[object]]::new()
+        $rejected=Rejected { Invoke-DangoProfileProcess $exe @('fictional') $taskSandbox -TimeoutSeconds 1 -IdentityProbe $taskFakeIdentity -ProcessFactory {param($info) $fake} -Receipts $receipts -OutputContract CompleteEof } 'profile_run_tool_output_incomplete'
+        $rejected -and $receipts[0].OutputContract -ceq 'CompleteEof' -and $receipts[0].ReaderTasksStarted -eq 2 -and
+            $fake.StandardOutput.ReadCalls -gt 0 -and -not $receipts[0].OutputComplete -and -not $receipts[0].OutputDiscarded
+    }
+}
+Check 'LowercaseOutputModeDoesNotGrantStartupDiscardPolicy' {
+    $calls=[pscustomobject]@{Factories=0}; $receipts=[Collections.Generic.List[object]]::new()
+    $rejected=Rejected { Invoke-DangoProfileProcess $taskPipeControl (StartPipeArguments $taskPlan $taskPipePort) $taskSandbox -TimeoutSeconds 1 -IdentityProbe $taskFakeIdentity -ProcessFactory {param($info) $calls.Factories++; throw 'offline_factory_must_not_run'} -Receipts $receipts -OutputContract postgresstartignored -PostgresStartPlan $taskPlan -PostgresStartPort $taskPipePort } 'OutputContract'
+    $rejected -and $calls.Factories -eq 0 -and $receipts.Count -eq 0
 }
 Check 'JsonZDateTimeConversionLosesPrecisionThroughStringReparse' {
     # Preserve the failing diagnosis: ConvertFrom-Json already produced a UTC

@@ -82,11 +82,15 @@ try {
     try {
         $taskProfileStarted=Invoke-DangoProfileProcess $taskProfileControl @('start','-D',$taskProfilePlan.DataDirectory,'-l',
             (Join-Path $taskProfilePlan.EvidenceDirectory 'postgresql.log'),'-o',"-h 127.0.0.1 -p $($taskProfileFacts.Port)",'-w','-t','30') `
-            $taskProfilePlan.Repository -TimeoutSeconds 40 -Receipts $taskProfileTools
+            $taskProfilePlan.Repository -TimeoutSeconds 40 -Receipts $taskProfileTools `
+            -OutputContract PostgresStartIgnored -PostgresStartPlan $taskProfilePlan -PostgresStartPort $taskProfileFacts.Port
         $taskProfileStartControlExit=$taskProfileStarted.ExitCode
     } finally {
         $taskProfileStartReturn=[DateTime]::UtcNow
-        if ($taskProfileTools.Count -gt $taskProfileStartIndex) { $taskProfileStartTool=$taskProfileTools[$taskProfileStartIndex] }
+        if ($taskProfileTools.Count -gt $taskProfileStartIndex) {
+            $taskProfileStartTool=$taskProfileTools[$taskProfileStartIndex]
+            if ($taskProfileStartTool.ExitCodeRecorded) { $taskProfileStartControlExit=$taskProfileStartTool.ExitCode }
+        }
     }
     $taskProfileProof=Get-DangoProfilePostgresProof $taskProfilePlan $taskProfileFacts.Port $taskProfileStartControlExit $taskProfileStartTool
     if (-not (Test-DangoProfilePostgresProof $taskProfileProof $taskProfilePostgres $taskProfilePlan.DataDirectory `

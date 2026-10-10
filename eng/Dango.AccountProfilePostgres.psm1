@@ -10,7 +10,7 @@ function Get-DangoProfilePlan {
     return [pscustomobject]@{
         Version=1; Stage='AccountProfileA'; RunName=$RunName; Executed=$false
         StateDirectory=$state; DataDirectory=(Join-Path $state 'pgdata')
-        EvidenceDirectory=(Join-Path (Split-Path -Parent $state) 'run20261010profilea2')
+        EvidenceDirectory=(Join-Path (Split-Path -Parent $state) 'run20261010profilea3')
         Database='dango_backend_b0'; Role='dango_b0_owner'; PostgresBinDirectory=$expectedBin
         Repository=[IO.Path]::GetFullPath($Repository)
         Migration='20261010055529_AccountProfile'
@@ -207,20 +207,93 @@ function Get-DangoProfileExitedTime {
     catch { return $null }
 }
 
+function Test-DangoProfileFixedValue {
+    param($Actual, $Expected)
+    if ($null -eq $Expected) { return $null -eq $Actual }
+    if ($null -eq $Actual) { return $false }
+    if ($Expected -is [Collections.IDictionary]) {
+        if ($Actual -isnot [Collections.IDictionary] -or $Actual.Count -ne $Expected.Count) { return $false }
+        foreach ($key in $Expected.Keys) {
+            if (@($Actual.Keys) -cnotcontains $key -or -not (Test-DangoProfileFixedValue $Actual[$key] $Expected[$key])) { return $false }
+        }
+        return $true
+    }
+    if ($Expected -is [Array]) {
+        if ($Actual -isnot [Array] -or $Actual.Count -ne $Expected.Count) { return $false }
+        for ($index=0; $index -lt $Expected.Count; $index++) {
+            if (-not (Test-DangoProfileFixedValue $Actual[$index] $Expected[$index])) { return $false }
+        }
+        return $true
+    }
+    return $Actual.GetType() -eq $Expected.GetType() -and $Actual -ceq $Expected
+}
+
+function Assert-DangoProfileStartOutputContract {
+    param([string]$Executable, [string[]]$Arguments, [string]$WorkingDirectory, $Plan, [int]$Port,
+        [hashtable]$EnvironmentValues, [bool]$KillOwnedTree)
+    try {
+        if ($null -eq $Plan -or $Port -lt 1 -or $Port -gt 65535 -or $EnvironmentValues.Count -ne 0 -or $KillOwnedTree) { throw 'rejected' }
+        $fixed=Get-DangoProfilePlan 'run20261008b0' $Plan.PostgresBinDirectory $Plan.Repository
+        if (@($Plan.PSObject.Properties).Count -ne @($fixed.PSObject.Properties).Count) { throw 'rejected' }
+        foreach ($property in $fixed.PSObject.Properties) {
+            $actual=$Plan.PSObject.Properties[$property.Name]
+            if ($null -eq $actual -or $actual.Name -cne $property.Name -or
+                -not (Test-DangoProfileFixedValue $actual.Value $property.Value)) { throw 'rejected' }
+        }
+        if (-not (Test-DangoProfilePath $Executable (Join-Path $fixed.PostgresBinDirectory 'pg_ctl.exe')) -or
+            -not (Test-DangoProfilePath $WorkingDirectory $fixed.Repository)) { throw 'rejected' }
+        $expected=@('start','-D',$fixed.DataDirectory,'-l',(Join-Path $fixed.EvidenceDirectory 'postgresql.log'),
+            '-o',"-h 127.0.0.1 -p $Port",'-w','-t','30')
+        if (-not (Test-DangoProfileFixedValue $Arguments ([string[]]$expected))) { throw 'rejected' }
+    } catch { throw 'profile_run_start_output_contract_rejected' }
+}
+
+function Set-DangoProfileProcessExited {
+    param($Process, $Receipt)
+    # Capture actual exit evidence immediately, before output or cleanup can fail.
+    $Receipt.Exited=$true
+    $Receipt.ExitedAt=Get-DangoProfileExitedTime $Process
+    $Receipt.ExitCode=$Process.ExitCode
+    $Receipt.ExitCodeRecorded=$true
+}
+
+function Close-DangoProfileStartOutput {
+    param($Process, $Receipt)
+    # This contract never creates pending reads; closing each private reader does
+    # not depend on the CMD descendant closing its inherited write handles.
+    if (-not $Receipt.StandardOutputClosed) {
+        try { $Process.StandardOutput.Dispose(); $Receipt.StandardOutputClosed=$true } catch { }
+    }
+    if (-not $Receipt.StandardErrorClosed) {
+        try { $Process.StandardError.Dispose(); $Receipt.StandardErrorClosed=$true } catch { }
+    }
+    $Receipt.OutputStreamsClosed=$Receipt.StandardOutputClosed -and $Receipt.StandardErrorClosed
+    if (-not $Receipt.OutputStreamsClosed) { throw 'profile_run_tool_output_close_unconfirmed' }
+}
+
 function Invoke-DangoProfileProcess {
     param([string]$Executable, [string[]]$Arguments, [string]$WorkingDirectory,
         [hashtable]$EnvironmentValues=@{}, [ValidateRange(1,300)][int]$TimeoutSeconds=30,
         [switch]$KillOwnedTree,
         [Collections.Generic.List[object]]$Receipts,
         [scriptblock]$IdentityProbe={ param($process,$expected) Get-DangoProfileProcessIdentity $process $expected },
-        [scriptblock]$ProcessFactory={ param($info) $process=[Diagnostics.Process]::new(); $process.StartInfo=$info; return $process })
+        [scriptblock]$ProcessFactory={ param($info) $process=[Diagnostics.Process]::new(); $process.StartInfo=$info; return $process },
+        [ValidateSet('CompleteEof','PostgresStartIgnored',IgnoreCase=$false)][string]$OutputContract='CompleteEof',
+        $PostgresStartPlan, [int]$PostgresStartPort=0)
+    $ignoreStartOutput=$OutputContract -ceq 'PostgresStartIgnored'
+    if ($ignoreStartOutput) {
+        Assert-DangoProfileStartOutputContract $Executable $Arguments $WorkingDirectory $PostgresStartPlan $PostgresStartPort `
+            $EnvironmentValues ([bool]$KillOwnedTree)
+    } elseif ($null -ne $PostgresStartPlan -or $PostgresStartPort -ne 0) { throw 'profile_run_start_output_contract_rejected' }
     # Compile the Win32 query before launch; a short-lived tool can exit during Add-Type.
     Get-DangoProfileNativeType
     $info=New-DangoProfileProcessInfo $Executable $Arguments $WorkingDirectory $EnvironmentValues
     $process=& $ProcessFactory $info
     $receipt=[pscustomobject]@{ Capability=[Guid]::NewGuid(); Pid=0; CreatedAt=$null; Executable=$Executable; Arguments=@($Arguments);
         Started=$false; IdentityVerified=$false; ImageQueryError=0; InitialImageQueryError=$null; FinalImageQueryError=$null;
-        Exited=$false; ExitedAt=$null; TimedOut=$false; CleanupConfirmed=$false }
+        Exited=$false; ExitedAt=$null; ExitCode=$null; ExitCodeRecorded=$false; TimedOut=$false; CleanupConfirmed=$false;
+        OutputContract=$OutputContract; ReaderTasksStarted=0; OutputCaptured=$false; OutputComplete=$false;
+        OutputDiscarded=$ignoreStartOutput; StandardOutputClosed=$false; StandardErrorClosed=$false; OutputStreamsClosed=$false }
     if ($null -ne $Receipts) { $Receipts.Add($receipt) }
     $timer=[Diagnostics.Stopwatch]::new(); $output=$null; $error=$null
     try {
@@ -234,32 +307,43 @@ function Invoke-DangoProfileProcess {
         $receipt.IdentityVerified=Test-DangoProfileToolIdentity $identity $receipt.Pid $receipt.CreatedAt $Executable
         if (-not $receipt.IdentityVerified) { throw 'profile_run_tool_identity_unconfirmed' }
         $process.StandardInput.Close()
-        $output=[DangoProfileRunNativeV2]::ReadBoundedAsync($process.StandardOutput,131072)
-        $error=[DangoProfileRunNativeV2]::ReadBoundedAsync($process.StandardError,131072)
+        if (-not $ignoreStartOutput) {
+            $output=[DangoProfileRunNativeV2]::ReadBoundedAsync($process.StandardOutput,131072)
+            $receipt.ReaderTasksStarted++
+            $error=[DangoProfileRunNativeV2]::ReadBoundedAsync($process.StandardError,131072)
+            $receipt.ReaderTasksStarted++
+        }
         $exited=$process.WaitForExit(100)
-        while (-not $exited -and $timer.Elapsed.TotalSeconds -lt $TimeoutSeconds -and -not $output.IsFaulted -and -not $error.IsFaulted) {
+        while (-not $exited -and $timer.Elapsed.TotalSeconds -lt $TimeoutSeconds -and
+            ($ignoreStartOutput -or (-not $output.IsFaulted -and -not $error.IsFaulted))) {
             $exited=$process.WaitForExit(100)
         }
         if (-not $exited) {
-            $receipt.TimedOut=-not $output.IsFaulted -and -not $error.IsFaulted
-            if ($output.IsFaulted -or $error.IsFaulted) { throw 'profile_run_tool_output_bound_exceeded' }
+            $receipt.TimedOut=$ignoreStartOutput -or (-not $output.IsFaulted -and -not $error.IsFaulted)
+            if (-not $ignoreStartOutput -and ($output.IsFaulted -or $error.IsFaulted)) { throw 'profile_run_tool_output_bound_exceeded' }
             throw 'profile_run_tool_timeout'
         }
-        $receipt.Exited=$true; $receipt.ExitedAt=Get-DangoProfileExitedTime $process; $receipt.CleanupConfirmed=$true
+        Set-DangoProfileProcessExited $process $receipt
+        $receipt.CleanupConfirmed=$true
+        if ($ignoreStartOutput) {
+            Close-DangoProfileStartOutput $process $receipt
+            return [pscustomobject]@{ ExitCode=$receipt.ExitCode; Output=''; Receipt=$receipt }
+        }
         if ($output.IsFaulted -or $error.IsFaulted) { throw 'profile_run_tool_output_bound_exceeded' }
         if (-not $output.Wait(1000) -or -not $error.Wait(1000)) { throw 'profile_run_tool_output_incomplete' }
         $text=$output.GetAwaiter().GetResult()
         # Drain but never print arbitrary database/tool stderr or secrets.
         if ($error.Wait(1000)) { [void]$error.GetAwaiter().GetResult() }
         if ($text.Length -gt 131072) { throw 'profile_run_tool_output_bound_exceeded' }
-        return [pscustomobject]@{ ExitCode=$process.ExitCode; Output=$text.Trim(); Receipt=$receipt }
+        $receipt.OutputCaptured=$true; $receipt.OutputComplete=$true
+        return [pscustomobject]@{ ExitCode=$receipt.ExitCode; Output=$text.Trim(); Receipt=$receipt }
     } finally {
         if ($receipt.Started) {
             try {
                 # Even a failed initial identity guard must close this launch window before
                 # the caller observes descendants; Dispose alone never stops a started tool.
                 while (-not $receipt.Exited -and $timer.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
-                    if ($process.WaitForExit(100)) { $receipt.Exited=$true; $receipt.ExitedAt=Get-DangoProfileExitedTime $process }
+                    if ($process.WaitForExit(100)) { Set-DangoProfileProcessExited $process $receipt }
                 }
                 $identity=& $IdentityProbe $process $Executable
                 $receipt.FinalImageQueryError=$identity.NativeErrorCode
@@ -270,13 +354,16 @@ function Invoke-DangoProfileProcess {
                 if (-not $receipt.Exited -and $currentIdentity -and $process.Id -eq $receipt.Pid -and
                     $process.StartTime.ToUniversalTime() -eq $receipt.CreatedAt) {
                     $process.Kill([bool]$KillOwnedTree)
-                    $receipt.Exited=$process.WaitForExit(5000)
-                    if ($receipt.Exited) { $receipt.ExitedAt=Get-DangoProfileExitedTime $process }
+                    if ($process.WaitForExit(5000)) { Set-DangoProfileProcessExited $process $receipt }
                 }
                 $receipt.CleanupConfirmed=$receipt.Exited
             } catch { $receipt.CleanupConfirmed=$false }
         }
-        $process.Dispose()
+        try {
+            if ($ignoreStartOutput -and $receipt.Started -and -not $receipt.OutputStreamsClosed) {
+                Close-DangoProfileStartOutput $process $receipt
+            }
+        } finally { $process.Dispose() }
     }
 }
 
