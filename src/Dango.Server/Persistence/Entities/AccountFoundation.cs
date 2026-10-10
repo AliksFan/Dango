@@ -4,6 +4,8 @@ namespace Dango.Server.Persistence.Entities;
 
 public sealed class DangoUser : IdentityUser<Guid>
 {
+    public string? Nickname { get; set; }
+    public long ProfileVersion { get; set; } = 1;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? DisabledAt { get; set; }
     public bool RecoveryLocked { get; set; }
