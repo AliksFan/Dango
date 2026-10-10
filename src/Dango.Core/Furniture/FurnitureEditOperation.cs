@@ -14,6 +14,8 @@ public sealed record FurnitureEditOperation(
     {
         ArgumentNullException.ThrowIfNull(baseline);
         baseline.Validate(contract);
+        if (baseline.Items.Count > 1 || baseline.Items.Any(item => item.Kind != FurnitureItemKind.StaticPlatform))
+            throw new InvalidOperationException("旧平台请求不能修改多家具或圆球布局。");
         if (OperationId == Guid.Empty || ExpectedVersion < 0 || baseline.LayoutVersion != ExpectedVersion ||
             baseline.LastOperationId == OperationId)
             throw new InvalidOperationException("布局版本已变化或请求标识不可用。");

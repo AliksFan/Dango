@@ -109,7 +109,8 @@ public sealed class OrdinaryRoomFurnitureProductTests
         Until(() => request.IsCompleted, 5000);
         Assert.AreEqual(OrdinaryFurnitureSceneState.Synced, furniture.State, furniture.Status);
         Assert.AreEqual(1L, furniture.Layout.LayoutVersion);
-        Assert.IsNotNull(furniture.NativeFrame!.Platform);
+        Assert.HasCount(1, furniture.NativeFrame!.Items);
+        Assert.AreEqual(Dango.Physics.DangoFurnitureKind.StaticPlatform, furniture.NativeFrame.Items.Single().Definition.Kind);
         Assert.AreEqual(generation, furniture.WorldGeneration);
         Assert.IsTrue(furniture.SceneRevision > revision);
         var path = FurnitureLayoutStore.GetLayoutPath(root, FurnitureLayoutContract.OrdinaryRoom);
@@ -139,13 +140,13 @@ public sealed class OrdinaryRoomFurnitureProductTests
         Assert.IsFalse(runtime.IsRunning);
         host.RestoreLocalRoom(); Until(() => !host.LocalHandoffPending, 4500);
         Assert.AreEqual(LocalRoomPresentation.Window, host.LocalPresentation, host.LocalRoomFailure);
-        Assert.IsNotNull(furniture.NativeFrame!.Platform);
+        Assert.HasCount(1, furniture.NativeFrame!.Items);
         host.ReturnToPorch(); Until(() => !host.LocalHandoffPending, 4500);
         Assert.AreEqual(LocalRoomPresentation.Porch, host.LocalPresentation, host.LocalRoomFailure);
-        Assert.IsNull(furniture.NativeFrame!.Platform, "Furniture cannot pollute porch.");
+        Assert.HasCount(0, furniture.NativeFrame!.Items, "Furniture cannot pollute porch.");
         CollectionAssert.AreEqual(bytes, File.ReadAllBytes(path), "Runtime detach must never save an empty layout.");
         host.EnterLocalRoom(); Until(() => !host.LocalHandoffPending, 4500);
-        Assert.IsNotNull(furniture.NativeFrame!.Platform, furniture.Status);
+        Assert.HasCount(1, furniture.NativeFrame!.Items, furniture.Status);
         Assert.AreEqual(anchor, furniture.Layout.Platform!.Anchor);
         Assert.AreEqual(generation, furniture.WorldGeneration);
         Assert.AreEqual(entity, runtime.EntityIds.Single());
@@ -153,8 +154,9 @@ public sealed class OrdinaryRoomFurnitureProductTests
         Assert.HasCount(2, runtime.GetAccessoryFrames(runtime.LastFrame!, 0));
         Assert.IsNull(runtime.AccessoryError);
         Assert.AreEqual(outfit, new AccessorySettingsSession(root).SavedConfiguration);
+        furniture.SelectFurniture(furniture.Layout.Items.Single().InstanceId);
         var deletion = furniture.DeleteAsync(); Until(() => deletion.IsCompleted, 5000);
-        Assert.IsNull(furniture.NativeFrame!.Platform);
+        Assert.HasCount(0, furniture.NativeFrame!.Items);
         Assert.AreEqual(2L, furniture.Layout.LayoutVersion);
         Assert.IsTrue(furniture.CanStep);
         host.ReturnToPorch(); Until(() => !host.LocalHandoffPending, 4500);
@@ -176,7 +178,8 @@ public sealed class OrdinaryRoomFurnitureProductTests
         host.EnterLocalRoom(); Until(() => !host.LocalHandoffPending, 4500);
         Assert.AreEqual(LocalRoomPresentation.Window, host.LocalPresentation, host.LocalRoomFailure);
         Assert.AreEqual(layout, runtime.Furniture!.Layout);
-        Assert.IsNotNull(runtime.Furniture.NativeFrame!.Platform);
+        Assert.HasCount(1, runtime.Furniture.NativeFrame!.Items);
+        Assert.AreEqual(Dango.Physics.DangoFurnitureKind.StaticPlatform, runtime.Furniture.NativeFrame.Items.Single().Definition.Kind);
         Assert.AreEqual(1, runtime.EntityIds.Count);
         Assert.AreEqual(3L, FurnitureLayoutSerializer.Deserialize(File.ReadAllBytes(path), FurnitureLayoutContract.OrdinaryRoom).LayoutVersion);
         host.ReturnToPorch(); Until(() => !host.LocalHandoffPending, 4500);

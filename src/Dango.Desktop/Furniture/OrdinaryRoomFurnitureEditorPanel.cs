@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using Dango.Core.Furniture;
 using Path = System.Windows.Shapes.Path;
 using Button = System.Windows.Controls.Button;
 using UserControl = System.Windows.Controls.UserControl;
@@ -27,13 +28,16 @@ internal sealed class OrdinaryRoomFurnitureEditorPanel : UserControl
     private readonly Button exit;
     private readonly Button recover;
     private readonly Button platform;
+    private readonly Button ball;
     private readonly System.Windows.Controls.Image platformThumbnail;
+    private readonly System.Windows.Controls.Image ballThumbnail;
+    private readonly TextBlock itemCount;
     private readonly List<Button> nudges = [];
     private readonly TextBlock selection;
     private readonly TextBlock status;
     internal event Action<OrdinaryRoomFurnitureTool>? ToolRequested;
     internal event Action<int, int>? NudgeRequested;
-    internal event Action? AddRequested;
+    internal event Action<FurnitureItemKind>? AddRequested;
     internal event Action? DeleteRequested;
     internal event Action? ConfirmRequested;
     internal event Action? CancelRequested;
@@ -80,15 +84,27 @@ internal sealed class OrdinaryRoomFurnitureEditorPanel : UserControl
         future.SetResourceReference(TextBlock.ForegroundProperty, "HomeMuted");
         sections.Children.Add(future);
         sections.Children.Add(Divider());
-        sections.Children.Add(Heading("家具仓库"));
+        var warehouseHeading = new DockPanel();
+        itemCount = new TextBlock { Name = "RoomFurnitureCount", Text = "0/30", FontSize = 12, HorizontalAlignment = System.Windows.HorizontalAlignment.Right };
+        itemCount.SetResourceReference(TextBlock.ForegroundProperty, "HomeMuted");
+        DockPanel.SetDock(itemCount, Dock.Right); warehouseHeading.Children.Add(itemCount);
+        warehouseHeading.Children.Add(Heading("家具仓库"));
+        sections.Children.Add(warehouseHeading);
         var warehouse = new UniformGrid { Name = "RoomFurnitureWarehouse", Columns = 2, Margin = new Thickness(0, 6, 0, 8) };
-        platform = ActionButton("RoomFurniturePlatform", "木平台 · 添加或选择", () => AddRequested?.Invoke());
+        platform = WarehouseButton("RoomFurniturePlatform", "木平台 · 双击或 Enter 添加预览", FurnitureItemKind.StaticPlatform);
         platformThumbnail = new System.Windows.Controls.Image { Name = "RoomFurniturePlatformThumbnail", Source = OfficialWoodPlatformVisual.CurrentImage,
             Width = 58, Height = 18, Stretch = Stretch.Uniform, IsHitTestVisible = false };
         platform.Content = platformThumbnail;
         platform.Width = 72; platform.Height = 54;
         platform.Margin = new Thickness(0, 0, 8, 0);
         warehouse.Children.Add(platform);
+        ball = WarehouseButton("RoomFurnitureBall", "皮球 · 双击或 Enter 添加预览", FurnitureItemKind.RoundBall);
+        ballThumbnail = new System.Windows.Controls.Image { Name = "RoomFurnitureBallThumbnail", Source = OfficialRoundBallVisual.CurrentImage,
+            Width = 38, Height = 38, Stretch = Stretch.Uniform, IsHitTestVisible = false };
+        ball.Content = ballThumbnail;
+        ball.Width = 72; ball.Height = 54;
+        ball.Margin = new Thickness(0, 0, 8, 0);
+        warehouse.Children.Add(ball);
         sections.Children.Add(warehouse);
         var scroller = new ScrollViewer { Name = "RoomFurnitureSections", Content = sections,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
@@ -130,23 +146,53 @@ internal sealed class OrdinaryRoomFurnitureEditorPanel : UserControl
 
     internal void Refresh(bool canEdit, bool canStep, bool busy, bool selected, bool hasPlatform,
         bool hasPreview, bool canConfirm, bool canRecover, string message, OrdinaryRoomFurnitureTool tool)
+        => Refresh(canEdit, canStep, busy, selected ? FurnitureItemKind.StaticPlatform : null, selected && hasPlatform,
+            hasPlatform ? 1 : 0, hasPreview, canConfirm, canRecover, message, tool);
+
+    internal void Refresh(bool canEdit, bool canStep, bool busy, FurnitureItemKind? selectedKind, bool selectedApplied, int count,
+        bool hasPreview, bool canConfirm, bool canRecover, string message, OrdinaryRoomFurnitureTool tool)
     {
-        select.IsEnabled = platform.IsEnabled = canEdit && !busy;
+        select.IsEnabled = canEdit && !busy;
+        platform.IsEnabled = ball.IsEnabled = canEdit && !busy && count < FurnitureLayoutContract.OrdinaryRoom.MaximumItems;
         glove.IsEnabled = canStep && canEdit && !busy;
-        delete.IsEnabled = canEdit && !busy && selected && hasPlatform;
+        delete.IsEnabled = canEdit && !busy && selectedApplied;
         confirm.Visibility = cancel.Visibility = hasPreview ? Visibility.Visible : Visibility.Collapsed;
         confirm.IsEnabled = canEdit && !busy && canConfirm;
         cancel.IsEnabled = canEdit && !busy;
         exit.IsEnabled = !busy;
         recover.Visibility = canRecover ? Visibility.Visible : Visibility.Collapsed;
         recover.IsEnabled = canRecover && !busy;
-        foreach (var button in nudges) button.IsEnabled = canEdit && !busy && selected;
-        selection.Text = selected ? "木平台" : "未选择家具";
+        foreach (var button in nudges) button.IsEnabled = canEdit && !busy && selectedKind is not null;
+        selection.Text = selectedKind switch { FurnitureItemKind.StaticPlatform => "木平台", FurnitureItemKind.RoundBall => "皮球", _ => "未选择家具" };
         platformThumbnail.Source = OfficialWoodPlatformVisual.CurrentImage;
-        status.Text = message;
+        ballThumbnail.Source = OfficialRoundBallVisual.CurrentImage;
+        itemCount.Text = $"{count}/{FurnitureLayoutContract.OrdinaryRoom.MaximumItems}";
+        AutomationProperties.SetName(itemCount, $"已放置 {count} 件家具，上限 {FurnitureLayoutContract.OrdinaryRoom.MaximumItems} 件");
+        status.Text = count >= FurnitureLayoutContract.OrdinaryRoom.MaximumItems && string.IsNullOrEmpty(message)
+            ? "家具已达 30 件上限，可移动或删除。" : message;
         ToolTip = message;
         SetSelected(select, tool == OrdinaryRoomFurnitureTool.Select);
         SetSelected(glove, tool == OrdinaryRoomFurnitureTool.Glove);
+    }
+
+    private Button WarehouseButton(string name, string label, FurnitureItemKind kind)
+    {
+        // A Click (including the first click of a double-click) never creates
+        // furniture. Only the second mouse press creates one pending preview.
+        var button = ActionButton(name, label, () => { });
+        button.MouseDoubleClick += (_, e) =>
+        {
+            if (e.ChangedButton != MouseButton.Left || e.ClickCount != 2 || !button.IsEnabled) return;
+            e.Handled = true;
+            AddRequested?.Invoke(kind);
+        };
+        button.PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key != Key.Enter || e.IsRepeat || !button.IsEnabled || Keyboard.Modifiers != ModifierKeys.None) return;
+            e.Handled = true;
+            AddRequested?.Invoke(kind);
+        };
+        return button;
     }
 
     private Button Icon(string name, string label, string geometry, Action action)

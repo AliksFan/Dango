@@ -7,6 +7,7 @@ public static class FurnitureLayoutSerializer
 {
     public const int MaximumBytes = 64 * 1024;
     public const int SchemaVersion = 1;
+    public const int OrdinaryRoomSchemaVersion = 2;
     public const string SceneId = "local-single-window";
     public const string CoordinateSpace = "static-platform-p-v1";
     public const int SceneGeometryRevision = 1;
@@ -20,7 +21,7 @@ public static class FurnitureLayoutSerializer
         using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { Indented = true }))
         {
             writer.WriteStartObject();
-            writer.WriteNumber("schemaVersion", SchemaVersion);
+            writer.WriteNumber("schemaVersion", ReferenceEquals(contract, FurnitureLayoutContract.OrdinaryRoom) ? OrdinaryRoomSchemaVersion : SchemaVersion);
             writer.WriteString("sceneId", contract.SceneId);
             writer.WriteString("coordinateSpace", contract.CoordinateSpace);
             writer.WriteNumber("sceneGeometryRevision", contract.SceneGeometryRevision);
@@ -28,15 +29,15 @@ public static class FurnitureLayoutSerializer
             if (layout.LastOperationId is { } operation) writer.WriteString("lastOperationId", operation);
             else writer.WriteNull("lastOperationId");
             writer.WriteStartArray("items");
-            if (layout.Platform is { } platform)
+            foreach (var item in layout.Items)
             {
                 writer.WriteStartObject();
-                writer.WriteString("instanceId", platform.InstanceId);
-                writer.WriteString("presetId", FurniturePlatformInstance.PresetId);
-                writer.WriteNumber("presetRevision", FurniturePlatformInstance.PresetRevision);
+                writer.WriteString("instanceId", item.InstanceId);
+                writer.WriteString("presetId", item.PresetId);
+                writer.WriteNumber("presetRevision", item.PresetRevision);
                 writer.WriteStartObject("anchor");
-                writer.WriteNumber("x", platform.Anchor.X);
-                writer.WriteNumber("y", platform.Anchor.Y);
+                writer.WriteNumber("x", item.Anchor.X);
+                writer.WriteNumber("y", item.Anchor.Y);
                 writer.WriteEndObject();
                 writer.WriteEndObject();
             }
@@ -54,7 +55,9 @@ public static class FurnitureLayoutSerializer
         using var document = JsonDocument.Parse(bytes.ToArray());
         var root = ExactObject(document.RootElement,
             ["schemaVersion", "sceneId", "coordinateSpace", "sceneGeometryRevision", "layoutVersion", "lastOperationId", "items"]);
-        RequireInt(root["schemaVersion"], SchemaVersion);
+        if (root["schemaVersion"].ValueKind != JsonValueKind.Number || !root["schemaVersion"].TryGetInt32(out var schema) ||
+            !(schema == SchemaVersion || (schema == OrdinaryRoomSchemaVersion && ReferenceEquals(contract, FurnitureLayoutContract.OrdinaryRoom))))
+            throw new InvalidDataException("布局版本不受支持。");
         RequireString(root["sceneId"], contract.SceneId);
         RequireString(root["coordinateSpace"], contract.CoordinateSpace);
         RequireInt(root["sceneGeometryRevision"], contract.SceneGeometryRevision);
@@ -62,18 +65,24 @@ public static class FurnitureLayoutSerializer
             throw new InvalidDataException("布局版本无效。");
         Guid? operation = root["lastOperationId"].ValueKind == JsonValueKind.Null ? null : ReadGuid(root["lastOperationId"]);
         var items = root["items"];
-        if (items.ValueKind != JsonValueKind.Array || items.GetArrayLength() > 1)
-            throw new InvalidDataException("本版布局仅支持零件或一件平台。");
-        FurniturePlatformInstance? platform = null;
-        if (items.GetArrayLength() == 1)
+        if (items.ValueKind != JsonValueKind.Array || items.GetArrayLength() > (schema == SchemaVersion ? 1 : contract.MaximumItems))
+            throw new InvalidDataException("家具数量超出本场景上限。");
+        var instances = new List<FurnitureItemInstance>(items.GetArrayLength());
+        foreach (var element in items.EnumerateArray())
         {
-            var item = ExactObject(items[0], ["instanceId", "presetId", "presetRevision", "anchor"]);
-            RequireString(item["presetId"], FurniturePlatformInstance.PresetId);
+            var item = ExactObject(element, ["instanceId", "presetId", "presetRevision", "anchor"]);
+            if (item["presetId"].ValueKind != JsonValueKind.String) throw new InvalidDataException("家具预设无效。");
+            var kind = item["presetId"].GetString() switch
+            {
+                FurniturePlatformInstance.PresetId => FurnitureItemKind.StaticPlatform,
+                FurnitureItemInstance.RoundBallPresetId when schema == OrdinaryRoomSchemaVersion => FurnitureItemKind.RoundBall,
+                _ => throw new InvalidDataException("家具预设不受支持。"),
+            };
             RequireInt(item["presetRevision"], FurniturePlatformInstance.PresetRevision);
             var anchor = ExactObject(item["anchor"], ["x", "y"]);
-            platform = new(ReadGuid(item["instanceId"]), new(ReadDouble(anchor["x"]), ReadDouble(anchor["y"])));
+            instances.Add(new(ReadGuid(item["instanceId"]), kind, new(ReadDouble(anchor["x"]), ReadDouble(anchor["y"]))));
         }
-        var layout = new FurnitureLayout(version, operation, platform);
+        var layout = FurnitureLayout.ForItems(version, operation, instances);
         layout.Validate(contract);
         return layout;
     }

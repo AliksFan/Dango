@@ -33,7 +33,7 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
         Action? cancel = null;
         cancel = () =>
         {
-            if (cancelled || !rig.Host.LocalHandoffPending || rig.Furniture.NativeFrame?.Platform is null) return;
+            if (cancelled || !rig.Host.LocalHandoffPending || rig.Furniture.NativeFrame?.Items.Count != 1) return;
             cancelled = true;
             world = rig.Furniture.WorldGeneration;
             entity = rig.Runtime.EntityIds.Single();
@@ -51,8 +51,8 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
             Assert.IsFalse(window.IsVisible);
             Assert.IsFalse(window.IsFurnitureEditing, "An old E request must not open an editor after cancellation.");
             Assert.IsFalse(rig.Furniture.IsAttached);
-            var actual = rig.Scene.ReadFurnitureFrame();
-            Assert.IsNull(actual.Platform, "The shared world must not carry a room collider into the porch.");
+            var actual = rig.Scene.ReadFurnitureCollectionFrame();
+            Assert.HasCount(0, actual.Items, "The shared world must not carry a room collider into the porch.");
             Assert.AreEqual(world, actual.WorldGeneration);
             Assert.AreEqual(entity!.Value, rig.Runtime.EntityIds.Single());
             Assert.IsNull(rig.Runtime.LastError);
@@ -72,7 +72,7 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
         Action? observe = null;
         observe = () =>
         {
-            if (prematureAdmission.HasValue || !rig.Host.LocalHandoffPending || rig.Furniture.NativeFrame?.Platform is null) return;
+            if (prematureAdmission.HasValue || !rig.Host.LocalHandoffPending || rig.Furniture.NativeFrame?.Items.Count != 1) return;
             prematureAdmission = window.BeginFurnitureEditing();
             window.Scene.FrameApplied -= observe;
         };
@@ -94,12 +94,12 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
         using var rig = new ProductRig();
         rig.EnterRoom();
         var gate = Field<LocalRoomHandoffGate>(rig.Host, "roomHandoff");
-        var before = JsonSerializer.Serialize(rig.Scene.ReadFurnitureFrame());
+        var before = JsonSerializer.Serialize(rig.Scene.ReadFurnitureCollectionFrame());
         var bytes = File.ReadAllBytes(rig.Path);
         var owner = rig.Runtime.FrameDriver;
         typeof(DangoApplicationHost).GetMethod("FailLocalHandoff", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(rig.Host, [gate.Generation - 1, "synthetic stale first-frame failure"]);
-        Assert.AreEqual(before, JsonSerializer.Serialize(rig.Scene.ReadFurnitureFrame()), "A stale callback must be rejected before native mutation.");
+        Assert.AreEqual(before, JsonSerializer.Serialize(rig.Scene.ReadFurnitureCollectionFrame()), "A stale callback must be rejected before native mutation.");
         Assert.AreSame(owner, rig.Runtime.FrameDriver);
         Assert.IsTrue(rig.Furniture.IsAttached);
         Assert.AreEqual(LocalRoomPresentation.Window, rig.Host.LocalPresentation);
@@ -113,7 +113,7 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
     {
         using var rig = new ProductRig();
         rig.EnterRoom();
-        var old = rig.Scene.ReadFurnitureFrame();
+        var old = rig.Scene.ReadFurnitureCollectionFrame();
         var bytes = File.ReadAllBytes(rig.Path);
         rig.Furniture.FailRuntime("synthetic unconfirmable furniture runtime");
         Until(() => rig.Runtime.LastError is not null && rig.Runtime.FrameDriver is null,
@@ -123,10 +123,10 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
         Assert.IsTrue(rig.Host.LocalWindow!.IsVisible, "Keep a visible fault surface; never hand the unknown world to the porch.");
         Assert.AreEqual(LocalRoomPresentation.Window, rig.Host.LocalPresentation);
         Assert.AreEqual(OrdinaryFurnitureSceneState.RuntimeUnknown, rig.Furniture.State);
-        var current = rig.Scene.ReadFurnitureFrame();
+        var current = rig.Scene.ReadFurnitureCollectionFrame();
         Assert.AreEqual(old.WorldGeneration, current.WorldGeneration);
         Assert.AreEqual(old.Physics.Bodies.Single().EntityId, current.Physics.Bodies.Single().EntityId);
-        Assert.AreEqual(old.PlatformInstanceId, current.PlatformInstanceId);
+        Assert.AreEqual(old.Items.Single().InstanceId, current.Items.Single().InstanceId);
         CollectionAssert.AreEqual(bytes, File.ReadAllBytes(rig.Path));
     }
 
@@ -138,7 +138,7 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
         rig.EnterRoom();
         var writer = new BlockingWriter();
         rig.ReplaceCoordinator(new FurnitureLayoutStore(writer, FurnitureLayoutContract.OrdinaryRoom));
-        var old = rig.Scene.ReadFurnitureFrame();
+        var old = rig.Scene.ReadFurnitureCollectionFrame();
         var bytes = File.ReadAllBytes(rig.Path);
         var owner = rig.Runtime.FrameDriver;
         rig.Furniture.PreviewPlatform(1600, 120);
@@ -168,9 +168,9 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
             Assert.AreEqual(LocalRoomPresentation.Hidden, rig.Host.LocalPresentation);
             Assert.IsNull(rig.Runtime.FrameDriver);
             Assert.IsFalse(rig.Runtime.IsRunning);
-            var hiddenStep = rig.Scene.ReadFurnitureFrame().PhysicsStep;
+            var hiddenStep = rig.Scene.ReadFurnitureCollectionFrame().PhysicsStep;
             Pump(150);
-            Assert.AreEqual(hiddenStep, rig.Scene.ReadFurnitureFrame().PhysicsStep, "Hidden time must not advance the world.");
+            Assert.AreEqual(hiddenStep, rig.Scene.ReadFurnitureCollectionFrame().PhysicsStep, "Hidden time must not advance the world.");
             rig.Host.RestoreLocalRoom(); rig.WaitForRoom();
             Assert.AreEqual(old.WorldGeneration, rig.Furniture.WorldGeneration);
             Assert.AreEqual(old.Physics.Bodies.Single().EntityId, rig.Runtime.EntityIds.Single());
@@ -188,7 +188,7 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
     {
         using var rig = new ProductRig();
         rig.EnterRoom();
-        var old = rig.Scene.ReadFurnitureFrame();
+        var old = rig.Scene.ReadFurnitureCollectionFrame();
         var owner = rig.Runtime.FrameDriver;
         rig.Furniture.BeforeNativeApply = () => throw new IOException("synthetic saved-before-apply failure");
         rig.Furniture.PreviewPlatform(1600, 120);
@@ -203,14 +203,14 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
         Assert.AreEqual(LocalRoomPresentation.Window, rig.Host.LocalPresentation);
         Assert.IsFalse(rig.Host.LocalHandoffPending);
         Assert.AreSame(owner, rig.Runtime.FrameDriver, "Refused departure must retain the owner needed to recover the pending apply.");
-        Assert.AreEqual(old.PlatformInstanceId, rig.Scene.ReadFurnitureFrame().PlatformInstanceId);
+        Assert.AreEqual(old.Items.Single().InstanceId, rig.Scene.ReadFurnitureCollectionFrame().Items.Single().InstanceId);
         rig.Host.HideLocalRoom();
         Assert.IsNull(rig.Runtime.FrameDriver);
         rig.Host.RestoreLocalRoom(); rig.WaitForRoom();
         Assert.IsTrue(rig.Host.LocalWindow!.BeginFurnitureEditing(), "The saved-but-unapplied state must expose its actual recovery action.");
         Assert.AreEqual(OrdinaryFurnitureSceneState.PersistedNotApplied, rig.Furniture.State);
         Assert.AreEqual(old.WorldGeneration, rig.Furniture.WorldGeneration);
-        Assert.AreEqual(old.PlatformInstanceId, rig.Scene.ReadFurnitureFrame().PlatformInstanceId);
+        Assert.AreEqual(old.Items.Single().InstanceId, rig.Scene.ReadFurnitureCollectionFrame().Items.Single().InstanceId);
         rig.Furniture.BeforeNativeApply = null;
         var recovered = rig.Furniture.RecoverAsync();
         Until(() => recovered.IsCompleted, "Recovery must run at the restored owner's real boundary.");
@@ -232,7 +232,7 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
         var original = File.ReadAllBytes(rig.Path);
         var writer = new UnknownCommitWriter();
         rig.ReplaceCoordinator(new FurnitureLayoutStore(writer, FurnitureLayoutContract.OrdinaryRoom));
-        var old = rig.Scene.ReadFurnitureFrame();
+        var old = rig.Scene.ReadFurnitureCollectionFrame();
         var owner = rig.Runtime.FrameDriver;
         rig.Furniture.PreviewPlatform(1600, 120);
         var pending = rig.Furniture.ConfirmAsync();
@@ -246,7 +246,7 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
         Assert.AreEqual(LocalRoomPresentation.Window, rig.Host.LocalPresentation);
         Assert.IsFalse(rig.Host.LocalHandoffPending);
         Assert.AreSame(owner, rig.Runtime.FrameDriver);
-        Assert.AreEqual(old.PlatformInstanceId, rig.Scene.ReadFurnitureFrame().PlatformInstanceId);
+        Assert.AreEqual(old.Items.Single().InstanceId, rig.Scene.ReadFurnitureCollectionFrame().Items.Single().InstanceId);
         CollectionAssert.AreEqual(uncertainBytes, File.ReadAllBytes(rig.Path), "Refused departure must preserve the uncertain target.");
         rig.Host.HideLocalRoom();
         Assert.IsNull(rig.Runtime.FrameDriver);
@@ -254,7 +254,7 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
         Assert.AreEqual(OrdinaryFurnitureSceneState.CommitUnknown, rig.Furniture.State);
         Assert.IsTrue(rig.Host.LocalWindow!.BeginFurnitureEditing(), "An unresolved safe old world must retain its recovery entry.");
         Assert.AreEqual(old.WorldGeneration, rig.Furniture.WorldGeneration);
-        Assert.AreEqual(old.PlatformInstanceId, rig.Scene.ReadFurnitureFrame().PlatformInstanceId);
+        Assert.AreEqual(old.Items.Single().InstanceId, rig.Scene.ReadFurnitureCollectionFrame().Items.Single().InstanceId);
         // Restore only this fixture's synthetic original bytes. Recovery must
         // classify them as not committed, without a second writer invocation.
         File.WriteAllBytes(rig.Path, original);
@@ -263,7 +263,7 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
         recovered.GetAwaiter().GetResult();
         Assert.AreEqual(OrdinaryFurnitureSceneState.Synced, rig.Furniture.State, rig.Furniture.Status);
         Assert.AreEqual(1L, rig.Furniture.Layout.LayoutVersion);
-        Assert.AreEqual(old.PlatformInstanceId, rig.Scene.ReadFurnitureFrame().PlatformInstanceId);
+        Assert.AreEqual(old.Items.Single().InstanceId, rig.Scene.ReadFurnitureCollectionFrame().Items.Single().InstanceId);
         Assert.AreEqual(old.Physics.Bodies.Single().EntityId, rig.Runtime.EntityIds.Single());
         Assert.AreEqual(1, writer.CommitCalls);
         CollectionAssert.AreEqual(original, File.ReadAllBytes(rig.Path));

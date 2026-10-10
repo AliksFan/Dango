@@ -143,7 +143,7 @@ internal static class OrdinaryRoomFurnitureVerification
                 Require(product.Window.EndFurnitureEditing(), "Could not leave the editor after a completed commit.");
                 product.Host.ReturnToPorch(); product.UntilHandoff();
                 Require(product.Host.LocalPresentation == LocalRoomPresentation.Porch, product.Host.LocalRoomFailure ?? "Porch handoff failed.");
-                Require(!session.IsAttached && session.NativeFrame?.Platform is null && session.NativeFrame?.PlatformInstanceId == 0,
+                Require(!session.IsAttached && session.NativeFrame?.Items.Count == 0,
                     "Ordinary-room platform leaked into the porch.");
                 Require(bytes.AsSpan().SequenceEqual(File.ReadAllBytes(layoutPath)), "Runtime detach changed the saved layout.");
                 CheckIdentity();
@@ -159,12 +159,12 @@ internal static class OrdinaryRoomFurnitureVerification
 
             // Exercise the product hide/restore lifecycle once with a real saved collider.
             var hiddenBytes = File.ReadAllBytes(layoutPath);
-            var hiddenInstance = session.NativeFrame!.PlatformInstanceId;
+            var hiddenInstance = session.NativeFrame!.Items.Single().InstanceId;
             product.Host.HideLocalRoom();
             Require(product.Runtime.FrameDriver is null && !product.Runtime.IsRunning, "Hidden room retained a running frame owner.");
             product.Host.RestoreLocalRoom(); product.UntilHandoff();
             CheckApplied();
-            Require(session.NativeFrame!.PlatformInstanceId == hiddenInstance && hiddenBytes.AsSpan().SequenceEqual(File.ReadAllBytes(layoutPath)),
+            Require(session.NativeFrame!.Items.Single().InstanceId == hiddenInstance && hiddenBytes.AsSpan().SequenceEqual(File.ReadAllBytes(layoutPath)),
                 "Hidden-room restore duplicated the platform or rewrote its file.");
             Require(product.Window.BeginFurnitureEditing(), "Editor unavailable after hidden-room restore.");
             ExportActualRoomImages(product, outputRoot);
@@ -193,7 +193,7 @@ internal static class OrdinaryRoomFurnitureVerification
             {
                 CheckIdentity();
                 Require(session.IsAttached && session.CanEdit && session.State == OrdinaryFurnitureSceneState.Synced &&
-                    session.NativeFrame is { Platform: not null, PlatformInstanceId: > 0 } frame && frame.Physics.Succeeded &&
+                    session.NativeFrame is { Items.Count: 1 } frame && frame.Items.Single() is { InstanceId: > 0, Definition.Kind: DangoFurnitureKind.StaticPlatform } && frame.Physics.Succeeded &&
                     session.Layout == session.PersistedLayout && session.Layout.Platform is not null,
                     "Saved ordinary-room platform is not backed by a healthy actual native frame: " + session.Status);
                 var loaded = new FurnitureLayoutStore(contract: FurnitureLayoutContract.OrdinaryRoom).Load(layoutPath);
@@ -364,7 +364,7 @@ internal static class OrdinaryRoomFurnitureVerification
                     "Restart save did not commit one version at the requested anchor.");
             }
             else Require(bytesBefore!.AsSpan().SequenceEqual(File.ReadAllBytes(layoutPath)), "Restart load rewrote the saved file.");
-            loaded = session.NativeFrame is { Platform: not null, PlatformInstanceId: > 0 } frame && frame.Physics.Succeeded;
+            loaded = session.NativeFrame is { Items.Count: 1 } frame && frame.Items.Single() is { InstanceId: > 0, Definition.Kind: DangoFurnitureKind.StaticPlatform } && frame.Physics.Succeeded;
             Require(loaded && session.State == OrdinaryFurnitureSceneState.Synced && session.Layout.Platform is not null,
                 "Restart product host did not genuinely apply the saved furniture.");
             Require(session.Layout.LayoutVersion == 1 && session.Layout.Platform!.Anchor == new FurnitureAnchor(1440, 120),
@@ -444,7 +444,7 @@ internal static class OrdinaryRoomFurnitureVerification
                 var content = window.Content as FrameworkElement ?? throw new InvalidOperationException("Missing actual room content visual.");
                 content.UpdateLayout();
                 Require(content.ActualWidth > 0 && content.ActualHeight > 0 && window.IsFurnitureEditing &&
-                    product.Furniture.NativeFrame?.Platform is not null, "Actual furniture room visual is not ready for capture.");
+                    product.Furniture.NativeFrame?.Items.Count == 1, "Actual furniture room visual is not ready for capture.");
                 var deviceDpi = VisualTreeHelper.GetDpi(content);
                 foreach (var dpi in new[] { 96d, 144d })
                 {

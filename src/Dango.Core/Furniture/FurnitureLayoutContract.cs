@@ -57,6 +57,61 @@ public sealed class FurnitureLayoutContract
     public FurnitureAnchor DefaultAnchor { get; }
     public double NudgeStep { get; }
     public int MaxNudgePerSecond { get; }
+    public int MaximumItems => ReferenceEquals(this, OrdinaryRoom) ? 30 : 1;
+    public double BallRadius => 66;
+
+    public FurnitureAnchor GetDefaultAnchor(FurnitureItemKind kind) => kind switch
+    {
+        FurnitureItemKind.StaticPlatform => DefaultAnchor,
+        FurnitureItemKind.RoundBall when ReferenceEquals(this, OrdinaryRoom) => new(1440, 132),
+        _ => throw new InvalidDataException("本场景不支持此家具类型。"),
+    };
+
+    public void ValidateItem(FurnitureItemInstance item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (item.Kind == FurnitureItemKind.StaticPlatform) { ValidateAnchor(item.Anchor); return; }
+        if (item.Kind != FurnitureItemKind.RoundBall || !ReferenceEquals(this, OrdinaryRoom))
+            throw new InvalidDataException("本场景不支持此家具类型。");
+        var anchor = item.Anchor;
+        if (!double.IsFinite(anchor.X) || !double.IsFinite(anchor.Y))
+            throw new InvalidDataException("家具坐标不是有限值。");
+        if (anchor.X - BallRadius < Left || anchor.X + BallRadius > Right ||
+            anchor.Y - BallRadius < Ground || anchor.Y + BallRadius > Ceiling)
+            throw new InvalidDataException("家具超出房间边界。");
+        if (CircleRectangleOverlap(anchor, BallRadius, SpawnProtectionLeft, SpawnProtectionRight,
+            SpawnProtectionBottom, SpawnProtectionTop))
+            throw new InvalidDataException("家具穿入固定出生保护区。");
+    }
+
+    /// <summary>Strict positive penetration; touching edges is a valid placement.</summary>
+    public bool ItemsOverlap(FurnitureItemInstance first, FurnitureItemInstance second)
+    {
+        if (first.Kind == FurnitureItemKind.RoundBall && second.Kind == FurnitureItemKind.RoundBall)
+        {
+            var dx = first.Anchor.X - second.Anchor.X;
+            var dy = first.Anchor.Y - second.Anchor.Y;
+            return dx * dx + dy * dy < 4 * BallRadius * BallRadius;
+        }
+        if (first.Kind == FurnitureItemKind.StaticPlatform && second.Kind == FurnitureItemKind.StaticPlatform)
+            return Math.Abs(first.Anchor.X - second.Anchor.X) < PlatformWidth &&
+                Math.Abs(first.Anchor.Y - second.Anchor.Y) < PlatformHeight;
+        var circle = first.Kind == FurnitureItemKind.RoundBall ? first : second;
+        var platform = first.Kind == FurnitureItemKind.StaticPlatform ? first : second;
+        if (circle.Kind != FurnitureItemKind.RoundBall || platform.Kind != FurnitureItemKind.StaticPlatform)
+            throw new InvalidDataException("家具类型不受支持。");
+        return CircleRectangleOverlap(circle.Anchor, BallRadius,
+            platform.Anchor.X - PlatformWidth / 2, platform.Anchor.X + PlatformWidth / 2,
+            platform.Anchor.Y - PlatformHeight, platform.Anchor.Y);
+    }
+
+    private static bool CircleRectangleOverlap(FurnitureAnchor circle, double radius,
+        double left, double right, double bottom, double top)
+    {
+        var dx = circle.X - Math.Clamp(circle.X, left, right);
+        var dy = circle.Y - Math.Clamp(circle.Y, bottom, top);
+        return dx * dx + dy * dy < radius * radius;
+    }
 
     public void ValidateAnchor(FurnitureAnchor anchor)
     {

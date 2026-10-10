@@ -22,12 +22,12 @@ public sealed class OrdinaryRoomFurnitureSessionTests
     public void BorrowedWorldPreviewAndCommitDoNotAdvanceOrRecreateThePlayer()
     {
         using var fixture = new Fixture();
-        var before = fixture.Scene.ReadFurnitureFrame();
+        var before = fixture.Scene.ReadFurnitureCollectionFrame();
         fixture.Session.PreviewPlatform(1440, 120);
         Assert.IsTrue(fixture.Session.CanConfirm, fixture.Session.Status);
-        Assert.AreEqual(Json(before), Json(fixture.Scene.ReadFurnitureFrame()), "Preview must leave the real world unchanged.");
+        Assert.AreEqual(Json(before), Json(fixture.Scene.ReadFurnitureCollectionFrame()), "Preview must leave the real world unchanged.");
         CompleteAtBoundary(fixture.Session, fixture.Session.ConfirmAsync());
-        var after = fixture.Scene.ReadFurnitureFrame();
+        var after = fixture.Scene.ReadFurnitureCollectionFrame();
         Assert.AreEqual(before.WorldGeneration, after.WorldGeneration);
         Assert.AreEqual(before.PhysicsStep, after.PhysicsStep, "The coordinator must not perform a hidden Step.");
         Assert.AreEqual(before.SceneRevision + 1, after.SceneRevision);
@@ -47,35 +47,36 @@ public sealed class OrdinaryRoomFurnitureSessionTests
         CompleteAtBoundary(fixture.Session, fixture.Session.ConfirmAsync());
         var bytes = File.ReadAllBytes(fixture.Path);
         var saved = fixture.Session.Layout;
-        var old = fixture.Scene.ReadFurnitureFrame();
+        var old = fixture.Scene.ReadFurnitureCollectionFrame();
         Assert.IsTrue(fixture.Session.TryDetach(), fixture.Session.Status);
-        Assert.IsNull(fixture.Scene.ReadFurnitureFrame().Platform);
+        Assert.AreEqual(0, fixture.Scene.ReadFurnitureCollectionFrame().Items.Count);
         CollectionAssert.AreEqual(bytes, File.ReadAllBytes(fixture.Path));
         Assert.IsTrue(fixture.Scene.RehostSelectedEntityAt(new(1080, 700)));
         fixture.Scene.SetHorizontalBounds(Contract.Left, Contract.Right);
         Assert.IsTrue(fixture.Session.Attach(), fixture.Session.Status);
-        var current = fixture.Scene.ReadFurnitureFrame();
+        var current = fixture.Scene.ReadFurnitureCollectionFrame();
         Assert.AreEqual(old.WorldGeneration, current.WorldGeneration);
         Assert.AreEqual(old.PhysicsStep, current.PhysicsStep);
         Assert.AreEqual(old.Physics.Bodies.Single().EntityId, current.Physics.Bodies.Single().EntityId);
         Assert.AreEqual(saved, fixture.Session.Layout);
-        var actualTop = fixture.Scene.ToHost(new(current.Platform!.CenterX, current.Platform.Top));
+        var platform = current.Items.Single().Definition.Platform!;
+        var actualTop = fixture.Scene.ToHost(new(platform.CenterX, platform.Top));
         Assert.AreEqual(1440d, actualTop.X, 1e-4);
         Assert.AreEqual(fixture.Scene.GroundY - 120, actualTop.Y, 1e-4);
         CollectionAssert.AreEqual(bytes, File.ReadAllBytes(fixture.Path));
         Assert.IsTrue(fixture.Session.Attach(), "Repeated Attach must be idempotent.");
-        Assert.AreEqual(Json(current), Json(fixture.Scene.ReadFurnitureFrame()));
+        Assert.AreEqual(Json(current), Json(fixture.Scene.ReadFurnitureCollectionFrame()));
     }
 
     [TestMethod, TestCategory("NativeIntegration")]
     public void FailedStagingPreservesWorldAndPersistedFile()
     {
         using var fixture = new Fixture(new ThrowOnStage());
-        var before = fixture.Scene.ReadFurnitureFrame();
+        var before = fixture.Scene.ReadFurnitureCollectionFrame();
         fixture.Session.PreviewPlatform(1440, 120);
         CompleteAtBoundary(fixture.Session, fixture.Session.ConfirmAsync());
         Assert.IsFalse(File.Exists(fixture.Path));
-        Assert.AreEqual(Json(before), Json(fixture.Scene.ReadFurnitureFrame()));
+        Assert.AreEqual(Json(before), Json(fixture.Scene.ReadFurnitureCollectionFrame()));
         Assert.AreEqual(0L, fixture.Session.Layout.LayoutVersion);
         Assert.IsTrue(fixture.Session.HasPreview);
         Assert.IsTrue(fixture.Session.CanEdit);
@@ -108,10 +109,10 @@ public sealed class OrdinaryRoomFurnitureSessionTests
     {
         using var fixture = new Fixture();
         fixture.Session.AfterNativeApply = () => throw new IOException("synthetic post-apply interruption");
-        var before = fixture.Scene.ReadFurnitureFrame();
+        var before = fixture.Scene.ReadFurnitureCollectionFrame();
         fixture.Session.PreviewPlatform(1440, 120);
         CompleteAtBoundary(fixture.Session, fixture.Session.ConfirmAsync());
-        var current = fixture.Scene.ReadFurnitureFrame();
+        var current = fixture.Scene.ReadFurnitureCollectionFrame();
         Assert.AreEqual(OrdinaryFurnitureSceneState.Synced, fixture.Session.State);
         Assert.AreEqual(before.SceneRevision + 1, current.SceneRevision);
         Assert.AreEqual(1L, fixture.Session.Layout.LayoutVersion);
@@ -125,10 +126,10 @@ public sealed class OrdinaryRoomFurnitureSessionTests
         var item = new FurniturePlatformInstance(Guid.NewGuid(), Contract.DefaultAnchor);
         var operation = new FurnitureEditOperation(Guid.NewGuid(), 0, FurnitureEditKind.Insert, null, item);
         CompleteAtBoundary(fixture.Session, fixture.Session.SubmitAsync(operation));
-        var current = fixture.Scene.ReadFurnitureFrame();
+        var current = fixture.Scene.ReadFurnitureCollectionFrame();
         var bytes = File.ReadAllBytes(fixture.Path);
         CompleteAtBoundary(fixture.Session, fixture.Session.SubmitAsync(operation));
-        Assert.AreEqual(Json(current), Json(fixture.Scene.ReadFurnitureFrame()));
+        Assert.AreEqual(Json(current), Json(fixture.Scene.ReadFurnitureCollectionFrame()));
         CollectionAssert.AreEqual(bytes, File.ReadAllBytes(fixture.Path));
         Assert.ThrowsExactly<InvalidOperationException>(() => fixture.Session.SubmitAsync(operation with
         { Candidate = item with { Anchor = new(1500, 120) } }));
@@ -138,21 +139,21 @@ public sealed class OrdinaryRoomFurnitureSessionTests
     public void IllegalOriginChangeStopsTheCoordinatorBeforeAnotherStep()
     {
         using var fixture = new Fixture();
-        var before = fixture.Scene.ReadFurnitureFrame();
+        var before = fixture.Scene.ReadFurnitureCollectionFrame();
         fixture.Scene.Rehost(new(100, 200));
         fixture.Session.ProcessBoundary();
         Assert.AreEqual(OrdinaryFurnitureSceneState.RuntimeUnknown, fixture.Session.State);
         Assert.IsFalse(fixture.Session.CanStep);
         Assert.IsFalse(fixture.Session.TryDetach());
-        Assert.AreEqual(Json(before), Json(fixture.Scene.ReadFurnitureFrame()));
+        Assert.AreEqual(Json(before), Json(fixture.Scene.ReadFurnitureCollectionFrame()));
         Assert.IsFalse(File.Exists(fixture.Path));
     }
 
     [TestMethod, TestCategory("NativeIntegration")]
     public void MissingFurnitureAbiAllowsOnlyAVerifiedEmptyRoom()
     {
-        var baselineModule = Environment.GetEnvironmentVariable("DANGO_STATIC_PLATFORM_BASELINE_PATH") ??
-            throw new InvalidOperationException("Set the independent non-furniture ABI module for this capability gate.");
+        var baselineModule = Environment.GetEnvironmentVariable("DANGO_ORDINARY_FURNITURE_BASELINE_PATH") ??
+            throw new InvalidOperationException("Set the independent single-furniture module with horizontal bounds and without collection ABI for this capability gate.");
         var root = NewRoot();
         using var scene = new DesktopPhysicsScene(baselineModule, new(1000, 240, 160, 120));
         scene.SetHorizontalBounds(Contract.Left, Contract.Right);
@@ -187,7 +188,7 @@ public sealed class OrdinaryRoomFurnitureSessionTests
         Assert.IsFalse(session.CanEdit);
         Assert.AreEqual(OrdinaryFurnitureSceneState.Protected, session.State);
         CollectionAssert.AreEqual(bytes, File.ReadAllBytes(path));
-        Assert.IsNull(scene.ReadFurnitureFrame().Platform);
+        Assert.AreEqual(0, scene.ReadFurnitureCollectionFrame().Items.Count);
     }
 
     [TestMethod, TestCategory("NativeIntegration")]
@@ -209,15 +210,15 @@ public sealed class OrdinaryRoomFurnitureSessionTests
             for (var i = 0; i < 900 && !penetrated; i++)
             {
                 fixture.Scene.Step(Dt); fixture.Session.OnFrame();
-                var frame = fixture.Scene.ReadFurnitureFrame();
-                penetrated = fixture.Scene.ProbeStaticPlatformChange(DangoStaticPlatformChangeKind.Insert, 0,
-                    definition, frame.SceneRevision).Rejection == DangoStaticPlatformChangeRejection.Penetration;
+                var frame = fixture.Scene.ReadFurnitureCollectionFrame();
+                penetrated = fixture.Scene.ProbeFurnitureChange(DangoFurnitureChangeKind.Insert, 0,
+                    definition, frame.SceneRevision).Rejection == DangoFurnitureChangeRejection.Penetration;
             }
             Assert.IsTrue(penetrated, "The test must actually move the native body into the frozen preview.");
-            var beforeCommit = fixture.Scene.ReadFurnitureFrame();
+            var beforeCommit = fixture.Scene.ReadFurnitureCollectionFrame();
             writer.Release.Set();
             CompleteAtBoundary(fixture.Session, operation);
-            Assert.AreEqual(Json(beforeCommit), Json(fixture.Scene.ReadFurnitureFrame()));
+            Assert.AreEqual(Json(beforeCommit), Json(fixture.Scene.ReadFurnitureCollectionFrame()));
             Assert.IsFalse(File.Exists(fixture.Path));
             Assert.AreEqual(0L, fixture.Session.Layout.LayoutVersion);
             Assert.IsTrue(fixture.Session.HasPreview);

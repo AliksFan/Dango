@@ -26,16 +26,17 @@ public sealed class OrdinaryRoomFurnitureEditorPanelTests
         Assert.AreSame(resources["FaceIconButton"], Find<Button>(panel, "RoomFurnitureConfirm").Style);
         var warehouse = Find<UniformGrid>(panel, "RoomFurnitureWarehouse");
         Assert.AreEqual(2, warehouse.Columns);
-        Assert.AreEqual(1, warehouse.Children.Count, "Only the approved wooden platform appears in this increment.");
+        Assert.AreEqual(2, warehouse.Children.Count, "The warehouse contains the official platform and ball, with repeat placement through the same two entries.");
         foreach (var button in Descendants<Button>(panel))
         {
             Assert.IsTrue(AutomationProperties.GetName(button).Length > 0, button.Name);
             Assert.IsNotNull(button.ToolTip, button.Name);
-            if (button.Name == "RoomFurniturePlatform")
+            if (button.Name is "RoomFurniturePlatform" or "RoomFurnitureBall")
             {
                 Assert.IsInstanceOfType<System.Windows.Controls.Image>(button.Content, "The warehouse shows its actual official artwork rather than a tool icon.");
                 var thumbnail = (System.Windows.Controls.Image)button.Content;
-                Assert.AreSame(OfficialWoodPlatformVisual.CurrentImage, thumbnail.Source, "The warehouse uses the exact artwork that the room draws.");
+                Assert.AreSame(button.Name == "RoomFurniturePlatform" ? OfficialWoodPlatformVisual.CurrentImage : OfficialRoundBallVisual.CurrentImage,
+                    thumbnail.Source, "The warehouse uses the exact artwork that the room draws.");
                 Assert.IsTrue(thumbnail.Source.IsFrozen);
                 Assert.IsTrue(thumbnail.Width > 20, "The furniture image must not retain the tiny tool-icon bounds.");
             }

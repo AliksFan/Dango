@@ -70,6 +70,11 @@ public sealed partial class DangoPhysicsWorld
         VerifyAccess();
         var error = api.RequireFurniture().Read(world, out var native, sizeof(NativeFurnitureFrame));
         if (error != 0) throw Map(error, "读取家具与团子的共同状态失败。");
+        return DecodeFurnitureFrame(native);
+    }
+
+    private unsafe DangoFurnitureFrame DecodeFurnitureFrame(NativeFurnitureFrame native)
+    {
         if (native.WorldGeneration == 0 || native.Reserved != 0 || native.AlignmentPadding != 0 ||
             native.PlatformEnabled is < 0 or > 1 || native.BodyCount < 0 || native.BodyCount > capacity ||
             (native.ErrorCode == 0 && native.BodyCount != entities.Count) || native.ContactSteps < 0 ||
@@ -185,6 +190,9 @@ public sealed partial class DangoPhysicsWorld
         internal static NativeFurnitureToken From(DangoPreparedStaticPlatformChange p) => new()
         { WorldGeneration = p.WorldGeneration, TokenId = p.TokenId, SceneRevision = p.SceneRevision, PhysicsStep = p.PhysicsStep };
         internal readonly DangoPreparedStaticPlatformChange ToPublic() => new(WorldGeneration, TokenId, SceneRevision, PhysicsStep);
+        internal static NativeFurnitureToken FromCollection(DangoPreparedFurnitureChange p) => new()
+        { WorldGeneration = p.WorldGeneration, TokenId = p.TokenId, SceneRevision = p.SceneRevision, PhysicsStep = p.PhysicsStep };
+        internal readonly DangoPreparedFurnitureChange ToCollection() => new(WorldGeneration, TokenId, SceneRevision, PhysicsStep);
     }
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeFurnitureProbe

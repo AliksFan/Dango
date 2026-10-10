@@ -325,7 +325,7 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     private void Apply(StackedPhysicsPresentationFrame frame)
     {
         if (view?.WindowCameraEnabled == true && furnitureEnabled)
-            view.SetFurnitureFrame(Furniture?.Layout.Platform, Furniture?.Preview, false);
+            view.SetFurnitureFrame(Furniture?.RenderItems ?? [], Furniture?.Preview, false);
         if (view is null || alignmentPending || !view.ApplyFrame(frame, runtime))
         { if (runtime.LastError is not null) ReportFailure("房间首帧不可用，请返回门廊重试。"); return; }
         if (readySent || confirmation is not null) return;

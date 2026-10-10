@@ -27,8 +27,8 @@ public sealed class OrdinaryRoomFurnitureRejectedEntryTests
     [TestCategory("NativeIntegration")]
     public void NonemptyLayoutWithMissingFurnitureAbiCannotEnterAnEmptyRoomOrRewriteItsLayout()
     {
-        var module = Environment.GetEnvironmentVariable("DANGO_STATIC_PLATFORM_BASELINE_PATH") ??
-            throw new InvalidOperationException("The separate module without furniture ABI is required.");
+        var module = Environment.GetEnvironmentVariable("DANGO_ORDINARY_FURNITURE_BASELINE_PATH") ??
+            throw new InvalidOperationException("The separate room-bounds module without collection ABI is required.");
         var layout = new FurnitureLayout(3, Guid.NewGuid(), new(Guid.NewGuid(), FurnitureLayoutContract.OrdinaryRoom.DefaultAnchor));
         var bytes = FurnitureLayoutSerializer.Serialize(layout, FurnitureLayoutContract.OrdinaryRoom);
         RejectEntry(module, bytes, expectedProtected: false);

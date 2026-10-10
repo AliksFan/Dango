@@ -10,6 +10,9 @@ namespace Dango.Desktop.Furniture;
 
 internal enum OrdinaryFurnitureSceneState { Synced, Staging, PersistedNotApplied, CommitUnknown, RuntimeUnknown, Protected }
 
+internal sealed record OrdinaryRoomFurnitureRenderItem(Guid InstanceId, FurnitureItemKind Kind,
+    FurnitureAnchor Anchor, double AngleRadians = 0);
+
 /// <summary>One owner and one uninterrupted scene. Only final commit runs between steps.</summary>
 internal sealed class OrdinaryRoomFurnitureSession : IDisposable
 {
@@ -21,11 +24,11 @@ internal sealed class OrdinaryRoomFurnitureSession : IDisposable
     private FurnitureLayoutLease? lease;
     private Task<FurnitureLayoutStage>? staging;
     private TaskCompletionSource? completion;
-    private FurnitureEditOperation? pendingOperation, lastSuccess, recoveryOperation;
+    private RoomFurnitureEditOperation? pendingOperation, lastSuccess, recoveryOperation;
     private FurnitureLayout? pendingLayout;
     private byte[]? baselineBytes;
-    private DangoFurnitureFrame? observation;
-    private ulong appliedNativeInstanceId;
+    private DangoFurnitureCollectionFrame? observation;
+    private Dictionary<Guid, ulong> appliedInstances = [];
     private bool recoveryRequested, disposed;
     private string status = "选择家具开始布置。";
     private string? previewRejection;
@@ -50,12 +53,13 @@ internal sealed class OrdinaryRoomFurnitureSession : IDisposable
         Layout = PersistedLayout = loaded.Layout ?? FurnitureLayout.Empty;
         State = loaded.IsWritable ? OrdinaryFurnitureSceneState.Synced : OrdinaryFurnitureSceneState.Protected;
         if (!loaded.IsWritable) status = loaded.Warning ?? "原布局受保护，暂不能布置。";
-        capability = scene.SupportsLiveFurnitureEditing;
+        capability = scene.SupportsFurnitureCollection;
         if (!capability && loaded.IsWritable) status = "当前物理模块不支持家具编辑。";
     }
     internal FurnitureLayout Layout { get; private set; }
     internal FurnitureLayout PersistedLayout { get; private set; }
-    internal FurniturePlatformInstance? Preview { get; private set; }
+    internal FurnitureItemInstance? Preview { get; private set; }
+    internal Guid? SelectedInstanceId { get; private set; }
     internal bool HasPreview => Preview is not null;
     internal bool Busy => completion is not null;
     internal bool CanEdit => !disposed && IsAttached && capability && ownsActiveRoom() && !Busy && State == OrdinaryFurnitureSceneState.Synced;
@@ -64,7 +68,25 @@ internal sealed class OrdinaryRoomFurnitureSession : IDisposable
     internal OrdinaryFurnitureSceneState State { get; private set; }
     internal string Status => status;
     internal DangoPhysicsFrame? LastFrame { get; private set; }
-    internal DangoFurnitureFrame? NativeFrame => observation;
+    internal DangoFurnitureCollectionFrame? NativeFrame => observation;
+    internal IReadOnlyList<OrdinaryRoomFurnitureRenderItem> RenderItems
+    {
+        get
+        {
+            if (observation is null || !IsAttached) return [];
+            var items = new List<OrdinaryRoomFurnitureRenderItem>(Layout.Items.Count);
+            foreach (var item in Layout.Items)
+            {
+                if (!appliedInstances.TryGetValue(item.InstanceId, out var runtimeId)) continue;
+                var actual = observation.Items.SingleOrDefault(value => value.InstanceId == runtimeId);
+                if (actual is null) continue;
+                if (item.Kind == FurnitureItemKind.RoundBall && actual.BallState is { } ball)
+                    items.Add(new(item.InstanceId, item.Kind, scene.OrdinaryBallAnchor(ball), ball.AngleRadians));
+                else items.Add(new(item.InstanceId, item.Kind, item.Anchor));
+            }
+            return items.AsReadOnly();
+        }
+    }
     internal ulong WorldGeneration => observation?.WorldGeneration ?? 0;
     internal ulong SceneRevision => observation?.SceneRevision ?? 0;
     internal ulong PhysicsStep => observation?.PhysicsStep ?? 0;
@@ -108,28 +130,32 @@ internal sealed class OrdinaryRoomFurnitureSession : IDisposable
         {
             status = "当前物理模块不支持家具编辑。";
             // An absent collider is honest only for a verified empty layout.
-            if (Layout.Platform is not null) return false;
+            if (Layout.Items.Count != 0) return false;
             IsAttached = true;
             return true;
         }
         try
         {
-            var current = scene.ReadFurnitureFrame();
+            var current = scene.ReadFurnitureCollectionFrame();
             EnsureHealthy(current);
-            if (current.Platform is not null || current.PlatformInstanceId != 0)
+            if (current.Items.Count != 0)
                 throw new InvalidDataException("离房后仍存在家具绑定，不能重复进入。");
-            if (Layout.Platform is { } item)
+            appliedInstances.Clear();
+            foreach (var item in Layout.Items)
             {
-                var prepared = scene.PrepareStaticPlatformChange(DangoStaticPlatformChangeKind.Insert, 0,
+                var before = current.Items.Select(value => value.InstanceId).ToHashSet();
+                var prepared = scene.PrepareFurnitureChange(DangoFurnitureChangeKind.Insert, 0,
                     ToDefinition(item), current.SceneRevision);
                 if (!prepared.Probe.Allowed || prepared.Token is null)
-                { status = "已保存家具无法载入：" + RejectionMessage(prepared.Probe.Rejection); return false; }
-                current = scene.ApplyPreparedStaticPlatformChange(prepared.Token.Value);
+                    throw new InvalidDataException("已保存家具无法载入：" + RejectionMessage(prepared.Probe.Rejection));
+                current = scene.ApplyPreparedFurnitureChange(prepared.Token.Value);
+                var added = current.Items.Where(value => !before.Contains(value.InstanceId)).ToArray();
+                if (added.Length != 1) throw new InvalidDataException("家具载入实例身份不一致。");
+                appliedInstances.Add(item.InstanceId, added[0].InstanceId);
             }
             EnsureHealthy(current);
-            if (!MatchesPlatform(current, Layout)) throw new InvalidDataException("家具初始布局未真实应用。");
+            if (!MatchesItems(current, Layout, appliedInstances)) throw new InvalidDataException("家具初始布局未真实应用。");
             observation = current; LastFrame = current.Physics;
-            appliedNativeInstanceId = current.PlatformInstanceId;
             IsAttached = true;
             status = "选择家具开始布置。";
             return true;
@@ -146,29 +172,29 @@ internal sealed class OrdinaryRoomFurnitureSession : IDisposable
         if (!IsAttached) return true;
         if (!capability)
         { IsAttached = false; Preview = null; return true; }
-        DangoPreparedStaticPlatformChange? token = null;
+        DangoPreparedFurnitureChange? token = null;
         try
         {
             if (!MappingIsCurrent()) throw new InvalidDataException("房间坐标绑定已变化。");
-            var current = scene.ReadFurnitureFrame(); EnsureHealthy(current);
-            if (!MatchesPlatform(current, Layout) || current.PlatformInstanceId != appliedNativeInstanceId)
+            var current = scene.ReadFurnitureCollectionFrame(); EnsureHealthy(current);
+            if (!MatchesItems(current, Layout, appliedInstances))
                 throw new InvalidDataException("离房前真实家具与布局不一致。");
-            if (current.Platform is not null)
+            foreach (var runtimeId in current.Items.Select(value => value.InstanceId).ToArray())
             {
-                var prepared = scene.PrepareStaticPlatformChange(DangoStaticPlatformChangeKind.Delete,
-                    current.PlatformInstanceId, null, current.SceneRevision);
+                var prepared = scene.PrepareFurnitureChange(DangoFurnitureChangeKind.Delete,
+                    runtimeId, null, current.SceneRevision);
                 if (!prepared.Probe.Allowed || prepared.Token is null)
-                { status = RejectionMessage(prepared.Probe.Rejection); return false; }
+                    throw new InvalidDataException(RejectionMessage(prepared.Probe.Rejection));
                 token = prepared.Token;
-                current = scene.ApplyPreparedStaticPlatformChange(token.Value);
+                current = scene.ApplyPreparedFurnitureChange(token.Value);
                 token = null;
             }
             EnsureHealthy(current);
-            if (current.Platform is not null || current.PlatformInstanceId != 0)
+            if (current.Items.Count != 0)
                 throw new InvalidDataException("家具尚未卸载，禁止换场。");
             observation = current; LastFrame = current.Physics;
-            appliedNativeInstanceId = 0;
-            IsAttached = false; Preview = null;
+            appliedInstances.Clear();
+            IsAttached = false; Preview = null; SelectedInstanceId = null;
             // This is a runtime unbind, not a persisted Delete operation.
             return true;
         }
@@ -192,13 +218,17 @@ internal sealed class OrdinaryRoomFurnitureSession : IDisposable
             try
             {
                 Preview.Validate(FurnitureLayoutContract.OrdinaryRoom);
+                var moving = Layout.Find(Preview.InstanceId) is not null;
+                var operation = new RoomFurnitureEditOperation(Guid.NewGuid(), Layout.LayoutVersion,
+                    moving ? FurnitureEditKind.Move : FurnitureEditKind.Insert, moving ? Preview.InstanceId : null, Preview);
+                _ = operation.BuildCandidate(Layout);
                 readingNative = true;
-                var current = scene.ReadFurnitureFrame();
+                var current = scene.ReadFurnitureCollectionFrame();
                 EnsureHealthy(current);
-                if (!MatchesPlatform(current, Layout) || current.PlatformInstanceId != appliedNativeInstanceId)
+                if (!MatchesItems(current, Layout, appliedInstances))
                     throw new InvalidDataException("真实家具与已应用布局不一致。");
-                var probe = scene.ProbeStaticPlatformChange(Layout.Platform is null ? DangoStaticPlatformChangeKind.Insert : DangoStaticPlatformChangeKind.Move,
-                    current.PlatformInstanceId, ToDefinition(Preview), current.SceneRevision);
+                var probe = scene.ProbeFurnitureChange(moving ? DangoFurnitureChangeKind.Move : DangoFurnitureChangeKind.Insert,
+                    moving ? appliedInstances[Preview.InstanceId] : 0, ToDefinition(Preview), current.SceneRevision);
                 if (!probe.Allowed) { status = previewRejection = RejectionMessage(probe.Rejection); return false; }
                 if (status == previewRejection) status = "勾确认后应用并保存。";
                 previewRejection = null;
@@ -215,8 +245,40 @@ internal sealed class OrdinaryRoomFurnitureSession : IDisposable
     internal void PreviewPlatform(double anchorX, double anchorY)
     {
         CheckOwner();
+        var existing = Layout.Platform;
+        if (existing is not null) PreviewMoveFurniture(existing.InstanceId, new(anchorX, anchorY));
+        else if (Preview is { Kind: FurnitureItemKind.StaticPlatform } preview)
+            PreviewMoveFurniture(preview.InstanceId, new(anchorX, anchorY));
+        else PreviewNewFurniture(FurnitureItemKind.StaticPlatform, new(anchorX, anchorY));
+    }
+
+    internal void SelectFurniture(Guid? instanceId)
+    {
+        CheckOwner();
+        if (!CanEdit || (instanceId is { } id && Layout.Find(id) is null)) return;
+        Preview = null;
+        SelectedInstanceId = instanceId;
+    }
+
+    internal void PreviewNewFurniture(FurnitureItemKind kind, FurnitureAnchor anchor)
+    {
+        CheckOwner();
         if (!CanEdit) return;
-        Preview = new(Layout.Platform?.InstanceId ?? Preview?.InstanceId ?? Guid.NewGuid(), new(anchorX, anchorY));
+        if (Layout.Items.Count >= FurnitureLayoutContract.OrdinaryRoom.MaximumItems)
+        { status = "最多放置 30 件家具，请先删除一件。"; return; }
+        Preview = new(Guid.NewGuid(), kind, anchor);
+        SelectedInstanceId = null;
+        status = "勾确认后应用并保存。";
+    }
+
+    internal void PreviewMoveFurniture(Guid instanceId, FurnitureAnchor anchor)
+    {
+        CheckOwner();
+        if (!CanEdit) return;
+        var item = Layout.Find(instanceId) ?? (Preview?.InstanceId == instanceId ? Preview : null);
+        if (item is null) return;
+        Preview = item with { Anchor = anchor };
+        SelectedInstanceId = Layout.Find(instanceId) is null ? null : instanceId;
         status = "勾确认后应用并保存。";
     }
 
@@ -232,19 +294,24 @@ internal sealed class OrdinaryRoomFurnitureSession : IDisposable
     {
         CheckOwner();
         if (!CanConfirm) return Task.CompletedTask;
-        return SubmitAsync(new(Guid.NewGuid(), PersistedLayout.LayoutVersion,
-            Layout.Platform is null ? FurnitureEditKind.Insert : FurnitureEditKind.Move,
-            Layout.Platform?.InstanceId, Preview));
+        var moving = Layout.Find(Preview!.InstanceId) is not null;
+        return SubmitRoomOperationAsync(new(Guid.NewGuid(), PersistedLayout.LayoutVersion,
+            moving ? FurnitureEditKind.Move : FurnitureEditKind.Insert,
+            moving ? Preview.InstanceId : null, Preview));
     }
 
     internal Task DeleteAsync()
     {
         CheckOwner();
-        if (!CanEdit || Layout.Platform is null) return Task.CompletedTask;
-        return SubmitAsync(new(Guid.NewGuid(), PersistedLayout.LayoutVersion, FurnitureEditKind.Delete, Layout.Platform.InstanceId, null));
+        if (!CanEdit || SelectedInstanceId is not { } id || Layout.Find(id) is null) return Task.CompletedTask;
+        return SubmitRoomOperationAsync(new(Guid.NewGuid(), PersistedLayout.LayoutVersion, FurnitureEditKind.Delete, id, null));
     }
 
-    internal Task SubmitAsync(FurnitureEditOperation operation)
+    internal Task SubmitAsync(FurnitureEditOperation operation) => SubmitRoomOperationAsync(new(
+        operation.OperationId, operation.ExpectedVersion, operation.Kind, operation.TargetInstanceId,
+        operation.Candidate is { } item ? new(item.InstanceId, FurnitureItemKind.StaticPlatform, item.Anchor) : null));
+
+    internal Task SubmitRoomOperationAsync(RoomFurnitureEditOperation operation)
     {
         CheckOwner();
         if (lastSuccess?.OperationId == operation.OperationId)
@@ -253,7 +320,9 @@ internal sealed class OrdinaryRoomFurnitureSession : IDisposable
             return Task.CompletedTask;
         }
         if (!CanEdit || Layout != PersistedLayout) throw new InvalidOperationException("当前布局尚未对齐，不能继续提交。");
-        var candidate = operation.BuildCandidate(PersistedLayout, FurnitureLayoutContract.OrdinaryRoom);
+        var candidate = operation.BuildCandidate(PersistedLayout);
+        if (candidate == PersistedLayout)
+        { Preview = null; lastSuccess = operation; status = "位置未改变。"; return Task.CompletedTask; }
         try
         {
             lease = store.AcquireLease(path);
@@ -301,9 +370,9 @@ internal sealed class OrdinaryRoomFurnitureSession : IDisposable
         try
         {
             if (!MappingIsCurrent()) throw new InvalidDataException("房间坐标绑定已变化。");
-            var current = scene.ReadFurnitureFrame();
+            var current = scene.ReadFurnitureCollectionFrame();
             EnsureHealthy(current);
-            if (!MatchesPlatform(current, Layout) || current.PlatformInstanceId != appliedNativeInstanceId ||
+            if (!MatchesItems(current, Layout, appliedInstances) ||
                 current.Physics.Bodies.Single().EntityId != attachedEntity)
                 throw new InvalidDataException("普通房家具与团子运行绑定不一致。");
             observation = current; LastFrame = current.Physics;
@@ -313,16 +382,16 @@ internal sealed class OrdinaryRoomFurnitureSession : IDisposable
     private void FinishStaging()
     {
         FurnitureLayoutStage? stage = null;
-        DangoPreparedStaticPlatformChange? token = null;
+        DangoPreparedFurnitureChange? token = null;
         var saved = false;
         var commitAttempted = false;
         var start = Stopwatch.GetTimestamp();
-        DangoFurnitureFrame? old = null;
+        DangoFurnitureCollectionFrame? old = null;
         try
         {
             stage = staging!.GetAwaiter().GetResult();
-            old = scene.ReadFurnitureFrame(); EnsureHealthy(old);
-            if (!MatchesPlatform(old, Layout) || old.PlatformInstanceId != appliedNativeInstanceId)
+            old = scene.ReadFurnitureCollectionFrame(); EnsureHealthy(old);
+            if (!MatchesItems(old, Layout, appliedInstances))
             { State = OrdinaryFurnitureSceneState.RuntimeUnknown; throw new InvalidDataException("真实家具与当前布局不一致。"); }
             var prepared = Prepare(pendingOperation!, pendingLayout!, old);
             if (!prepared.Probe.Allowed || prepared.Token is null)
@@ -337,7 +406,7 @@ internal sealed class OrdinaryRoomFurnitureSession : IDisposable
             var result = stage.Commit();
             if (result.State == FurnitureCommitState.NotCommitted)
             {
-                scene.CancelPreparedStaticPlatformChange(token.Value); token = null;
+                scene.CancelPreparedFurnitureChange(token.Value); token = null;
                 State = OrdinaryFurnitureSceneState.Synced; status = result.Warning ?? "保存失败，原家具保留。";
                 return;
             }
@@ -389,12 +458,12 @@ internal sealed class OrdinaryRoomFurnitureSession : IDisposable
 
     private void FinishRecovery()
     {
-        DangoPreparedStaticPlatformChange? token = null;
-        DangoFurnitureFrame? old = null;
+        DangoPreparedFurnitureChange? token = null;
+        DangoFurnitureCollectionFrame? old = null;
         try
         {
-            old = scene.ReadFurnitureFrame(); EnsureHealthy(old);
-            if (!MatchesPlatform(old, Layout) || old.PlatformInstanceId != appliedNativeInstanceId)
+            old = scene.ReadFurnitureCollectionFrame(); EnsureHealthy(old);
+            if (!MatchesItems(old, Layout, appliedInstances))
             { State = OrdinaryFurnitureSceneState.RuntimeUnknown; throw new InvalidDataException("真实家具与旧布局不一致。"); }
             using var recoveryLease = store.AcquireLease(path);
             var loaded = recoveryLease.Baseline;
@@ -431,44 +500,50 @@ internal sealed class OrdinaryRoomFurnitureSession : IDisposable
         finally { recoveryRequested = false; FinishCompletion(); }
     }
 
-    private DangoStaticPlatformPreparation Prepare(FurnitureEditOperation operation, FurnitureLayout candidate, DangoFurnitureFrame current) =>
-        scene.PrepareStaticPlatformChange(operation.Kind switch
+    private DangoFurniturePreparation Prepare(RoomFurnitureEditOperation operation, FurnitureLayout candidate, DangoFurnitureCollectionFrame current) =>
+        scene.PrepareFurnitureChange(operation.Kind switch
         {
-            FurnitureEditKind.Insert => DangoStaticPlatformChangeKind.Insert,
-            FurnitureEditKind.Move => DangoStaticPlatformChangeKind.Move,
-            _ => DangoStaticPlatformChangeKind.Delete,
-        }, current.PlatformInstanceId, candidate.Platform is null ? null : ToDefinition(candidate.Platform), current.SceneRevision);
+            FurnitureEditKind.Insert => DangoFurnitureChangeKind.Insert,
+            FurnitureEditKind.Move => DangoFurnitureChangeKind.Move,
+            _ => DangoFurnitureChangeKind.Delete,
+        }, operation.TargetInstanceId is { } id ? appliedInstances[id] : 0,
+            operation.Candidate is null ? null : ToDefinition(operation.Candidate), current.SceneRevision);
 
-    private void ApplyAndConfirm(DangoPreparedStaticPlatformChange token, FurnitureLayout candidate, FurnitureEditOperation operation)
+    private void ApplyAndConfirm(DangoPreparedFurnitureChange token, FurnitureLayout candidate, RoomFurnitureEditOperation operation)
     {
         BeforeNativeApply?.Invoke();
-        scene.ApplyPreparedStaticPlatformChange(token);
+        scene.ApplyPreparedFurnitureChange(token);
         AfterNativeApply?.Invoke();
-        var current = scene.ReadFurnitureFrame();
+        var current = scene.ReadFurnitureCollectionFrame();
         EnsureHealthy(current);
         if (current.LastAppliedToken != token.TokenId || current.WorldGeneration != token.WorldGeneration ||
-            current.PhysicsStep != token.PhysicsStep || current.SceneRevision != token.SceneRevision + 1 || !MatchesPlatform(current, candidate))
+            current.PhysicsStep != token.PhysicsStep || current.SceneRevision != token.SceneRevision + 1 ||
+            !TryCandidateBinding(current, candidate, operation, out _))
             throw new InvalidDataException("文件已保存，但真实家具应用结果无法确认。");
         MarkApplied(current, candidate, operation);
     }
 
-    private void MarkApplied(DangoFurnitureFrame current, FurnitureLayout candidate, FurnitureEditOperation operation)
+    private void MarkApplied(DangoFurnitureCollectionFrame current, FurnitureLayout candidate, RoomFurnitureEditOperation operation)
     {
         observation = current; LastFrame = current.Physics;
-        appliedNativeInstanceId = current.PlatformInstanceId;
+        if (!TryCandidateBinding(current, candidate, operation, out var bindings))
+            throw new InvalidDataException("家具身份或定义与已确认布局不一致。");
+        appliedInstances = bindings;
         Layout = candidate; lastSuccess = operation; Preview = null;
+        SelectedInstanceId = operation.Kind == FurnitureEditKind.Delete ? null : operation.Candidate?.InstanceId;
         State = OrdinaryFurnitureSceneState.Synced; recoveryOperation = null; pendingLayout = null;
         status = "已应用并保存。";
     }
 
-    private void ResolveApplyFailure(DangoFurnitureFrame old, FurnitureLayout candidate, FurnitureEditOperation operation,
-        DangoPreparedStaticPlatformChange? token, Exception error)
+    private void ResolveApplyFailure(DangoFurnitureCollectionFrame old, FurnitureLayout candidate, RoomFurnitureEditOperation operation,
+        DangoPreparedFurnitureChange? token, Exception error)
     {
         try
         {
-            var current = scene.ReadFurnitureFrame(); EnsureHealthy(current);
+            var current = scene.ReadFurnitureCollectionFrame(); EnsureHealthy(current);
             if (token is { } receipt && current.LastAppliedToken == receipt.TokenId && current.WorldGeneration == receipt.WorldGeneration &&
-                current.PhysicsStep == receipt.PhysicsStep && current.SceneRevision == receipt.SceneRevision + 1 && MatchesPlatform(current, candidate))
+                current.PhysicsStep == receipt.PhysicsStep && current.SceneRevision == receipt.SceneRevision + 1 &&
+                TryCandidateBinding(current, candidate, operation, out _))
             { MarkApplied(current, candidate, operation); status = "已确认应用并保存（调用返回异常）。"; return; }
             if (SameWorld(old, current))
             {
@@ -483,32 +558,70 @@ internal sealed class OrdinaryRoomFurnitureSession : IDisposable
         status = "布局已保存，运行结果无法确认，已停止：" + error.Message;
     }
 
-    private bool ObserveUnchanged(DangoFurnitureFrame old)
+    private bool ObserveUnchanged(DangoFurnitureCollectionFrame old)
     {
-        try { var current = scene.ReadFurnitureFrame(); EnsureHealthy(current); return SameWorld(old, current); }
+        try { var current = scene.ReadFurnitureCollectionFrame(); EnsureHealthy(current); return SameWorld(old, current); }
         catch (Exception) { return false; }
     }
-    private static bool SameWorld(DangoFurnitureFrame left, DangoFurnitureFrame right) =>
+    private static bool SameWorld(DangoFurnitureCollectionFrame left, DangoFurnitureCollectionFrame right) =>
         JsonSerializer.Serialize(left, SnapshotJson) == JsonSerializer.Serialize(right, SnapshotJson);
-    private void TryCancel(DangoPreparedStaticPlatformChange token)
-    { try { scene.CancelPreparedStaticPlatformChange(token); } catch (Exception) { } }
-    private static void EnsureHealthy(DangoFurnitureFrame frame)
+    private void TryCancel(DangoPreparedFurnitureChange token)
+    { try { scene.CancelPreparedFurnitureChange(token); } catch (Exception) { } }
+    private static void EnsureHealthy(DangoFurnitureCollectionFrame frame)
     { if (!frame.Physics.Succeeded || frame.Physics.Bodies.Count != 1) throw new InvalidDataException("真实物理世界不健康。"); }
-    private DangoStaticPlatformDefinition ToDefinition(FurniturePlatformInstance item) => scene.OrdinaryFurnitureDefinition(item);
-    private bool MatchesPlatform(DangoFurnitureFrame frame, FurnitureLayout layout)
+    private DangoFurnitureDefinition ToDefinition(FurnitureItemInstance item) => scene.OrdinaryFurnitureDefinition(item);
+
+    private bool TryCandidateBinding(DangoFurnitureCollectionFrame frame, FurnitureLayout layout,
+        RoomFurnitureEditOperation operation, out Dictionary<Guid, ulong> bindings)
     {
-        if (layout.Platform is null) return frame.Platform is null && frame.PlatformInstanceId == 0;
-        if (frame.Platform is not { } actual || frame.PlatformInstanceId == 0) return false;
-        var expected = ToDefinition(layout.Platform);
-        return Math.Abs(actual.CenterX - expected.CenterX) <= 1e-6 && Math.Abs(actual.CenterY - expected.CenterY) <= 1e-6 &&
-            Math.Abs(actual.Width - expected.Width) <= 1e-6 && Math.Abs(actual.Height - expected.Height) <= 1e-6 &&
-            Math.Abs(actual.Friction - expected.Friction) <= 1e-6;
+        bindings = new(appliedInstances);
+        if (operation.Kind == FurnitureEditKind.Insert)
+        {
+            var known = appliedInstances.Values.ToHashSet();
+            var added = frame.Items.Where(item => !known.Contains(item.InstanceId)).ToArray();
+            if (operation.Candidate is null || added.Length != 1 || bindings.ContainsKey(operation.Candidate.InstanceId)) return false;
+            bindings.Add(operation.Candidate.InstanceId, added[0].InstanceId);
+        }
+        else if (operation.Kind == FurnitureEditKind.Delete)
+        {
+            if (operation.TargetInstanceId is not { } removed || !bindings.Remove(removed)) return false;
+        }
+        return MatchesItems(frame, layout, bindings);
     }
-    private static string RejectionMessage(DangoStaticPlatformChangeRejection reason) => reason switch
+
+    private bool MatchesItems(DangoFurnitureCollectionFrame frame, FurnitureLayout layout, IReadOnlyDictionary<Guid, ulong> bindings)
     {
-        DangoStaticPlatformChangeRejection.Penetration => "家具穿入团子，不能确认。",
-        DangoStaticPlatformChangeRejection.OutsideRoom => "家具超出房间，不能确认。",
-        DangoStaticPlatformChangeRejection.StaleScene => "场景已变化，请重新确认。",
+        if (frame.Items.Count != layout.Items.Count || bindings.Count != layout.Items.Count) return false;
+        var actual = frame.Items.ToDictionary(item => item.InstanceId);
+        var seen = new HashSet<ulong>();
+        foreach (var item in layout.Items)
+        {
+            if (!bindings.TryGetValue(item.InstanceId, out var id) || id == 0 || !seen.Add(id) ||
+                !actual.TryGetValue(id, out var runtime) || !DefinitionMatches(runtime.Definition, ToDefinition(item))) return false;
+        }
+        return true;
+    }
+
+    private static bool DefinitionMatches(DangoFurnitureDefinition actual, DangoFurnitureDefinition expected)
+    {
+        static bool Close(double left, double right) => Math.Abs(left - right) <= 1e-6;
+        if (actual.Kind != expected.Kind) return false;
+        if (actual.Platform is { } platform && expected.Platform is { } wanted)
+            return Close(platform.CenterX, wanted.CenterX) && Close(platform.CenterY, wanted.CenterY) &&
+                Close(platform.Width, wanted.Width) && Close(platform.Height, wanted.Height) && Close(platform.Friction, wanted.Friction);
+        if (actual.Ball is { } ball && expected.Ball is { } wantedBall)
+            return Close(ball.CenterQX, wantedBall.CenterQX) && Close(ball.CenterQY, wantedBall.CenterQY) &&
+                Close(ball.RadiusQ, wantedBall.RadiusQ) && Close(ball.Mass, wantedBall.Mass) &&
+                Close(ball.FloorFriction, wantedBall.FloorFriction) && Close(ball.DangoFriction, wantedBall.DangoFriction) &&
+                Close(ball.FloorRestitution, wantedBall.FloorRestitution) && Close(ball.DangoRestitution, wantedBall.DangoRestitution);
+        return false;
+    }
+    private static string RejectionMessage(DangoFurnitureChangeRejection reason) => reason switch
+    {
+        DangoFurnitureChangeRejection.Penetration => "家具碰撞重叠，不能确认。",
+        DangoFurnitureChangeRejection.CapacityExceeded => "最多放置 30 件家具。",
+        DangoFurnitureChangeRejection.OutsideRoom => "家具超出房间，不能确认。",
+        DangoFurnitureChangeRejection.StaleScene => "场景已变化，请重新确认。",
         _ => "当前不能应用家具：" + reason,
     };
     private void FinishCompletion()

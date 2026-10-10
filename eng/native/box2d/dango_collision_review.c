@@ -8,6 +8,7 @@
 #include "dango_display_contact.h"
 #include "dango_static_platform.h"
 #include "dango_round_ball.h"
+#include "dango_furniture_collection_types.h"
 
 _Static_assert(sizeof(dango_ball_definition)==64,"Round-ball definition ABI layout");
 _Static_assert(sizeof(dango_ball_state)==88,"Round-ball state ABI layout");
@@ -30,6 +31,15 @@ typedef struct dango_native_ball
     double initial_vx,initial_vy,initial_omega;
     bool floor_touch,dango_touch,wall_touch[2];
 } dango_native_ball;
+
+typedef struct dango_collection_item
+{
+    uint64_t instance;
+    dango_furniture_definition definition;
+    dango_native_ball ball;
+    dango_ball_contact dango_contact,surface_contact;
+    bool platform_touch[DANGO_FURNITURE_COLLECTION_MAX];
+} dango_collection_item;
 
 typedef struct collision_review
 {
@@ -62,6 +72,15 @@ typedef struct collision_review
     dango_round_ball_frame frame_snapshot;
     dango_ball_contact ball_dango_contact,ball_floor_contact;
     dango_ball_geometry ball_birth_geometry[DANGO_PHYSICS_MAX_BODIES];
+    bool collection_mode,collection_prepared;
+    int collection_count,collection_prepared_kind,collection_prepared_slot;
+    uint64_t collection_next_instance;
+    dango_furniture_token collection_token;
+    dango_collection_item collection[DANGO_FURNITURE_COLLECTION_MAX],collection_candidate;
+    bool collection_prepared_grounded[DANGO_PHYSICS_MAX_BODIES];
+    bool collection_pair_touch[DANGO_FURNITURE_COLLECTION_MAX][DANGO_FURNITURE_COLLECTION_MAX];
+    float collection_support_friction[DANGO_PHYSICS_MAX_BODIES];
+    dango_furniture_collection_frame collection_snapshot;
 #ifdef DANGO_ROUND_BALL_CONTRACT_TESTS
     int test_ball_fault_mode;
 #endif
@@ -69,6 +88,13 @@ typedef struct collision_review
     int test_platform_collapse_substep;
 #endif
 } collision_review;
+
+static bool collection_refresh(collision_review* p);
+static bool collection_substep(collision_review* p,double dt,int* touched);
+static void collection_publish(collision_review* p);
+static int collection_reset(collision_review* p);
+static void collection_begin(collision_review* p);
+static void collision_furniture_read_core(const collision_review* p,dango_furniture_frame* frame);
 
 #ifdef DANGO_ROUND_BALL_CONTRACT_TESTS
 static int round_ball_owner_count;
@@ -163,6 +189,8 @@ static bool collision_ball_valid(const collision_review* p)
 
 static void collision_ball_publish(collision_review* p)
 {
+    if (p->collection_prepared && (p->collection_token.scene_revision!=p->scene_revision ||
+        p->collection_token.physics_step!=p->physics_step)) p->collection_prepared=false;
     if (p->furniture_prepared && (p->prepared_token.scene_revision!=p->scene_revision ||
         p->prepared_token.physics_step!=p->physics_step)) p->furniture_prepared=false;
     p->ball.state.scene_revision=p->scene_revision; p->ball.state.step=p->physics_step;
@@ -184,6 +212,7 @@ static void collision_ball_publish(collision_review* p)
         p->frame_snapshot.states[42*output+39]=p->bodies[r]->grounded ? 1.0f : 0.0f;
         ++output;
     }
+    if (p->collection_mode) collection_publish(p);
 }
 
 static inline void collision_ball_wake(collision_review* p)
@@ -612,6 +641,8 @@ static void collision_damp(collision_review* p,int r,float dt,const float* contr
     }
     bool active=control[0]!=0 || control[1]!=0 || control[2]!=0 || control[3]!=0;
     if (p->platform_enabled && p->platform_contacts[r][2]!=0) ground=true;
+    bool collection_support=p->collection_count && p->collection_support_friction[r]>=0;
+    if (collection_support) ground=true;
     passive_spin(positions,velocities,masses,dt,ground,active);
     if (ground && !active)
     {
@@ -619,6 +650,7 @@ static void collision_damp(collision_review* p,int r,float dt,const float* contr
         for (int n=0;n<17;++n) { mass+=masses[n]; horizontal+=masses[n]*velocities[n].x; }
         // Finite dry friction on whole-body translation; no position anchor or vertical braking.
         float friction_scale=p->platform_enabled && p->platform_contacts[r][2]!=0 ? p->platform.friction/.72f : 1.0f;
+        if (collection_support) friction_scale=p->collection_support_friction[r]/.72f;
         float delta=b2ClampFloat(horizontal/mass,-35*friction_scale*dt,35*friction_scale*dt);
         for (int n=0;n<17;++n) velocities[n].x=(velocities[n].x-delta)*expf(-60*dt);
     }
@@ -688,6 +720,7 @@ static int collision_local_floor_contacts(collision_review* p,dango_self_soft_bo
 
 static int collision_read(collision_review* p, float* output)
 {
+    if (p->collection_count && !collection_refresh(p)) return -402;
     for (int r=0;r<p->capacity;++r)
     {
         if (!p->active[r]) continue;
@@ -699,6 +732,11 @@ static int collision_read(collision_review* p, float* output)
         if (p->platform_enabled)
         {
             if (!collision_platform_refresh(p,r)) return -402;
+            grounded=p->bodies[r]->grounded ? 1 : 0;
+        }
+        if (p->collection_count)
+        {
+            if (!collection_refresh(p)) return -402;
             grounded=p->bodies[r]->grounded ? 1 : 0;
         }
         row[38]=(float)contacts; row[39]=(float)grounded; row[40]=(float)selected; row[41]=(float)points;
@@ -759,6 +797,7 @@ DANGO_API int dango_collision_step(void* handle, float dt, const float* controls
     int safe_platform_contact_steps=p->contact_steps;
     if (!p->error)
     {
+        if (p->collection_count) collection_begin(p);
         if (p->ball_scene)
         {
             p->ball_dango_contact=(dango_ball_contact){0};
@@ -801,6 +840,7 @@ DANGO_API int dango_collision_step(void* handle, float dt, const float* controls
                 }
 #endif
                 if (p->platform_enabled && !collision_platform_refresh(p,r)) { p->error=-402; break; }
+                if (p->collection_count && !collection_refresh(p)) { p->error=-402; break; }
 #if DANGO_ROUND_BALL_TEST_VARIANT == 4
                 if (p->ball.state.enabled)
                 {
@@ -834,6 +874,12 @@ DANGO_API int dango_collision_step(void* handle, float dt, const float* controls
                 if (p->active[r])
                 if (!dango_self_solve_constraints(p->bodies[r],&p->config)) p->error=-91;
             if (p->error) break;
+            if (p->collection_count)
+            {
+                int touched=0;
+                if (!collection_substep(p,small_dt,&touched)) { p->error=-403; break; }
+                p->contact_steps+=touched;
+            }
             if (p->ball.state.enabled)
             {
                 int touched=0;
@@ -887,7 +933,7 @@ DANGO_API int dango_collision_step(void* handle, float dt, const float* controls
             collision_ball_publish(p);
         }
     }
-    if ((p->platform_enabled || p->ball_scene) && p->error) p->contact_steps=safe_platform_contact_steps;
+    if ((p->platform_enabled || p->ball_scene || p->collection_count) && p->error) p->contact_steps=safe_platform_contact_steps;
     memcpy(output,p->snapshot,(size_t)p->capacity*42*sizeof(float)); *contact_steps=p->contact_steps;
     return p->error;
 }
@@ -936,6 +982,7 @@ DANGO_API int dango_physics_world_add(void* handle,float anchor_x,float anchor_y
     collision_review* p=handle;
     if (!p || !entity_id || !isfinite(anchor_x) || !isfinite(anchor_y)) return -410;
     if (p->preview_jump_speed_scale!=1.0f && p->count!=0) return -410;
+    if (p->collection_count && (p->error || p->count!=0)) return -410;
     if (p->platform_enabled && (p->error || p->count!=0)) return -410;
     if (p->ball_scene && p->error) return -410;
     if (p->ball.state.enabled && p->count!=0) return -410;
@@ -1001,7 +1048,7 @@ DANGO_API int dango_physics_world_add(void* handle,float anchor_x,float anchor_y
 DANGO_API int dango_physics_world_remove(void* handle,int entity_id)
 {
     collision_review* p=handle;
-    if (!p || entity_id<=0) return -410;
+    if (!p || entity_id<=0 || p->collection_count) return -410;
     if ((p->platform_enabled || p->ball_scene) && p->error) return -410;
     int slot=-1;
     for (int i=0;i<p->capacity;++i) if (p->active[i] && p->entity_ids[i]==entity_id) { slot=i; break; }
@@ -1045,6 +1092,7 @@ DANGO_API int dango_physics_world_step(void* handle,float time_step,const int* e
     }
     float slot_states[DANGO_PHYSICS_MAX_BODIES*DANGO_PHYSICS_STATE_FLOATS]={0};
     p->furniture_prepared=false;
+    p->collection_prepared=false;
     int error=dango_collision_step(p,time_step,slot_controls,slot_states,DANGO_PHYSICS_MAX_BODIES*42,contact_steps);
     if (error==-400) return -410;
     int output=0;
@@ -1063,6 +1111,7 @@ DANGO_API int dango_physics_world_reset(void* handle)
     collision_review* p=handle;
     if (!p) return -410;
     p->furniture_prepared=false;
+    p->collection_prepared=false;
     /* Preserve all valid birth definitions, rather than publishing a Reset
        state that is already outside its scene or overlapping the circle. */
     if (p->ball.state.enabled && !collision_ball_reset_geometry_valid(p,true)) { p->error=-403; return p->error; }
@@ -1073,6 +1122,7 @@ DANGO_API int dango_physics_world_reset(void* handle)
         if (!collision_rig_valid(p->bodies[slot])) return -401;
         dango_self_initialize_at(p->bodies[slot],&p->config,p->anchors[2*slot],p->anchors[2*slot+1]);
     }
+    if (p->collection_count) return collection_reset(p);
     if (p->ball_scene)
     {
         p->error=0; p->contact_steps=0;
@@ -1152,6 +1202,7 @@ DANGO_API int dango_physics_world_set_horizontal_bounds(void* handle,float left,
         fabsf(left)>1024 || fabsf(right)>1024 ||
         !isfinite(right-left) || right-left<2*(p->config.radial_rest_length+p->config.node_radius)) return -410;
     if (p->horizontal_bounds_enabled && left==p->horizontal_left && right==p->horizontal_right) return 0;
+    if (p->collection_count) return -410;
     if (p->ball.state.enabled && !collision_ball_births_contained(p,(4.0/3)*left,(4.0/3)*right,true)) return -410;
     if (p->ball.state.enabled && (p->ball.state.x-p->ball.definition.radius<(4.0/3)*left ||
         p->ball.state.x+p->ball.definition.radius>(4.0/3)*right)) return -410;
@@ -1209,7 +1260,7 @@ DANGO_API int dango_physics_world_set_horizontal_bounds(void* handle,float left,
 DANGO_API int dango_physics_world_clear_horizontal_bounds(void* handle)
 {
     collision_review* p=handle;
-    if (!p || p->error) return -410;
+    if (!p || p->error || p->collection_count) return -410;
     dango_self_soft_body* first=p->bodies[0];
     if (!p->horizontal_bounds_enabled && b2Body_GetPosition(first->ground_body_id).x==0 &&
         !b2Shape_IsValid(p->horizontal_walls[0]) && !b2Shape_IsValid(p->horizontal_walls[1])) return 0;
@@ -1232,7 +1283,7 @@ DANGO_API int dango_physics_world_translate_horizontal(void* handle,float transl
 {
     collision_review* p=handle;
     if (!p || p->error || !isfinite(translation) || fabsf(translation)>1024) return -410;
-    if (p->platform_enabled || p->ball_scene) return -410;
+    if (p->platform_enabled || p->ball_scene || p->collection_count) return -410;
     if (translation==0) return 0;
     if (fabsf(b2Body_GetPosition(p->bodies[0]->ground_body_id).x+translation)>1024 ||
         (p->horizontal_bounds_enabled && (fabsf(p->horizontal_left+translation)>1024 ||
@@ -1282,7 +1333,7 @@ DANGO_API int dango_physics_world_set_static_platform(void* handle,
 {
     collision_review* p=handle;
     dango_static_platform definition={center_x,center_y,width,height,friction};
-    if (!p || p->error || p->ball.state.enabled || p->count>1 || !platform_valid(&definition)) return -410;
+    if (!p || p->error || p->collection_count || p->ball.state.enabled || p->count>1 || !platform_valid(&definition)) return -410;
     if (p->platform_enabled)
         return p->platform.x==definition.x && p->platform.y==definition.y &&
             p->platform.width==definition.width && p->platform.height==definition.height &&
@@ -1304,7 +1355,7 @@ DANGO_API int dango_physics_world_set_static_platform(void* handle,
 DANGO_API int dango_physics_world_clear_static_platform(void* handle)
 {
     collision_review* p=handle;
-    if (!p || p->error) return -410;
+    if (!p || p->error || p->collection_count) return -410;
     bool changed=p->platform_enabled;
     if (p->platform_enabled)
         for (int r=0;r<p->capacity;++r) if (p->active[r])
@@ -1339,7 +1390,7 @@ static void collision_furniture_probe(collision_review* p,int kind,uint64_t targ
     memset(contacts,0,sizeof(float)*DANGO_PHYSICS_MAX_BODIES*6);
     memset(grounded,0,sizeof(bool)*DANGO_PHYSICS_MAX_BODIES);
     if (p->error) { result->rejection=8; return; }
-    if (p->ball.state.enabled || p->count>1) { result->rejection=2; return; }
+    if (p->collection_count || p->ball.state.enabled || p->count>1) { result->rejection=2; return; }
     if (expected_revision!=p->scene_revision) { result->rejection=3; return; }
     if (kind<1 || kind>3 || (kind==1 && (target!=0 || p->platform_enabled)) ||
         (kind!=1 && (!p->platform_enabled || target==0 || target!=p->platform_instance)))
@@ -1446,7 +1497,13 @@ DANGO_API int dango_physics_world_cancel_prepared_static_platform_change(void* h
 DANGO_API int dango_physics_world_get_furniture_frame(void* handle,dango_furniture_frame* frame,int size)
 {
     const collision_review* p=handle;
-    if (!p || !frame || size!=sizeof *frame) return -410;
+    if (!p || !frame || size!=sizeof *frame || p->collection_count) return -410;
+    collision_furniture_read_core(p,frame);
+    return 0;
+}
+
+static void collision_furniture_read_core(const collision_review* p,dango_furniture_frame* frame)
+{
     memset(frame,0,sizeof *frame);
     frame->world_generation=p->world_generation; frame->scene_revision=p->frame_snapshot.snapshot.scene_revision;
     frame->physics_step=p->frame_snapshot.snapshot.step; frame->platform_instance=p->platform_instance;
@@ -1477,7 +1534,6 @@ DANGO_API int dango_physics_world_get_furniture_frame(void* handle,dango_furnitu
         frame->drag_active[output]=body->drag_active ? 1 : 0; frame->grounded[output]=body->grounded ? 1 : 0;
         ++output;
     }
-    return 0;
 }
 
 DANGO_API int dango_physics_get_allocated_bytes(void) { return b2GetByteCount(); }
@@ -1485,7 +1541,7 @@ DANGO_API int dango_physics_get_allocated_bytes(void) { return b2GetByteCount();
 static int collision_ball_add(void* handle,const dango_ball_definition* definition,int* id)
 {
     collision_review* p=handle;
-    if (!p || !definition || !id || p->error || p->platform_enabled || p->ball.state.enabled || p->count>1 ||
+    if (!p || !definition || !id || p->error || p->collection_count || p->platform_enabled || p->ball.state.enabled || p->count>1 ||
         !isfinite(definition->x) || !isfinite(definition->y) || fabs(definition->x)>1024 || fabs(definition->y)>1024 ||
         !isfinite(definition->radius) || definition->radius<.05 || definition->radius>4 ||
         !isfinite(definition->mass) || definition->mass<.001 || definition->mass>10 ||
@@ -1542,11 +1598,13 @@ DANGO_API int dango_physics_world_remove_round_ball(void* handle,int id)
 DANGO_API int dango_physics_world_get_round_ball_frame(void* handle,dango_round_ball_frame* frame,int frame_size)
 {
     collision_review* p=handle;
-    if (!p || !frame || frame_size!=(int)sizeof(dango_round_ball_frame)) return -410;
+    if (!p || !frame || frame_size!=(int)sizeof(dango_round_ball_frame) || p->collection_count) return -410;
     *frame=p->frame_snapshot;
     frame->error_code=p->error;
     return 0;
 }
+
+#include "dango_furniture_collection.h"
 
 #ifdef DANGO_ROUND_BALL_CONTRACT_TESTS
 int dango_round_ball_test_point(const dango_ball_point_input* input,dango_ball_point_result* result)

@@ -81,7 +81,7 @@ public sealed class FurnitureLayoutContractTests
         var valid = Encoding.UTF8.GetString(FurnitureLayoutSerializer.Serialize(Layout(Room), Room));
         foreach (var change in new Action<JsonObject>[]
         {
-            root => root["schemaVersion"] = 2,
+            root => root["schemaVersion"] = 3,
             root => root["unexpected"] = 1,
             root => root.Remove("lastOperationId"),
             root => root["layoutVersion"] = "1",

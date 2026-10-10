@@ -223,6 +223,19 @@ internal static class Program
     {
         try
         {
+            if (args.Length is 4 or 5 && args[0] == "--ordinary-furniture-collection-verify")
+            {
+                var seconds = args.Length == 5 ? double.Parse(args[4], CultureInfo.InvariantCulture) : 600;
+                OrdinaryRoomFurnitureCollectionVerification.Run(args[1], args[2], args[3], seconds); return 0;
+            }
+            if (args.Length == 4 && args[0] == "--ordinary-furniture-collection-verify-short")
+            {
+                OrdinaryRoomFurnitureCollectionVerification.Run(args[1], args[2], args[3], 0); return 0;
+            }
+            if (args.Length == 5 && args[0] == "--ordinary-furniture-collection-restart")
+            {
+                OrdinaryRoomFurnitureCollectionVerification.RunRestart(args[1], args[2], args[3], args[4]); return 0;
+            }
             if (args.Length is 4 or 5 && args[0] == "--ordinary-furniture-room-verify")
             {
                 var seconds = args.Length == 5 ? double.Parse(args[4], CultureInfo.InvariantCulture) : 600;

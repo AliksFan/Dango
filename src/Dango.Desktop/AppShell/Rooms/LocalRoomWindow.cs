@@ -41,11 +41,12 @@ internal sealed class LocalRoomWindow : Window
     };
     private OrdinaryRoomFurnitureEditorPanel? furnitureEditor;
     private OrdinaryRoomFurnitureTool furnitureTool;
-    private bool furnitureSelected;
     private bool furnitureDragActive;
     private bool furnitureGloveActive;
     private FurnitureAnchor furnitureDragOffset;
+    private Guid? furnitureDragInstanceId;
     private FurnitureAnchor? requestedFurnitureAnchor;
+    private Guid? requestedFurnitureInstanceId;
     private long nextFurniturePreview;
     private bool furniturePreviewCanConfirm;
     private RoomCameraSnapshot? previousFurnitureCamera;
@@ -192,11 +193,23 @@ internal sealed class LocalRoomWindow : Window
             }
             else
             {
-                furnitureSelected = Scene.FurnitureAt(point) || IsFurniturePreviewHit(point);
-                if (furnitureSelected && (driver.Furniture?.Preview ?? driver.Furniture?.Layout.Platform) is { } selected)
+                var furniture = driver.Furniture!;
+                FurnitureItemInstance? selected;
+                if (Scene.IsFurniturePreviewHit(point) && furniture.Preview is { } preview)
+                    selected = preview;
+                else
+                {
+                    var selectedId = Scene.HitTestFurniture(point);
+                    furniture.CancelPreview();
+                    furniture.SelectFurniture(selectedId);
+                    var rendered = furniture.RenderItems.FirstOrDefault(item => item.InstanceId == selectedId);
+                    selected = rendered is null ? null : new(rendered.InstanceId, rendered.Kind, rendered.Anchor);
+                }
+                if (selected is not null)
                 {
                     var anchor = Scene.ScreenToFurnitureAnchor(point);
                     furnitureDragOffset = new(selected.Anchor.X - anchor.X, selected.Anchor.Y - anchor.Y);
+                    furnitureDragInstanceId = selected.InstanceId;
                     furnitureDragActive = Scene.CaptureMouse();
                 }
             }
@@ -225,7 +238,7 @@ internal sealed class LocalRoomWindow : Window
             else
             {
                 var anchor = Scene.ScreenToFurnitureAnchor(point);
-                QueueFurniturePreview(new(anchor.X + furnitureDragOffset.X, anchor.Y + furnitureDragOffset.Y));
+                QueueFurniturePreview(new(anchor.X + furnitureDragOffset.X, anchor.Y + furnitureDragOffset.Y), furnitureDragInstanceId);
             }
             return;
         }
@@ -399,7 +412,7 @@ internal sealed class LocalRoomWindow : Window
             furnitureEditor.AddRequested += AddFurniture;
             furnitureEditor.DeleteRequested += () =>
             {
-                if (FurnitureCanInteract && furnitureSelected && driver.Furniture is { CanEdit: true, Busy: false } furniture)
+                if (FurnitureCanInteract && driver.Furniture is { CanEdit: true, Busy: false, SelectedInstanceId: not null } furniture)
                     StartFurnitureCommand(furniture.DeleteAsync);
             };
             furnitureEditor.ConfirmRequested += () =>
@@ -417,7 +430,7 @@ internal sealed class LocalRoomWindow : Window
         }
         furnitureLayer.Visibility = Visibility.Visible;
         furnitureTool = OrdinaryRoomFurnitureTool.Select;
-        furnitureSelected = false;
+        driver.Furniture?.SelectFurniture(null);
         furnitureCommandError = null;
         RefreshFurnitureEditor(); Scene.Focus(); return true;
     }
@@ -427,9 +440,9 @@ internal sealed class LocalRoomWindow : Window
         if (!IsFurnitureEditing) return true;
         if (driver.Furniture?.Busy == true) return false;
         CancelAllSceneGestures(); driver.ClearInput(); CancelFurniturePreview();
-        furnitureSelected = false;
+        driver.Furniture?.SelectFurniture(null);
         furnitureLayer.Visibility = Visibility.Collapsed;
-        Scene.SetFurnitureSelected(false);
+        Scene.SetFurnitureSelected((Guid?)null);
         Scene.Cursor = Cursors.Arrow;
         if (previousFurnitureCamera is { } snapshot) Scene.RestoreFurnitureCamera(snapshot);
         previousFurnitureCamera = null;
@@ -449,39 +462,41 @@ internal sealed class LocalRoomWindow : Window
         RefreshFurnitureEditor(); Scene.Focus();
     }
 
-    private void AddFurniture()
+    private void AddFurniture(FurnitureItemKind kind)
     {
-        if (!FurnitureCanInteract || driver.Furniture is not { } furniture) return;
+        if (!FurnitureCanInteract || driver.Furniture is not { } furniture ||
+            furniture.Layout.Items.Count >= FurnitureLayoutContract.OrdinaryRoom.MaximumItems) return;
         CancelAllSceneGestures(); driver.ClearInput();
         furnitureTool = OrdinaryRoomFurnitureTool.Select;
-        furnitureSelected = true;
-        if (furniture.Layout.Platform is null && !furniture.HasPreview)
-        {
-            // The overlay does not resize the world. Reveal the official default
-            // placement by moving only the edit camera, never the Dango or anchor.
-            var defaultAnchor = FurnitureLayoutContract.OrdinaryRoom.DefaultAnchor;
-            var screen = Scene.AnchorToScreen(defaultAnchor);
-            var availableWidth = Math.Max(80, Scene.ActualWidth - furnitureLayer.ActualWidth - furnitureLayer.Margin.Right);
-            Scene.PanCamera(availableWidth / 2 - screen.X);
-            QueueFurniturePreview(FurnitureLayoutContract.OrdinaryRoom.DefaultAnchor);
-        }
+        furniture.CancelPreview();
+        furniture.SelectFurniture(null);
+        var defaultAnchor = FurnitureLayoutContract.OrdinaryRoom.GetDefaultAnchor(kind);
+        // Reveal the pending placement by moving only the edit camera.
+        var screen = Scene.AnchorToScreen(defaultAnchor);
+        var availableWidth = Math.Max(80, Scene.ActualWidth - furnitureLayer.ActualWidth - furnitureLayer.Margin.Right);
+        Scene.PanCamera(availableWidth / 2 - screen.X);
+        furniture.PreviewNewFurniture(kind, defaultAnchor);
+        furnitureCommandError = null;
         RefreshFurnitureEditor(); Scene.Focus();
     }
 
     private void NudgeFurniture(int x, int y)
     {
-        if (!FurnitureCanInteract || furnitureTool != OrdinaryRoomFurnitureTool.Select || !furnitureSelected ||
+        if (!FurnitureCanInteract || furnitureTool != OrdinaryRoomFurnitureTool.Select ||
             driver.Furniture is not { } furniture) return;
-        var anchor = requestedFurnitureAnchor ?? furniture.Preview?.Anchor ?? furniture.Layout.Platform?.Anchor;
+        var selectedId = furniture.Preview?.InstanceId ?? furniture.SelectedInstanceId;
+        var selectedRender = furniture.RenderItems.FirstOrDefault(item => item.InstanceId == selectedId);
+        var anchor = requestedFurnitureAnchor ?? furniture.Preview?.Anchor ?? selectedRender?.Anchor;
         if (anchor is not { } current) return;
         var step = FurnitureLayoutContract.OrdinaryRoom.NudgeStep;
-        QueueFurniturePreview(new(current.X + x * step, current.Y + y * step));
+        QueueFurniturePreview(new(current.X + x * step, current.Y + y * step), selectedId);
     }
 
-    private void QueueFurniturePreview(FurnitureAnchor anchor)
+    private void QueueFurniturePreview(FurnitureAnchor anchor, Guid? instanceId)
     {
-        if (!FurnitureCanInteract || !double.IsFinite(anchor.X) || !double.IsFinite(anchor.Y)) return;
+        if (!FurnitureCanInteract || instanceId is null || !double.IsFinite(anchor.X) || !double.IsFinite(anchor.Y)) return;
         requestedFurnitureAnchor = anchor;
+        requestedFurnitureInstanceId = instanceId;
         RefreshFurnitureEditor();
     }
 
@@ -490,11 +505,12 @@ internal sealed class LocalRoomWindow : Window
         var furniture = driver.Furniture;
         if (FurnitureCanInteract && Environment.TickCount64 >= nextFurniturePreview)
         {
-            if (requestedFurnitureAnchor is { } anchor)
+            if (requestedFurnitureAnchor is { } anchor && requestedFurnitureInstanceId is { } instanceId)
             {
                 requestedFurnitureAnchor = null;
+                requestedFurnitureInstanceId = null;
                 furnitureCommandError = null;
-                furniture!.PreviewPlatform(anchor.X, anchor.Y);
+                furniture!.PreviewMoveFurniture(instanceId, anchor);
             }
             furniturePreviewCanConfirm = furniture!.HasPreview && furniture.CanConfirm;
             nextFurniturePreview = Environment.TickCount64 + 1000 / FurnitureLayoutContract.OrdinaryRoom.MaxNudgePerSecond;
@@ -502,11 +518,13 @@ internal sealed class LocalRoomWindow : Window
         if (furniture is not { CanEdit: true, HasPreview: true }) furniturePreviewCanConfirm = false;
         RefreshFurnitureAvailability();
         if (furnitureEditor is null || furniture is null) return;
-        Scene.SetFurnitureFrame(furniture.Layout.Platform, IsFurnitureEditing ? furniture.Preview : null,
+        Scene.SetFurnitureFrame(furniture.RenderItems, IsFurnitureEditing ? furniture.Preview : null,
             furniturePreviewCanConfirm && requestedFurnitureAnchor is null);
-        Scene.SetFurnitureSelected(IsFurnitureEditing && furnitureSelected && !furniture.HasPreview);
+        Scene.SetFurnitureSelected(IsFurnitureEditing && !furniture.HasPreview ? furniture.SelectedInstanceId : null);
+        var selected = furniture.Preview ?? (furniture.SelectedInstanceId is { } selectedId ? furniture.Layout.Find(selectedId) : null);
         furnitureEditor.Refresh(furniture.CanEdit && driver.IsReady && Scene.HasHealthyFrame, furniture.CanStep,
-            furniture.Busy, furnitureSelected, furniture.Layout.Platform is not null, furniture.HasPreview || requestedFurnitureAnchor is not null,
+            furniture.Busy, selected?.Kind, furniture.SelectedInstanceId is { } id && furniture.Layout.Find(id) is not null,
+            furniture.Layout.Items.Count, furniture.HasPreview || requestedFurnitureAnchor is not null,
             furniturePreviewCanConfirm && requestedFurnitureAnchor is null, furniture.CanRecover && driver.IsReady && Scene.HasHealthyFrame,
             furnitureCommandError ?? furniture.Status, furnitureTool);
         if (IsFurnitureEditing) Scene.Cursor = furnitureTool == OrdinaryRoomFurnitureTool.Glove ? Cursors.Hand : Cursors.Arrow;
@@ -520,19 +538,10 @@ internal sealed class LocalRoomWindow : Window
             furniture?.Status ?? "家具布局未就绪，当前无法布置。");
     }
 
-    private bool IsFurniturePreviewHit(Point point)
-    {
-        if (driver.Furniture?.Preview is not { } preview) return false;
-        var top = Scene.AnchorToScreen(preview.Anchor);
-        var contract = FurnitureLayoutContract.OrdinaryRoom;
-        var width = contract.PlatformWidth * Scene.CurrentProjection.Scale;
-        var height = contract.PlatformHeight * Scene.CurrentProjection.Scale;
-        return new Rect(top.X - width / 2, top.Y, width, height).Contains(point);
-    }
-
     private void CancelFurniturePreview()
     {
         requestedFurnitureAnchor = null;
+        requestedFurnitureInstanceId = null;
         furniturePreviewCanConfirm = false;
         if (driver.Furniture is { Busy: false } furniture) furniture.CancelPreview();
         RefreshFurnitureEditor();
@@ -541,7 +550,9 @@ internal sealed class LocalRoomWindow : Window
     private void CancelFurnitureGesture()
     {
         furnitureDragActive = furnitureGloveActive = false;
+        furnitureDragInstanceId = null;
         requestedFurnitureAnchor = null;
+        requestedFurnitureInstanceId = null;
         driver.CancelFurnitureGlove();
         if (Mouse.Captured == Scene) Scene.ReleaseMouseCapture();
     }
@@ -558,7 +569,6 @@ internal sealed class LocalRoomWindow : Window
         try
         {
             var pending = command(); RefreshFurnitureEditor(); await pending;
-            furnitureSelected = furniture.Layout.Platform is not null || furniture.HasPreview;
         }
         catch (Exception error) when (error is InvalidOperationException or System.IO.IOException or ArgumentException)
         { furnitureCommandError = error.Message; }
