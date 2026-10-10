@@ -1,5 +1,7 @@
 # Dango 分阶段开发计划 v0.1
 
+> 2026-10-10 家具布局实施准备：用户已大致通过[三段侧栏与后续参数设计](planning/2026-10-10-official-furniture-layout-design.md)，要求继续精简与部分按钮图标化，并指示先准备实现。已形成[首个空布局／单平台实施计划](planning/2026-10-10-official-furniture-layout-implementation-plan.md)，拆分数据／草稿、真实本地文件、精简 WPF、唯一物理场景与隔离验收。当前未开始产品编码、构建或真实窗口，参数调节及球布局后置，不扩大正式房间、日常安装或其他团子模型任务，见[准备记录](verification/2026-10-10-furniture-layout-design.md)。
+
 > 2026-10-09 后续范围确认：[配饰账号保存与展示审核](planning/2026-10-09-accessory-cloud-storage-design.md)采用本地自由佩戴、账号私有备份、过审后向其他玩家展示，并管理图片去重、权限、额度与引用回收；具体执行仍待细化，资产服务未实施。[家具方向](planning/2026-10-09-official-furniture-design.md)收口为项目提供预设家具，自定义家具模块暂缓；用户已通过第一批单件静态平台与独立单人验收窗口设计并授权 [F0–F4 本地实施](planning/2026-10-09-static-platform-implementation-plan.md)，独立小样已完成编码，自动门禁与本机真实输入检查通过，规定的运行观察通过；原造型比例回归修复后，用户对 r6 窗口回复“通过”，本批独立单人小样已验收，见[验证记录](verification/2026-10-09-static-platform-prototype.md)。上述不扩大现有后端批次，不关闭既有性能、Windows、正式房间或多人门禁。
 
 > 2026-10-09 DIY 配饰第一版：用户明确设计收口、人工验收通过并授权合并到本地 main。范围包含透明图创建／编辑、多件前后图层与排序、单支点、柔软度／翻折／形变上限、连接强度／径向行程、旋转／重力及本地保存重载；已验候选及历史自动差异见[第五轮记录](verification/2026-10-09-accessory-material-v5.md#2026-10-09-第一版人工通过与本地整合授权)。已本地合入 main，保留现有桌宠房间成果，见[第一版整合记录](verification/2026-10-09-accessory-v1-main-integration.md)；分享及配饰间挂接继续后置。未授权推送、安装、部署或替换正式 DLL，历史性能红灯和完整 Windows／多人门禁不改变。
