@@ -66,6 +66,14 @@ typedef struct dango_material_contact_block_report
     double all_row_rates[DANGO_MATERIAL_CONTACT_ROWS];
 #ifdef DANGO_MATERIAL_CONTACT_NULL_REACTION_CANDIDATE
     dango_material_contact_null_report null_reaction;
+#ifdef DANGO_MATERIAL_CONTACT_OPERATOR_CERTIFICATE_CANDIDATE
+    // Actual certificate traversal cost across every evaluated mode, including
+    // a mode whose numerical or subsequent physical gate rejected publication.
+    uint64_t operator_certificate_calls, operator_coordinate_visits, operator_coefficient_visits;
+    uint64_t operator_residual_visits, operator_row_visits;
+    double operator_certificate_elapsed_seconds;
+    bool operator_certificate_time_available;
+#endif
 #endif
 } dango_material_contact_block_report;
 
@@ -414,6 +422,24 @@ static inline bool dango_mcb_null_failure(dango_material_contact_block_report* r
     return dango_mcb_fail(report, DANGO_MATERIAL_CONTACT_BLOCK_NULL_REACTION);
 }
 
+#ifdef DANGO_MATERIAL_CONTACT_OPERATOR_CERTIFICATE_CANDIDATE
+static inline void dango_mcb_operator_record(dango_material_contact_block_report* report)
+{
+    const dango_material_contact_null_report* mode = &report->null_reaction;
+    if (mode->operator_certificate_calls == 0) return;
+    bool first = report->operator_certificate_calls == 0;
+    report->operator_certificate_calls += mode->operator_certificate_calls;
+    report->operator_coordinate_visits += mode->operator_coordinate_visits;
+    report->operator_coefficient_visits += mode->operator_coefficient_visits;
+    report->operator_residual_visits += mode->operator_residual_visits;
+    report->operator_row_visits += mode->operator_row_visits;
+    report->operator_certificate_elapsed_seconds += mode->operator_certificate_elapsed_seconds;
+    report->operator_certificate_time_available =
+        (first || report->operator_certificate_time_available) && mode->operator_certificate_time_available &&
+        isfinite(report->operator_certificate_elapsed_seconds);
+}
+#endif
+
 // One factorization per already-budgeted mode. The retained full-rank operations
 // are used directly; a raw particular never becomes the block's solved result.
 static inline bool dango_mcb_null_solve(const dango_material_contact_solver* reference,
@@ -447,12 +473,23 @@ static inline bool dango_mcb_null_solve(const dango_material_contact_solver* ref
             fixed[i] = true; fixed_values[i] = -reference->support[id - 144].base_tangent;
         }
     }
+#ifdef DANGO_MATERIAL_CONTACT_OPERATOR_CERTIFICATE_CANDIDATE
+    bool solved = dango_mcn_effective_pair(n, report->active_row_ids, report->scaling, fixed, fixed_values,
+        report->scaled_matrix, report->scaled_rhs, null_report) &&
+        dango_mcn_reaction_null(reference, n, report->active_row_ids, null_report) &&
+        dango_mcb_null_interval(reference, report) && dango_mcn_interval_select(null_report) &&
+        dango_mcn_selected(n, report->scaling, report->scaled_matrix, report->scaled_rhs, null_report,
+            report->raw_multipliers, report->linear_solution);
+    dango_mcb_operator_record(report);
+    if (!solved) return dango_mcb_null_failure(report);
+#else
     if (!dango_mcn_effective_pair(n, report->active_row_ids, report->scaling, fixed, fixed_values,
         report->scaled_matrix, report->scaled_rhs, null_report) ||
         !dango_mcn_reaction_null(reference, n, report->active_row_ids, null_report) ||
         !dango_mcb_null_interval(reference, report) || !dango_mcn_interval_select(null_report) ||
         !dango_mcn_selected(n, report->scaling, report->scaled_matrix, report->scaled_rhs, null_report,
             report->raw_multipliers, report->linear_solution)) return dango_mcb_null_failure(report);
+#endif
     return true;
 }
 #endif

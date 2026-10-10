@@ -4,6 +4,9 @@
 // Private, bounded one-dimensional redundant-reaction candidate. It never
 // removes a physical row, regularizes a matrix, searches modes, or steps a world.
 #include "dango_material_contact_solver.h"
+#ifdef DANGO_MATERIAL_CONTACT_OPERATOR_CERTIFICATE_CANDIDATE
+#include <time.h>
+#endif
 
 #define DANGO_MATERIAL_CONTACT_NULL_CAPACITY 16
 #define DANGO_MATERIAL_CONTACT_NULL_CONSTRAINTS 64
@@ -28,6 +31,37 @@ typedef struct dango_material_contact_null_constraint
     double endpoint, lower_after, upper_after;
     bool lower_bounded_after, upper_bounded_after;
 } dango_material_contact_null_constraint;
+
+#ifdef DANGO_MATERIAL_CONTACT_OPERATOR_CERTIFICATE_CANDIDATE
+typedef struct dango_material_contact_operator_certificate
+{
+    bool available, finite, passed;
+    int mode_index, dimension;
+    uint64_t coordinate_visits, operator_visits, residual_visits, rows_checked;
+    double elapsed_seconds;
+    bool time_available;
+    // Matrix stages use n entries; the reaction stage uses all 17 bodies.
+    double operator_scale[17], coordinate_scale[17], rhs_scale[17], scale[17];
+    bool evaluated[17], operator_finite[17], coordinate_finite[17], rhs_finite[17], scale_finite[17];
+    bool zero_operator[17], zero_coordinate[17], zero_scale[17];
+} dango_material_contact_operator_certificate;
+
+static inline void dango_mcn_operator_certificate_init(dango_material_contact_operator_certificate* certificate)
+{ memset(certificate, 0, sizeof(*certificate)); certificate->mode_index = -1; }
+
+// Time is optional telemetry, never a certificate or publication gate.
+static inline void dango_mcn_operator_certificate_finish(dango_material_contact_operator_certificate* certificate,
+    const struct timespec* started, bool timed)
+{
+    struct timespec finished;
+    if (timed && timespec_get(&finished, TIME_UTC) == TIME_UTC)
+    {
+        double elapsed = (double)(finished.tv_sec - started->tv_sec) + 1e-9 * (finished.tv_nsec - started->tv_nsec);
+        if (isfinite(elapsed) && elapsed >= 0)
+        { certificate->elapsed_seconds = elapsed; certificate->time_available = true; }
+    }
+}
+#endif
 
 typedef struct dango_material_contact_null_report
 {
@@ -66,6 +100,16 @@ typedef struct dango_material_contact_null_report
     double selected_lambda[16], selected_z[16];
     double selected_residual[16], selected_allowance[16];
     int first_selected_row_id;
+#ifdef DANGO_MATERIAL_CONTACT_OPERATOR_CERTIFICATE_CANDIDATE
+    dango_material_contact_operator_certificate particular_certificate, direction_certificate;
+    dango_material_contact_operator_certificate reaction_certificate, selected_certificate;
+    // Actual work across all certificate invocations in this evaluated mode,
+    // including a rejected stage or a legitimate stage re-evaluation.
+    uint64_t operator_certificate_calls, operator_coordinate_visits, operator_coefficient_visits;
+    uint64_t operator_residual_visits, operator_row_visits;
+    double operator_certificate_elapsed_seconds;
+    bool operator_certificate_time_available;
+#endif
 } dango_material_contact_null_report;
 
 static inline void dango_mcn_report_init(dango_material_contact_null_report* report)
@@ -77,7 +121,31 @@ static inline void dango_mcn_report_init(dango_material_contact_null_report* rep
     report->selection_mode_index = report->selected_mode_index = -1;
     report->first_particular_row_id = report->first_direction_row_id = -1;
     report->first_reaction_body = report->first_selected_row_id = -1;
+#ifdef DANGO_MATERIAL_CONTACT_OPERATOR_CERTIFICATE_CANDIDATE
+    dango_mcn_operator_certificate_init(&report->particular_certificate);
+    dango_mcn_operator_certificate_init(&report->direction_certificate);
+    dango_mcn_operator_certificate_init(&report->reaction_certificate);
+    dango_mcn_operator_certificate_init(&report->selected_certificate);
+#endif
 }
+
+#ifdef DANGO_MATERIAL_CONTACT_OPERATOR_CERTIFICATE_CANDIDATE
+static inline void dango_mcn_operator_record(dango_material_contact_null_report* report,
+    const dango_material_contact_operator_certificate* certificate)
+{
+    if (!certificate->available) return;
+    bool first = report->operator_certificate_calls == 0;
+    ++report->operator_certificate_calls;
+    report->operator_coordinate_visits += certificate->coordinate_visits;
+    report->operator_coefficient_visits += certificate->operator_visits;
+    report->operator_residual_visits += certificate->residual_visits;
+    report->operator_row_visits += certificate->rows_checked;
+    report->operator_certificate_elapsed_seconds += certificate->elapsed_seconds;
+    report->operator_certificate_time_available =
+        (first || report->operator_certificate_time_available) && certificate->time_available &&
+        isfinite(report->operator_certificate_elapsed_seconds);
+}
+#endif
 
 static inline bool dango_mcn_fail(dango_material_contact_null_report* report,
     dango_material_contact_null_status status)
@@ -98,6 +166,9 @@ static inline void dango_mcn_clear_selected(dango_material_contact_null_report* 
     memset(report->selected_z, 0, sizeof(report->selected_z));
     memset(report->selected_residual, 0, sizeof(report->selected_residual));
     memset(report->selected_allowance, 0, sizeof(report->selected_allowance));
+#ifdef DANGO_MATERIAL_CONTACT_OPERATOR_CERTIFICATE_CANDIDATE
+    dango_mcn_operator_certificate_init(&report->selected_certificate);
+#endif
 }
 
 static inline void dango_mcn_clear_selection(dango_material_contact_null_report* report)
@@ -126,6 +197,9 @@ static inline void dango_mcn_clear_reaction(dango_material_contact_null_report* 
     memset(report->reaction_scale, 0, sizeof(report->reaction_scale));
     memset(report->reaction_residual, 0, sizeof(report->reaction_residual));
     memset(report->reaction_allowance, 0, sizeof(report->reaction_allowance));
+#ifdef DANGO_MATERIAL_CONTACT_OPERATOR_CERTIFICATE_CANDIDATE
+    dango_mcn_operator_certificate_init(&report->reaction_certificate);
+#endif
 }
 
 static inline void dango_mcn_clear_effective(dango_material_contact_null_report* report)
@@ -145,6 +219,10 @@ static inline void dango_mcn_clear_effective(dango_material_contact_null_report*
     memset(report->particular_allowance, 0, sizeof(report->particular_allowance));
     memset(report->direction_residual, 0, sizeof(report->direction_residual));
     memset(report->direction_allowance, 0, sizeof(report->direction_allowance));
+#ifdef DANGO_MATERIAL_CONTACT_OPERATOR_CERTIFICATE_CANDIDATE
+    dango_mcn_operator_certificate_init(&report->particular_certificate);
+    dango_mcn_operator_certificate_init(&report->direction_certificate);
+#endif
 }
 
 // One factorization only. Full rank uses exactly the scalar operations, complete
@@ -276,6 +354,75 @@ static inline bool dango_mcn_row_residuals(int n, const double matrix[16][16],
     return valid;
 }
 
+#ifdef DANGO_MATERIAL_CONTACT_OPERATOR_CERTIFICATE_CANDIDATE
+// Independent fixed operator certificate. No coordinate is clipped, and the
+// unmultiplied finite scale must exist before the epsilon coefficient is used.
+static inline bool dango_mcn_operator_row_residuals(int n, const double matrix[16][16],
+    const double* rhs, const double* z, bool homogeneous, double* residuals, double* allowances,
+    dango_material_contact_operator_certificate* certificate, int mode_index)
+{
+    if (!certificate) return false;
+    dango_mcn_operator_certificate_init(certificate);
+    if (!matrix || !rhs || !z || !residuals || !allowances || n <= 0 || n > 16) return false;
+    certificate->available = certificate->finite = true;
+    certificate->mode_index = mode_index; certificate->dimension = n;
+    struct timespec started = {0}; bool timed = timespec_get(&started, TIME_UTC) == TIME_UTC;
+    double coordinate = 0;
+    bool coordinate_finite = true, valid = true;
+    for (int j = 0; j < n; ++j)
+    {
+        ++certificate->coordinate_visits;
+        if (!isfinite(z[j])) coordinate_finite = false;
+        coordinate = fmax(coordinate, fabs(z[j]));
+    }
+    if (!coordinate_finite || !isfinite(coordinate)) certificate->finite = false;
+    for (int i = 0; i < n; ++i)
+    {
+        certificate->evaluated[i] = true;
+        ++certificate->rows_checked;
+        double sum = 0, operator_scale = 0;
+        double rhs_scale = homogeneous ? 0 : fabs(rhs[i]);
+        bool operator_finite = true, residual_finite = true;
+        bool rhs_finite = isfinite(rhs[i]);
+        for (int j = 0; j < n; ++j)
+        {
+            ++certificate->operator_visits;
+            if (!isfinite(matrix[i][j])) operator_finite = false;
+            operator_scale += fabs(matrix[i][j]);
+            if (!isfinite(operator_scale)) operator_finite = false;
+            ++certificate->residual_visits;
+            double term = matrix[i][j] * z[j];
+            if (!isfinite(term)) residual_finite = false;
+            sum += term;
+            if (!isfinite(sum)) residual_finite = false;
+        }
+        double product = operator_scale * coordinate;
+        double scale = product + rhs_scale;
+        bool scale_finite = operator_finite && coordinate_finite && rhs_finite &&
+            isfinite(product) && isfinite(scale);
+        certificate->operator_scale[i] = operator_scale;
+        certificate->coordinate_scale[i] = coordinate;
+        certificate->rhs_scale[i] = rhs_scale;
+        certificate->scale[i] = scale;
+        certificate->operator_finite[i] = operator_finite;
+        certificate->coordinate_finite[i] = coordinate_finite && isfinite(coordinate);
+        certificate->rhs_finite[i] = rhs_finite;
+        certificate->scale_finite[i] = scale_finite;
+        certificate->zero_operator[i] = operator_finite && operator_scale == 0;
+        certificate->zero_coordinate[i] = coordinate_finite && coordinate == 0;
+        certificate->zero_scale[i] = scale_finite && scale == 0;
+        residuals[i] = sum - (homogeneous ? 0 : rhs[i]);
+        allowances[i] = 128.0 * n * DBL_EPSILON * scale;
+        bool finite = scale_finite && residual_finite && isfinite(residuals[i]) && isfinite(allowances[i]);
+        if (!finite) certificate->finite = false;
+        if (!finite || fabs(residuals[i]) > allowances[i]) valid = false;
+    }
+    certificate->passed = valid;
+    dango_mcn_operator_certificate_finish(certificate, &started, timed);
+    return valid;
+}
+#endif
+
 static inline bool dango_mcn_effective_pair(int n, const int* row_ids, const double* scaling,
     const bool* fixed, const double* fixed_values, const double matrix[16][16], const double* rhs,
     dango_material_contact_null_report* report)
@@ -316,10 +463,19 @@ static inline bool dango_mcn_effective_pair(int n, const int* row_ids, const dou
             return dango_mcn_fail(report, DANGO_MATERIAL_CONTACT_NULL_NONFINITE);
     }
     report->effective_pair_available = true; report->effective_pair_mode_index = report->mode_index;
+#ifdef DANGO_MATERIAL_CONTACT_OPERATOR_CERTIFICATE_CANDIDATE
+    bool particular_ok = dango_mcn_operator_row_residuals(n, matrix, rhs, report->effective_z_particular, false,
+        report->particular_residual, report->particular_allowance, &report->particular_certificate, report->mode_index);
+    dango_mcn_operator_record(report, &report->particular_certificate);
+    bool direction_ok = dango_mcn_operator_row_residuals(n, matrix, rhs, report->effective_z_direction, true,
+        report->direction_residual, report->direction_allowance, &report->direction_certificate, report->mode_index);
+    dango_mcn_operator_record(report, &report->direction_certificate);
+#else
     bool particular_ok = dango_mcn_row_residuals(n, matrix, rhs, report->effective_z_particular, false,
         report->particular_residual, report->particular_allowance);
     bool direction_ok = dango_mcn_row_residuals(n, matrix, rhs, report->effective_z_direction, true,
         report->direction_residual, report->direction_allowance);
+#endif
     report->pair_checks_available = true; report->pair_checks_mode_index = report->mode_index;
     for (int i = 0; i < n; ++i)
     {
@@ -328,10 +484,109 @@ static inline bool dango_mcn_effective_pair(int n, const int* row_ids, const dou
         if (report->first_direction_row_id < 0 && fabs(report->direction_residual[i]) > report->direction_allowance[i])
             report->first_direction_row_id = row_ids[i];
     }
+#ifdef DANGO_MATERIAL_CONTACT_OPERATOR_CERTIFICATE_CANDIDATE
+    if (!report->particular_certificate.finite || !report->direction_certificate.finite)
+        return dango_mcn_fail(report, DANGO_MATERIAL_CONTACT_NULL_NONFINITE);
+#endif
     if (!particular_ok || !direction_ok) return dango_mcn_fail(report, DANGO_MATERIAL_CONTACT_NULL_INCONSISTENT);
     report->pair_checks_passed = true;
     return true;
 }
+
+#ifdef DANGO_MATERIAL_CONTACT_OPERATOR_CERTIFICATE_CANDIDATE
+// Called only after the shared stage/ID/dimension guards. The actual reaction
+// delta retains the original accumulation; only its certificate scale changes.
+static inline bool dango_mcn_operator_reaction_checks(const dango_material_contact_solver* reference,
+    int n, const int* row_ids, dango_material_contact_null_report* report)
+{
+    dango_material_contact_operator_certificate* certificate = &report->reaction_certificate;
+    dango_mcn_operator_certificate_init(certificate);
+    certificate->available = certificate->finite = true;
+    certificate->mode_index = report->mode_index; certificate->dimension = 17;
+    struct timespec started = {0}; bool timed = timespec_get(&started, TIME_UTC) == TIME_UTC;
+    double coordinate = 0, gradient_sum[17] = {0};
+    bool coordinate_finite = true, operator_finite[17], residual_finite[17];
+    for (int body = 0; body < 17; ++body)
+    { operator_finite[body] = residual_finite[body] = true; }
+    for (int i = 0; i < n; ++i)
+    {
+        ++certificate->coordinate_visits;
+        if (!isfinite(report->effective_lambda_direction[i])) coordinate_finite = false;
+        coordinate = fmax(coordinate, fabs(report->effective_lambda_direction[i]));
+    }
+    for (int i = 0; i < n; ++i)
+    {
+        int id = row_ids[i];
+        if (id != report->original_row_ids[i] || id < 0 || id >= DANGO_MATERIAL_CONTACT_ROWS ||
+            reference->rows[id].count < 0 || reference->rows[id].count > 4)
+        {
+            dango_mcn_operator_certificate_finish(certificate, &started, timed);
+            dango_mcn_operator_record(report, certificate);
+            return dango_mcn_fail(report, DANGO_MATERIAL_CONTACT_NULL_INVALID_INPUT);
+        }
+        const dango_material_contact_row* row = &reference->rows[id];
+        for (int j = 0; j < row->count; ++j)
+        {
+            int body = row->ids[j];
+            if (body < 0 || body >= 17)
+            {
+                dango_mcn_operator_certificate_finish(certificate, &started, timed);
+                dango_mcn_operator_record(report, certificate);
+                return dango_mcn_fail(report, DANGO_MATERIAL_CONTACT_NULL_INVALID_INPUT);
+            }
+            ++certificate->operator_visits;
+            // hypot avoids square overflow/underflow for finite gradients.
+            double gradient_length = dango_mc_length(row->gradients[j]);
+            if (!isfinite(row->gradients[j].x) || !isfinite(row->gradients[j].y) || !isfinite(gradient_length))
+                operator_finite[body] = false;
+            gradient_sum[body] += gradient_length;
+            if (!isfinite(gradient_sum[body])) operator_finite[body] = false;
+            ++certificate->residual_visits;
+            double weight = reference->geometry.inverse_mass[body] * report->effective_lambda_direction[i];
+            dango_material_contact_vec2 contribution = dango_mc_mul(weight, row->gradients[j]);
+            if (!isfinite(weight) || !isfinite(contribution.x) || !isfinite(contribution.y)) residual_finite[body] = false;
+            report->reaction_delta[body] = dango_mc_add(report->reaction_delta[body], contribution);
+            if (!isfinite(report->reaction_delta[body].x) || !isfinite(report->reaction_delta[body].y)) residual_finite[body] = false;
+        }
+    }
+    bool valid = true;
+    for (int body = 0; body < 17; ++body)
+    {
+        certificate->evaluated[body] = true;
+        ++certificate->rows_checked;
+        double inverse_mass = reference->geometry.inverse_mass[body];
+        double operator_scale = inverse_mass * gradient_sum[body];
+        bool body_operator_finite = operator_finite[body] && isfinite(inverse_mass) && inverse_mass >= 0 && isfinite(operator_scale);
+        double scale = operator_scale * coordinate;
+        bool scale_finite = body_operator_finite && coordinate_finite && isfinite(coordinate) && isfinite(scale);
+        certificate->operator_scale[body] = operator_scale;
+        certificate->coordinate_scale[body] = coordinate;
+        certificate->rhs_scale[body] = 0;
+        certificate->scale[body] = report->reaction_scale[body] = scale;
+        certificate->operator_finite[body] = body_operator_finite;
+        certificate->coordinate_finite[body] = coordinate_finite && isfinite(coordinate);
+        certificate->rhs_finite[body] = true;
+        certificate->scale_finite[body] = scale_finite;
+        certificate->zero_operator[body] = body_operator_finite && operator_scale == 0;
+        certificate->zero_coordinate[body] = coordinate_finite && coordinate == 0;
+        certificate->zero_scale[body] = scale_finite && scale == 0;
+        report->reaction_residual[body] = dango_mc_length(report->reaction_delta[body]);
+        report->reaction_allowance[body] = 128.0 * n * DBL_EPSILON * scale;
+        bool finite = scale_finite && residual_finite[body] && isfinite(report->reaction_residual[body]) &&
+            isfinite(report->reaction_allowance[body]);
+        if (!finite) certificate->finite = false;
+        if (!finite || report->reaction_residual[body] > report->reaction_allowance[body])
+        { valid = false; if (report->first_reaction_body < 0) report->first_reaction_body = body; }
+    }
+    certificate->passed = valid;
+    dango_mcn_operator_certificate_finish(certificate, &started, timed);
+    dango_mcn_operator_record(report, certificate);
+    report->reaction_checks_available = true; report->reaction_mode_index = report->mode_index;
+    if (!certificate->finite) return dango_mcn_fail(report, DANGO_MATERIAL_CONTACT_NULL_NONFINITE);
+    if (!valid) return dango_mcn_fail(report, DANGO_MATERIAL_CONTACT_NULL_REACTION);
+    report->reaction_checks_passed = true; return true;
+}
+#endif
 
 static inline bool dango_mcn_reaction_null(const dango_material_contact_solver* reference,
     int n, const int* row_ids, dango_material_contact_null_report* report)
@@ -343,6 +598,9 @@ static inline bool dango_mcn_reaction_null(const dango_material_contact_solver* 
         !report->pair_checks_passed || !report->effective_pair_available ||
         report->effective_pair_mode_index != report->mode_index || report->pair_checks_mode_index != report->mode_index)
         return dango_mcn_fail(report, DANGO_MATERIAL_CONTACT_NULL_INVALID_INPUT);
+#ifdef DANGO_MATERIAL_CONTACT_OPERATOR_CERTIFICATE_CANDIDATE
+    return dango_mcn_operator_reaction_checks(reference, n, row_ids, report);
+#else
     bool valid = true;
     for (int body = 0; body < 17; ++body)
     { report->reaction_delta[body] = dango_mc_v(0, 0); report->reaction_scale[body] = 0; }
@@ -375,6 +633,7 @@ static inline bool dango_mcn_reaction_null(const dango_material_contact_solver* 
     if (!valid) return dango_mcn_fail(report, DANGO_MATERIAL_CONTACT_NULL_REACTION);
     report->reaction_checks_passed = true;
     return true;
+#endif
 }
 
 static inline bool dango_mcn_interval_init(dango_material_contact_null_report* report)
@@ -481,7 +740,15 @@ static inline bool dango_mcn_selected(int n, const double* scaling, const double
             return dango_mcn_fail(report, DANGO_MATERIAL_CONTACT_NULL_NONFINITE);
     }
     report->selected_pair_available = true; report->selected_mode_index = report->mode_index;
+#ifdef DANGO_MATERIAL_CONTACT_OPERATOR_CERTIFICATE_CANDIDATE
+    bool selected_ok = dango_mcn_operator_row_residuals(n, matrix, rhs, report->selected_z, false,
+        report->selected_residual, report->selected_allowance, &report->selected_certificate, report->mode_index);
+    dango_mcn_operator_record(report, &report->selected_certificate);
+    if (!report->selected_certificate.finite) return dango_mcn_fail(report, DANGO_MATERIAL_CONTACT_NULL_NONFINITE);
+    if (!selected_ok)
+#else
     if (!dango_mcn_row_residuals(n, matrix, rhs, report->selected_z, false, report->selected_residual, report->selected_allowance))
+#endif
     {
         for (int i = 0; i < n; ++i)
             if (fabs(report->selected_residual[i]) > report->selected_allowance[i])

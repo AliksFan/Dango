@@ -1,6 +1,6 @@
 # 圆形材料：零空间数值证书尺度候选
 
-2026-10-10。**待用户批准，未实施。** [一维冗余反力方案](2026-10-10-round-material-contact-null-reaction-candidate.md)已获批准；其固定第 147 帧数学夹具被所规定的证书拒绝，尚未连接新私有 DLL。结果及原因见[数学阶段记录](../verification/2026-10-10-round-material-null-reaction-result.md)。
+2026-10-10。**用户在检查当前小样及剩余问题后回复“继续”，批准本方案及隔离实施顺序。第 1／2 项数学与独立审查通过，新私有 DLL 默认 36,000 帧长期漂移失败，按第 5 项停止扩展、进入设计复核。** 详见[本轮结果](../verification/2026-10-10-round-material-operator-certificate-result.md)。[一维冗余反力方案](2026-10-10-round-material-contact-null-reaction-candidate.md)已获批准；其固定第 147 帧数学夹具被原证书拒绝，旧证书及首失败证据保留。结果及原因见[原数学阶段记录](../verification/2026-10-10-round-material-null-reaction-result.md)。本次批准不表示长期或人工验收通过。
 
 ## 已确认的问题
 
