@@ -274,7 +274,7 @@ internal sealed partial class DesktopAccountController : IDisposable
         StopConfigurationSync(); configurationReady = false; changed(true, false);
         // Drain the previous account before capturing the new login's local baseline.
         // Successful offline saves during that wait must be compared, never overwritten by a stale baseline.
-        await configurationPump;
+        await configurationPump.WaitAsync(ct);
         ct.ThrowIfCancellationRequested();
         var loadedReview = await choice.BeginAsync(ct);
         ct.ThrowIfCancellationRequested();

@@ -98,10 +98,12 @@ Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](d
 
 - [B5B Windows 房间目录与管理计划](docs/planning/2026-10-09-backend-b5b-room-execution.md)、[候选验证](docs/verification/2026-10-09-email-backend-b5b.md)与[精确数据计划](docs/planning/2026-10-09-backend-b5b-local-data-plan.md)：正式账号会话绑定的目录与 CRUD 已接入，静态／离屏门禁通过；按新精确授权执行的真实 HTTPS／数据库首轮 4／4 通过，完整 B5 与人工未验收。
 
+- [登录持续捏脸同步、昵称与门廊设计](docs/planning/2026-10-10-account-sync-nickname-and-porch-design.md)、[联合验证](docs/verification/2026-10-10-account-sync-nickname-and-porch.md)和[门廊实窗证据](docs/verification/2026-10-10-porch-account-scenes.md)：按用户确认实现登录差异选择、会话自动同步、首次昵称及场景直接展开房间功能。核心和受影响检查通过，新真实数据库与主观验收仍待完成，配饰同步随后接入。
+
 ## 当前调研
 
 - [B5C 正式连接／租约增量](docs/planning/2026-10-09-backend-b5c-session-execution.md)、[候选验证](docs/verification/2026-10-09-email-backend-b5c.md)与[精确数据计划](docs/planning/2026-10-09-backend-b5c-local-data-plan.md)：用户明确批准后，真实HTTPS／LongPolling／PostgreSQL最终6／6通过，Client静态364／364；三轮测试资源均退出、数据保留。Windows人工、正式移动／动作与多人呈现仍未接入，完整 B5 未验收。
-- [B5C Windows 人工验收计划](docs/planning/2026-10-10-backend-b5c-windows-manual-plan.md)：隔离候选已构建，未启动；新增人工数据、临时TLS信任与专用WinCred槽操作待用户批准，实际验收不包含多人移动／动作。
+- [B5C Windows 验收记录](docs/verification/2026-10-10-email-backend-b5c-windows-manual.md)：R2 曾获批启动并完成注册、登录、建房和入房，目前已收尾、数据保留；该旧候选不包含后续昵称与持续同步修订，完整阶段尚未验收。
 
 - [Windows 客户端技术栈专项调研](docs/research/2026-08-31-windows-client-stack-comparison.md)：比较 .NET/WPF、Godot、Avalonia、Tauri、Electron、Unity 和 WinUI 3，推荐结论已经批准并记录为 [ADR 0001](docs/adr/0001-windows-client-foundation.md)。
 - [服务端技术栈专项调研](docs/research/2026-08-31-server-stack-comparison.md)：比较 ASP.NET Core、Go、Node.js 和 Rust；推荐结论与扩展边界已经批准并记录为 [ADR 0002](docs/adr/0002-server-foundation-and-scaling.md)。

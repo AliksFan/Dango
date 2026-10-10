@@ -18,7 +18,7 @@ internal sealed partial class DesktopAccountController
     private async Task StartConfigurationSyncAsync(FormalAccountClient active, PetConfigurationSnapshot cloud, CancellationToken ct)
     {
         StopConfigurationSync();
-        await configurationPump;
+        await configurationPump.WaitAsync(ct);
         ct.ThrowIfCancellationRequested();
         if (disposed || identity is null || active.CurrentIdentity != identity)
             throw new AccountClientException(AccountFailure.Authentication, "authentication_required");

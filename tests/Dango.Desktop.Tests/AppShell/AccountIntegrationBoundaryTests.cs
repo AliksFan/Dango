@@ -304,7 +304,8 @@ public sealed class AccountIntegrationBoundaryTests
                 PumpUntil(() => differs ? home.IsAccountPanelOpen && home.AccountPanel.FindName("AccountCloudChoice") is not null
                     : restored.ConfigurationReady);
                 Assert.IsTrue(restored.IsLoggedIn);
-                Assert.AreEqual("团子号主", Field<Button>(home, "AccountButton").Content);
+                Assert.AreEqual("团子号主", Field<TextBlock>(home, "AccountNicknameText").Text);
+                Assert.AreEqual("团子号主", AutomationProperties.GetName(Field<Button>(home, "AccountButton")));
                 Assert.AreEqual(differs, home.IsAccountPanelOpen);
                 Assert.AreEqual(0, receiver.ConfigurationWrites);
                 Assert.AreEqual(0, local.Applied);

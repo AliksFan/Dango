@@ -9,6 +9,8 @@
 
 > 2026-10-08 账号入口：首期采用邮箱＋密码、邀请制、先验证后注册，微信后置；离线单人保留。[首期设计](planning/2026-10-08-email-backend-design-proposal.md)、[ADR](adr/0006-email-accounts-and-persistent-room-state.md)及[实施计划](planning/2026-10-08-email-backend-implementation-plan.md)遵循五项质量要求。B0 基础与 B1 正式 HTTPS、账号事务、持久会话和邮件队列实现及自动门禁通过，见[B0](verification/2026-10-08-email-backend-foundation.md)、[B1](verification/2026-10-08-email-backend-b1.md)与[本地操作](server-email-operations-v0.1.md)。候选待审阅，真实邮件送达、客户端、备份还原、多人及部署未验收；恢复另行授权。
 
+> 2026-10-10 捏脸与账号资料：按[已确认修订](planning/2026-10-10-account-sync-nickname-and-porch-design.md)实现会话内成功保存的有界同步，保持原配置版本 CAS、身份及权限保护；未知请求固定原版本，冲突自动采用云端最新，注销后下次登录重新比较。昵称独立 AccountProfile，允许重名，与 UserId／PetId／SecurityStamp 分离，GET/PATCH 逐次验证会话及资料版本；前向迁移仍待精确真实数据授权，不把无数据库检查称为真实数据库通过。
+
 ## 1. 文档定位
 
 本文档回答“首版服务端需要怎样构建、部署和扩容”。产品定位见[产品企划概要](product-brief-v0.1.md)，业务规则见[产品设计基线](product-design-v0.1.md)。
