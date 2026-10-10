@@ -84,6 +84,9 @@ public sealed class RoomPanelView : UserControl
     }
 
     public event Action<RoomPanelRequest>? Requested;
+    internal event Action<RoomPanelRequest>? SceneRequested;
+    internal event Action<RoomPanelState>? Applied;
+    internal void RequestFromScene(RoomPanelRequest request) => SceneRequested?.Invoke(request);
     public string RoomName => nameInput.Text.Trim();
     public string CapacityText => capacityInput.Text.Trim();
     public string Kind => draftPage == RoomPanelPage.Edit ? editDraftKind : (kindInput.SelectedItem as ComboBoxItem)?.Tag as string ?? string.Empty;
@@ -127,6 +130,7 @@ public sealed class RoomPanelView : UserControl
                 break;
         }
         if (changedPage) ((ScrollViewer)FindName("RoomScroll")).ScrollToTop();
+        Applied?.Invoke(next);
     }
 
     private void PrepareDraft(RoomPanelState next)
@@ -151,7 +155,7 @@ public sealed class RoomPanelView : UserControl
     {
         var title = state.Page switch
         {
-            RoomPanelPage.Directory => state.DirectoryState == "dissolved" ? "已解散的房间" : "我的在线房间",
+            RoomPanelPage.Directory => "旧门册 · 房门排列",
             RoomPanelPage.Create => "创建共同房", RoomPanelPage.Detail => "房间详情", RoomPanelPage.Edit => "修改房间",
             RoomPanelPage.ConfirmDissolve => "确认解散", RoomPanelPage.Pending => "请求结果待确认", RoomPanelPage.Conflict => "数据有冲突", _ => "房间管理"
         };
@@ -165,21 +169,14 @@ public sealed class RoomPanelView : UserControl
 
     private void AddDirectory()
     {
-        AddNote("这里管理本人房间。房间管理不等于进入在线场景；本地单人入口仍可使用。");
+        AddNote("选择要排列在门廊里的房门，再走近对应房门互动。显示最后确认状态，操作仍由服务器检查。");
         AddButton("当前房间", new(RoomPanelAction.ActiveDirectory));
         AddButton("已解散的房间", new(RoomPanelAction.DissolvedDirectory));
         AddPrimary("刷新当前目录", new(RoomPanelAction.Refresh));
         if (state.Rooms is null) AddNote("尚未读取房间目录。");
         else if (state.Rooms.Length == 0) AddNote("本页没有房间。");
-        else foreach (var room in state.Rooms)
-        {
-            var label = $"{room.Name}\n{KindLabel(room.Kind)} · 容量 {room.Capacity} · {StatusLabel(room.Status)}";
-            AddButton(label, new(RoomPanelAction.SelectRoom, room.RoomId));
-        }
+        else AddNote($"本页 {state.Rooms.Length} 扇房门已经排列在场景中。");
         if (state.Next is not null) AddButton("下一页", new(RoomPanelAction.NextPage));
-        if (state.DirectoryState == "active") AddButton("创建共同房", new(RoomPanelAction.OpenCreate));
-        AddButton("账号与登录", new(RoomPanelAction.OpenAccount));
-        AddButton("在线连接与公共码", new(RoomPanelAction.OpenOnline));
     }
 
     private void AddForm(bool create)

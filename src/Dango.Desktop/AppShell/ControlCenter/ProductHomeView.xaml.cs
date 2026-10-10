@@ -167,7 +167,7 @@ public partial class ProductHomeView : UserControl
 
     public void RestoreKeyboardFocus()
     {
-        if (IsAccountPanelOpen) { (IsRoomPanelOpen ? (UIElement)RoomContent : AccountContent).MoveFocus(new(FocusNavigationDirection.First)); return; }
+        if (IsAccountPanelOpen) { (IsRoomPanelOpen ? (UIElement)RoomContent : IsOnlineRoomPanelOpen ? OnlineRoomContent : AccountContent).MoveFocus(new(FocusNavigationDirection.First)); return; }
         if (IsSettingsOpen) Keyboard.Focus(BackFromSettingsButton);
         else Keyboard.Focus(Stage);
     }
@@ -395,11 +395,15 @@ public partial class ProductHomeView : UserControl
         UpdateLiveMovementMode();
         UpdateTransition(true);
         Stage.Focus();
+        OnPorchEntered();
     }
 
     private void LeavePorch()
     {
         if (!IsInPorch) return;
+        CloseAccountPanel();
+        RoomPanelClosed?.Invoke();
+        OnlineRoomPanelClosed?.Invoke();
         porchResumeX = PorchScene.PetWorldX;
         IsInPorch = false;
         roomNavigation.ShowHome();

@@ -12,22 +12,22 @@ namespace Dango.Desktop.Tests.AppShell;
 public sealed class RoomPanelViewTests
 {
     [STATestMethod]
-    public void DirectoryUsesOnlyItsCurrentPageAndSelectionCarriesRoomIdentity()
+    public void DirectoryOnlyArrangesSceneDoorsAndRetainsPagingControls()
     {
         var view = new RoomPanelView(); var requests = Observe(view);
         var first = Room("publicShared"); var second = Room("privateShared") with { Name = first.Name };
         view.Apply(new(RoomPanelPage.Directory, Rooms: [first, second]));
         Assert.IsNull(view.FindName("RoomNextPage"), "No next cursor means no invented page button.");
-        Assert.IsNotNull(view.FindName("RoomOpenCreate"));
-        Element<Button>(view, "RoomSelectRoom_" + second.RoomId.ToString("N")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Assert.AreEqual(new RoomPanelRequest(RoomPanelAction.SelectRoom, second.RoomId), requests.Single());
-        var stale = Element<Button>(view, "RoomSelectRoom_" + first.RoomId.ToString("N"));
+        Assert.IsNull(view.FindName("RoomOpenCreate"), "The build sign, rather than a generic management menu, opens creation.");
+        Assert.IsNull(view.FindName("RoomSelectRoom_" + second.RoomId.ToString("N")), "Only actual scene doors select rooms.");
+        Assert.IsNull(view.FindName("RoomOpenAccount"));
+        Assert.IsNull(view.FindName("RoomOpenOnline"));
         view.Apply(new(RoomPanelPage.Directory, "dissolved", [second with { Status = "dissolved" }], Guid.NewGuid()));
         Assert.IsNotNull(view.FindName("RoomNextPage"));
         Assert.IsNull(view.FindName("RoomOpenCreate"));
         Assert.IsNull(view.FindName("RoomSelectRoom_" + first.RoomId.ToString("N")));
-        stale.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Assert.AreEqual(1, requests.Count, "A detached previous-page button must not select a room absent from the current page.");
+        Element<Button>(view, "RoomNextPage").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.AreEqual(RoomPanelAction.NextPage, requests.Single().Action);
         Assert.IsFalse(Buttons(view).Any(b => AutomationProperties.GetName(b).Contains("进入")), "Management must not fake admission.");
     }
 

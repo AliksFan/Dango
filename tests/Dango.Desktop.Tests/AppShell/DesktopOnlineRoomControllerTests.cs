@@ -132,7 +132,7 @@ public sealed class DesktopOnlineRoomControllerTests
         Assert.IsTrue(condition(), "Bounded dispatcher transition did not finish.");
     }
 
-    private sealed class Client : IRoomAccessClient
+    internal sealed class Client : IRoomAccessClient
     {
         public Uri Origin => new("https://formal.dango.invalid/");
         public Guid UserId { get; } = Guid.NewGuid();
@@ -166,7 +166,9 @@ public sealed class DesktopOnlineRoomControllerTests
         public Task<RoomAccessResult> ControlAsync(RoomControlRequest request, CancellationToken ct) { Controls++; return Task.FromResult(Result("control")); }
         public Task<RoomAccessResult> LeaveAsync(RoomControlRequest request, CancellationToken ct) { Leaves++; return Task.FromResult(Result("left")); }
         public Task<RoomAccessResult> EndLeaseAsync(RoomLeaseEndRequest request, CancellationToken ct) { Ends++; return Task.FromResult(Result("lease_ended")); }
-        public Task<RoomDoorView> ResolveAsync(RoomCodeResolveRequest request, CancellationToken ct) => throw new AssertFailedException();
+        internal int Resolves;
+        public Task<RoomDoorView> ResolveAsync(RoomCodeResolveRequest request, CancellationToken ct)
+        { Resolves++; return Task.FromResult(new RoomDoorView(Guid.NewGuid(), "publicShared", "虚构访问房", 6, 1, "shared-default", 1)); }
         public Task<RoomCodeResult> ResetCodeAsync(Guid roomId, RoomCodeResetRequest request, CancellationToken ct)
         {
             CodeRequests.Add(request);

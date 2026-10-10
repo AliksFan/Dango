@@ -27,6 +27,7 @@ internal sealed class DesktopRoomController : IDisposable
         this.panel = panel; this.binding = binding; this.close = close; this.account = account;
         this.authenticationLost = authenticationLost;
         panel.Requested += OnRequested;
+        panel.SceneRequested += OnSceneRequested;
     }
 
     internal void Open()
@@ -44,6 +45,37 @@ internal sealed class DesktopRoomController : IDisposable
     }
 
     private async void OnRequested(RoomPanelRequest request) => await HandleAsync(request);
+
+    private async void OnSceneRequested(RoomPanelRequest request) => await HandleSceneAsync(request);
+
+    internal async Task HandleSceneAsync(RoomPanelRequest request)
+    {
+        if (disposed || busy) return;
+        // Scene targets only start bounded reads or open forms; they never submit mutations.
+        if (request.Action is not (RoomPanelAction.SelectRoom or RoomPanelAction.OpenCreate or
+            RoomPanelAction.ActiveDirectory or RoomPanelAction.DissolvedDirectory)) return;
+        var current = binding();
+        if (current is null) { Reset(); account(); return; }
+        opened = true;
+        if (!ReferenceEquals(current, client))
+        { Invalidate(); client = current; pending = null; state = new(RoomPanelPage.Directory); }
+        if (pending is not null) { Show(RoomPanelPage.Pending, PendingMessage()); return; }
+        if (request.Action == RoomPanelAction.SelectRoom)
+        {
+            // A stale or fabricated door cannot address another room outside this confirmed page.
+            if (request.RoomId is not { } id || state.Rooms?.Any(r => r.RoomId == id) != true) return;
+            await RunAsync(ct => LoadDetailAsync(id, ct));
+        }
+        else if (request.Action == RoomPanelAction.OpenCreate)
+        { state = state with { DirectoryState = "active" }; Show(RoomPanelPage.Create); }
+        else
+        {
+            state = state with { Page = RoomPanelPage.Directory,
+                DirectoryState = request.Action == RoomPanelAction.DissolvedDirectory ? "dissolved" : "active",
+                Selected = null, Rooms = null, Next = null, Message = null };
+            await RunAsync(ct => LoadDirectoryAsync(null, ct));
+        }
+    }
 
     internal async Task HandleAsync(RoomPanelRequest request)
     {
@@ -123,8 +155,11 @@ internal sealed class DesktopRoomController : IDisposable
 
     private async Task LoadDirectoryAsync(Guid? after, CancellationToken ct)
     {
-        var page = await client!.ListAsync(state.DirectoryState, after, 20, ct);
+        var page = await client!.ListAsync(state.DirectoryState, after, 4, ct);
         ct.ThrowIfCancellationRequested();
+        if (page.Rooms.Length > 4 || page.Rooms.Select(r => r.RoomId).Distinct().Count() != page.Rooms.Length ||
+            page.Next is { } next && (next == after || page.Rooms.Length == 0))
+            throw new RoomManagementClientException(RoomManagementFailure.InvalidResponse, "room_page_invalid");
         state = new(RoomPanelPage.Directory, state.DirectoryState, page.Rooms, page.Next);
         Publish();
     }
@@ -252,6 +287,7 @@ internal sealed class DesktopRoomController : IDisposable
         if (disposed) return;
         Reset(); disposed = true; cancellation.Cancel(); cancellation.Dispose();
         panel.Requested -= OnRequested;
+        panel.SceneRequested -= OnSceneRequested;
     }
     private sealed class PendingWrite(Guid? roomId, object body)
     {

@@ -111,8 +111,8 @@ public sealed class UnifiedLiveHomeTests
                     button.Name == "PorchAccountButton" ||
                     AutomationProperties.GetName(button).Contains("返回", StringComparison.Ordinal)),
                 "Until room permissions exist, no sample door may act like an enterable room.");
-            Element<Button>(home, "PorchAccountButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            Assert.IsTrue(home.IsAccountPanelOpen, "The independent account entry opens a form, without entering a room.");
+            Assert.IsNull(home.FindName("PorchAccountButton"), "The generic room-directory shortcut is removed; bound business targets belong to the scene.");
+            Assert.IsFalse(home.IsAccountPanelOpen);
             Assert.IsFalse(Element<PorchSceneView>(home, "PorchScene").CanEnterRoom);
         }
         finally { window.Close(); }
