@@ -192,6 +192,7 @@ internal sealed partial class DangoApplicationHost : IDisposable
         onlineRoomController = null;
         accountController?.Dispose();
         accountController = null;
+        appearance.SavedToDisk -= OnAccountAppearanceSaved;
         DisposeLocalRoom();
         trayIcon?.Dispose();
         trayIcon = null;

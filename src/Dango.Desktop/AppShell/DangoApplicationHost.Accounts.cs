@@ -27,8 +27,9 @@ internal sealed partial class DangoApplicationHost
             {
                 if (!signedIn) roomController?.Reset();
                 onlineRoomController?.SynchronizeBinding();
-                home.SetAccountStatus(signedIn, ready); home.RefreshAccountAppearance();
-            });
+                home.SetAccountStatus(signedIn, ready, accountController?.Nickname); home.RefreshAccountAppearance();
+            }, createSync: CreatePetConfigurationLiveSync);
+        appearance.SavedToDisk += OnAccountAppearanceSaved;
         roomController = new(home.RoomPanel, () => accountController.RoomClient, home.HideAccountPanel,
             home.ShowAccountPanel, rejected => { accountController.RejectRoomAuthentication(rejected); home.ShowAccountPanel(); });
         void OpenRooms()
@@ -44,11 +45,15 @@ internal sealed partial class DangoApplicationHost
             if (!accountController.IsLoggedIn) { home.ShowAccountPanel(); return; }
             home.ShowOnlineRoomPanel(); onlineRoomController.Open(target);
         };
-        home.RoomDirectoryRequested += OpenRooms;
-        accountController.RoomsRequested += OpenRooms;
+        home.RoomDirectoryRequested += roomController.Open;
         home.RoomPanelClosed += roomController.Close;
         home.OnlineRoomPanelClosed += onlineRoomController.Close;
         home.AccountRequested += accountController.Open;
         home.AccountPanelClosed += accountController.Close;
+        accountController.AccountAttentionRequested += () => { home.ShowAccountPanel(); accountController.Open(); };
+        home.EnablePorchAccountInteractions();
+        accountController.InitializeRememberedSession();
     }
+
+    private void OnAccountAppearanceSaved() => accountController?.NotifyAppearanceSaved();
 }

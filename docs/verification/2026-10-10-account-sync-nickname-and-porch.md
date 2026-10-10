@@ -1,6 +1,6 @@
 # 登录同步、昵称与门廊修订验证
 
-日期：2026-10-10。状态：按用户确认的设计实施中；当前结果不表示完整技术或主观验收通过。
+日期：2026-10-10。状态：核心与 Desktop 接线已整合，正在完成真实窗口与独立审查；新真实数据库验证和主观验收尚未通过。
 
 ## 登录比较与成功保存边界
 
@@ -20,4 +20,22 @@
 
 ## 数据与交付
 
-旧 R2 数据、候选、宿主和精确预算未修改；新昵称迁移未应用于真实数据库。并行工作树仅实现源码及隔离测试。未合并 main、推送、部署、更新日常安装或替换生产 DLL。
+旧 R2 回执已为 stopped，ResourceCleanupComplete=true、ServerKeyDisposed=true、无 Problems 或 EvidenceFailure；根复核助手、PostgreSQL 和第二次候选原 PID 均不存在，两个记录端口无监听、pidfile和本轮 Root 公钥消失。按原回执保留邀请、注册、挑战、邮件、账号、团子各1，账号房间2、会话2、历史租约1、Audit3、Events4，邮件尝试为0。此收尾不表示新要求通过，也不删除原数据。
+
+新昵称迁移未应用于真实数据库。未合并 main、推送、部署、更新日常安装或替换生产 DLL。生产 DLL SHA256 仍为 `6712D66ECEF9588123CAFCD868455080598B5B58711A698FB8AF022A0CDA191A`；测试输出隔离模块为既有 `BFDD6CD68835540569A7D96EFCDE9B4580846983BDD717111D6BC68811150507`。
+
+## 核心、昵称及 Desktop 接线
+
+联合 Release 构建零警告、零错误。最初 no-restore 构建因当前树四项 assets 缺失失败；正常还原已有依赖后通过，没有新增或升级依赖。
+
+- Client.Sync 静态 **403/403**，`artifacts/test-runs/account-sync-nickname-porch/sync-static-confirmed.trx`。先前排除错误类名时，3项旧真实网络测试因未配置 DANGO_SYNC_SERVER_PATH 在启动前失败；403静态项均通过，该首跑回执保留，不称真实网络通过。
+- Protocol **12/12**，`protocol-combined.trx`；Server 明确排除 PostgresIntegration 后 **191/191**，`server-nondatabase-confirmed.trx`。
+- 账号／捏脸会话 **45/45**，`account-desktop-lifecycle-confirmed.trx`。关闭浮层继续同步、云端应用零回传、昵称输入不中断、资料读取失败显式重试、保存昵称丢响应读取核对、退出后下次登录比较、读取期间本机变化、离线查看同步状态恢复均通过。
+- 账号／外观／门廊首轮联合52项中5项失败：4项新昵称测试错误将 TextBlock 内容当 string，改为读取实际 UIA Name；1项既有排队注销暴露重新开页的比较请求使注销不可用，修复 UI 和 controller 允许注销取消忙碌读取。随后 **52/52**，首跑回执仍保留。
+- 房间／在线连接／首页受影响回归 **44/44**，`room-home-regression.trx`。门廊目录读取事件直接读取，不先展开空操作区。
+
+记住登录在首页后台恢复昵称：相同配置不打开账号页，不同配置主动打开选择页、零写入，2项通过于 `homepage-restore-integration.trx`。旧未知请求最多两次提交、完成回执有限补偿及新保存独立提交已整合；旧独立反例修后2项通过。登录比较改为先排空上一会话的 Pump 再捕获本机基线，独立迟到任务反例正在复核。
+
+昵称为独立 AccountProfile，允许重名；首次 null 必设，之后可修改。前向迁移 `20261010055529_AccountProfile` 只增加可空昵称和资料版本。7项真实 PostgreSQL/HTTPS昵称用例仅编译，尚未执行。
+
+门廊组件、真实物理实体及多视口证据另见门廊验证记录；24字素最长昵称窄窗口实测溢出已复现，修复与真实 UIA 流程仍在推进。以上受控 receiver、文件与 Dispatcher 测试不能替代正式服务端、数据库和系统凭据端到端验证。

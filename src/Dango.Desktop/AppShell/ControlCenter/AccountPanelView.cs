@@ -21,18 +21,19 @@ using TextBox = System.Windows.Controls.TextBox;
 
 namespace Dango.Desktop.AppShell.ControlCenter;
 
-public enum AccountPanelPage { Login, Register, Mail, CompleteRegistration, PasswordReset, Account, ConfigurationChoice }
+public enum AccountPanelPage { Login, Register, Mail, CompleteRegistration, PasswordReset, Account, ConfigurationChoice, Nickname }
 public enum AccountPanelAction
 {
     Login, Logout, StartRegistration, RefreshRegistration, ResendRegistration, CompleteRegistration,
     RequestPasswordReset, AdoptLocal, AdoptCloud, RefreshConfigurations, OpenLogin, OpenRegister,
-    OpenPasswordReset, OpenConfiguration, UseNewInvitation, Close, OpenRooms
+    OpenPasswordReset, OpenConfiguration, UseNewInvitation, Close, OpenNickname, SaveNickname, OpenAccount, RefreshProfile
 }
 
 /// <summary>Presentation state contains no passwords, invitation proofs, or session credentials.</summary>
 public sealed record AccountPanelState(AccountPanelPage Page, string? Message = null, bool Busy = false,
     bool CanCompleteRegistration = false, PetConfigurationReview? Review = null,
-    bool CanReplaceRegistration = false, bool CanClearRememberedLogin = false);
+    bool CanReplaceRegistration = false, bool CanClearRememberedLogin = false,
+    string? Nickname = null, bool NicknameRequired = false, string? SynchronizationStatus = null, bool ProfileResolved = false);
 
 /// <summary>Centered account panel content. The host owns its overlay, focus restoration, and all operations.</summary>
 public sealed class AccountPanelView : UserControl
@@ -40,6 +41,7 @@ public sealed class AccountPanelView : UserControl
     private readonly StackPanel body = new() { Margin = new Thickness(18) };
     private readonly TextBox email = Input("AccountEmail", "邮箱", 254);
     private readonly TextBox invitationId = Input("AccountInvitationId", "邀请 ID", 36);
+    private readonly TextBox nickname = Input("AccountNickname", "昵称", 256);
     private readonly PasswordBox invitationProof = Secret("AccountInvitationProof", "邀请证明", 128);
     private readonly PasswordBox password = Secret("AccountPassword", "密码", 128);
     private readonly PasswordBox confirmPassword = Secret("AccountConfirmPassword", "再次输入密码", 128);
@@ -63,7 +65,7 @@ public sealed class AccountPanelView : UserControl
         KeyboardNavigation.SetTabNavigation(this, KeyboardNavigationMode.Cycle);
         KeyboardNavigation.SetControlTabNavigation(this, KeyboardNavigationMode.Cycle);
         NameScope.SetNameScope(this, new NameScope());
-        foreach (var element in new FrameworkElement[] { email, invitationId, invitationProof, password, confirmPassword, rememberLogin, primary })
+        foreach (var element in new FrameworkElement[] { email, invitationId, nickname, invitationProof, password, confirmPassword, rememberLogin, primary })
             RegisterName(element.Name, element);
         message.Name = "AccountMessage";
         RegisterName(message.Name, message);
@@ -96,6 +98,7 @@ public sealed class AccountPanelView : UserControl
     public string InvitationId => invitationId.Text.Trim();
     public string InvitationProof => invitationProof.Password;
     public bool RememberLogin => rememberLogin.IsChecked == true;
+    public string Nickname => nickname.Text;
 
     public void ClearSecrets()
     {
@@ -109,6 +112,7 @@ public sealed class AccountPanelView : UserControl
         ArgumentNullException.ThrowIfNull(next);
         if (!Enum.IsDefined(next.Page)) throw new ArgumentOutOfRangeException(nameof(next));
         var pageChanged = next.Page != state.Page;
+        if (pageChanged && next.Page == AccountPanelPage.Nickname) nickname.Text = next.Nickname ?? string.Empty;
         if (pageChanged || !ReferenceEquals(next.Review, state.Review)) choice = null;
         state = next;
         body.Children.Clear();
@@ -116,7 +120,7 @@ public sealed class AccountPanelView : UserControl
         transientNames.Clear();
         primaryAction = null;
         primary.IsEnabled = !state.Busy;
-        foreach (var field in new Control[] { email, invitationId, invitationProof, password, confirmPassword, rememberLogin })
+        foreach (var field in new Control[] { email, invitationId, nickname, invitationProof, password, confirmPassword, rememberLogin })
             field.IsEnabled = !state.Busy;
         AddHeader();
         message.Text = state.Message ?? (state.Busy ? "正在处理，请稍候…" : string.Empty);
@@ -156,14 +160,31 @@ public sealed class AccountPanelView : UserControl
                 AddNavigation("返回登录", AccountPanelAction.OpenLogin);
                 break;
             case AccountPanelPage.Account:
-                AddNote("账号已登录。在线房间需要先明确选择配置来源；退出登录会保留已经应用的本机外观。");
-                AddPrimary("查看并选择配置", AccountPanelAction.OpenConfiguration);
-                AddNavigation("我的房间", AccountPanelAction.OpenRooms);
-                AddNavigation("退出登录", AccountPanelAction.Logout);
+                AddNote(state.Nickname is null ? "账号已登录。" : $"已登录：{state.Nickname}");
+                AddNote(state.SynchronizationStatus ?? "捏脸配置在登录期间同步；未登录时的本机修改在下次登录比较。");
+                AddPrimary("查看配置同步", AccountPanelAction.OpenConfiguration);
+                AddNavigation("修改昵称", AccountPanelAction.OpenNickname);
+                AddNavigation("退出登录", AccountPanelAction.Logout, allowBusy: true);
                 break;
             case AccountPanelPage.ConfigurationChoice:
                 AddConfigurationChoice();
-                AddNavigation("我的房间", AccountPanelAction.OpenRooms);
+                AddNavigation("退出登录", AccountPanelAction.Logout, allowBusy: true);
+                break;
+            case AccountPanelPage.Nickname:
+                if (!state.ProfileResolved)
+                {
+                    AddNote("先读取账号昵称，确认后再继续。连接暂不可用时仍可使用本地单人。");
+                    AddPrimary("重新读取账号资料", AccountPanelAction.RefreshProfile);
+                    AddNavigation("退出登录", AccountPanelAction.Logout, allowBusy: true);
+                    break;
+                }
+                AddNote(state.NicknameRequired ? "先给账号起个昵称。昵称可以和别人重复，以后也可以修改。"
+                    : "修改账号昵称，允许和其他账号重名。");
+                AddField("昵称", nickname);
+                AddNote("1–24 个字或表情，不可仅有空格。昵称用于显示，不会改变账号或团子身份。");
+                AddPrimary("保存昵称", AccountPanelAction.SaveNickname);
+                if (!state.NicknameRequired) AddNavigation("返回账号", AccountPanelAction.OpenAccount);
+                AddNavigation("退出登录", AccountPanelAction.Logout, allowBusy: true);
                 break;
         }
         AddNavigation("继续本地游玩", AccountPanelAction.Close, allowBusy: true);
@@ -177,7 +198,7 @@ public sealed class AccountPanelView : UserControl
             [AccountPanelPage.Login] = "邮箱登录", [AccountPanelPage.Register] = "受邀注册",
             [AccountPanelPage.Mail] = "等待邮箱验证", [AccountPanelPage.CompleteRegistration] = "完成注册",
             [AccountPanelPage.PasswordReset] = "找回密码", [AccountPanelPage.Account] = "账号",
-            [AccountPanelPage.ConfigurationChoice] = "选择配置来源"
+            [AccountPanelPage.ConfigurationChoice] = "选择配置来源", [AccountPanelPage.Nickname] = "账号昵称"
         };
         var header = new Grid { Margin = new Thickness(0, 0, 0, 14) };
         header.ColumnDefinitions.Add(new ColumnDefinition());
@@ -293,7 +314,7 @@ public sealed class AccountPanelView : UserControl
 
     private void Request(AccountPanelAction action)
     {
-        if (state.Busy && action != AccountPanelAction.Close) return;
+        if (state.Busy && action is not (AccountPanelAction.Close or AccountPanelAction.Logout)) return;
         if (action == AccountPanelAction.CompleteRegistration && !state.CanCompleteRegistration) return;
         if (action is AccountPanelAction.AdoptLocal or AccountPanelAction.AdoptCloud && choice is null) return;
         Requested?.Invoke(action);

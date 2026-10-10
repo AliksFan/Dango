@@ -7,7 +7,7 @@ using Dango.Protocol;
 namespace Dango.Desktop.AppShell.ControlCenter;
 
 /// <summary>One UI owner; obsolete operations cannot publish identity, configuration or UI state.</summary>
-internal sealed class DesktopAccountController : IDisposable
+internal sealed partial class DesktopAccountController : IDisposable
 {
     private readonly AccountPanelView panel;
     private readonly Uri? origin;
@@ -35,19 +35,22 @@ internal sealed class DesktopAccountController : IDisposable
         Func<IRemotePetConfigurationClient, PetConfigurationChoiceCoordinator> createChoice,
         Func<CancellationToken, Task<LocalPetConfigurationSnapshot>> captureLocal,
         Action close, Action<bool, bool> changed,
-        Func<Uri, IAccountSecretStore, FormalAccountClient>? createClient = null)
+        Func<Uri, IAccountSecretStore, FormalAccountClient>? createClient = null,
+        Func<IRemotePetConfigurationClient, PetConfigurationSnapshot, PetConfigurationLiveSyncCoordinator>? createSync = null)
     {
         this.panel = panel; this.origin = origin; this.secrets = secrets; this.createChoice = createChoice;
         this.captureLocal = captureLocal; this.close = close; this.changed = changed;
         this.createClient = createClient ?? ((address, store) => new(address, store));
+        this.createSync = createSync;
+        configurationTimer.Tick += OnConfigurationTick;
         panel.Requested += OnRequested;
     }
 
     internal bool IsLoggedIn => identity is not null;
     internal bool ConfigurationReady => configurationReady;
-    internal IRoomManagementClient? RoomClient => identity is null ? null : rooms;
-    internal IRoomAccessClient? RoomAccessClient => identity is null ? null : roomAccess;
-    internal event Action? RoomsRequested;
+    internal IRoomManagementClient? RoomClient => identity is null || profile?.Nickname is null ? null : rooms;
+    internal IRoomAccessClient? RoomAccessClient => identity is null || profile?.Nickname is null ? null : roomAccess;
+    internal event Action? AccountAttentionRequested;
 
     internal void RejectRoomAuthentication(IRoomManagementClient rejected)
     {
@@ -67,7 +70,8 @@ internal sealed class DesktopAccountController : IDisposable
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         opened = true;
-        Show(identity is null ? AccountPanelPage.Login : AccountPanelPage.Account);
+        Show(identity is null ? AccountPanelPage.Login : profile?.Nickname is null ? AccountPanelPage.Nickname
+            : review is not null ? AccountPanelPage.ConfigurationChoice : AccountPanelPage.Account);
         if (origin is null)
         {
             Show(AccountPanelPage.Login, "尚未配置可信服务器地址。账号服务暂不可用，本地单人仍可游玩。", unavailable: true);
@@ -78,37 +82,18 @@ internal sealed class DesktopAccountController : IDisposable
             Show(AccountPanelPage.Login, "本次内存会话已关闭，但记住登录材料尚未清除。请重试清除；本次不会自动恢复它。");
             return;
         }
-        if (!restored) _ = RunAsync(async (active, ct) =>
-        {
-            // Open may have queued before an obsolete Logout reported its cleanup result.
-            if (rememberedCleanupNeeded)
-            {
-                Show(AccountPanelPage.Login, "本次内存会话已关闭，但记住登录材料尚未清除。请重试清除；本次不会自动恢复它。");
-                return;
-            }
-            var account = await active.RestoreSessionAsync(ct);
-            ct.ThrowIfCancellationRequested();
-            var savedRegistration = await active.RestoreRegistrationAsync(ct);
-            ct.ThrowIfCancellationRequested();
-            registration = savedRegistration;
-            restored = true;
-            if (account is not null)
-            {
-                AcceptIdentity(active, account);
-                await BeginChoice(active, ct);
-            }
-            else if (registration?.RegistrationId is not null) await RefreshRegistration(active, ct);
-            else Show(AccountPanelPage.Login, registration is null ? null : "保留了上次注册请求。进入受邀注册后将使用原请求继续。");
-        });
+        if (!restored) _ = RunAsync(RestoreAccountAsync);
+        else if (identity is not null && (profile?.Nickname is null || !configurationReady))
+            _ = RunAsync(LoadProfileAndCompareAsync);
     }
 
     private async void OnRequested(AccountPanelAction action)
     {
         if (disposed) return;
         if (action == AccountPanelAction.Close) { Close(); return; }
-        if (busy || !opened) return;
-        if (action == AccountPanelAction.OpenRooms && identity is not null)
-        { RoomsRequested?.Invoke(); return; }
+        if (busy && action != AccountPanelAction.Logout || !opened) return;
+        if (action == AccountPanelAction.OpenAccount && identity is not null)
+        { Show(profile?.Nickname is null ? AccountPanelPage.Nickname : AccountPanelPage.Account); return; }
         if (action is AccountPanelAction.OpenLogin or AccountPanelAction.OpenRegister or AccountPanelAction.OpenPasswordReset)
         {
             Show(action == AccountPanelAction.OpenLogin ? AccountPanelPage.Login : action == AccountPanelAction.OpenRegister
@@ -123,6 +108,7 @@ internal sealed class DesktopAccountController : IDisposable
         var invitationId = panel.InvitationId;
         var invitationProof = panel.InvitationProof.Trim();
         var remember = panel.RememberLogin;
+        var submittedNickname = panel.Nickname;
         panel.ClearSecrets();
         if (action == AccountPanelAction.Logout)
         {
@@ -130,6 +116,7 @@ internal sealed class DesktopAccountController : IDisposable
             var cleanupRetry = rememberedCleanupNeeded;
             // Logout can itself be cancelled while queued behind an older request.
             rememberedCleanupNeeded = true;
+            StopConfigurationSync(); profile = null; profileClient = null;
             Invalidate(); client = null; identity = null; rooms = null; roomAccess = null; choice = null; review = null;
             configurationReady = false; restored = true; changed(false, false);
             try
@@ -156,7 +143,17 @@ internal sealed class DesktopAccountController : IDisposable
                     var account = await active.LoginAsync(email, password, remember, ct);
                     ct.ThrowIfCancellationRequested();
                     AcceptIdentity(active, account);
-                    await BeginChoice(active, ct);
+                    await LoadProfileAndCompareAsync(active, ct);
+                    break;
+                case AccountPanelAction.OpenNickname:
+                    await RefreshProfileAsync(active, ct);
+                    Show(AccountPanelPage.Nickname);
+                    break;
+                case AccountPanelAction.SaveNickname:
+                    await SaveNicknameAsync(active, submittedNickname, ct);
+                    break;
+                case AccountPanelAction.RefreshProfile:
+                    await LoadProfileAndCompareAsync(active, ct);
                     break;
                 case AccountPanelAction.StartRegistration:
                     if (registration is null)
@@ -208,6 +205,15 @@ internal sealed class DesktopAccountController : IDisposable
                     Show(AccountPanelPage.PasswordReset, "请求已受理；若账号符合条件将收到邮件。请在邮件页面完成重置。");
                     break;
                 case AccountPanelAction.OpenConfiguration:
+                    if (configurationReady)
+                    {
+                        await PumpConfigurationAsync();
+                        ct.ThrowIfCancellationRequested();
+                        Show(AccountPanelPage.Account, configurationStatus ?? "捏脸配置已确认。");
+                        break;
+                    }
+                    await BeginChoice(active, ct);
+                    break;
                 case AccountPanelAction.RefreshConfigurations:
                     await BeginChoice(active, ct);
                     break;
@@ -220,6 +226,8 @@ internal sealed class DesktopAccountController : IDisposable
                     review = null;
                     if (result.Outcome is PetChoiceOutcome.LocalApplied or PetChoiceOutcome.CloudUpdated or PetChoiceOutcome.TargetSatisfied)
                     {
+                        if (result.ReceiptSaved && result.ObservedCloud is not null)
+                            await StartConfigurationSyncAsync(active, result.ObservedCloud, ct);
                         configurationReady = result.ReceiptSaved;
                         changed(true, configurationReady);
                         Show(AccountPanelPage.Account, result.ReceiptSaved ? "已采用所选外观配置。账号团子身份保持不变。"
@@ -247,25 +255,42 @@ internal sealed class DesktopAccountController : IDisposable
 
     private void AcceptIdentity(FormalAccountClient active, AccountIdentity account)
     {
+        StopConfigurationSync();
         rememberedCleanupNeeded = false;
         identity = account; configurationReady = false;
+        profile = null; profileClient = active.CreateProfileClient(account);
         rooms = active.CreateRoomManagementClient(account);
         roomAccess = active.CreateRoomAccessClient(account);
         choice = createChoice(active.CreatePetClient(account));
         changed(true, false);
-        Show(AccountPanelPage.Account, "已登录。采用外观前请先比较本机与账号配置。");
+        Show(AccountPanelPage.Nickname, "已登录，正在读取账号昵称与外观。");
     }
 
     private async Task BeginChoice(FormalAccountClient active, CancellationToken ct)
     {
         if (identity is null || active.CurrentIdentity != identity || choice is null)
             throw new InvalidDataException("authentication_required");
+        if (profile?.Nickname is null) { Show(AccountPanelPage.Nickname); return; }
+        StopConfigurationSync(); configurationReady = false; changed(true, false);
+        // Drain the previous account before capturing the new login's local baseline.
+        // Successful offline saves during that wait must be compared, never overwritten by a stale baseline.
+        await configurationPump;
+        ct.ThrowIfCancellationRequested();
         var loadedReview = await choice.BeginAsync(ct);
+        ct.ThrowIfCancellationRequested();
+        // Login/restore can finish while local-only editing is still available. Re-read once, never accept a stale baseline.
+        if (!loadedReview.Originals.Local.SameOriginal(await captureLocal(ct)))
+        {
+            loadedReview = await choice.BeginAsync(ct);
+            if (!loadedReview.Originals.Local.SameOriginal(await captureLocal(ct)))
+                throw new PetConfigurationChoiceException("local_configuration_changed");
+        }
         ct.ThrowIfCancellationRequested();
         if (AppearanceContract.Equivalent(loadedReview.Originals.Local.NormalizedConfiguration,
             loadedReview.Originals.Cloud.Configuration))
         {
             review = null;
+            await StartConfigurationSyncAsync(active, loadedReview.Originals.Cloud, ct);
             configurationReady = true;
             changed(true, true);
             Show(AccountPanelPage.Account, "本机与账号外观一致。");
@@ -273,6 +298,7 @@ internal sealed class DesktopAccountController : IDisposable
         }
         review = loadedReview;
         Show(AccountPanelPage.ConfigurationChoice);
+        if (!opened) AccountAttentionRequested?.Invoke();
     }
 
     private async Task RefreshRegistration(FormalAccountClient active, CancellationToken ct)
@@ -302,9 +328,9 @@ internal sealed class DesktopAccountController : IDisposable
         });
     }
 
-    private async Task RunAsync(Func<FormalAccountClient, CancellationToken, Task> operation, bool logout = false)
+    private async Task RunAsync(Func<FormalAccountClient, CancellationToken, Task> operation, bool logout = false, bool allowClosed = false)
     {
-        if (busy || !opened || disposed || origin is null) return;
+        if (busy || !opened && !allowClosed || disposed || origin is null) return;
         var current = client ??= createClient(origin, secrets);
         var epoch = generation;
         var ct = pending.Token;
@@ -316,16 +342,16 @@ internal sealed class DesktopAccountController : IDisposable
             await operations.WaitAsync(ct);
             entered = true;
             ct.ThrowIfCancellationRequested();
-            if (epoch != generation || !opened || disposed) return;
+            if (epoch != generation || !opened && !allowClosed || disposed) return;
             await operation(current, ct);
         }
         catch (OperationCanceledException) { /* The next open rereads facts; cancellation does not prove a write failed. */ }
         catch (ObjectDisposedException) when (epoch != generation || disposed) { }
-        catch (Exception ex) when (ex is AccountClientException or PetConfigurationChoiceException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is AccountClientException or AccountNicknameException or PetConfigurationChoiceException or IOException or UnauthorizedAccessException)
         {
             // Persistent cleanup is a lifecycle fact, even after the panel that requested it closes.
             if (logout && ex is AccountClientException { LocalSecretCleared: { } cleared }) rememberedCleanupNeeded = !cleared;
-            if (epoch == generation && !disposed && opened)
+            if (epoch == generation && !disposed && (opened || allowClosed))
             {
                 review = null;
                 if (logout && ex is AccountClientException { Failure: AccountFailure.Storage })
@@ -365,6 +391,7 @@ internal sealed class DesktopAccountController : IDisposable
     private string? lastMessage;
     private void ClearAuthentication(FormalAccountClient active)
     {
+        Invalidate(); StopConfigurationSync(); profile = null; profileClient = null;
         active.Dispose(); client = null; identity = null; rooms = null; roomAccess = null; choice = null; review = null;
         restored = false; configurationReady = false; changed(false, false);
     }
@@ -374,13 +401,15 @@ internal sealed class DesktopAccountController : IDisposable
         if (opened && !disposed) panel.Apply(State(busy || unavailable));
     }
     private AccountPanelState State(bool isBusy = false) => new(page, lastMessage, isBusy,
-        page == AccountPanelPage.CompleteRegistration, review, registrationRejected, rememberedCleanupNeeded);
+        page == AccountPanelPage.CompleteRegistration, review, registrationRejected, rememberedCleanupNeeded,
+        profile?.Nickname, identity is not null && profile?.Nickname is null, configurationStatus, profile is not null);
 
     private static string Message(Exception error) => error switch
     {
         AccountClientException { Failure: AccountFailure.Authentication } => "邮箱或密码未通过，或会话已失效。请重新登录。",
         AccountClientException { Failure: AccountFailure.Storage } => "安全存储失败，请重试。不能以保存失败作为完成或记住登录的证据。",
         AccountClientException { Failure: AccountFailure.Unavailable } => "服务器不可用或请求结果未知。注册请刷新原请求；本地单人仍可游玩。",
+        AccountNicknameException or AccountClientException { Code: "nickname_invalid" } => "昵称需要 1–24 个字或表情，不可仅有空格、换行或控制字符。",
         PetConfigurationChoiceException { Code: "local_unsaved_changes" } => "本机外观还有草稿，请先应用或取消草稿再比较。",
         PetConfigurationChoiceException => "配置读取或保存失败。原配置保留，请检查连接和本机存档后重新读取。",
         InvalidDataException { Message: "password_confirmation_invalid" } => "密码需要 12–128 个字符，且两次输入一致。",
@@ -419,6 +448,7 @@ internal sealed class DesktopAccountController : IDisposable
     {
         if (disposed) return;
         disposed = true; opened = false; generation++; pending.Cancel(); pending.Dispose();
+        StopConfigurationSync(); configurationTimer.Tick -= OnConfigurationTick;
         panel.Requested -= OnRequested; panel.ClearSecrets(); client?.Dispose(); client = null;
         identity = null; rooms = null; roomAccess = null;
     }

@@ -49,6 +49,180 @@ public sealed class AccountIntegrationBoundaryTests
     }
 
     [STATestMethod]
+    public void FirstLoginRequiresNicknameBeforeConfigurationOrOnlineRooms()
+    {
+        WithDispatcher(() =>
+        {
+            var view = new AccountPanelView(); var receiver = new Receiver { ProfileNickname = null }; var local = new Local();
+            using var controller = Controller(view, local, () => receiver);
+            controller.Open(); Login(view, "new-profile@dango.invalid");
+            PumpUntil(() => AutomationProperties.GetName(Field<Button>(view, "AccountPrimary")) == "保存昵称"
+                && Field<Button>(view, "AccountPrimary").IsEnabled);
+            Assert.IsTrue(controller.IsLoggedIn);
+            Assert.IsNull(controller.Nickname);
+            Assert.IsNull(controller.RoomClient);
+            Assert.IsFalse(controller.ConfigurationReady);
+            Assert.IsNull(view.FindName("AccountCloudChoice"));
+            Field<TextBox>(view, "AccountNickname").Text = "  ";
+            Field<Button>(view, "AccountPrimary").RaiseEvent(new(Button.ClickEvent));
+            PumpUntil(() => Field<TextBlock>(view, "AccountMessage").Text.Contains("1–24", StringComparison.Ordinal));
+            Assert.AreEqual(0, receiver.ProfileWrites);
+            Field<TextBox>(view, "AccountNickname").Text = "  小云  ";
+            Field<Button>(view, "AccountPrimary").RaiseEvent(new(Button.ClickEvent));
+            PumpUntil(() => view.FindName("AccountCloudChoice") is not null);
+            Assert.AreEqual("小云", controller.Nickname);
+            Assert.AreEqual(1, receiver.ProfileWrites);
+            Assert.IsNotNull(controller.RoomClient);
+            Assert.AreEqual(0, local.Applied);
+        });
+    }
+
+    [STATestMethod]
+    public void NicknameSaveWithLostResponseReadsBackInsteadOfDuplicatingTheWrite()
+    {
+        WithDispatcher(() =>
+        {
+            var view = new AccountPanelView(); var receiver = new Receiver { LoseProfileSaveResponse = true };
+            using var controller = Controller(view, new Local { Current = Cream }, () => receiver);
+            controller.Open(); Login(view, "rename@dango.invalid");
+            PumpUntil(() => controller.ConfigurationReady && Field<Button>(view, "AccountPrimary").IsEnabled);
+            ButtonNamed(view, "修改昵称").RaiseEvent(new(Button.ClickEvent));
+            PumpUntil(() => AutomationProperties.GetName(Field<Button>(view, "AccountPrimary")) == "保存昵称"
+                && Field<Button>(view, "AccountPrimary").IsEnabled);
+            Field<TextBox>(view, "AccountNickname").Text = "云云";
+            Field<Button>(view, "AccountPrimary").RaiseEvent(new(Button.ClickEvent));
+            PumpUntil(() => controller.Nickname == "云云" && Field<Button>(view, "AccountPrimary").IsEnabled);
+            Assert.AreEqual(1, receiver.ProfileWrites);
+            Assert.AreEqual(2L, receiver.ProfileVersion);
+            Assert.IsTrue(controller.ConfigurationReady);
+        });
+    }
+
+    [STATestMethod]
+    public void FailedProfileReadKeepsLocalPlayAndExplicitRetryReadsTheRealNickname()
+    {
+        WithDispatcher(() =>
+        {
+            var view = new AccountPanelView(); var receiver = new Receiver { FailProfileRead = true };
+            using var controller = Controller(view, new Local { Current = Cream }, () => receiver);
+            controller.Open(); Login(view, "profile-offline@dango.invalid");
+            PumpUntil(() => controller.IsLoggedIn && Field<Button>(view, "AccountPrimary").IsEnabled);
+            Assert.AreEqual("重新读取账号资料", AutomationProperties.GetName(Field<Button>(view, "AccountPrimary")));
+            Assert.IsNull(controller.RoomClient);
+            Assert.IsFalse(controller.ConfigurationReady);
+            receiver.FailProfileRead = false;
+            Field<Button>(view, "AccountPrimary").RaiseEvent(new(Button.ClickEvent));
+            PumpUntil(() => controller.ConfigurationReady);
+            Assert.AreEqual("团子号主", controller.Nickname);
+            Assert.IsNotNull(controller.RoomClient);
+        });
+    }
+
+    [STATestMethod]
+    public void ClosingTheAccountPanelKeepsLocalAndCloudSynchronizationRunning()
+    {
+        WithDispatcher(() =>
+        {
+            var view = new AccountPanelView(); var receiver = new Receiver(); var local = new Local { Current = Cream };
+            using var controller = Controller(view, local, () => receiver, liveSync: true);
+            controller.Open(); Login(view, "live@dango.invalid");
+            PumpUntil(() => controller.ConfigurationReady);
+            controller.Close();
+            local.Current = White; controller.NotifyAppearanceSaved();
+            PumpUntil(() => receiver.ConfigurationWrites == 1);
+            var pending = controller.PumpConfigurationAsync(); PumpUntil(() => pending.IsCompleted);
+            Assert.IsTrue(AppearanceContract.Equivalent(White, receiver.CloudConfiguration));
+            receiver.CloudConfiguration = Cream; receiver.ConfigurationVersion++;
+            pending = controller.PumpConfigurationAsync(); PumpUntil(() => pending.IsCompleted);
+            Assert.IsTrue(AppearanceContract.Equivalent(Cream, local.Current));
+            Assert.AreEqual(1, receiver.ConfigurationWrites, "Applying a cloud update must not echo it back.");
+            Assert.IsNull(view.FindName("AccountCloudChoice"), "Session updates must not ask for another source choice.");
+        });
+    }
+
+    [STATestMethod]
+    public void CloudPollingDoesNotReplaceAnUnsavedNicknameInput()
+    {
+        WithDispatcher(() =>
+        {
+            var view = new AccountPanelView(); var receiver = new Receiver(); var local = new Local { Current = Cream };
+            using var controller = Controller(view, local, () => receiver, liveSync: true);
+            controller.Open(); Login(view, "nickname-draft@dango.invalid");
+            PumpUntil(() => controller.ConfigurationReady && Field<Button>(view, "AccountPrimary").IsEnabled);
+            ButtonNamed(view, "修改昵称").RaiseEvent(new(Button.ClickEvent));
+            PumpUntil(() => AutomationProperties.GetName(Field<Button>(view, "AccountPrimary")) == "保存昵称"
+                && Field<Button>(view, "AccountPrimary").IsEnabled);
+            Field<TextBox>(view, "AccountNickname").Text = "正在输入的昵称";
+            receiver.CloudConfiguration = White; receiver.ConfigurationVersion++;
+            var pending = controller.PumpConfigurationAsync(); PumpUntil(() => pending.IsCompleted);
+            Assert.AreEqual("正在输入的昵称", Field<TextBox>(view, "AccountNickname").Text);
+            Assert.AreEqual("团子号主", controller.Nickname);
+            Assert.IsTrue(AppearanceContract.Equivalent(White, local.Current));
+        });
+    }
+
+    [STATestMethod]
+    public void LogoutStopsSyncAndTheNextLoginComparesOfflineChangesWithoutReplaying()
+    {
+        WithDispatcher(() =>
+        {
+            var view = new AccountPanelView(); var receiver = new Receiver(); var local = new Local { Current = Cream };
+            using var controller = Controller(view, local, () => receiver, liveSync: true);
+            controller.Open(); Login(view, "logout-sync@dango.invalid"); PumpUntil(() => controller.ConfigurationReady);
+            ButtonNamed(view, "退出登录").RaiseEvent(new(Button.ClickEvent));
+            PumpUntil(() => !controller.IsLoggedIn && Field<Button>(view, "AccountPrimary").IsEnabled);
+            local.Current = White; controller.NotifyAppearanceSaved();
+            var pending = controller.PumpConfigurationAsync(); PumpUntil(() => pending.IsCompleted);
+            Assert.AreEqual(0, receiver.ConfigurationWrites);
+            Login(view, "logout-sync@dango.invalid");
+            PumpUntil(() => view.FindName("AccountCloudChoice") is not null);
+            Assert.IsFalse(controller.ConfigurationReady);
+            Assert.AreEqual(0, receiver.ConfigurationWrites);
+            Assert.IsTrue(AppearanceContract.Equivalent(White, local.Current));
+        });
+    }
+
+    [STATestMethod]
+    public void LocalSaveChangingDuringEqualLoginReadStillRequiresSourceChoice()
+    {
+        WithDispatcher(() =>
+        {
+            var view = new AccountPanelView(); var local = new Local { Current = Cream };
+            var receiver = new Receiver { DelayPetReadNumber = 2 };
+            using var controller = Controller(view, local, () => receiver);
+            controller.Open(); Login(view, "login-race@dango.invalid");
+            PumpUntil(() => receiver.PetReads == 2);
+            local.Current = White;
+            receiver.DelayedPet.TrySetResult(Receiver.Json(new
+            { userId = receiver.UserId, petId = receiver.PetId, configurationVersion = 1, configuration = Cream }));
+            PumpUntil(() => view.FindName("AccountCloudChoice") is not null);
+            Assert.IsFalse(controller.ConfigurationReady);
+            Assert.AreEqual(0, receiver.ConfigurationWrites);
+            Assert.AreEqual(0, local.Applied);
+            Assert.IsTrue(AppearanceContract.Equivalent(White, local.Current));
+        });
+    }
+
+    [STATestMethod]
+    public void InspectingSyncWhileOfflineDoesNotStopItsSessionOrAskForAnotherChoice()
+    {
+        WithDispatcher(() =>
+        {
+            var view = new AccountPanelView(); var receiver = new Receiver(); var local = new Local { Current = Cream };
+            using var controller = Controller(view, local, () => receiver, liveSync: true);
+            controller.Open(); Login(view, "inspect-sync@dango.invalid"); PumpUntil(() => controller.ConfigurationReady);
+            receiver.FailPetRead = true;
+            Field<Button>(view, "AccountPrimary").RaiseEvent(new(Button.ClickEvent));
+            PumpUntil(() => Field<Button>(view, "AccountPrimary").IsEnabled);
+            Assert.IsNull(view.FindName("AccountCloudChoice"));
+            controller.Close(); receiver.FailPetRead = false;
+            local.Current = White; controller.NotifyAppearanceSaved();
+            PumpUntil(() => receiver.ConfigurationWrites == 1);
+            Assert.IsTrue(AppearanceContract.Equivalent(White, receiver.CloudConfiguration));
+        });
+    }
+
+    [STATestMethod]
     public void EqualLoginConfigurationIsReadyWithoutChoiceOrWrites()
     {
         WithDispatcher(() =>
@@ -95,6 +269,46 @@ public sealed class AccountIntegrationBoundaryTests
             Assert.AreEqual(0, local.Applied);
             Assert.AreEqual(0, restoredReceiver.ConfigurationWrites);
             Assert.IsTrue(AppearanceContract.Equivalent(White, local.Current));
+        });
+    }
+
+    [STATestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void HomepageRestoresRememberedNicknameWithoutOpeningThePanelUnlessConfigurationDiffers(bool differs)
+    {
+        WithDispatcher(() =>
+        {
+            var store = new MemorySecrets(); var firstReceiver = new Receiver();
+            var firstView = new AccountPanelView();
+            using (var first = Controller(firstView, new Local { Current = Cream }, () => firstReceiver, store))
+            {
+                first.Open(); Field<CheckBox>(firstView, "AccountRememberLogin").IsChecked = true;
+                Login(firstView, "homepage-restore@dango.invalid"); PumpUntil(() => first.ConfigurationReady);
+            }
+            var home = new ProductHomeView { ReduceMotion = true };
+            var receiver = new Receiver { UserId = firstReceiver.UserId, PetId = firstReceiver.PetId };
+            var local = new Local { Current = differs ? White : Cream };
+            DesktopAccountController? restored = null;
+            using (restored = new(home.AccountPanel, Origin, store, remote => new(remote, local, new Journal()), local.CaptureAsync,
+                home.HideAccountPanel, (signedIn, ready) => home.SetAccountStatus(signedIn, ready, restored?.Nickname),
+                (origin, secrets) =>
+                {
+                    receiver.Cookies = new CookieContainer();
+                    return FormalAccountClient.ForTesting(origin, receiver, receiver.Cookies, secrets);
+                }))
+            {
+                home.AccountRequested += restored.Open;
+                restored.AccountAttentionRequested += home.ShowAccountPanel;
+                restored.InitializeRememberedSession();
+                PumpUntil(() => differs ? home.IsAccountPanelOpen && home.AccountPanel.FindName("AccountCloudChoice") is not null
+                    : restored.ConfigurationReady);
+                Assert.IsTrue(restored.IsLoggedIn);
+                Assert.AreEqual("团子号主", Field<Button>(home, "AccountButton").Content);
+                Assert.AreEqual(differs, home.IsAccountPanelOpen);
+                Assert.AreEqual(0, receiver.ConfigurationWrites);
+                Assert.AreEqual(0, local.Applied);
+            }
         });
     }
 
@@ -228,6 +442,7 @@ public sealed class AccountIntegrationBoundaryTests
             PumpUntil(() => old.PetReads == 2);
             Assert.IsTrue(controller.IsLoggedIn);
             controller.Close(); controller.Open();
+            Assert.IsTrue(ButtonNamed(view, "退出登录").IsEnabled, "A pending profile/configuration read cannot prevent logout.");
             ButtonNamed(view, "退出登录").RaiseEvent(new(Button.ClickEvent));
             controller.Close(); controller.Open();
             old.DelayedPet.TrySetResult(Receiver.Json(new { userId = old.UserId, petId = old.PetId, configurationVersion = 1, configuration = Cream }));
@@ -380,29 +595,33 @@ public sealed class AccountIntegrationBoundaryTests
         finally { window.Close(); }
     }
 
-    private static DesktopAccountController Controller(AccountPanelView view, Local local, Func<Receiver> receiver, MemorySecrets? store = null) =>
+    private static DesktopAccountController Controller(AccountPanelView view, Local local, Func<Receiver> receiver, MemorySecrets? store = null,
+        bool liveSync = false) =>
         new(view, Origin, store ?? new MemorySecrets(), remote =>
         {
             local.ReviewUserId = remote.UserId;
             return new(remote, local, new Journal());
         }, local.CaptureAsync, () => { }, (_, _) => { },
-        (origin, store) => FormalAccountClient.ForTesting(origin, receiver(), new CookieContainer(), store));
+        (origin, store) =>
+        {
+            var selected = receiver(); selected.Cookies = new CookieContainer();
+            return FormalAccountClient.ForTesting(origin, selected, selected.Cookies, store);
+        },
+        createSync: liveSync ? (remote, baseline) => new(remote, local, new Journal(), baseline) : null);
 
     [STATestMethod]
     public void RoomManagementDoesNotRequireAppearanceChoiceAndObsoleteBindingCannotClearReplacementAccount()
     {
         WithDispatcher(() =>
         {
-            var view = new AccountPanelView(); var receiver = new Receiver(); var roomsRequested = 0;
+            var view = new AccountPanelView(); var receiver = new Receiver();
             using var controller = Controller(view, new Local(), () => receiver);
-            controller.RoomsRequested += () => roomsRequested++;
             controller.Open(); Login(view, "rooms@dango.invalid");
             PumpUntil(() => view.FindName("AccountCloudChoice") is not null);
             Assert.IsFalse(controller.ConfigurationReady);
             Assert.IsNotNull(controller.RoomClient);
             var old = controller.RoomClient;
-            ButtonNamed(view, "我的房间").RaiseEvent(new(Button.ClickEvent));
-            Assert.AreEqual(1, roomsRequested);
+            Assert.IsFalse(Descendants(view).OfType<Button>().Any(button => AutomationProperties.GetName(button) == "我的房间"));
             controller.Close(); controller.Open();
             ButtonNamed(view, "退出登录").RaiseEvent(new(Button.ClickEvent));
             PumpUntil(() => !controller.IsLoggedIn && Field<Button>(view, "AccountPrimary").IsEnabled);
@@ -472,6 +691,12 @@ public sealed class AccountIntegrationBoundaryTests
         internal int IdentityReads;
         internal int PetReads, DelayPetReadNumber;
         internal int ConfigurationWrites;
+        internal JsonElement CloudConfiguration = Cream;
+        internal long ConfigurationVersion = 1;
+        internal string? ProfileNickname = "团子号主";
+        internal long ProfileVersion = 1;
+        internal int ProfileWrites;
+        internal bool FailProfileRead, LoseProfileSaveResponse, FailPetRead;
         internal CookieContainer? Cookies;
         internal bool RegisterFlow;
         internal bool RejectRegistration;
@@ -486,6 +711,29 @@ public sealed class AccountIntegrationBoundaryTests
         {
             var path = request.RequestUri!.AbsolutePath;
             if (request.Method == HttpMethod.Patch && path == "/api/v1/me/pet/configuration") ConfigurationWrites++;
+            if (path == "/api/v1/me/profile")
+            {
+                if (request.Method == HttpMethod.Get)
+                {
+                    if (FailProfileRead) throw new HttpRequestException("fictional profile outage");
+                    return Json(new { userId = UserId, nickname = ProfileNickname, profileVersion = ProfileVersion });
+                }
+                var update = await request.Content!.ReadFromJsonAsync<JsonElement>(ct);
+                if (update.GetProperty("expectedVersion").GetInt64() != ProfileVersion)
+                    return new(HttpStatusCode.Conflict) { Content = JsonContent.Create(new { code = "account_profile_conflict" }) };
+                ProfileNickname = AccountNickname.Normalize(update.GetProperty("nickname").GetString());
+                ProfileVersion++; ProfileWrites++;
+                if (LoseProfileSaveResponse) throw new HttpRequestException("fictional interrupted profile response");
+                return Json(new { userId = UserId, nickname = ProfileNickname, profileVersion = ProfileVersion });
+            }
+            if (request.Method == HttpMethod.Patch && path == "/api/v1/me/pet/configuration")
+            {
+                var update = await request.Content!.ReadFromJsonAsync<JsonElement>(ct);
+                if (update.GetProperty("expectedVersion").GetInt64() != ConfigurationVersion)
+                    return new(HttpStatusCode.Conflict) { Content = JsonContent.Create(new { code = "pet_configuration_conflict" }) };
+                CloudConfiguration = update.GetProperty("configuration").Clone(); ConfigurationVersion++;
+                return Json(new { userId = UserId, petId = PetId, configurationVersion = ConfigurationVersion, configuration = CloudConfiguration });
+            }
             if (RegisterFlow && path.StartsWith("/api/v1/auth/registrations", StringComparison.Ordinal))
             {
                 if (path == "/api/v1/auth/registrations")
@@ -516,12 +764,13 @@ public sealed class AccountIntegrationBoundaryTests
                 return DelayLogout ? await DelayedLogout.Task : Json(new { status = "signed_out" });
             }
             if (path == "/api/v1/me") IdentityReads++;
+            if (path == "/api/v1/me/pet" && FailPetRead) throw new HttpRequestException("fictional pet outage");
             if (path == "/api/v1/me/pet" && ++PetReads == DelayPetReadNumber) return await DelayedPet.Task;
             return path switch
             {
                 "/api/v1/auth/request-protection" => Json(new { requestToken = "fictional_request_token_for_test" }),
                 "/api/v1/me" => Json(new { userId = UserId }),
-                "/api/v1/me/pet" => Json(new { userId = UserId, petId = PetId, configurationVersion = 1, configuration = Cream }),
+                "/api/v1/me/pet" => Json(new { userId = UserId, petId = PetId, configurationVersion = ConfigurationVersion, configuration = CloudConfiguration }),
                 "/api/v1/auth/logout" => Json(new { status = "signed_out" }),
                 _ => throw new AssertFailedException("Unexpected request path")
             };
