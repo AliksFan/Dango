@@ -62,7 +62,7 @@ Core 增加显式 Trial／OrdinaryRoom 合同，保持旧 API 默认 Trial。Des
 
 I4 product-r2 完成实际产品 host 的 50 次编辑和房间往返、51 次保存、隐藏／恢复及两个独立 OS 进程保存／加载。活动观察仅累计 249.8867 秒；窗口随后被隐藏，未达到 600 秒。用户在观察期间补充家具缩略图要求，本次只结束路径核实后的所属 verifier PID，保留修改前部分证据 `product-r2/aborted-observation.json` 和 `verification/progress.json`，不视为通过，也不将进程终止记成正常释放断言通过。
 
-最终候选将纳入仓库缩略图及强化后的工具断言再构建。工具对初次保存与每次移动均检查文件和 native 一致、layoutVersion 恰好增加 1、锚点等于本次请求，断言通过后才增加 SavedOperations；独立进程保存与加载也核对 version 1 和锚点 1440/120。手动启动前只读检查准确的 review mutex，避免误激活旧候选；新 PID 须通过初始存活核对。
+最终候选纳入仓库缩略图及强化后的工具断言。工具对初次保存与每次移动均检查文件和 native 一致、layoutVersion 恰好增加 1、锚点等于本次请求，断言通过后才增加 SavedOperations；独立进程保存与加载也核对 version 1 和锚点 1440/120。手动启动前只读检查准确的 review mutex，避免误激活旧候选；新 PID 须通过初始存活核对。
 
 最终 product-r3 已纳入上述缩略图与断言，构建于干净实现提交 `776ed4b6548538db645a65d7c1a99ea2684f90b8`。源码快照为 761 项、SHA256 `58A53A3BEF8760A20ECC8F086AC01DBCCB1B3BB6BF91B208D844B843D40AB86B`，构建后核对一致。本记录后续只更新验证结果，未改产品或工具源；后续文档提交不是另一个生产候选。
 
