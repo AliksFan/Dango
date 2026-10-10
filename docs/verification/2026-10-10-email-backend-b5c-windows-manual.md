@@ -28,6 +28,18 @@
 
 前次助手回执为 `stopped`、ResourceCleanupComplete=true、ServerKeyDisposed=true、无 Problems，InvitationId为空，预算与候选进程均为空。随后根实查本次 PostgreSQL PID退出、两个记录端口无监听、pidfile消失、该 thumbprint 在 CurrentUser Root 不存在，并仅对已核验路径／创建时间且资源已清理的助手请求正常关闭，进程实际退出。受保护文件及原库保留。本次验证了环境准备失败的资源收尾，未验证真实账号或端到端客户端 TLS／WinCred 使用。
 
-新增离线 metadata SQL 反例 `DatabaseValidationUsesTheFormalDangoMigrationHistorySchema`：旧实现1／1真实失败，`manual-history-schema-before.trx` 保留。维护上下文改为正式共用 `DangoDatabaseOptions.Create`；修后完整工具 **125／125** 通过，`manual-history-schema-fixed-r2.trx`。新增非秘密启动阶段／稳定错误码回执。下一次新目录及新证书按[R2 精确计划](../planning/2026-10-10-backend-b5c-windows-manual-r2-plan.md)准备，尚未获批或启动。
+新增离线 metadata SQL 反例 `DatabaseValidationUsesTheFormalDangoMigrationHistorySchema`：旧实现1／1真实失败，`manual-history-schema-before.trx` 保留。维护上下文改为正式共用 `DangoDatabaseOptions.Create`；修后完整工具 **125／125** 通过，`manual-history-schema-fixed-r2.trx`。新增非秘密启动阶段／稳定错误码回执。
+
+### R2 真实启动与当前验收点
+
+用户明确回复“确认”，批准[R2 精确计划](../planning/2026-10-10-backend-b5c-windows-manual-r2-plan.md)后执行一次准备。开始前核验新目录和既有独立实例 pidfile 均不存在、工作树干净、工具静态125／125、受保护生产 DLL 和隔离候选模块 hash 与既有记录一致。没有覆盖前次目录。
+
+R2 助手回执为 ready／StartupPhase=ready、StartupFailure为空、无 Problems；正式历史检查通过，已签发一份本轮邀请。首次候选进程具有可核验 PID、创建时间与固定 release 路径，IdentityVerified=true、LaunchNumber=1；助手、PostgreSQL 与真实 Dango 控制中心进程存活且可响应。此时注册开始／完成、登录、共同房、Enter、码重置、配置和 Other 预算均为0，本轮账号注册尚未开始。
+
+在正常系统证书校验下请求本轮 HTTPS `/health/ready` 返回200及 `status=ready`；未使用证书 pin、跳过验证或正式业务请求代替用户操作。TLS 公钥信任及专用凭据槽仅用于此 R2 origin；其准确值位于仓库外受保护的非秘密回执，不写成本机部署配置。
+
+独立代理对当前启动快照只读复核通过：owner／runtime／TLS 回执归属一致；候选父进程、参数及时间与 launcher 对应；PostgreSQL 精确 `-D`、`-h`、`-p` 与 pidfile 对应，两项监听仅在 loopback 并由本轮进程持有。R2 目录无 reparse、当前用户独占受保护 ACL；公钥文件／回执／当前用户 Root 的唯一条目摘要一致，无 private key，SAN 仅 loopback、EKU 仅 server-auth、非 CA、3天且有效。代理没有读取秘密或业务数据，没有操作资源或 UI。
+
+当前环境保持运行，交给用户按助手中的顺序操作邮箱账号、配置来源、房间管理、租约与进程重开。没有代用户设置密码、注册、登录、创建房间或判定体验通过。结束需用户从托盘退出候选，再点击助手“结束验收”，随后核验本轮资源收尾；目前尚未收尾，不能把运行中的资源称为已退出或把 readiness 称为人工验收通过。
 
 本阶段不改变正式多人移动／动作／场景协议，不能关闭完整 B5。没有 main 合并、推送、部署、日常安装或生产 DLL 替换。
