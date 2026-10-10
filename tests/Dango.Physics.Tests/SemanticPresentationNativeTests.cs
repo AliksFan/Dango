@@ -22,13 +22,14 @@ public sealed class SemanticPresentationNativeTests
     [DataRow(144, "withdraw")]
     public void TwentyHertzAuthorityMustMeetFrozenDrawnContactGate(int renderRate, string scenario)
     {
-        var evidenceName = Environment.GetEnvironmentVariable("DANGO_SEMANTIC_EVIDENCE_NAME") ?? "semantic-timing-corrected";
-        if (evidenceName is not ("semantic" or "semantic-timing-corrected" or "semantic-final"))
+        var evidenceName = Environment.GetEnvironmentVariable("DANGO_SEMANTIC_EVIDENCE_NAME") ?? "semantic-prescribed";
+        if (evidenceName is not ("semantic-prescribed" or "semantic-prescribed-final" or "semantic-prescribed-final2"))
             throw new ArgumentException("The semantic probe writes only its named isolated evidence directories.");
         var moduleSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(PhysicsTestLibraries.Unified)));
         var trace = BuildTrace(scenario);
-        var published = trace.Where((_, index) => index % 3 == 0).Select(Snapshot).ToArray();
+        var published = trace.Where((_, index) => index % 3 == 0 || index == trace.Count - 1).Select(Snapshot).ToArray();
         var sampler = new SemanticPresentationSampler();
+        sampler.BindEpoch("semantic-fixture");
         sampler.Push(published[0]);
         var cursor = 1;
         var latestTick = published[0].Tick;
@@ -40,8 +41,13 @@ public sealed class SemanticPresentationNativeTests
         string? runtimeFailure = null;
         var supportedSteps = 0;
         var renderedSteps = 0;
+        DangoEntityId? survivorLocalId = null;
+        double? withdrawalHeight = null;
+        SemanticPresentedBody? lastSurvivor = null;
+        var withdrawalObserved = false;
         var finalTick = published[^1].Tick;
         using var replica = new SemanticPresentationReplica(PhysicsTestLibraries.Unified);
+        replica.BindEpoch("semantic-fixture");
         try
         {
             var nextFixedTick = 1;
@@ -70,22 +76,43 @@ public sealed class SemanticPresentationNativeTests
                     catch (Exception error) when (error is DangoPhysicsException or InvalidOperationException or ArgumentException)
                     {
                         runtimeFailure = error.Message;
-                        firstFailure = new { sample, oracle, stepStartTargets = replica.LastStepStartTargets, localFrame = replica.LastLocalFrame, runtimeFailure };
+                        if (replica.LastFailedPresentedFrame is { } failed) firstFailedGate = SemanticPresentationGate.Evaluate(failed);
+                        firstFailure = new { sample, oracle, prescribedInput = replica.LastPrescribedInput, nativeTrace = replica.LastNativeTrace,
+                            localFrame = replica.LastLocalFrame, failedDrawn = replica.LastFailedPresentedFrame, firstFailedGate, runtimeFailure };
                         break;
                     }
                     renderedSteps++;
                     if (drawn.Bodies.Any(body => body.Authority.SupportEntityId is not null)) supportedSteps++;
                     var gate = SemanticPresentationGate.Evaluate(drawn);
+                    if (scenario == "withdraw")
+                    {
+                        var survivor = drawn.Bodies.Single(body => body.Authority.EntityId.Value == 2);
+                        survivorLocalId ??= survivor.LocalBody.EntityId;
+                        Assert.AreEqual(survivorLocalId.Value, survivor.LocalBody.EntityId, "Removing the supporting body cannot recreate its survivor.");
+                        lastSurvivor = survivor;
+                        if (drawn.Bodies.Count == 1)
+                        {
+                            withdrawalObserved = true;
+                            withdrawalHeight ??= survivor.Authority.CoreY;
+                            Assert.IsNull(survivor.Authority.SupportEntityId);
+                            Assert.AreEqual(0, drawn.Pairs.Count);
+                            Assert.AreEqual(0, replica.LastPrescribedInput!.StartPairs.Count);
+                            Assert.AreEqual(0, replica.LastPrescribedInput.EndPairs.Count);
+                            Assert.IsNull(replica.LastPrescribedInput.Bodies[0].StartSupportEntityId);
+                            Assert.IsNull(replica.LastPrescribedInput.Bodies[0].EndSupportEntityId);
+                        }
+                    }
                     diagnostics.Add(new
                     {
                         tick = nextFixedTick, sample = sample.Bodies, oracle = oracle.Bodies,
                         localCenters = drawn.Bodies.Select(body => new { body.Authority.EntityId, body.LocalBody.CoreX, body.LocalBody.CoreY }),
-                        drawn.StepStartTick, drawn.LocalContourTick, stepStartTargets = replica.LastStepStartTargets, gate, reconstruction, transition,
+                        drawn.StepStartTick, drawn.LocalContourTick, prescribedInput = replica.LastPrescribedInput,
+                        nativeTrace = replica.LastNativeTrace, gate, reconstruction, transition,
                     });
                     if (!gate.Passed)
                     {
                         firstFailedGate = gate;
-                        firstFailure = new { sample, oracle, stepStartTargets = replica.LastStepStartTargets, drawn, gate };
+                        firstFailure = new { sample, oracle, prescribedInput = replica.LastPrescribedInput, nativeTrace = replica.LastNativeTrace, drawn, gate };
                         break;
                     }
                     nextFixedTick++;
@@ -95,6 +122,14 @@ public sealed class SemanticPresentationNativeTests
             Assert.IsNull(runtimeFailure, "A local native fault or unsafe shape blocks presentation admission.");
             Assert.IsNull(firstFailedGate, "The frozen actual-drawn gate failed; evidence is retained without seam or center correction.");
             Assert.AreEqual(finalTick, renderedSteps, "Every fixed step must be rendered without an unreported skipped gate.");
+            Assert.AreEqual(600L, finalTick, "The final source Tick must be sampled as well as the ordinary 20 Hz snapshots.");
+            if (scenario == "withdraw")
+            {
+                Assert.IsTrue(withdrawalObserved && lastSurvivor is not null && withdrawalHeight is not null);
+                Assert.IsTrue(lastSurvivor!.Authority.CoreY < withdrawalHeight - .2, "The real surviving core must descend after support withdrawal.");
+                Assert.IsTrue(lastSurvivor.Authority.FloorGrounded && lastSurvivor.LocalBody.GroundContactCount > 0,
+                    "The remaining body must actually reach the floor before this full trajectory passes.");
+            }
             if (scenario != "push") Assert.IsTrue(supportedSteps > 30, "A stack test must contain actual authoritative support.");
             var p99 = Percentile99(commonErrors);
             Assert.IsTrue(p99 <= .02 && commonErrors.DefaultIfEmpty().Max() <= .06,
@@ -102,18 +137,21 @@ public sealed class SemanticPresentationNativeTests
         }
         finally
         {
-            var directory = Path.Combine(PhysicsTestLibraries.Root, "artifacts", "ordinary-room-physics-admission", evidenceName);
+            var directory = Path.Combine(PhysicsTestLibraries.Root, "artifacts", "p1-followup", evidenceName);
             Directory.CreateDirectory(directory);
             var path = Path.Combine(directory, $"{scenario}-{renderRate}hz.json");
             File.WriteAllText(path, JsonSerializer.Serialize(new
             {
                 scenario, renderRate, stateRate = 20, fixedRate = 60, moduleSha256,
-                pipeline = "step-start target at T-dt -> neutral local step -> contour and authoritative draw center at T",
+                pipeline = "T-1/T shared Hermite endpoints and derivative -> prescribed native core and local nodes -> contour and authority center at T",
+                requiredFixedSteps = finalTick, completedFullTrajectory = renderedSteps == finalTick,
+                observedReconstructionPrefixWithinBudget = commonErrors.Count > 0 && Percentile99(commonErrors) <= .02 && commonErrors.Max() <= .06,
                 displayGatePassed = firstFailure is null && renderedSteps == finalTick,
-                reconstructionGatePassed = commonErrors.Count > 0 && Percentile99(commonErrors) <= .02 && commonErrors.Max() <= .06,
+                reconstructionGatePassed = renderedSteps == finalTick && commonErrors.Count > 0 && Percentile99(commonErrors) <= .02 && commonErrors.Max() <= .06,
                 overallGatePassed = firstFailure is null && renderedSteps == finalTick && commonErrors.Count > 0 &&
                     Percentile99(commonErrors) <= .02 && commonErrors.Max() <= .06 && (scenario == "push" || supportedSteps > 30),
-                renderedSteps, supportedSteps, runtimeFailure, firstFailedGate,
+                renderedSteps, supportedSteps, withdrawalObserved, survivorLocalId, withdrawalHeight,
+                withdrawalFinalHeight = lastSurvivor?.Authority.CoreY, runtimeFailure, firstFailedGate,
                 normalReconstructionP99 = Percentile99(commonErrors),
                 normalReconstructionMaximum = commonErrors.DefaultIfEmpty().Max(),
                 impulseWindowReconstructionMaximum = impulseErrors.DefaultIfEmpty().Max(),
@@ -124,7 +162,7 @@ public sealed class SemanticPresentationNativeTests
         }
     }
 
-    private static IReadOnlyList<DangoAuthorityFrame> BuildTrace(string scenario)
+    internal static IReadOnlyList<DangoAuthorityFrame> BuildTrace(string scenario)
     {
         using var authority = DangoPhysicsWorld.Create(PhysicsTestLibraries.Unified, capacity: 2);
         authority.EnableAuthority();
@@ -145,10 +183,11 @@ public sealed class SemanticPresentationNativeTests
         return trace.AsReadOnly();
     }
 
-    private static SemanticPresentationSnapshot Snapshot(DangoAuthorityFrame frame) => new("semantic-fixture", checked((long)frame.Tick),
+    internal static SemanticPresentationSnapshot Snapshot(DangoAuthorityFrame frame) => new("semantic-fixture", checked((long)frame.Tick),
         frame.Bodies.Select(body => new SemanticBodyState(body.EntityId, body.CoreX, body.CoreY, body.CoreVelocityX, body.CoreVelocityY,
             body.FloorGrounded, body.SupportEntityId)),
-        frame.Pairs.Select(pair => new SemanticPairState(pair.EntityA, pair.EntityB, pair.NormalX, pair.NormalY, pair.Gap, pair.MinimumProjectedWidth)));
+        frame.Pairs.Select(pair => new SemanticPairState(pair.EntityA, pair.EntityB, pair.NormalX, pair.NormalY, pair.Gap, pair.MinimumProjectedWidth)),
+        sceneRevision: frame.SceneRevision);
 
     private static bool IsTransitionWindow(IReadOnlyList<DangoAuthorityFrame> trace, int index)
     {

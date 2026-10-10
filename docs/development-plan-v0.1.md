@@ -1,6 +1,6 @@
 # Dango 分阶段开发计划 v0.1
 
-> 2026-10-11 普通房双人P0–P1隔离验证：用户批准真实推挤、承重和堆叠设计及P0–P1本地实施／验证／提交。P0合同已冻结，authority语义输出和Windows headless有实际证据；完整恢复与实际绘制接触门禁未通过，Linux未验证，P1不准入、P2停止。见[验证报告](verification/2026-10-11-dual-player-physics-admission.md)、[冻结合同](planning/2026-10-11-dual-player-p0-contract.md)和[下一轮候选](planning/2026-10-11-dual-player-p1-followup-proposal.md)。候选改法尚未批准；正式账号／服务／数据、main整合、推送、安装、部署及受保护DLL替换仍未授权，不能将隔离物理计算标为在线双人验收。
+> 2026-10-11 普通房双人P0–P1隔离验证：用户批准真实推挤、承重和堆叠设计及P0–P1本地实施／验证／提交，随后批准规定中心／局部节点与同构建跨进程重放两条隔离验证线。第二轮推挤三个帧率完整通过，堆叠／撤支撑仍在Tick42停止；9个重放场景精确，但600秒历史的固定体积／耗时预算失败。原行为30项、旧家具与headless回归通过；完整checkpoint仍unsupported，Linux／实际UI／人工双机未验证，P1不准入、P2停止。原产品恢复要求和门槛保留。见[第二轮报告](verification/2026-10-11-dual-player-p1-followup.md)、[第一轮报告](verification/2026-10-11-dual-player-physics-admission.md)、[P0合同](planning/2026-10-11-dual-player-p0-contract.md)、[已批准方案](planning/2026-10-11-dual-player-p1-followup-proposal.md)及[本轮合同](planning/2026-10-11-dual-player-p1-followup-contract.md)。正式账号／服务／数据、main整合、推送、安装、部署及受保护DLL替换仍未授权，不能将隔离物理计算标为在线双人验收。
 
 > 2026-10-10 实时家具单人候选人工通过：用户对 `codex/furniture-layout-live@956ec56` 的真实验收窗口明确回复“通过”，确认首批单人木平台布局候选整体人工验收通过，见[人工确认记录](verification/2026-10-10-live-furniture-layout-implementation.md#2026-10-10-用户人工通过)。沿用最终 r7 自动／整链与 r8 600 秒／50 次编辑切换证据；专项键鼠／100% 与 150% DPI 未逐项验证、既有 59 FPS 性能门禁保留，不以整体确认补造检查结果。本次只记录人工通过并在当前分支本地提交；未合并 main、推送、更新日常安装、替换生产 DLL 或部署。球、参数、正式入口、账号、多人及新圆形模型接入仍后置。下方实现交付与准备条目保留各自历史状态。
 

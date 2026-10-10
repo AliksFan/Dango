@@ -15,11 +15,12 @@ public sealed record SemanticPresentationSnapshot
     public const int Version = 1;
     public SemanticPresentationSnapshot(string epoch, long tick,
         IEnumerable<SemanticBodyState> bodies, IEnumerable<SemanticPairState> pairs,
-        int schemaVersion = Version)
+        int schemaVersion = Version, ulong sceneRevision = 1)
     {
         Epoch = epoch;
         Tick = tick;
         SchemaVersion = schemaVersion;
+        SceneRevision = sceneRevision;
         Bodies = Array.AsReadOnly(bodies.ToArray());
         Pairs = Array.AsReadOnly(pairs.ToArray());
         Validate();
@@ -28,12 +29,13 @@ public sealed record SemanticPresentationSnapshot
     public string Epoch { get; }
     public long Tick { get; }
     public int SchemaVersion { get; }
+    public ulong SceneRevision { get; }
     public IReadOnlyList<SemanticBodyState> Bodies { get; }
     public IReadOnlyList<SemanticPairState> Pairs { get; }
 
     public void Validate()
     {
-        if (SchemaVersion != Version || string.IsNullOrWhiteSpace(Epoch) || Epoch.Length > 128 || Tick < 0)
+        if (SchemaVersion != Version || string.IsNullOrWhiteSpace(Epoch) || Epoch.Length > 128 || Tick < 0 || SceneRevision == 0)
             throw new ArgumentException("Unsupported semantic frame boundary.");
         if (Bodies.Count is < 1 or > 2 || Pairs.Count > 1 ||
             Bodies.Select(body => body.EntityId).Distinct().Count() != Bodies.Count)
@@ -50,8 +52,12 @@ public sealed record SemanticPresentationSnapshot
             var normalLength = Math.Sqrt(pair.NormalX * pair.NormalX + pair.NormalY * pair.NormalY);
             if (pair.First == pair.Second || !Bodies.Any(b => b.EntityId == pair.First) || !Bodies.Any(b => b.EntityId == pair.Second) ||
                 !Finite(pair.NormalX, pair.NormalY, pair.Gap, pair.ProjectedWidth) ||
-                normalLength is < .9 or > 1.1 || pair.ProjectedWidth <= 0)
+                Math.Abs(normalLength * normalLength - 1) > .0002 || pair.ProjectedWidth <= 0 || pair.Gap > .008)
                 throw new ArgumentException("Invalid semantic contact pair.");
+            var first = Bodies.Single(body => body.EntityId == pair.First);
+            var second = Bodies.Single(body => body.EntityId == pair.Second);
+            if ((second.CoreX - first.CoreX) * pair.NormalX + (second.CoreY - first.CoreY) * pair.NormalY < 0)
+                throw new ArgumentException("A common pair normal must point from its first body toward its second body.");
         }
         foreach (var body in Bodies.Where(body => body.SupportEntityId is not null))
         {
@@ -60,7 +66,8 @@ public sealed record SemanticPresentationSnapshot
                 throw new ArgumentException("The two-body support graph cannot contain a cycle.");
             var pair = Pairs.SingleOrDefault(candidate => (candidate.First == body.EntityId && candidate.Second == body.SupportEntityId) ||
                 (candidate.Second == body.EntityId && candidate.First == body.SupportEntityId));
-            if (pair is null || pair.Gap > .008 || (pair.First == body.EntityId ? -pair.NormalY : pair.NormalY) < .7)
+            if (pair is null || pair.Gap > .008 || (pair.First == body.EntityId ? -pair.NormalY : pair.NormalY) < .7 ||
+                body.CoreY <= supportingBody.CoreY + .4)
                 throw new ArgumentException("A supporting relationship requires its upward common contact pair.");
         }
     }
@@ -69,7 +76,7 @@ public sealed record SemanticPresentationSnapshot
 }
 
 public sealed record SemanticPresentationSample(string Epoch, double Tick,
-    IReadOnlyList<SemanticBodyState> Bodies, IReadOnlyList<SemanticPairState> Pairs);
+    IReadOnlyList<SemanticBodyState> Bodies, IReadOnlyList<SemanticPairState> Pairs, ulong SceneRevision = 1);
 
 /// <summary>A bounded common-frame buffer; all bodies are sampled at the same delayed time.</summary>
 public sealed class SemanticPresentationSampler
@@ -92,9 +99,16 @@ public sealed class SemanticPresentationSampler
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         snapshot.Validate();
-        if (epoch is null) BindEpoch(snapshot.Epoch);
         if (epoch != snapshot.Epoch) return false;
         if (frames.Count > 0 && snapshot.Tick <= frames[^1].Tick) return false;
+        if (frames.Count > 0)
+        {
+            var previous = frames[^1];
+            if (snapshot.SceneRevision < previous.SceneRevision) return false;
+            if (snapshot.SceneRevision == previous.SceneRevision &&
+                !snapshot.Bodies.Select(body => body.EntityId).ToHashSet().SetEquals(previous.Bodies.Select(body => body.EntityId)))
+                return false;
+        }
         frames.Add(snapshot);
         if (frames.Count > Capacity) frames.RemoveAt(0);
         return true;
@@ -106,7 +120,7 @@ public sealed class SemanticPresentationSampler
             throw new ArgumentOutOfRangeException(nameof(tick), "Only buffered common time may be sampled; no hidden extrapolation.");
         var left = frames.Last(frame => frame.Tick <= tick);
         var right = frames.FirstOrDefault(frame => frame.Tick > tick);
-        if (right is null) return new(left.Epoch, tick, left.Bodies, left.Pairs);
+        if (right is null) return new(left.Epoch, tick, left.Bodies, left.Pairs, left.SceneRevision);
         var fraction = (tick - left.Tick) / (right.Tick - left.Tick);
         var seconds = (right.Tick - left.Tick) * FixedStep.TotalSeconds;
         var sampled = left.Bodies.Select(body =>
@@ -118,11 +132,11 @@ public sealed class SemanticPresentationSampler
             {
                 CoreX = Hermite(body.CoreX, next.CoreX, body.CoreVelocityX, next.CoreVelocityX, fraction, seconds),
                 CoreY = Hermite(body.CoreY, next.CoreY, body.CoreVelocityY, next.CoreVelocityY, fraction, seconds),
-                CoreVelocityX = body.CoreVelocityX + (next.CoreVelocityX - body.CoreVelocityX) * fraction,
-                CoreVelocityY = body.CoreVelocityY + (next.CoreVelocityY - body.CoreVelocityY) * fraction,
+                CoreVelocityX = HermiteVelocity(body.CoreX, next.CoreX, body.CoreVelocityX, next.CoreVelocityX, fraction, seconds),
+                CoreVelocityY = HermiteVelocity(body.CoreY, next.CoreY, body.CoreVelocityY, next.CoreVelocityY, fraction, seconds),
             };
         }).ToArray();
-        return new(left.Epoch, tick, Array.AsReadOnly(sampled), left.Pairs);
+        return new(left.Epoch, tick, Array.AsReadOnly(sampled), left.Pairs, left.SceneRevision);
     }
 
     private static double Hermite(double first, double second, double firstVelocity, double secondVelocity,
@@ -132,5 +146,13 @@ public sealed class SemanticPresentationSampler
         var cubed = squared * fraction;
         return (2 * cubed - 3 * squared + 1) * first + (cubed - 2 * squared + fraction) * seconds * firstVelocity +
             (-2 * cubed + 3 * squared) * second + (cubed - squared) * seconds * secondVelocity;
+    }
+
+    private static double HermiteVelocity(double first, double second, double firstVelocity, double secondVelocity,
+        double fraction, double seconds)
+    {
+        var squared = fraction * fraction;
+        return (6 * squared - 6 * fraction) * first / seconds + (3 * squared - 4 * fraction + 1) * firstVelocity +
+            (-6 * squared + 6 * fraction) * second / seconds + (3 * squared - 2 * fraction) * secondVelocity;
     }
 }

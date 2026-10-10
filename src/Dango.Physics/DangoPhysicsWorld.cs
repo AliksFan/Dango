@@ -353,6 +353,7 @@ public sealed partial class DangoPhysicsWorld : IDisposable
             ClearStaticPlatform = clearStaticPlatform;
             ReadStaticPlatformContact = readStaticPlatformContact;
             LoadAuthorityExports();
+            LoadPrescribedExports();
         }
 
         internal static NativeApi Load(string path)

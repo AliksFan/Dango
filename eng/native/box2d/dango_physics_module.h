@@ -4,6 +4,7 @@
 #include "dango_self_physics_internal.h"
 #include "dango_round_ball_types.h"
 #include "dango_authority_types.h"
+#include "dango_prescribed_types.h"
 
 #define DANGO_PHYSICS_MODULE_ABI_VERSION 1
 #define DANGO_PHYSICS_MAX_BODIES 3
@@ -59,6 +60,12 @@ DANGO_API int dango_physics_world_import_checkpoint(void* handle,const void* buf
 DANGO_API int dango_physics_get_presentation_target_size(void);
 DANGO_API int dango_physics_world_apply_presentation_targets(void* handle,
     const dango_presentation_target* targets,int count,int target_size);
+DANGO_API int dango_physics_get_prescribed_abi_version(void);
+DANGO_API int dango_physics_get_prescribed_step_size(void);
+DANGO_API int dango_physics_get_prescribed_trace_size(void);
+DANGO_API int dango_physics_world_bind_prescribed_epoch(void* handle,uint64_t epoch);
+DANGO_API int dango_physics_world_step_prescribed(void* handle,const dango_prescribed_step* input,int input_size,
+    int* state_ids,float* states,int capacity,int* state_count,int* contact_steps,dango_prescribed_trace* trace,int trace_size);
 
 // Optional round-ball ABI. Get checks exact frame_size before any output write.
 DANGO_API int dango_physics_get_round_ball_abi_version(void);

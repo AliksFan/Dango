@@ -284,7 +284,7 @@ static void collection_probe(collision_review* p,int kind,uint64_t target,uint64
     *result=(dango_furniture_collection_probe){.world_generation=p->world_generation,.scene_revision=p->scene_revision,
         .physics_step=p->physics_step,.minimum_gap=1024}; *slot=-1;
     if (p->error) { result->rejection=8; return; }
-    if (p->authority_enabled || p->presentation_mode) { result->rejection=2; return; }
+    if (p->authority_enabled || p->presentation_mode || p->prescribed_mode) { result->rejection=2; return; }
     if (p->count!=1 || p->platform_enabled || p->ball.state.enabled) { result->rejection=2; return; }
     if (revision!=p->scene_revision) { result->rejection=3; return; }
     if (kind<1 || kind>3 || (kind==1 && target!=0) || (kind!=1 && target==0)) { result->rejection=4; return; }
@@ -411,7 +411,7 @@ DANGO_API int dango_physics_world_prepare_furniture_change(void* handle,int kind
 DANGO_API int dango_physics_world_apply_prepared_furniture_change(void* handle,const dango_furniture_token* token)
 {
     collision_review* p=handle;
-    if (p && (p->authority_enabled || p->presentation_mode)) return DANGO_AUTHORITY_MODE_CONFLICT;
+    if (p && (p->authority_enabled || p->presentation_mode || p->prescribed_mode)) return DANGO_AUTHORITY_MODE_CONFLICT;
     if (!p || !token || !p->collection_prepared || p->error ||
         memcmp(token,&p->collection_token,sizeof *token)!=0 || token->scene_revision!=p->scene_revision || token->physics_step!=p->physics_step) return -410;
     int slot=p->collection_prepared_slot;
@@ -429,6 +429,7 @@ DANGO_API int dango_physics_world_apply_prepared_furniture_change(void* handle,c
 DANGO_API int dango_physics_world_cancel_prepared_furniture_change(void* handle,const dango_furniture_token* token)
 {
     collision_review* p=handle;
+    if (p && p->prescribed_mode) return DANGO_AUTHORITY_MODE_CONFLICT;
     if (p && p->authority_enabled && collision_latched_error(p)) return collision_latched_error(p);
     if (!p || !token || token->world_generation!=p->world_generation) return -410;
     if (p->collection_prepared && token->token_id==p->collection_token.token_id) p->collection_prepared=false;

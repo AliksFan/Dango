@@ -13,7 +13,7 @@ static bool authority_role_supported(const collision_review* p)
 static bool authority_refresh(collision_review* p)
 {
     if (!p->authority_enabled || p->error || p->authority_error) return false;
-    if (!authority_role_supported(p) || p->presentation_mode) return false;
+    if (!authority_role_supported(p) || p->presentation_mode || p->prescribed_mode) return false;
 #ifdef DANGO_AUTHORITY_CONTRACT_TESTS
     if (p->test_authority_publication_fault) return false;
 #endif
@@ -101,7 +101,7 @@ DANGO_API int dango_physics_world_enable_authority(void* handle)
 {
     collision_review* p=handle;
     if (!p) return -410;
-    if (p->presentation_mode) return DANGO_AUTHORITY_MODE_CONFLICT;
+    if (p->presentation_mode || p->prescribed_mode) return DANGO_AUTHORITY_MODE_CONFLICT;
     if (!authority_role_supported(p)) return DANGO_AUTHORITY_UNSUPPORTED;
     if (p->error) return p->error;
     if (p->authority_enabled) return p->authority_error;
@@ -119,7 +119,7 @@ DANGO_API int dango_physics_world_get_authority_frame(void* handle,dango_authori
 {
     collision_review* p=handle;
     if (!p || !frame || frame_size!=(int)sizeof *frame) return -410;
-    if (p->presentation_mode) return DANGO_AUTHORITY_MODE_CONFLICT;
+    if (p->presentation_mode || p->prescribed_mode) return DANGO_AUTHORITY_MODE_CONFLICT;
     if (!p->authority_enabled || !authority_role_supported(p)) return DANGO_AUTHORITY_UNSUPPORTED;
     *frame=p->authority_snapshot;
     frame->error_code=p->error ? p->error : p->authority_error;
@@ -144,7 +144,7 @@ DANGO_API int dango_physics_world_apply_presentation_targets(void* handle,
 {
     collision_review* p=handle;
     if (!p || !targets || target_size!=(int)sizeof *targets || count!=p->count || count<1 || count>2) return -410;
-    if (p->authority_enabled) return DANGO_AUTHORITY_MODE_CONFLICT;
+    if (p->authority_enabled || p->prescribed_mode) return DANGO_AUTHORITY_MODE_CONFLICT;
     if (!authority_role_supported(p)) return DANGO_AUTHORITY_UNSUPPORTED;
     if (p->error) return p->error;
     int slots[3]={0},seen[3]={0};
