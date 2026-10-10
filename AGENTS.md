@@ -21,6 +21,7 @@
 - 按已批准阶段和范围实施，不得顺手扩展、重构或升级依赖。
 - 审查反馈先核实，再修改并重新验证。
 - 重要设计决策记录理由、替代方案和后果，必要时新增 ADR。
+- 桌面界面任务先读 `docs/desktop-ui-design-v0.1.md`；设计和验收逐项引用相关规则，说明页面特有差异，不从旧页面复制一套独立主题。规范中的实施建议和计划不扩大生产代码授权。
 
 ## 3. 产品、隐私与架构红线
 
@@ -78,6 +79,7 @@
 - 产品和领域规则：`docs/product-design-v0.1.md`
 - 服务端与运维：`docs/server-design-v0.1.md`
 - 工作方式：`docs/development-workflow-v0.1.md`
+- 桌面界面规范：`docs/desktop-ui-design-v0.1.md`
 - 阶段范围和状态：`docs/development-plan-v0.1.md`
 - 已批准技术：`docs/adr/`
 
