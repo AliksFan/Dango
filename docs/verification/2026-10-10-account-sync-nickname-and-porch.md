@@ -1,6 +1,6 @@
 # 登录同步、昵称与门廊修订验证
 
-日期：2026-10-10。状态：核心与 Desktop 接线已整合，真实窗口 UIA 已通过；独立昵称数据库验证两次已批准执行，均在正式 SQL／迁移／业务测试前失败并完成收尾。A3 修复、反例和固定清单已准备，等待精确批准；新真实数据库业务验证和主观验收尚未通过。
+日期：2026-10-10。状态：核心与 Desktop 接线已整合，真实窗口 UIA 已通过；独立昵称数据库验证 A／A2／A3 均已批准执行并失败收尾。A3 启动修复实际通过，但未取得只读 SQL 基线、未进入迁移或业务测试；A4 修复及批准前验证、输入冻结已完成，等待精确批准。新真实数据库业务验证和主观验收尚未通过。
 
 ## 登录比较与成功保存边界
 
@@ -64,4 +64,10 @@ Profile 专用保护已整合。固定 7 个用例共享一次 owner；邀请、
 
 启动归属修复已整合，根最终离线 **111/111**、真实冷版本工具生命周期 smoke 通过；测试 owner 的 A2 固定目录已构建，关闭批准后七项全部跳过。独立审查没有发现新的误停止路径；CMD 桥先于 PG 消失时保守报告未确认的限制已记录。第二次[A2 精确计划](../planning/2026-10-10-account-profile-postgres-a2-plan.md)及清单 SHA256 `D38FF1D2381AAE9806A6CD541935EA8E29BB552F9ED13CF1F4CE1F00208AD94F`、294 输入已获用户批准并执行一次。工具身份和完整 Windows 启动链已真实通过，但 pg_ctl 退出后继承管道不 EOF，报 `profile_run_tool_output_incomplete`；尚未 SQL／迁移／种子／七项测试，两账本为零。运行器自动精确停止实例，四工具／PG 清理确认、pidfile／端口消失，原数据和回执保留。见[A2 输出失败与自动收尾](2026-10-10-account-profile-a2-startup-pipe-failure.md)。A2 一次额度已消耗，修复后第三次真实验证需新的固定目录／清单及精确批准。离线及工具结果不代表新的昵称数据库业务、联合同步或门廊技术验证通过。
 
-固定 pg_ctl start 改为不创建输出 reader Task、原句柄退出后显式关闭私有输出流；关闭失败与非零退出不放行，其他工具保留完整有界 EOF。离线反例 **138/138**，原生 Windows 未读私有管道关闭 smoke 通过，独立只读审查通过。A3 owner Release 构建零警告／错误，未批准门禁七项全部跳过、零失败。证据路径及 SHA 见[A2 后续修复记录](2026-10-10-account-profile-a2-startup-pipe-failure.md)。[A3 精确计划](../planning/2026-10-10-account-profile-postgres-a3-plan.md)已冻结 294 输入，固定清单 `artifacts/account-profile-a3-approved.json`，SHA256 `5EA60013B4BF06F70F4E4F39293DCBA809F1A7D7D0C8F18613F347BAE296360D`；尚未批准、未再次启动实例。
+固定 pg_ctl start 改为不创建输出 reader Task、原句柄退出后显式关闭私有输出流；关闭失败与非零退出不放行，其他工具保留完整有界 EOF。离线反例 **138/138**，原生 Windows 未读私有管道关闭 smoke 通过，独立只读审查通过。A3 owner Release 构建零警告／错误，未批准门禁七项全部跳过、零失败。证据路径及 SHA 见[A2 后续修复记录](2026-10-10-account-profile-a2-startup-pipe-failure.md)。[A3 精确计划](../planning/2026-10-10-account-profile-postgres-a3-plan.md)及固定清单 SHA256 `5EA60013B4BF06F70F4E4F39293DCBA809F1A7D7D0C8F18613F347BAE296360D`、294 输入已获用户明确批准并执行一次。真实启动和专用输出流关闭通过；首个只读 psql 探针发生读取 Task 异常，未取得基线、未迁移、未执行七项业务测试，两个账本为零。旧错误分类不能证明实际超过字符上限。运行器自动停止 PG 与五工具，根实查无 PG／CMD／工具／pidfile／端口残留；全部原数据与回执保留。本次额度已消耗，见[A3 读取失败及收尾](2026-10-10-account-profile-a3-read-failure.md)。
+
+A3 后续修复准确区分越界、I/O、解码、关闭、取消及其他读取错误；仅固定完整数据库证据允许 1 MiB 字符／UTF8 字节双硬限。三次完整快照各有同源 size-only 只读预检，含 CRLF 超限或测量后增长均不放行。完整 EOF、同步 reader 显式关闭与工具进程退出分别检查；pending 或 sticky 关闭失败不能伪装收尾，runner 单独记录并拒绝输出清理未确认。旧原生类型缺新 overload 时在工具创建前要求新宿主。
+
+根最终纯离线 **237/237**，回执 `artifacts/account-profile-offline/b946e25a18f345ca8ec0e65f02143870/offline-results.json`，SHA256 `B7A9FDD3E9A97DD028E6FAB57410C228977353887A85E8BD6A43A263AD0EEE39`。同一最终脚本对输出收尾修复前候选为 **211/237**，新增26项全部失败；首轮 **236/237** 的一条不当测试预期及原证据保留，未因此修改正式实现。根四个真实 owned `pwsh` 子进程和实际匿名 pipe 两项 **6/6**，双流关闭与独立资源门禁均通过，未启动数据库或读取凭据。独立只读审查通过；A4 owner 已 Release 构建，关闭批准后七项实际结果均 `NotExecuted`。这些均非七项数据库业务通过。
+
+[A4 精确计划](../planning/2026-10-10-account-profile-postgres-a4-plan.md)等待批准。新清单 `artifacts/account-profile-a4-approved.json` 以 CreateNew 冻结294输入，SHA256 `1A4189A44CD8D75BDF656B94032B54BA5D13EA710F0DFB7EB3AA70EECBF5F51E`；复核294均匹配、零缺失，未创建 A4 真实证据目录、未预留额度。原三个清单不覆盖或复用。数据库、联合账号／连续同步／门廊真实技术验证及主观验收仍分开，未合并、push、部署、安装或替换生产 DLL。

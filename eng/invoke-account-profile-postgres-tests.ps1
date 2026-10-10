@@ -22,6 +22,22 @@ Assert-DangoProfileApproval ([bool]$ExecuteApprovedPlan)
 if (-not $IsWindows) { throw 'profile_run_windows_required' }
 $taskProfileApprovedInputs=Assert-DangoProfileReviewInputs $taskProfilePlan $ApprovalManifest $ApprovalManifestSha256
 
+function Invoke-DangoProfileSnapshot {
+    param([ValidateSet('before','migration','after')][string]$Phase)
+    # Measure the same evidence expression without transferring its row digests.
+    # The actual read remains independently bounded and must reach complete EOF.
+    $taskSizeArgs=@($taskProfilePsqlArgs[0..($taskProfilePsqlArgs.Count-2)])+(Get-DangoProfileDatabaseSql -MeasureOnly)
+    $taskSizeResult=Invoke-DangoProfileProcess $taskProfilePsql $taskSizeArgs $taskProfilePlan.Repository `
+        @{PGPASSWORD=$taskProfilePassword; PGCLIENTENCODING='UTF8'} -Receipts $taskProfileTools
+    if ($taskSizeResult.ExitCode -ne 0) { throw 'profile_run_database_size_probe_failed' }
+    $taskSizeEvidence=$taskSizeResult.Output | ConvertFrom-Json
+    [void](Assert-DangoProfileDatabaseEvidenceSize $taskSizeEvidence)
+    Write-DangoProfileJson (Join-Path $taskProfilePlan.EvidenceDirectory ($Phase+'-size.json')) $taskSizeEvidence -CreateNew
+    return Invoke-DangoProfileProcess $taskProfilePsql $taskProfilePsqlArgs $taskProfilePlan.Repository `
+        @{PGPASSWORD=$taskProfilePassword; PGCLIENTENCODING='UTF8'} -Receipts $taskProfileTools `
+        -OutputContract PostgresEvidenceJson -PostgresEvidencePlan $taskProfilePlan -PostgresEvidencePort $taskProfileFacts.Port
+}
+
 # An exclusive, durable whole-suite reservation precedes credentials and process startup.
 # Even a failure before PostgreSQL starts consumes this one run; this entry cannot reset it.
 $taskProfileReservation=New-DangoProfileReservation $taskProfilePlan
@@ -31,6 +47,7 @@ $taskProfileProof=$null; $taskProfileStartAttempt=$null; $taskProfileStartReturn
 $taskProfileStartTool=$null; $taskProfileStartControlExit=-1
 $taskProfileStartupObservation=$null
 $taskProfileFailure=$null; $taskProfileCleanup=$false; $taskProfilePassword=$null; $taskProfileAfter=$null
+$taskProfileOutputCleanup=$false
 $taskProfileHashes=@{}; $taskProfileAudit=$null; $taskProfileResources=$null; $taskProfileScopedGraph=$null
 $taskProfileTestsAttempted=$false; $taskProfileInputsFrozen=$false
 $taskProfileFacts=$null
@@ -99,8 +116,7 @@ try {
     $taskProfileSql=Get-DangoProfileDatabaseSql
     $taskProfilePsqlArgs=@('-X','-w','-q','-A','-t','-v','ON_ERROR_STOP=1','-h','127.0.0.1','-p',[string]$taskProfileFacts.Port,
         '-U',$taskProfilePlan.Role,'-d',$taskProfilePlan.Database,'-c',$taskProfileSql)
-    $taskProfileBeforeResult=Invoke-DangoProfileProcess $taskProfilePsql $taskProfilePsqlArgs $taskProfilePlan.Repository `
-        @{PGPASSWORD=$taskProfilePassword} -Receipts $taskProfileTools
+    $taskProfileBeforeResult=Invoke-DangoProfileSnapshot 'before'
     if ($taskProfileBeforeResult.ExitCode -ne 0) { throw 'profile_run_database_probe_failed' }
     $taskProfileBefore=$taskProfileBeforeResult.Output | ConvertFrom-Json
     if ($taskProfileBefore.database -cne $taskProfilePlan.Database -or $taskProfileBefore.role -cne $taskProfilePlan.Role -or
@@ -119,8 +135,7 @@ try {
     $taskProfileMigration=Invoke-DangoProfileProcess $taskProfileDotnet @($taskProfileServer,'--formal-migrate') `
         $taskProfilePlan.Repository $taskProfileMigrationEnv -TimeoutSeconds 60 -Receipts $taskProfileTools
     if ($taskProfileMigration.ExitCode -ne 0) { throw 'profile_run_exact_migration_failed' }
-    $taskProfileMigratedResult=Invoke-DangoProfileProcess $taskProfilePsql $taskProfilePsqlArgs $taskProfilePlan.Repository `
-        @{PGPASSWORD=$taskProfilePassword} -Receipts $taskProfileTools
+    $taskProfileMigratedResult=Invoke-DangoProfileSnapshot 'migration'
     if ($taskProfileMigratedResult.ExitCode -ne 0) { throw 'profile_run_migration_evidence_failed' }
     $taskProfileMigrated=$taskProfileMigratedResult.Output | ConvertFrom-Json
     Assert-DangoProfileOldGraph $taskProfileBefore $taskProfileMigrated -RequireInitialProfiles
@@ -158,8 +173,7 @@ try {
     $taskProfileResources=Assert-DangoProfileResources $taskProfilePlan $taskProfileReservation.OwnerId `
         @(Read-DangoProfileLedger (Join-Path $taskProfilePlan.EvidenceDirectory 'resources.jsonl') 28)
     Write-DangoProfileJson (Join-Path $taskProfilePlan.EvidenceDirectory 'fixture-resource-summary.json') $taskProfileResources -CreateNew
-    $taskProfileAfterResult=Invoke-DangoProfileProcess $taskProfilePsql $taskProfilePsqlArgs $taskProfilePlan.Repository `
-        @{PGPASSWORD=$taskProfilePassword} -Receipts $taskProfileTools
+    $taskProfileAfterResult=Invoke-DangoProfileSnapshot 'after'
     if ($taskProfileAfterResult.ExitCode -ne 0) { throw 'profile_run_database_evidence_failed' }
     $taskProfileAfter=$taskProfileAfterResult.Output | ConvertFrom-Json
     Assert-DangoProfileOldGraph $taskProfileBefore $taskProfileAfter -RequireInitialProfiles
@@ -176,7 +190,7 @@ try {
     $taskProfileScopedSql=Get-DangoProfileScopedSql $taskProfileNewUsers $taskProfileFacts.Epoch $taskProfileReservation.OwnerId
     $taskProfileScopedArgs=@($taskProfilePsqlArgs[0..($taskProfilePsqlArgs.Count-2)])+$taskProfileScopedSql
     $taskProfileScopedResult=Invoke-DangoProfileProcess $taskProfilePsql $taskProfileScopedArgs $taskProfilePlan.Repository `
-        @{PGPASSWORD=$taskProfilePassword} -Receipts $taskProfileTools
+        @{PGPASSWORD=$taskProfilePassword; PGCLIENTENCODING='UTF8'} -Receipts $taskProfileTools
     if ($taskProfileScopedResult.ExitCode -ne 0) { throw 'profile_run_scoped_evidence_failed' }
     $taskProfileScopedGraph=$taskProfileScopedResult.Output | ConvertFrom-Json
     Assert-DangoProfileScopedGraph $taskProfileScopedGraph
@@ -206,10 +220,12 @@ try {
         } elseif ($null -eq $taskProfileStartAttempt) { $taskProfileCleanup=$true }
     } catch { $taskProfileCleanup=$false }
     if (@($taskProfileTools | Where-Object { -not $_.CleanupConfirmed }).Count -ne 0) { $taskProfileCleanup=$false }
+    $taskProfileOutputCleanup=@($taskProfileTools | Where-Object { -not $_.OutputResourcesCleanupConfirmed }).Count -eq 0
     $taskProfilePassword=$null; $taskProfileConnection=$null; $taskProfileMigrationEnv=$null; $taskProfileTestEnv=$null
     Write-DangoProfileJson (Join-Path $taskProfilePlan.EvidenceDirectory 'resource-receipt.json') ([pscustomobject]@{
         Version=1; OwnerId=$taskProfileReservation.OwnerId; Stage=$taskProfilePlan.Stage; Failure=$taskProfileFailure;
         PostgreSqlCleanupConfirmed=$taskProfileCleanup; PostgreSqlPid=if ($null -ne $taskProfileProof) { $taskProfileProof.Pid } else { 0 };
+        ToolOutputResourcesCleanupConfirmed=$taskProfileOutputCleanup;
         RecordedPort=if ($null -ne $taskProfileFacts) { $taskProfileFacts.Port } else { 0 };
         PostmasterPidFilePresent=[IO.File]::Exists((Join-Path $taskProfilePlan.DataDirectory 'postmaster.pid'));
         ListenerPresentOnRecordedPort=if ($null -ne $taskProfileFacts) { Test-DangoProfileListener $taskProfileFacts.Port } else { $null };
@@ -224,5 +240,6 @@ try {
             [IO.File]::Exists((Join-Path $taskProfilePlan.StateDirectory 'b1test-state.json'))) }) -CreateNew
 }
 if (-not $taskProfileCleanup) { throw 'profile_run_cleanup_unconfirmed_no_retry' }
+if (-not $taskProfileOutputCleanup) { throw 'profile_run_output_cleanup_unconfirmed_no_retry' }
 if ($taskProfileFailure) { throw $taskProfileFailure }
 Write-Output 'profile_run_seven_tests_passed_data_retained'

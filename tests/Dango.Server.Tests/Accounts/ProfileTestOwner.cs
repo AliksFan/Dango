@@ -189,7 +189,7 @@ internal sealed class ProfileTestOwner
             throw new InvalidOperationException("profile_owner_environment_required");
         var supplied = Environment.GetEnvironmentVariable("DANGO_PROFILE_VERIFICATION_RUN_DIRECTORY");
         var expected = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Dango", "BackendDevelopment", "run20261010profilea3");
+            "Dango", "BackendDevelopment", "run20261010profilea4");
         if (string.IsNullOrEmpty(supplied) || !Path.GetFullPath(supplied).Equals(Path.GetFullPath(expected), StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("profile_run_directory_rejected");
         for (DirectoryInfo? directory = new(expected); directory is not null; directory = directory.Parent)
