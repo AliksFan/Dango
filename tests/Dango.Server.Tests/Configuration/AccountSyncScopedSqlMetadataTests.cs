@@ -295,8 +295,13 @@ internal static class AccountSyncScopedSqlReview
     internal static AccountSyncScopedSqlReport CheckClosure(string sql, IModel model, string history,
         Guid user, Guid pet, Guid room, Guid owner, Guid epoch) => CheckCore(sql, model, history, user, pet, room, owner, epoch);
 
+    internal static AccountSyncScopedSqlReport CheckB1b(string sql, IModel model,
+        Guid user, Guid pet, Guid room, Guid owner, Guid epoch) =>
+        CheckCore(sql, model, null, user, pet, room, owner, epoch, "异常同步团子", "accountsyncb1b-");
+
     private static AccountSyncScopedSqlReport CheckCore(string sql, IModel model, string? history,
-        Guid? expectedUser, Guid? expectedPet, Guid? expectedRoom, Guid? expectedOwner, Guid? expectedEpoch)
+        Guid? expectedUser, Guid? expectedPet, Guid? expectedRoom, Guid? expectedOwner, Guid? expectedEpoch,
+        string expectedNickname = "新同步团子", string expectedEmailPrefix = "accountsync-")
     {
         if (sql.Length is 0 or > 16384 || sql.Any(character => character > 127
             || (char.IsControl(character) && character is not ('\r' or '\n' or '\t')))) throw Reject();
@@ -306,7 +311,8 @@ internal static class AccountSyncScopedSqlReview
                 .Select(property => property.GetColumnName(StoreObjectIdentifier.Table(group.Key.Table, group.Key.Schema))))
                 .Where(column => column is not null).Select(column => column!).ToHashSet(StringComparer.Ordinal));
         var closure = history is not null;
-        if (closure && (expectedUser is null || expectedUser == Guid.Empty || expectedPet is null
+        var identities = closure || expectedUser is not null;
+        if (identities && (expectedUser is null || expectedUser == Guid.Empty || expectedPet is null
             || expectedPet == Guid.Empty || expectedRoom is null || expectedRoom == Guid.Empty
             || expectedOwner is null || expectedOwner == Guid.Empty || expectedEpoch is null || expectedEpoch == Guid.Empty)) throw Reject();
         var tokens = Tokenize(sql, closure);
@@ -317,7 +323,7 @@ internal static class AccountSyncScopedSqlReview
         cteReader.Expect("SELECT", "*", "FROM", "dango", ".", "users", "WHERE", "id", "=");
         var userId = cteReader.String();
         if (!Guid.TryParseExact(userId, "D", out var id) || id == Guid.Empty) throw Reject();
-        if (closure && id != expectedUser) throw Reject();
+        if (identities && id != expectedUser) throw Reject();
         cteReader.Expect("::", "uuid"); cteReader.End();
         reader.Expect("SELECT", "json_build_object", "(");
         var keys = new List<string>();
@@ -338,14 +344,14 @@ internal static class AccountSyncScopedSqlReview
             if (scope.Any(token => token.Kind == Kind.QuotedIdentifier || token.Text == ";")) throw Reject();
             var prefix = new Reader(scope); prefix.Expect("SELECT", "count", "(", "*", ")", "FROM");
             scopes.Add(name, ValidateScope(name, scope, metadata, columns, scopedColumns));
-            if (closure && name == "completeGraphs")
+            if (identities && name == "completeGraphs")
             {
                 RequireIdentity(scope, "pets", "p", "user_id", expectedPet!.Value);
                 RequireIdentity(scope, "rooms", "r", "owner_id", expectedRoom!.Value);
                 RequireEpoch(scope, "pr", expectedEpoch!.Value);
             }
-            if (closure && name == "validUsers") RequireOwner(scope, expectedOwner!.Value);
-            if (closure && name == "validSessions") RequireEpoch(scope, "s", expectedEpoch!.Value);
+            if (identities && name == "validUsers") RequireOwner(scope, expectedOwner!.Value, expectedEmailPrefix);
+            if (identities && name == "validSessions") RequireEpoch(scope, "s", expectedEpoch!.Value);
             if (name == "namedUsers")
             {
                 var values = scope.Select((token, position) => (token, position))
@@ -353,7 +359,7 @@ internal static class AccountSyncScopedSqlReview
                 if (values.Length != 1 || values[0].position + 2 >= scope.Count
                     || scope[values[0].position + 1].Text != "=") throw Reject();
                 var value = scope[values[0].position + 2];
-                if (value.Kind != Kind.Unicode || value.Value != "新同步团子") throw Reject();
+                if (value.Kind != Kind.Unicode || value.Value != expectedNickname) throw Reject();
                 nickname = value.Value;
             }
         }
@@ -362,11 +368,11 @@ internal static class AccountSyncScopedSqlReview
         return new(scopes, columns, scopedColumns, nickname, keys, id, expectedPet, expectedRoom, expectedOwner, expectedEpoch);
     }
 
-    private static void RequireOwner(List<Token> tokens, Guid expected)
+    private static void RequireOwner(List<Token> tokens, Guid expected, string emailPrefix)
     {
         var reader = new Reader(tokens);
         reader.Expect("SELECT", "count", "(", "*", ")", "FROM", "selected", "WHERE", "email", "=");
-        if (reader.String() != "accountsync-" + expected.ToString("N") + "@example.invalid") throw Reject();
+        if (reader.String() != emailPrefix + expected.ToString("N") + "@example.invalid") throw Reject();
         reader.Expect("AND");
         if (tokens.Count(token => token.Text == "email") != 1) throw Reject();
     }

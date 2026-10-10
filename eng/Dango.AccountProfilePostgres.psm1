@@ -267,6 +267,8 @@ function Get-DangoProfileFixedPlan {
             Get-DangoAccountSyncPlan $Plan.Repository
         } elseif ($Plan.Stage -ceq 'AccountSyncB1a2Closure') {
             Get-DangoAccountSyncClosurePlan $Plan.Repository
+        } elseif ($Plan.Stage -ceq 'AccountSyncB1b1') {
+            Assert-DangoAccountSyncB1bFixedPlan $Plan
         } else { throw 'rejected' }
         if (@($Plan.PSObject.Properties).Count -ne @($fixed.PSObject.Properties).Count) { throw 'rejected' }
         foreach ($property in $fixed.PSObject.Properties) {
@@ -412,12 +414,13 @@ function Invoke-DangoProfileProcess {
         [Collections.Generic.List[object]]$Receipts,
         [scriptblock]$IdentityProbe={ param($process,$expected) Get-DangoProfileProcessIdentity $process $expected },
         [scriptblock]$ProcessFactory={ param($info) $process=[Diagnostics.Process]::new(); $process.StartInfo=$info; return $process },
-        [ValidateSet('CompleteEof','PostgresStartIgnored','PostgresEvidenceJson','AccountSyncStartIgnored','AccountSyncEvidenceJson',IgnoreCase=$false)][string]$OutputContract='CompleteEof',
+        [ValidateSet('CompleteEof','PostgresStartIgnored','PostgresEvidenceJson','AccountSyncStartIgnored','AccountSyncEvidenceJson','AccountSyncB1bEvidenceJson','AccountSyncB1bSmallJson',IgnoreCase=$false)][string]$OutputContract='CompleteEof',
         $PostgresStartPlan, [int]$PostgresStartPort=0,
         $PostgresEvidencePlan, [int]$PostgresEvidencePort=0,
         [switch]$PreserveRawOutput)
     $ignoreStartOutput=$OutputContract -cin @('PostgresStartIgnored','AccountSyncStartIgnored')
-    $evidenceOutput=$OutputContract -cin @('PostgresEvidenceJson','AccountSyncEvidenceJson')
+    $b1bRawOutput=$OutputContract -cin @('AccountSyncB1bEvidenceJson','AccountSyncB1bSmallJson')
+    $evidenceOutput=$OutputContract -cin @('PostgresEvidenceJson','AccountSyncEvidenceJson','AccountSyncB1bEvidenceJson')
     if ($PreserveRawOutput) {
         if ($OutputContract -cne 'CompleteEof' -or $null -ne $PostgresStartPlan -or $PostgresStartPort -ne 0 -or
             $null -eq $PostgresEvidencePlan -or $PostgresEvidencePlan.Stage -cne 'AccountSyncB1a2Closure' -or
@@ -425,7 +428,13 @@ function Invoke-DangoProfileProcess {
         Assert-DangoAccountSyncClosureToolContract $PostgresEvidencePlan 'scoped' $Executable $Arguments $WorkingDirectory `
             $EnvironmentValues $TimeoutSeconds ([bool]$KillOwnedTree) $OutputContract $true
     }
-    if ($ignoreStartOutput) {
+    if($b1bRawOutput){
+        if($PreserveRawOutput -or $null -ne $PostgresStartPlan -or $PostgresStartPort -ne 0 -or $TimeoutSeconds -ne 30){
+            throw 'profile_run_b1b_output_contract_rejected'
+        }
+        Assert-DangoAccountSyncB1bEvidenceContract $Executable $Arguments $WorkingDirectory $PostgresEvidencePlan $PostgresEvidencePort `
+            $EnvironmentValues ([bool]$KillOwnedTree) $OutputContract
+    } elseif ($ignoreStartOutput) {
         if ($null -ne $PostgresEvidencePlan -or $PostgresEvidencePort -ne 0) { throw 'profile_run_start_output_contract_rejected' }
         if ($OutputContract -ceq 'AccountSyncStartIgnored') {
             Assert-DangoAccountSyncStartContract $Executable $Arguments $WorkingDirectory $PostgresStartPlan $PostgresStartPort `
@@ -483,9 +492,9 @@ function Invoke-DangoProfileProcess {
         try { $process.StandardInput.Close() } catch { throw 'profile_run_tool_input_close_failed' }
         if (-not $ignoreStartOutput) {
             $stdoutLimit=if ($evidenceOutput) { 1048576 } else { 131072 }
-            $stdoutByteLimit=if ($evidenceOutput) { 1048576 } elseif($PreserveRawOutput) {131072} else { 0 }
+            $stdoutByteLimit=if ($evidenceOutput) { 1048576 } elseif($PreserveRawOutput -or $b1bRawOutput) {131072} else { 0 }
             $receipt.StandardOutputCapture=[DangoProfileOutputCaptureV1]::new($stdoutLimit,$stdoutByteLimit)
-            $receipt.StandardErrorCapture=if($PreserveRawOutput){[DangoProfileOutputCaptureV1]::new(131072,131072)}
+            $receipt.StandardErrorCapture=if($PreserveRawOutput -or $b1bRawOutput){[DangoProfileOutputCaptureV1]::new(131072,131072)}
                 else{[DangoProfileOutputCaptureV1]::new(131072)}
             try {
                 $output=[DangoProfileRunNativeV2]::ReadBoundedAsync($outputReader,$stdoutLimit,$receipt.StandardOutputCapture)
@@ -520,7 +529,7 @@ function Invoke-DangoProfileProcess {
         $outputClose=Close-DangoProfileProcessOutput $outputReader $errorReader $output $error
         Set-DangoProfileOutputCloseFacts $receipt $outputClose
         if (-not $receipt.OutputResourcesCleanupConfirmed) { throw 'profile_run_tool_output_close_unconfirmed' }
-        if($PreserveRawOutput){
+        if($PreserveRawOutput -or $b1bRawOutput){
             return [pscustomobject]@{ExitCode=$receipt.ExitCode;Output=$text.Trim();Receipt=$receipt;
                 RawOutput=$text;RawError=$error.GetAwaiter().GetResult()}
         }
