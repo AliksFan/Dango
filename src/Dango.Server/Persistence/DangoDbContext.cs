@@ -24,10 +24,14 @@ public sealed partial class DangoDbContext(DbContextOptions<DangoDbContext> opti
             {
                 table.HasCheckConstraint("ck_users_verified", "email_confirmed");
                 table.HasCheckConstraint("ck_users_email", "length(btrim(email)) BETWEEN 3 AND 254 AND length(btrim(normalized_email)) BETWEEN 3 AND 254");
+                table.HasCheckConstraint("ck_users_profile_version", "profile_version >= 1");
+                table.HasCheckConstraint("ck_users_nickname", "nickname IS NULL OR (length(btrim(nickname)) BETWEEN 1 AND 192 AND octet_length(nickname) <= 192 AND nickname = btrim(nickname))");
             });
             entity.Property(user => user.Email).HasMaxLength(254).IsRequired();
             entity.Property(user => user.NormalizedEmail).HasMaxLength(254).IsRequired();
             entity.Property(user => user.PasswordHash).IsRequired();
+            entity.Property(user => user.Nickname).HasMaxLength(192);
+            entity.Property(user => user.ProfileVersion).HasDefaultValue(1L).IsConcurrencyToken();
             entity.HasIndex(user => user.NormalizedEmail).IsUnique().HasDatabaseName("ux_users_normalized_email");
         });
         builder.Entity<IdentityUserClaim<Guid>>().ToTable("user_claims");
