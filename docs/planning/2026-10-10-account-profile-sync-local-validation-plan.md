@@ -1,8 +1,8 @@
 # 昵称、每次登录比较、会话同步与门廊的精确本地验证计划
 
-日期：2026-10-10。状态：**设计草案，尚未获得本轮数据及资源操作授权，尚未执行**。
+日期：2026-10-10。状态：**A5已通过；后续联合验证仍为草案，尚未获得其数据及资源操作授权，尚未执行**。
 
-执行拆为独立批准的两段。先准备 A-only：唯一昵称前向迁移与 Profile 类固定 7 项真实测试；其目标、有限计数和运行器以[独立 A-only 计划](2026-10-10-account-profile-postgres-a-plan.md)为准。本文剩余 UIA、双客户端及门廊全部业务操作属于后续联合验证草案，不因批准 A-only 而获准执行。表中的合计仅为规划参考，不能作为同一运行的可用额度。
+执行拆为独立批准的两段。A-only已按[A5精确计划](2026-10-10-account-profile-postgres-a5-plan.md)执行一次，唯一昵称前向迁移与固定7项真实测试通过，22表旧图保全及收尾通过。本文剩余UIA、双客户端及门廊全部业务操作属于后续联合验证草案，不因A5通过而获准执行；不得再次迁移或重复A-only夹具。表中的合计仅为原规划参考，不能作为新运行的可用额度。
 
 本计划覆盖已确认的昵称、捏脸登录比较、会话同步和门廊房间入口迁移。配饰同步仍是随后阶段。助手完成能够自动执行的真实 PostgreSQL、HTTPS、客户端与 UIA 技术验证；用户验收界面效果、手感和流畅度。
 
@@ -20,24 +20,25 @@
 
 新建且只使用受当前用户 ACL 保护的 `Dango/BackendDevelopment/run20261010accountsync`。遇到目录已存在、reparse、已有 postmaster、目标端口被占用或候选验收模式正在运行，先拒绝；不能换目录、换库或改端口绕过。
 
-迁移前用正式 options factory 查询 `dango.__ef_migrations_history`。允许的既有历史为以下五项，允许的 pending 集合只能是最后一项：
+联合阶段启动前用正式options factory核验 `dango.__ef_migrations_history`，必须是以下七项已应用历史、pending为空。本阶段不执行迁移：
 
 1. `20261008074701_InitialAccountRoomFoundation`
 2. `20261008085521_AccountLifecycle`
 3. `20261009031410_RoomManagement`
 4. `20261009055558_RoomAccess`
 5. `20261009062701_RoomAccessIntegrity`
-6. **本轮唯一前向目标：`20261010055529_AccountProfile`**
+6. `20261009124814_AccessoryAccountBackup`
+7. `20261010055529_AccountProfile`
 
-使用 `IMigrator.MigrateAsync` 的精确目标，不调用无目标的全量迁移。历史或 pending 与预期不同即停止并报告，不退迁移、不补迁移。迁移仅增 nickname、profile_version 及约束；旧账号 nickname 为 null、profile_version 为 1，原 ID、账号安全字段、Pet、房间及关系保留。迁移前后记录非秘密结构证据；不得输出密码、security stamp、令牌或连接串。
+历史或pending与预期不同即停止并报告，不退迁移或补迁移。后续保全基线包括A5新增的虚构账号及昵称／资料版本和四张配饰表，共22业务表；全部旧记录须完整保护，不再用A5迁移期排除昵称字段的旧图算法。不得输出密码、security stamp、令牌或连接串。
 
-本轮 PostgreSQL 最多启动一次，结束只停止此轮证明归属的实例。没有新建库、初始化、重置、删除、备份还原或系统 PostgreSQL 服务操作。
+后续联合阶段 PostgreSQL 最多启动一次，结束只停止此轮证明归属的实例。没有新建库、初始化、重置、删除、备份还原或系统 PostgreSQL 服务操作。
 
 ## 3. 数据和尝试次数预算
 
 所有数值都是上限。未执行不消耗；进入调用或受控请求转发边界后，失败、取消、超时、未知结果和相同内容重复都消耗一次，不能退款。注册的同一请求重放不能创建第二份身份；重放仍另扣尝试数。数据库已存在的旧记录不得用于扩大本轮图。
 
-| 项目 | Profile 夹具阶段 | UIA 与双客户端阶段 | 本轮合计上限 |
+| 项目 | A5已消耗（历史） | UIA与双客户端草案 | 原规划累计参考（不可领额度） |
 | --- | ---: | ---: | ---: |
 | 邀请、预注册、挑战、未投递邮件，各类新增记录 | 各 9 | 各 2 | 各 11 |
 | 注册 Start / Confirm / Complete 尝试，各操作 | 各 9 | 各 2 | 各 11 |
@@ -53,7 +54,7 @@
 | TakeControl / Leave / EndLease 尝试 | 0 | 2 / 2 / 4 | 2 / 2 / 4 |
 | 会话 Logout / Revoke 尝试 | 2 | 最多 7 | 9 |
 
-Profile 阶段的 19 次修改包括独立连接竞争 2、重名及连续修改 4、事务失败 2、跨账号及撤销重查 2、提交前到期 1，以及 HTTPS 缺 CSRF／外来 Origin／伪造字段／3 项坏 JSON／非法昵称／合法昵称共 8。合法成功、业务拒绝、HTTP 边界拒绝分开记录，不能把回滚误记为成功提交。
+A5已执行的19次修改包括独立连接竞争2、重名及连续修改4、事务失败2、跨账号及撤销重查2、提交前到期1，以及HTTPS缺CSRF／外来Origin／伪造字段／3项坏JSON／非法昵称／合法昵称共8。合法成功、业务拒绝、HTTP边界拒绝已分开记录；这些额度不能转入后续联合阶段。
 
 UIA 的 8 次登录为账号 A 首次、A 独立第二客户端、A 相同配置显式重登、A 差异采用本机、A 差异采用云端、B 一次明确错误密码、B 正确登录、最后切回 A。错误密码不创建会话；记住登录恢复只恢复已捕获会话，不新建登录次数或新会话。
 
@@ -77,11 +78,11 @@ UIA 的 13 次配置尝试上限逐项冻结：
 
 HTTP、Hub 和直接 service 调用共用相应业务次数。另设整个运行的 HTTP 请求总上限 2048、最长 60 分钟；只允许捕获会话的 Hub 连接，最多 16 次连接／Attach，Heartbeat 最多 128 次且限频，快照读取计入总请求数。Heartbeat 延长租约属于写入，不能列为无限免费读取。按正式服务的每分钟 120 请求限制安排操作节奏，不关闭或提高正式限流。到达上限即停止该路径，不自动重试、重启清额度或切换目标。
 
-邮件 Attempts 必须为零，EmailJobs 保持 Pending；无 SMTP 接收器、真实邮件或 dispatcher。审计与事件由正式业务追加保留，限定到本轮捕获的房间／请求图，回执核对审计最多 64、事件最多 128、PublishedAt 均为空。上述图最多 13 房间、17 会话、4 历史租约、2 公共凭据；若实际越界即验证失败并停止，不修数据掩盖。
+邮件Attempts必须为零，EmailJobs保持Pending；无SMTP接收器、真实邮件或dispatcher。审计与事件由正式业务追加保留，限定到本轮捕获的房间／请求图，回执核对审计最多64、事件最多128、PublishedAt均为空。13房间／17会话是原规划含A5的累计参考；后续联合新增图仅按UIA列核对，最多4新房间、7新会话、4历史租约、2公共凭据。若实际越界即验证失败并停止，不修数据掩盖。
 
 ## 4. 新运行器与 guard 的实施要求
 
-在执行授权前可以实现并离线测试新运行器；**不能修改正在运行或旧 R2 的 guard 及回执**。新运行器必须通过下列反例后，才成为可审批候选：
+在执行授权前可以实现并离线测试新运行器；**不能修改正在运行或旧R2的guard及回执**。下列涉及Profile类精确过滤、专用注册helper及Profile安全负例的条目属于已完成A5的约束／证据；后续联合guard不运行该类、不生成A5夹具，其种子另用新预算约束。其余要求须通过反例后才成为可审批候选：
 
 - 独立的新批准入口在读取 credential、连接数据库、探测端口、创建证书或目录之前检查。冻结 run 名、源版本、候选路径与 SHA256、原目标、迁移目标和本文预算，不接受客户端自行提高次数。
 - 新 stage fixture 使用正式目标 factory，逐次核对 PostgreSQL 18、实际 data_directory、database、role、listen_addresses 和恢复代际；只允许本轮清单。Profile 类精确过滤一次，不让旧 B1 开关授权其他类。
@@ -98,21 +99,21 @@ HTTP、Hub 和直接 service 调用共用相应业务次数。另设整个运行
 
 ## 5. 资源及 TLS / 凭据边界
 
-Profile 阶段有 7 个夹具，最多生成 7 份短期、不导入系统信任的测试证书；只 1 个夹具启动真实 HTTPS，绑定临时 loopback 端口并用精确证书 pin，结束逐份 Dispose 临时 native key。其余夹具只执行正常服务与数据库逻辑。
+A5已使用7个夹具、7份不导入系统信任的短期测试证书，其中1个夹具启动真实HTTPS；native资源均已Dispose。后续联合阶段不再生成这些夹具或复用其额度。
 
 UIA 阶段另生成唯一一份 TLS 证书：SAN 仅 `127.0.0.1`、仅 server-auth、非 CA、最多 3 天。PFX、DPAPI 密码及回执只写本轮受保护目录；当前用户 Root 仅导入此份公钥。Windows 若弹出系统确认，用户核对本轮名称／指纹后操作；助手承担其余技术操作。
 
 选择一个专用两槽均为空的 loopback HTTPS origin，写入固定 manifest。仅允许该 origin SHA256 对应的 WinCred `/session`、`/registration` 两槽；不得枚举、解析或覆写其他凭据。第二客户端使用独立的内存 secret store 与 CookieContainer，不复制 UI 槽，也不导出明文 session。
 
-UI 正式宿主最多启动两次：首次启动，以及一次 Stop／Dispose 后在同 origin 重建。两次共用同预算，不重新 seed。Profile HTTPS 与 UI 宿主分别计数，整个运行最多三个 HTTPS 启动。每个宿主明确禁用 Email、Expiry、Live、Outbox workers，并实查 hosted services 集合。
+后续联合UI正式宿主最多启动两次：首次启动，以及一次Stop／Dispose后在同origin重建。两次共用同预算，不重新seed。原规划累计三个HTTPS启动包含A5已用的一次，不能用于增加后续额度。每个宿主明确禁用Email、Expiry、Live、Outbox workers，并实查hosted services集合。
 
 Windows 候选从已整合提交构建到本工作树 `artifacts/local-room/account-profile-sync-20261010` 下的独立目录。只使用验收设置、已核对的候选 native module 及固定 origin，最多四次候选进程启动；记录 PID、创建时间、可执行路径和 SHA256。生产 DLL、日常安装、用户日常设置均不变。
 
 ## 6. 技术验收顺序和能够失败的证据
 
-### A. Profile PostgreSQL / HTTPS
+### A. Profile PostgreSQL / HTTPS（A5已完成，仅引用证据）
 
-精确过滤 `AccountProfilePostgresTests` 一次，7 个用例全部要求实际 Passed，不接受 Inconclusive／Skipped。独立连接同版本竞争只有一笔成功、另一笔 conflict；相同昵称不同 UserId 成功；资料变更不改 UserId／PetId／账号安全 stamp／默认房图；两处提交前异常真实回滚；跨账号、撤销、到期、CSRF、Origin 和坏 JSON 真正拒绝。TRX、资源回执和本轮数据库 scoped counts 一起核对。
+A5已执行精确七项并全部Passed，并发、重名、身份保留、回滚及正式HTTPS边界证据见[A5通过记录](../verification/2026-10-10-account-profile-a5-postgres-passed.md)。后续仅引用保存的TRX、资源回执和scoped证据，不再次执行Profile类或查询A5图；A5一次性额度已消耗。
 
 ### B. UIA：登录、昵称、捏脸
 

@@ -1,6 +1,6 @@
 # 昵称 A5 精确数据库验证计划
 
-日期：2026-10-10。状态：候选、有效离线红绿、237项回归、模型／owner构建及独立源码审查已通过；299份输入已冻结，根与独立清单复核均通过，等待精确A5批准。尚未批准或执行真实A5。A／A2／A3／A4／D1额度已消耗，旧目录、清单、原回执与源码快照保留。
+日期：2026-10-10。状态：用户在精确批准卡后要求“继续”，已按本计划执行一次、退出0；七项真实测试全部Passed，22表旧数据保全和资源收尾通过。见[A5实际证据](../verification/2026-10-10-account-profile-a5-postgres-passed.md)。A／A2／A3／A4／D1／A5额度均已消耗，不续跑或重试；下文额度和批准前证据保留为历史，不授权再次执行。
 
 ## 当前事实与候选范围
 
@@ -67,7 +67,7 @@ Release测试构建零错误；显式关闭B1／Profile批准后，owner边界�
 
 新清单 `artifacts/account-profile-a5-approved.json` 以CreateNew冻结 **299** 份输入、零缺失；准确SHA256为 `32A7489C276F328AB9A6419CD80A93D3F58F910F08A0F5091FFB1224A05C414F`。包含原Release执行依赖、原八项明确输入，以及正式迁移入口／单迁移helper／数据库options／DbContext／ModelSnapshot五个源文件。根和独立清单复核299份全部匹配；独立原始键集合精确一致、无重复键或非法摘要，确认六历史／唯一Profile／七用例／67预算。预览 `artifacts/account-profile-a5-preapproval.json` 为Executed=false／Approved=false／DatabaseConnected=false／CredentialRead=false；A5目录不存在、pidfile不存在、原记录端口无监听，D1记录进程均已退出。旧五份清单、原回执和源码快照不覆盖或执行。
 
-实际执行命令为新bundled宿主运行 `eng/invoke-account-profile-postgres-tests.ps1 -ExecuteApprovedPlan -ApprovalManifest artifacts/account-profile-a5-approved.json -ApprovalManifestSha256 32A7489C276F328AB9A6419CD80A93D3F58F910F08A0F5091FFB1224A05C414F`；尚未调用该真实入口。
+实际执行命令为新bundled宿主运行 `eng/invoke-account-profile-postgres-tests.ps1 -ExecuteApprovedPlan -ApprovalManifest artifacts/account-profile-a5-approved.json -ApprovalManifestSha256 32A7489C276F328AB9A6419CD80A93D3F58F910F08A0F5091FFB1224A05C414F`；已调用一次并完成，不再调用。
 
 ## 五项检查
 
