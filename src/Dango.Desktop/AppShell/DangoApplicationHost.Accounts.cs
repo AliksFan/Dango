@@ -15,20 +15,24 @@ internal sealed partial class DangoApplicationHost
         var home = window.ProductHome;
         var paths = new DangoUserDataPaths(settingsPath);
         var repository = new LocalPetConfigurationRepository(paths.AppearancePath, appearance, home.Dispatcher);
-        var configured = Environment.GetEnvironmentVariable("DANGO_SERVER_ORIGIN");
-        Uri? origin = null;
-        if (Uri.TryCreate(configured, UriKind.Absolute, out var candidate) && candidate.Scheme == "https"
-            && candidate.UserInfo.Length == 0 && candidate.AbsolutePath == "/"
-            && candidate.Query.Length == 0 && candidate.Fragment.Length == 0)
-            origin = candidate;
-        accountController = new(home.AccountPanel, origin, new WindowsAccountSecretStore(),
+        var dependencies = accountDependencies;
+        Uri? origin = dependencies?.Origin;
+        if (dependencies is null)
+        {
+            var configured = Environment.GetEnvironmentVariable("DANGO_SERVER_ORIGIN");
+            if (Uri.TryCreate(configured, UriKind.Absolute, out var candidate) && candidate.Scheme == "https"
+                && candidate.UserInfo.Length == 0 && candidate.AbsolutePath == "/"
+                && candidate.Query.Length == 0 && candidate.Fragment.Length == 0)
+                origin = candidate;
+        }
+        accountController = new(home.AccountPanel, origin, dependencies?.SecretStore ?? new WindowsAccountSecretStore(),
             CreatePetConfigurationCoordinator, repository.CaptureAsync, home.HideAccountPanel,
             (signedIn, ready) =>
             {
                 if (!signedIn) roomController?.Reset();
                 onlineRoomController?.SynchronizeBinding();
                 home.SetAccountStatus(signedIn, ready, accountController?.Nickname); home.RefreshAccountAppearance();
-            }, createSync: CreatePetConfigurationLiveSync);
+            }, createClient: dependencies?.CreateClient, createSync: CreatePetConfigurationLiveSync);
         appearance.SavedToDisk += OnAccountAppearanceSaved;
         roomController = new(home.RoomPanel, () => accountController.RoomClient, home.HideAccountPanel,
             home.ShowAccountPanel, rejected => { accountController.RejectRoomAuthentication(rejected); home.ShowAccountPanel(); });

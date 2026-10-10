@@ -263,6 +263,8 @@ function Get-DangoProfileFixedPlan {
             Get-DangoProfilePlan 'run20261008b0' $Plan.PostgresBinDirectory $Plan.Repository
         } elseif ($Plan.Stage -ceq 'AccountProfileTargetDiagnostic') {
             Get-DangoProfileDiagnosticPlan 'run20261008b0' $Plan.PostgresBinDirectory $Plan.Repository
+        } elseif ($Plan.Stage -ceq 'AccountSyncB1a') {
+            Get-DangoAccountSyncPlan $Plan.Repository
         } else { throw 'rejected' }
         if (@($Plan.PSObject.Properties).Count -ne @($fixed.PSObject.Properties).Count) { throw 'rejected' }
         foreach ($property in $fixed.PSObject.Properties) {
@@ -408,19 +410,29 @@ function Invoke-DangoProfileProcess {
         [Collections.Generic.List[object]]$Receipts,
         [scriptblock]$IdentityProbe={ param($process,$expected) Get-DangoProfileProcessIdentity $process $expected },
         [scriptblock]$ProcessFactory={ param($info) $process=[Diagnostics.Process]::new(); $process.StartInfo=$info; return $process },
-        [ValidateSet('CompleteEof','PostgresStartIgnored','PostgresEvidenceJson',IgnoreCase=$false)][string]$OutputContract='CompleteEof',
+        [ValidateSet('CompleteEof','PostgresStartIgnored','PostgresEvidenceJson','AccountSyncStartIgnored','AccountSyncEvidenceJson',IgnoreCase=$false)][string]$OutputContract='CompleteEof',
         $PostgresStartPlan, [int]$PostgresStartPort=0,
         $PostgresEvidencePlan, [int]$PostgresEvidencePort=0)
-    $ignoreStartOutput=$OutputContract -ceq 'PostgresStartIgnored'
-    $evidenceOutput=$OutputContract -ceq 'PostgresEvidenceJson'
+    $ignoreStartOutput=$OutputContract -cin @('PostgresStartIgnored','AccountSyncStartIgnored')
+    $evidenceOutput=$OutputContract -cin @('PostgresEvidenceJson','AccountSyncEvidenceJson')
     if ($ignoreStartOutput) {
         if ($null -ne $PostgresEvidencePlan -or $PostgresEvidencePort -ne 0) { throw 'profile_run_start_output_contract_rejected' }
-        Assert-DangoProfileStartOutputContract $Executable $Arguments $WorkingDirectory $PostgresStartPlan $PostgresStartPort `
-            $EnvironmentValues ([bool]$KillOwnedTree)
+        if ($OutputContract -ceq 'AccountSyncStartIgnored') {
+            Assert-DangoAccountSyncStartContract $Executable $Arguments $WorkingDirectory $PostgresStartPlan $PostgresStartPort `
+                $EnvironmentValues ([bool]$KillOwnedTree)
+        } else {
+            Assert-DangoProfileStartOutputContract $Executable $Arguments $WorkingDirectory $PostgresStartPlan $PostgresStartPort `
+                $EnvironmentValues ([bool]$KillOwnedTree)
+        }
     } elseif ($evidenceOutput) {
         if ($null -ne $PostgresStartPlan -or $PostgresStartPort -ne 0) { throw 'profile_run_evidence_output_contract_rejected' }
-        Assert-DangoProfileEvidenceOutputContract $Executable $Arguments $WorkingDirectory $PostgresEvidencePlan $PostgresEvidencePort `
-            $EnvironmentValues ([bool]$KillOwnedTree)
+        if ($OutputContract -ceq 'AccountSyncEvidenceJson') {
+            Assert-DangoAccountSyncEvidenceContract $Executable $Arguments $WorkingDirectory $PostgresEvidencePlan $PostgresEvidencePort `
+                $EnvironmentValues ([bool]$KillOwnedTree)
+        } else {
+            Assert-DangoProfileEvidenceOutputContract $Executable $Arguments $WorkingDirectory $PostgresEvidencePlan $PostgresEvidencePort `
+                $EnvironmentValues ([bool]$KillOwnedTree)
+        }
     } elseif ($null -ne $PostgresStartPlan -or $PostgresStartPort -ne 0 -or
         $null -ne $PostgresEvidencePlan -or $PostgresEvidencePort -ne 0) { throw 'profile_run_start_output_contract_rejected' }
     # Compile the Win32 query before launch; a short-lived tool can exit during Add-Type.
