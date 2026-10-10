@@ -1,4 +1,6 @@
 using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Controls;
 using System.Windows.Input;
 
 namespace Dango.Desktop.AppShell.ControlCenter;
@@ -193,8 +195,31 @@ public partial class ProductHomeView
             porchDirectory = new(RoomPanelPage.Directory);
             PorchScene.ApplyDirectory(null, "active", false, null);
         }
-        AccountButton.Content = signedIn ? string.IsNullOrWhiteSpace(nickname) ? "设置昵称" : nickname : "登录";
-        AccountButton.ToolTip = signedIn ? configurationReady ? "已登录，外观已确认" : "已登录，外观尚未确认" : "邮箱登录";
+        var label = signedIn ? string.IsNullOrWhiteSpace(nickname) ? "设置昵称" : nickname : "登录";
+        AccountNicknameText.Text = label;
+        AutomationProperties.SetName(AccountButton, signedIn ? label : "邮箱账号");
+        AccountButton.ToolTip = signedIn
+            ? label + "\n" + (configurationReady ? "已登录，外观已确认" : "已登录，外观尚未确认")
+            : "邮箱登录";
+        UpdateAccountNicknameWidth();
+    }
+
+    private void OnAccountNavigationSizeChanged(object sender, SizeChangedEventArgs e) => UpdateAccountNicknameWidth();
+
+    private void UpdateAccountNicknameWidth()
+    {
+        if (AccountButton is null || TopNavigation.ActualWidth <= 0) return;
+        var remaining = TopNavigation.ActualWidth - ToolsNavigation.Margin.Left - ToolsNavigation.Margin.Right
+            - ToolsNavigation.Children.OfType<FrameworkElement>().Where(child => !ReferenceEquals(child, AccountButton))
+                .Sum(child => child.DesiredSize.Width);
+        if (Grid.GetColumnSpan(ToolsNavigation) == 1)
+        {
+            remaining -= Math.Max(Brand.Visibility == Visibility.Visible ? Brand.DesiredSize.Width : 0,
+                FaceBrandIcon.Visibility == Visibility.Visible ? FaceBrandIcon.DesiredSize.Width : 0);
+            remaining -= MainNavigation.DesiredSize.Width;
+        }
+        var limit = Math.Clamp(remaining, 48, 144);
+        if (Math.Abs(AccountButton.MaxWidth - limit) > .5) AccountButton.MaxWidth = limit;
     }
 
     internal void RefreshAccountAppearance() => RefreshAppearanceControls();

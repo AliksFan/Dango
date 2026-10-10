@@ -178,7 +178,7 @@
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <Grid x:Name="TopNavigation" Margin="22,8">
+        <Grid x:Name="TopNavigation" Margin="22,8" SizeChanged="OnAccountNavigationSizeChanged">
             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
             <TextBlock x:Name="Brand" Text="Dango" FontSize="18" Height="28" VerticalAlignment="Center" Margin="0,0,20,0" />
@@ -201,8 +201,10 @@
                         shell:WindowChrome.IsHitTestVisibleInChrome="True" />
                 <Button x:Name="SettingsButton" Content="设置" Style="{StaticResource ToolButton}" Click="OnSettingsClick" AutomationProperties.Name="设置"
                         shell:WindowChrome.IsHitTestVisibleInChrome="True" />
-                <Button x:Name="AccountButton" Content="登录" Style="{StaticResource ToolButton}" Click="OnAccountClick" ToolTip="邮箱登录" AutomationProperties.Name="邮箱账号"
-                        shell:WindowChrome.IsHitTestVisibleInChrome="True" />
+                <Button x:Name="AccountButton" MaxWidth="144" Style="{StaticResource ToolButton}" Click="OnAccountClick" ToolTip="邮箱登录" AutomationProperties.Name="邮箱账号"
+                        shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                    <TextBlock x:Name="AccountNicknameText" Text="登录" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                </Button>
             </StackPanel>
         </Grid>
         <TextBlock x:Name="PorchBrand" Text="Dango" FontSize="18" Margin="22,8"
