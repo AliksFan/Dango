@@ -80,6 +80,8 @@ public static class FormalHost
         builder.Services.AddScoped<InvitationService>();
         builder.Services.AddScoped<RegistrationService>();
         builder.Services.AddScoped<SessionService>();
+        builder.Services.AddSingleton<IAccountProfileCheckpoint, AccountProfileCheckpoint>();
+        builder.Services.AddScoped<AccountProfileService>();
         builder.Services.AddScoped<CredentialService>();
         builder.Services.AddSingleton<IPetConfigurationCheckpoint, PetConfigurationCheckpoint>();
         builder.Services.AddScoped<PetConfigurationService>();

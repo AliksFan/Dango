@@ -18,6 +18,133 @@ public sealed class AccountClientTests
     private const string AuthCookie = "__Host-Dango.Auth";
 
     [TestMethod]
+    public async Task NicknameProfileIsSeparateFromIdentityAndUpdateUsesFreshCsrfAndOnlyCurrentUserRoute()
+    {
+        using var setup = new Setup();
+        var identity = await setup.Client.LoginAsync(Email, Password, true);
+        var profile = setup.Client.CreateProfileClient(identity);
+        var legacy = await profile.ReadAsync(CancellationToken.None);
+        Assert.IsNull(legacy.Nickname);
+        var saved = await profile.UpdateAsync(legacy.ProfileVersion, "  团子 e\u0301  ", CancellationToken.None);
+        Assert.AreEqual("团子 é", saved.Nickname);
+        Assert.AreEqual(2L, saved.ProfileVersion);
+        Assert.AreEqual(identity, setup.Client.CurrentIdentity);
+        Assert.AreEqual(identity, await setup.Client.ReadIdentityAsync());
+        Assert.AreEqual(identity.PetId, setup.Client.CreatePetClient(identity).PetId);
+        var mutation = setup.Receiver.Requests.Last(r => r.Method == HttpMethod.Patch);
+        Assert.AreEqual("api/v1/me/profile", mutation.Path);
+        Assert.IsTrue(mutation.HadAuth);
+        Assert.IsNotNull(mutation.Csrf);
+        Assert.AreNotEqual(setup.Receiver.Requests.Single(r => r.Path == "api/v1/auth/login").Csrf, mutation.Csrf);
+        CollectionAssert.AreEquivalent(new[] { "expectedVersion", "nickname" }, mutation.Body!.Value.EnumerateObject().Select(p => p.Name).ToArray());
+        Assert.IsFalse(Encoding.UTF8.GetString(setup.Store.Values[(Origin.AbsoluteUri, AccountSecretSlots.Session)]).Contains("nickname", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task ProfileConflictAndUnknownOutcomeCanBeReadWithoutAutomaticMutationRetry()
+    {
+        using var setup = new Setup();
+        var identity = await setup.Client.LoginAsync(Email, Password, false);
+        var profile = setup.Client.CreateProfileClient(identity);
+        await profile.UpdateAsync(1, "团子", CancellationToken.None);
+        var conflict = await Assert.ThrowsExactlyAsync<AccountClientException>(() => profile.UpdateAsync(1, "另一团子", CancellationToken.None));
+        Assert.AreEqual("account_profile_conflict", conflict.Code);
+        Assert.AreEqual(AccountFailure.Conflict, conflict.Failure);
+        Assert.AreEqual("团子", (await profile.ReadAsync(CancellationToken.None)).Nickname);
+        setup.Receiver.Override = (r, _) => Task.FromResult<HttpResponseMessage?>(r.Method == HttpMethod.Patch
+            ? new HttpResponseMessage(HttpStatusCode.BadGateway) { Content = new StringContent("fictional gateway") } : null);
+        var unknown = await Assert.ThrowsExactlyAsync<AccountClientException>(() => profile.UpdateAsync(2, "再一个", CancellationToken.None));
+        Assert.AreEqual(AccountFailure.Unavailable, unknown.Failure);
+        Assert.AreEqual("request_outcome_unknown", unknown.Code);
+        Assert.AreEqual("团子", (await profile.ReadAsync(CancellationToken.None)).Nickname);
+        Assert.AreEqual(3, setup.Receiver.Requests.Count(r => r.Method == HttpMethod.Patch));
+    }
+
+    [TestMethod]
+    public async Task ProfileBindingRejectsOldSessionEvenWhenNextLoginHasSameImmutableIdentity()
+    {
+        using var setup = new Setup();
+        var identity = await setup.Client.LoginAsync(Email, Password, false);
+        var old = setup.Client.CreateProfileClient(identity);
+        await setup.Client.LogoutAsync();
+        Assert.AreEqual(identity, await setup.Client.LoginAsync(Email, Password, false));
+        var before = setup.Receiver.Requests.Count;
+        var error = await Assert.ThrowsExactlyAsync<AccountClientException>(() => old.ReadAsync(CancellationToken.None));
+        Assert.AreEqual("account_profile_binding_changed", error.Code);
+        Assert.AreEqual(before, setup.Receiver.Requests.Count);
+        Assert.IsNotNull(await setup.Client.CreateProfileClient(identity).ReadAsync(CancellationToken.None));
+    }
+
+    [TestMethod]
+    public async Task InvalidProfileInputFailsBeforeTransport()
+    {
+        using var setup = new Setup();
+        var identity = await setup.Client.LoginAsync(Email, Password, false);
+        var profile = setup.Client.CreateProfileClient(identity);
+        var before = setup.Receiver.Requests.Count;
+        foreach (var version in new[] { 0L, long.MaxValue })
+            Assert.AreEqual("expected_version_invalid", (await Assert.ThrowsExactlyAsync<AccountClientException>(
+                () => profile.UpdateAsync(version, "团子", CancellationToken.None))).Code);
+        Assert.AreEqual("nickname_invalid", (await Assert.ThrowsExactlyAsync<AccountClientException>(
+            () => profile.UpdateAsync(1, "团子\n", CancellationToken.None))).Code);
+        Assert.AreEqual(before, setup.Receiver.Requests.Count);
+    }
+
+    [TestMethod]
+    public async Task ProfileResponseRejectsWrongUserInvalidOrNoncanonicalNameAndUnknownFields()
+    {
+        using var setup = new Setup();
+        var identity = await setup.Client.LoginAsync(Email, Password, false);
+        var profile = setup.Client.CreateProfileClient(identity);
+        foreach (var body in new object[] { new { userId = Guid.NewGuid(), nickname = "团子", profileVersion = 1 },
+            new { userId = identity.UserId, nickname = "团子", profileVersion = 0 },
+            new { userId = identity.UserId, nickname = "e\u0301", profileVersion = 1 },
+            new { userId = identity.UserId, nickname = "团子\n", profileVersion = 1 },
+            new { userId = identity.UserId, nickname = "团子", profileVersion = 1, ownerId = identity.UserId } })
+        {
+            setup.Receiver.Override = (_, _) => Task.FromResult<HttpResponseMessage?>(Response(body));
+            Assert.AreEqual(AccountFailure.InvalidResponse, (await Assert.ThrowsExactlyAsync<AccountClientException>(
+                () => profile.ReadAsync(CancellationToken.None))).Failure);
+        }
+    }
+
+    [TestMethod]
+    public async Task ProfileUpdateSuccessMustConfirmTheExactVersionAndCanonicalSubmittedName()
+    {
+        using var setup = new Setup();
+        var identity = await setup.Client.LoginAsync(Email, Password, false);
+        var profile = setup.Client.CreateProfileClient(identity);
+        foreach (var body in new object[] { new { userId = identity.UserId, nickname = "团子", profileVersion = 1 },
+            new { userId = identity.UserId, nickname = "被替换", profileVersion = 2 } })
+        {
+            setup.Receiver.Override = (r, _) => Task.FromResult<HttpResponseMessage?>(r.Method == HttpMethod.Patch ? Response(body) : null);
+            Assert.AreEqual(AccountFailure.InvalidResponse, (await Assert.ThrowsExactlyAsync<AccountClientException>(
+                () => profile.UpdateAsync(1, "团子", CancellationToken.None))).Failure);
+        }
+    }
+
+    [TestMethod]
+    public async Task CancelledDelayedProfileResponseCannotPublishBeforeALaterAccountLogin()
+    {
+        using var setup = new Setup();
+        var identity = await setup.Client.LoginAsync(Email, Password, false);
+        var old = setup.Client.CreateProfileClient(identity);
+        var delayed = new TaskCompletionSource<HttpResponseMessage?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        setup.Receiver.Override = (r, _) => r.Path == "api/v1/me/profile" ? delayed.Task : Task.FromResult<HttpResponseMessage?>(null);
+        using var cancel = new CancellationTokenSource();
+        var pending = old.ReadAsync(cancel.Token);
+        cancel.Cancel();
+        delayed.SetResult(Response(new { userId = identity.UserId, nickname = "旧账号", profileVersion = 1 }));
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() => pending);
+        setup.Receiver.Override = null;
+        setup.Receiver.UserId = Guid.NewGuid(); setup.Receiver.PetId = Guid.NewGuid();
+        var next = await setup.Client.LoginAsync(Email, Password, false);
+        Assert.AreNotEqual(identity, next);
+        Assert.AreEqual(next, setup.Client.CurrentIdentity);
+        Assert.AreEqual(next.UserId, (await setup.Client.CreateProfileClient(next).ReadAsync(CancellationToken.None)).UserId);
+    }
+
+    [TestMethod]
     [DataRow("http://accounts.example.invalid/")]
     [DataRow("https://user:secret@accounts.example.invalid/")]
     [DataRow("https://accounts.example.invalid/api/")]
@@ -675,6 +802,8 @@ public sealed class AccountClientTests
         public string EmailStatus { get; set; } = "smtp_accepted";
         public long Version { get; private set; } = 1;
         public JsonElement Appearance { get; private set; } = Configuration();
+        public string? Nickname { get; private set; }
+        public long ProfileVersion { get; private set; } = 1;
         public List<RequestRecord> Requests { get; } = [];
         public Func<RequestRecord, CancellationToken, Task<HttpResponseMessage?>>? Override { get; set; }
         public Action<RequestRecord>? AfterResponse { get; set; }
@@ -723,6 +852,17 @@ public sealed class AccountClientTests
             }
             if (request.Path == "api/v1/auth/logout") return Response(new { status = "signed_out" });
             if (request.Path == "api/v1/me") return Response(new { userId = UserId });
+            if (request.Path == "api/v1/me/profile")
+            {
+                if (request.Method == HttpMethod.Patch)
+                {
+                    var expected = request.Body!.Value.GetProperty("expectedVersion").GetInt64();
+                    if (expected != ProfileVersion) return Response(new { code = "account_profile_conflict" }, HttpStatusCode.Conflict);
+                    Nickname = request.Body.Value.GetProperty("nickname").GetString();
+                    ProfileVersion++;
+                }
+                return Response(new { userId = UserId, nickname = Nickname, profileVersion = ProfileVersion });
+            }
             if (request.Path == "api/v1/me/pet") return PetResponse();
             if (request.Path == "api/v1/me/pet/configuration")
             {

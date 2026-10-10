@@ -153,6 +153,11 @@ namespace Dango.Server.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("lockout_end");
 
+                    b.Property<string>("Nickname")
+                        .HasMaxLength(192)
+                        .HasColumnType("character varying(192)")
+                        .HasColumnName("nickname");
+
                     b.Property<string>("NormalizedEmail")
                         .IsRequired()
                         .HasMaxLength(254)
@@ -176,6 +181,13 @@ namespace Dango.Server.Persistence.Migrations
                     b.Property<bool>("PhoneNumberConfirmed")
                         .HasColumnType("boolean")
                         .HasColumnName("phone_number_confirmed");
+
+                    b.Property<long>("ProfileVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(1L)
+                        .HasColumnName("profile_version");
 
                     b.Property<bool>("RecoveryLocked")
                         .HasColumnType("boolean")
@@ -207,6 +219,10 @@ namespace Dango.Server.Persistence.Migrations
                     b.ToTable("users", "dango", t =>
                         {
                             t.HasCheckConstraint("ck_users_email", "length(btrim(email)) BETWEEN 3 AND 254 AND length(btrim(normalized_email)) BETWEEN 3 AND 254");
+
+                            t.HasCheckConstraint("ck_users_nickname", "nickname IS NULL OR (length(btrim(nickname)) BETWEEN 1 AND 192 AND octet_length(nickname) <= 192 AND nickname = btrim(nickname))");
+
+                            t.HasCheckConstraint("ck_users_profile_version", "profile_version >= 1");
 
                             t.HasCheckConstraint("ck_users_verified", "email_confirmed");
                         });

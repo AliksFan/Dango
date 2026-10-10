@@ -64,6 +64,10 @@ public static class AccountEndpoints
             return Results.Ok(new { status = "signed_out" });
         }).RequireAuthorization();
         api.MapGet("/me", (HttpContext ctx) => Results.Ok(new { userId = FormalHost.UserId(ctx) })).RequireAuthorization();
+        api.MapGet("/me/profile", async (HttpContext ctx, AccountProfileService service, CancellationToken ct) =>
+            Results.Ok(await service.GetAsync(FormalHost.UserId(ctx), FormalHost.SessionId(ctx), ct))).RequireAuthorization();
+        api.MapPatch("/me/profile", async (AccountProfileUpdate update, HttpContext ctx, AccountProfileService service, CancellationToken ct) =>
+            Results.Ok(await service.UpdateAsync(FormalHost.UserId(ctx), FormalHost.SessionId(ctx), update, ct))).RequireAuthorization();
         api.MapGet("/me/pet", async (HttpContext ctx, PetConfigurationService service, CancellationToken ct) =>
             Results.Ok(await service.GetAsync(FormalHost.UserId(ctx), FormalHost.SessionId(ctx), ct))).RequireAuthorization();
         api.MapPatch("/me/pet/configuration", async (PetConfigurationUpdate update, HttpContext ctx, PetConfigurationService service, CancellationToken ct) =>
