@@ -32,6 +32,7 @@ internal sealed class DesktopOnlineRoomController : IDisposable
         this.panel = panel; this.binding = binding; this.configurationReady = configurationReady;
         this.close = close; this.directory = directory; this.account = account;
         this.authenticationLost = authenticationLost; panel.Requested += OnRequested;
+        panel.SceneRequested += OnSceneRequested;
     }
 
     internal OnlineRoomPanelState CurrentState => RenderState();
@@ -75,6 +76,15 @@ internal sealed class DesktopOnlineRoomController : IDisposable
     }
 
     private async void OnRequested(OnlineRoomRequest request) => await HandleAsync(request);
+
+    private void OnSceneRequested(OnlineRoomAction action)
+    {
+        if (disposed || action is not (OnlineRoomAction.OpenResolve or OnlineRoomAction.Refresh)) return;
+        Open();
+        if (session is null || session.Current.Pending is not null || pendingCodeReset is not null) return;
+        if (action == OnlineRoomAction.OpenResolve)
+        { state = state with { Page = OnlineRoomPage.ResolveCode, Code = null, Message = null }; Publish(); }
+    }
 
     internal async Task HandleAsync(OnlineRoomRequest request)
     {
@@ -269,6 +279,7 @@ internal sealed class DesktopOnlineRoomController : IDisposable
     {
         if (disposed) return;
         Reset(); disposed = true; cancellation.Cancel(); cancellation.Dispose(); panel.Requested -= OnRequested;
+        panel.SceneRequested -= OnSceneRequested;
     }
     private sealed record PendingCodeReset(Guid RoomId, RoomCodeResetRequest Body);
 }

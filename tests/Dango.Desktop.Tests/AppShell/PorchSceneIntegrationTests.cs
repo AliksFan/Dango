@@ -358,7 +358,7 @@ public sealed class PorchSceneIntegrationTests
             BindingFlags.Instance | BindingFlags.NonPublic, null, [TimeSpan.FromTicks(ticks)], null)!);
     }
 
-    private sealed class NativeHome : IDisposable
+    internal sealed class NativeHome : IDisposable
     {
         internal readonly ProductHomeView Home = new() { ReduceMotion = true };
         internal readonly Window Window;
@@ -366,7 +366,7 @@ public sealed class PorchSceneIntegrationTests
         internal readonly HostFrameScheduler Scheduler;
         private readonly Source source = new();
         private long ticks;
-        internal NativeHome(string? modulePath = null)
+        internal NativeHome(string? modulePath = null, bool reviewMode = true)
         {
             var path = modulePath ?? Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName);
             Assert.IsTrue(File.Exists(path), "Native acceptance requires the explicit isolated module.");
@@ -379,7 +379,7 @@ public sealed class PorchSceneIntegrationTests
                 source, () => ticks, TimeSpan.TicksPerSecond);
             Scheduler = scheduler;
             typeof(ProductHomeView).GetField("liveScheduler", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(Home, scheduler);
-            Home.SetPorchReviewMode(true);
+            Home.SetPorchReviewMode(reviewMode);
             Window = WindowFor(Home);
             Window.Show();
         }

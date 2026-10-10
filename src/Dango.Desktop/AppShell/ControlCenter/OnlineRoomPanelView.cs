@@ -74,6 +74,8 @@ public sealed class OnlineRoomPanelView : UserControl
     }
 
     public event Action<OnlineRoomRequest>? Requested;
+    internal event Action<OnlineRoomAction>? SceneRequested;
+    internal void RequestFromScene(OnlineRoomAction action) => SceneRequested?.Invoke(action);
     public string AccessCode => codeInput.Password.Trim();
     public void ClearSecrets()
     { codeInput.Clear(); codeOutput.Clear(); state = state with { Code = null }; }
@@ -130,7 +132,7 @@ public sealed class OnlineRoomPanelView : UserControl
                 }
                 Button("隐藏并返回", OnlineRoomAction.Back); break;
         }
-        Button("房间目录", OnlineRoomAction.Directory);
+        Button("返回门廊房门", OnlineRoomAction.Directory);
         Button("账号与外观", OnlineRoomAction.Account);
     }
 

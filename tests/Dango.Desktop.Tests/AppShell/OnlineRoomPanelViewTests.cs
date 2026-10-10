@@ -106,15 +106,18 @@ public sealed class OnlineRoomPanelViewTests
     [STATestMethod]
     [DataRow(1120, 740)]
     [DataRow(820, 620)]
-    public void FormalStatusUsesCenteredOverlayAndReturningRestoresLocalInputs(int width, int height)
+    public void FormalStatusLivesInThePorchAndReturningRestoresLocalInputs(int width, int height)
     {
         var home = new ProductHomeView(); var closed = 0; home.OnlineRoomPanelClosed += () => closed++;
         home.ShowOnlineRoomPanel();
         var size = new Size(width, height); home.Measure(size); home.Arrange(new Rect(size)); home.UpdateLayout();
         Assert.IsTrue(home.IsOnlineRoomPanelOpen); Assert.IsTrue(home.IsAccountPanelOpen);
-        Assert.IsFalse(Field<FrameworkElement>(home, "HomeContent").IsEnabled);
+        Assert.IsTrue(home.IsInPorch);
+        Assert.IsTrue(Field<FrameworkElement>(home, "HomeContent").IsEnabled, "The scene contains its operation area and remains enabled.");
+        Assert.AreEqual(Visibility.Collapsed, Field<FrameworkElement>(home, "AccountOverlay").Visibility);
+        Assert.AreSame(Field<FrameworkElement>(home, "PorchContent"), Field<FrameworkElement>(home, "PorchOperations").Parent);
         var bounds = home.OnlineRoomPanel.TransformToAncestor(home).TransformBounds(new Rect(home.OnlineRoomPanel.RenderSize));
-        Assert.AreEqual(width / 2.0, bounds.Left + bounds.Width / 2, 2);
+        Assert.IsTrue(bounds.Left >= 0 && bounds.Right <= width);
         Assert.IsFalse(Descendants(home.OnlineRoomPanel).OfType<TextBlock>().Any(t => t.Text.Contains("场景已就绪", StringComparison.Ordinal)));
         home.ShowRoomPanel(); Assert.AreEqual(1, closed); Assert.IsTrue(home.IsRoomPanelOpen);
         home.HideAccountPanel(); Assert.IsFalse(home.IsAccountPanelOpen);

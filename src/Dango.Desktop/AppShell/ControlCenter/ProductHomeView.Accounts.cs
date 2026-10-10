@@ -11,18 +11,93 @@ public partial class ProductHomeView
     internal event Action? RoomDirectoryRequested;
     internal event Action? RoomPanelClosed;
     internal event Action? OnlineRoomPanelClosed;
-    internal bool IsAccountPanelOpen => AccountOverlay.Visibility == Visibility.Visible;
+    private bool porchAccountBound;
+    private bool porchSignedIn;
+    private bool porchDirectoryInteraction;
+    private RoomPanelState porchDirectory = new(RoomPanelPage.Directory);
+    internal bool IsAccountPanelOpen => AccountOverlay.Visibility == Visibility.Visible || PorchOperations.Visibility == Visibility.Visible;
     internal AccountPanelView AccountPanel => AccountContent;
     internal RoomPanelView RoomPanel => RoomContent;
     internal OnlineRoomPanelView OnlineRoomPanel => OnlineRoomContent;
-    internal bool IsRoomPanelOpen => IsAccountPanelOpen && RoomContent.Visibility == Visibility.Visible;
-    internal bool IsOnlineRoomPanelOpen => IsAccountPanelOpen && OnlineRoomContent.Visibility == Visibility.Visible;
+    internal bool IsRoomPanelOpen => PorchOperations.Visibility == Visibility.Visible && RoomContent.Visibility == Visibility.Visible;
+    internal bool IsOnlineRoomPanelOpen => PorchOperations.Visibility == Visibility.Visible && OnlineRoomContent.Visibility == Visibility.Visible;
 
-    private void OnRoomDirectoryClick(object sender, RoutedEventArgs e)
+    internal void EnablePorchAccountInteractions()
     {
-        if (IsAccountPanelOpen) return;
-        if (RoomDirectoryRequested is null) OnAccountClick(sender, e);
-        else RoomDirectoryRequested.Invoke();
+        if (porchAccountBound) return;
+        porchAccountBound = true;
+        PorchScene.EnableBusinessTargets();
+        PorchScene.TargetRequested += OnPorchTargetRequested;
+        PorchScene.ProjectionChanged += PositionPorchOperations;
+        RoomContent.Applied += ApplyPorchRoomState;
+        PorchContent.SizeChanged += (_, _) => PositionPorchOperations();
+        IsVisibleChanged += (_, _) =>
+        {
+            if (!IsVisible) { RoomPanelClosed?.Invoke(); OnlineRoomPanelClosed?.Invoke(); }
+        };
+    }
+
+    private void OnPorchTargetRequested(Dango.Desktop.AppShell.Rooms.PorchTargetRequest target)
+    {
+        ClearLiveDirectionalInput();
+        if (!porchSignedIn) { ShowAccountPanel(); return; }
+        porchDirectoryInteraction = target.Kind == Dango.Desktop.AppShell.Rooms.PorchTargetKind.Archive;
+        switch (target.Kind)
+        {
+            case Dango.Desktop.AppShell.Rooms.PorchTargetKind.Room:
+                ShowRoomPanel(); RoomContent.RequestFromScene(new(RoomPanelAction.SelectRoom, target.RoomId)); break;
+            case Dango.Desktop.AppShell.Rooms.PorchTargetKind.Create:
+                ShowRoomPanel(); RoomContent.RequestFromScene(new(RoomPanelAction.OpenCreate)); break;
+            case Dango.Desktop.AppShell.Rooms.PorchTargetKind.Archive:
+                ShowRoomPanel(); RoomContent.RequestFromScene(new(RoomPanelAction.DissolvedDirectory)); break;
+            case Dango.Desktop.AppShell.Rooms.PorchTargetKind.Visit:
+                ShowOnlineRoomPanel(); OnlineRoomContent.RequestFromScene(OnlineRoomAction.OpenResolve); break;
+            case Dango.Desktop.AppShell.Rooms.PorchTargetKind.Online:
+                ShowOnlineRoomPanel(); OnlineRoomContent.RequestFromScene(OnlineRoomAction.Refresh); break;
+        }
+    }
+
+    private void OnPorchEntered()
+    {
+        if (!porchAccountBound || !porchSignedIn) return;
+        porchDirectoryInteraction = false;
+        if (RoomDirectoryRequested is { } readDirectory) readDirectory();
+        else RoomContent.RequestFromScene(new(RoomPanelAction.ActiveDirectory));
+    }
+
+    private void ApplyPorchRoomState(RoomPanelState state)
+    {
+        if (state.Page == RoomPanelPage.Directory)
+        {
+            porchDirectory = state;
+            PorchScene.ApplyDirectory(state.Rooms, state.DirectoryState, state.Busy, state.Message);
+            if (!porchDirectoryInteraction) HideAccountPanel();
+        }
+        else if (state.Selected is { } selected && porchDirectory.Rooms is { } rooms)
+        {
+            var updated = rooms.Select(r => r.RoomId == selected.RoomId ? selected : r)
+                .Where(r => porchDirectory.DirectoryState == "dissolved" ? r.Status == "dissolved" : r.Status == "active").ToArray();
+            porchDirectory = porchDirectory with { Rooms = updated };
+            PorchScene.ApplyDirectory(updated, porchDirectory.DirectoryState, state.Busy, state.Message);
+        }
+        if (state.Page != RoomPanelPage.Directory && IsInPorch && AccountOverlay.Visibility != Visibility.Visible)
+        {
+            OnlineRoomContent.Visibility = Visibility.Collapsed;
+            RoomContent.Visibility = PorchOperations.Visibility = Visibility.Visible;
+            PositionPorchOperations();
+        }
+    }
+
+    private void PositionPorchOperations()
+    {
+        if (PorchOperations.Visibility != Visibility.Visible) return;
+        var width = Math.Min(360, Math.Max(180, PorchContent.ActualWidth - 24));
+        var height = Math.Min(300, Math.Max(140, PorchContent.ActualHeight - 96));
+        PorchOperations.Width = width; PorchOperations.MaxHeight = height;
+        var targetX = PorchScene.InteractionScreenX;
+        var preferred = targetX < PorchContent.ActualWidth / 2 ? targetX + 70 * PorchScene.SceneScale : targetX - width - 70 * PorchScene.SceneScale;
+        PorchOperations.Margin = new Thickness(Math.Clamp(preferred, 12, Math.Max(12, PorchContent.ActualWidth - width - 12)),
+            Math.Clamp(PorchScene.BackWallGroundY - height, 48, Math.Max(48, PorchContent.ActualHeight - height - 36)), 0, 0);
     }
 
     internal void ShowAccountPanel()
@@ -39,11 +114,13 @@ public partial class ProductHomeView
         if (IsAccountPanelOpen) return;
         accountReturnFocus = Keyboard.FocusedElement;
         ClearLiveDirectionalInput();
+        if (!IsInPorch) EnterPorch();
         AccountContent.Visibility = Visibility.Collapsed;
         OnlineRoomContent.Visibility = Visibility.Collapsed;
         AccountContent.ClearSecrets();
-        RoomContent.Visibility = AccountOverlay.Visibility = Visibility.Visible;
-        TopNavigation.IsEnabled = HomeContent.IsEnabled = SettingsPage.IsEnabled = HomeFooter.IsEnabled = false;
+        RoomContent.Visibility = PorchOperations.Visibility = Visibility.Visible;
+        TopNavigation.IsEnabled = HomeFooter.IsEnabled = false;
+        PositionPorchOperations();
         Dispatcher.BeginInvoke(() => { if (IsRoomPanelOpen) RoomContent.MoveFocus(new(FocusNavigationDirection.First)); });
     }
 
@@ -54,9 +131,11 @@ public partial class ProductHomeView
         if (IsAccountPanelOpen) return;
         accountReturnFocus = Keyboard.FocusedElement;
         ClearLiveDirectionalInput(); AccountContent.ClearSecrets();
+        if (!IsInPorch) EnterPorch();
         AccountContent.Visibility = RoomContent.Visibility = Visibility.Collapsed;
-        OnlineRoomContent.Visibility = AccountOverlay.Visibility = Visibility.Visible;
-        TopNavigation.IsEnabled = HomeContent.IsEnabled = SettingsPage.IsEnabled = HomeFooter.IsEnabled = false;
+        OnlineRoomContent.Visibility = PorchOperations.Visibility = Visibility.Visible;
+        TopNavigation.IsEnabled = HomeFooter.IsEnabled = false;
+        PositionPorchOperations();
         Dispatcher.BeginInvoke(() => { if (IsOnlineRoomPanelOpen) OnlineRoomContent.MoveFocus(new(FocusNavigationDirection.First)); });
     }
 
@@ -84,6 +163,7 @@ public partial class ProductHomeView
     {
         if (!IsAccountPanelOpen) return;
         AccountOverlay.Visibility = Visibility.Collapsed;
+        PorchOperations.Visibility = Visibility.Collapsed;
         RoomContent.Visibility = Visibility.Collapsed;
         OnlineRoomContent.Visibility = Visibility.Collapsed;
         OnlineRoomContent.ClearSecrets();
@@ -105,9 +185,15 @@ public partial class ProductHomeView
         HideAccountPanel();
     }
 
-    internal void SetAccountStatus(bool signedIn, bool configurationReady)
+    internal void SetAccountStatus(bool signedIn, bool configurationReady, string? nickname = null)
     {
-        AccountButton.Content = signedIn ? "账号" : "登录";
+        if (porchSignedIn != signedIn)
+        {
+            porchSignedIn = signedIn;
+            porchDirectory = new(RoomPanelPage.Directory);
+            PorchScene.ApplyDirectory(null, "active", false, null);
+        }
+        AccountButton.Content = signedIn ? string.IsNullOrWhiteSpace(nickname) ? "设置昵称" : nickname : "登录";
         AccountButton.ToolTip = signedIn ? configurationReady ? "已登录，外观已确认" : "已登录，外观尚未确认" : "邮箱登录";
     }
 
