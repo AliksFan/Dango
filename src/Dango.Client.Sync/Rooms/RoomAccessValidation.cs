@@ -48,6 +48,12 @@ internal static class RoomAccessValidation
         return new(code is "authentication_required" or "request_protection_invalid" or "origin_invalid"
             ? RoomAccessFailure.Authentication : Conflicts.Contains(code) ? RoomAccessFailure.Conflict : RoomAccessFailure.Rejected, code);
     }
+    internal static RoomAccessClientException HubInvocationError(string message, string method)
+    {
+        // SignalR decorates HubException messages even when detailed server errors are disabled.
+        var prefix = $"An unexpected error occurred invoking '{method}' on the server. HubException: ";
+        return HubError(message.StartsWith(prefix, StringComparison.Ordinal) ? message[prefix.Length..] : message);
+    }
     internal static RoomAccessClientException AccountError(AccountClientException error)
     {
         var failure = error.Failure switch

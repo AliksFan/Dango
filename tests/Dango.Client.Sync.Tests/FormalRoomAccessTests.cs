@@ -248,6 +248,17 @@ public sealed class FormalRoomAccessTests
     [DataRow("room_access_forbidden", RoomAccessFailure.Rejected, "room_access_forbidden")]
     [DataRow("room_connection_rejected", RoomAccessFailure.Rejected, "room_connection_rejected")]
     [DataRow("authentication_required", RoomAccessFailure.Authentication, "authentication_required")]
+    [DataRow("An unexpected error occurred invoking 'PersonalSnapshot' on the server. HubException: room_assignment_conflict", RoomAccessFailure.Conflict, "room_assignment_conflict")]
+    [DataRow("An unexpected error occurred invoking 'PersonalSnapshot' on the server. HubException: room_transport_conflict", RoomAccessFailure.Conflict, "room_transport_conflict")]
+    [DataRow("An unexpected error occurred invoking 'PersonalSnapshot' on the server. HubException: room_lease_expired", RoomAccessFailure.Conflict, "room_lease_expired")]
+    [DataRow("An unexpected error occurred invoking 'PersonalSnapshot' on the server. HubException: authentication_required", RoomAccessFailure.Authentication, "authentication_required")]
+    [DataRow("An unexpected error occurred invoking 'PersonalSnapshot' on the server. HubException: room_connection_rejected", RoomAccessFailure.Rejected, "room_connection_rejected")]
+    [DataRow("An unexpected error occurred invoking 'TakeControl' on the server. HubException: authentication_required", RoomAccessFailure.Unavailable, "request_outcome_unknown")]
+    [DataRow("An unexpected error occurred invoking 'PersonalSnapshot' on the server. AccountFault: authentication_required", RoomAccessFailure.Unavailable, "request_outcome_unknown")]
+    [DataRow("An unexpected error occurred invoking 'PersonalSnapshot' on the server. HubException: room_full fictional-secret", RoomAccessFailure.Unavailable, "request_outcome_unknown")]
+    [DataRow("fictional-secret An unexpected error occurred invoking 'PersonalSnapshot' on the server. HubException: room_full", RoomAccessFailure.Unavailable, "request_outcome_unknown")]
+    [DataRow("An unexpected error occurred invoking 'PersonalSnapshot' on the server. HubException: service_unavailable", RoomAccessFailure.Unavailable, "request_outcome_unknown")]
+    [DataRow("An unexpected error occurred invoking 'PersonalSnapshot' on the server. HubException: unknown fictional-secret room_full", RoomAccessFailure.Unavailable, "request_outcome_unknown")]
     [DataRow("unknown fictional-secret room_full", RoomAccessFailure.Unavailable, "request_outcome_unknown")]
     public async Task HubErrorsOnlyMapExactAllowedCodes(string remote, RoomAccessFailure failure, string expected)
     {
@@ -259,7 +270,7 @@ public sealed class FormalRoomAccessTests
         var error = await Assert.ThrowsExactlyAsync<RoomAccessClientException>(() => connection.PersonalAsync(None));
         Assert.AreEqual(failure, error.Failure); Assert.AreEqual(expected, error.Code); Assert.IsNull(error.InnerException);
         Assert.IsFalse(error.ToString().Contains("fictional-secret", StringComparison.Ordinal));
-        Assert.AreEqual(remote == "authentication_required", invalidated);
+        Assert.AreEqual(expected == "authentication_required", invalidated);
     }
 
     [TestMethod]
@@ -338,6 +349,20 @@ public sealed class FormalRoomAccessTests
         await using var connection = new FormalRoomTransport(binding, wire);
         var error = await Assert.ThrowsExactlyAsync<RoomAccessClientException>(() => connection.StartAsync(None));
         Assert.AreEqual(RoomAccessFailure.Rejected, error.Failure); Assert.AreEqual("room_connection_rejected", error.Code);
+        Assert.IsFalse(invalidated);
+    }
+
+    [TestMethod]
+    public async Task InvocationErrorEnvelopeCannotBeAcceptedAsConnectionAdmissionError()
+    {
+        var wire = new Wire { StartError = new HubException("An unexpected error occurred invoking 'PersonalSnapshot' on the server. HubException: authentication_required") };
+        var invalidated = false;
+        var binding = new FormalRoomBinding(Origin, new(), Guid.NewGuid(), Guid.NewGuid(), _ => { }, None,
+            (_, _, _) => throw new AssertFailedException(), () => { invalidated = true; return Task.CompletedTask; });
+        await using var connection = new FormalRoomTransport(binding, wire);
+        var error = await Assert.ThrowsExactlyAsync<RoomAccessClientException>(() => connection.StartAsync(None));
+        Assert.AreEqual(RoomAccessFailure.Unavailable, error.Failure);
+        Assert.AreEqual("request_outcome_unknown", error.Code);
         Assert.IsFalse(invalidated);
     }
 

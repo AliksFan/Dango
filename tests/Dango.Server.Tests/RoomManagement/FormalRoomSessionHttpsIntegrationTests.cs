@@ -152,6 +152,10 @@ public sealed class FormalRoomSessionHttpsIntegrationTests
             await FaultAsync(expired.AttachAsync(new(original, session.Current.InstanceId), None),
                 RoomAccessFailure.Conflict, "room_lease_expired");
         }
+        // The formal host limits actual HTTP requests to 120/minute; advancing the
+        // business clock does not replenish that window. All transports are stopped
+        // here, so pace the second lifecycle without changing limits or lease time.
+        await Task.Delay(TimeSpan.FromSeconds(61), None);
         await session.EnterAsync(created.RoomId);
         var publicLease = OwnLease(session).LeaseId;
         await session.SuspendAsync(); clock.Advance(TimeSpan.FromSeconds(30)); await session.ResumeAsync();

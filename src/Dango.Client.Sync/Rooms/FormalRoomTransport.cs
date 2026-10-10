@@ -92,7 +92,7 @@ public sealed class FormalRoomTransport : IFormalRoomConnection
         using var requestLifetime = CancellationTokenSource.CreateLinkedTokenSource(ct, binding.Lifetime);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(requestLifetime.Token, lifetime.Token);
         try { var value = await wire.InvokeAsync(method, arguments, linked.Token); Check(linked.Token); return parse(value); }
-        catch (Exception error) { var mapped = Map(error, requestLifetime.Token); await RejectAuthenticationAsync(mapped); throw mapped; }
+        catch (Exception error) { var mapped = Map(error, requestLifetime.Token, method); await RejectAuthenticationAsync(mapped); throw mapped; }
     }
     private async Task RejectAuthenticationAsync(Exception error)
     {
@@ -127,11 +127,11 @@ public sealed class FormalRoomTransport : IFormalRoomConnection
     }
     private async Task QuietStopAsync()
     { try { await wire.StopAsync(CancellationToken.None); } catch (Exception error) when (error is not OutOfMemoryException) { } }
-    private static Exception Map(Exception error, CancellationToken ct) => error switch
+    private static Exception Map(Exception error, CancellationToken ct, string? method = null) => error switch
     {
         RoomAccessClientException => error,
         OperationCanceledException when ct.IsCancellationRequested => new OperationCanceledException(ct),
-        HubException hub => RoomAccessValidation.HubError(hub.Message),
+        HubException hub => method is null ? RoomAccessValidation.HubError(hub.Message) : RoomAccessValidation.HubInvocationError(hub.Message, method),
         HttpRequestException { StatusCode: HttpStatusCode.Unauthorized } => new RoomAccessClientException(RoomAccessFailure.Authentication, "authentication_required"),
         JsonException or InvalidDataException => RoomAccessValidation.Invalid(),
         ObjectDisposedException when ct.IsCancellationRequested => new OperationCanceledException(ct),
