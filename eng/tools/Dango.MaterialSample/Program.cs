@@ -30,6 +30,8 @@ internal static class Program
             if (args.Length == 3 && args[1] == "--baseline-library")
                 baselineLibrary = Path.GetFullPath(args[2]);
             if (args.Length == 3 && args[1] == "--verify") return Verification.Run(library, args[2]);
+            if (args.Length == 3 && args[1] == "--verify-landing-build-mapping") return LandingBuildVerification.Calibrate(library, args[2], mappingOnly: true);
+            if (args.Length == 3 && args[1] == "--calibrate-landing-build") return LandingBuildVerification.Calibrate(library, args[2]);
             if (args.Length == 3 && args[1] == "--verify-drag") return DragVerification.Run(library, args[2]);
             if (args.Length == 3 && args[1] == "--diagnose-idle") return IdleDiagnostics.Run(library, args[2]);
             if (args.Length == 3 && args[1] == "--diagnose-post-drag-idle") return PostDragIdleDiagnostics.Run(library, args[2]);
