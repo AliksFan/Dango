@@ -76,7 +76,7 @@ static void candidate_write_block_vector(FILE* file, const double* values, int c
     fputc(']', file);
 }
 
-static void candidate_write_block_matrix(FILE* file, const double matrix[16][16], int count, bool available)
+static void candidate_write_block_matrix(FILE* file, const double matrix[DANGO_MATERIAL_CONTACT_BLOCK_CAPACITY][DANGO_MATERIAL_CONTACT_BLOCK_CAPACITY], int count, bool available)
 {
     if (!available) { fputs("null", file); return; }
     fputc('[', file);
@@ -108,7 +108,7 @@ static unsigned candidate_block_array_nonfinite_count(const dango_material_conta
 
 static void candidate_write_block_report(FILE* file, const dango_material_contact_block_report* r)
 {
-    int count = r->active_count < 16 ? r->active_count : 16;
+    int count = r->active_count < DANGO_MATERIAL_CONTACT_BLOCK_CAPACITY ? r->active_count : DANGO_MATERIAL_CONTACT_BLOCK_CAPACITY;
     const char* status_names[] = {"ok", "invalid-input", "build", "capacity", "nonfinite", "rank", "repeated-mode", "budget", "final"};
     const char* status = r->status >= 0 && r->status <= DANGO_MATERIAL_CONTACT_BLOCK_FINAL ? status_names[r->status] : "unknown";
 #ifdef DANGO_MATERIAL_CONTACT_OPERATOR_CERTIFICATE_CANDIDATE
@@ -316,13 +316,30 @@ static void candidate_write_diagnostic(FILE* file, const dango_material_contact_
 
 int main(int argc, char** argv)
 {
-    if (argc != 3 || (strcmp(argv[2], "default") && strcmp(argv[2], "forward") && strcmp(argv[2], "mirror"))) return 2;
+    if ((argc != 3 && argc != 5) || (strcmp(argv[2], "default") && strcmp(argv[2], "forward") &&
+        strcmp(argv[2], "mirror") && strcmp(argv[2], "changing") && strcmp(argv[2], "horizontal"))) return 2;
+    double size = argc == 5 ? strtod(argv[3], NULL) : 100;
+    double softness = argc == 5 ? strtod(argv[4], NULL) : 50;
+    if (!isfinite(size) || size < 80 || size > 120 || !isfinite(softness) || softness < 0 || softness > 100) return 2;
     FILE* output = fopen(argv[1], "wx"); if (!output) return 2;
     bool default_case = !strcmp(argv[2], "default"), mirror = !strcmp(argv[2], "mirror");
     int requested = default_case ? 36000 : 42000;
     idle_config = idle_defaults(true); idle_material_mode = 7;
+#ifdef DANGO_MATERIAL_DIAGNOSTIC_MODE
+    idle_material_mode = DANGO_MATERIAL_DIAGNOSTIC_MODE;
+#endif
+    if (argc == 5)
+    {
+        double scale = size / 100;
+        double radial_scale = softness <= 50 ? .55 - softness * .004 : .35 - (softness - 50) * .002;
+        double perimeter_scale = softness <= 50 ? .90 - softness * .003 : .75 - (softness - 50) * .004;
+        idle_config.radial_rest_length = (float)(.68 * scale); idle_config.node_radius = (float)(.045 * scale);
+        idle_config.repulsion_distance = (float)(.09 * scale); idle_config.minimum_area = (float)(.42 * scale * scale);
+        idle_config.core_mass = (float)(.12 * scale * scale); idle_config.node_mass = (float)(.015 * scale * scale);
+        idle_config.radial_hertz = (float)(5.2 * radial_scale); idle_config.perimeter_hertz = (float)(20.1 * perimeter_scale);
+    }
     void* handle = NULL; int id = 0, error = dango_physics_world_create(&idle_config, 1, &handle);
-    if (!error) error = dango_physics_world_add(handle, 0, 0, &id);
+    if (!error) error = dango_physics_world_add(handle, 0, !strcmp(argv[2], "changing") ? (float)(5.0 / 3) : 0, &id);
     if (error) { fprintf(output, "{\"creationError\":%d}\n", error); fclose(output); if (handle) dango_physics_world_destroy(handle); return 1; }
     int completed = 0, attempted = 0, count = 0, state_id = 0, contacts = 0, latched = 0;
     float controls[6] = {0}, row[42] = {0};
@@ -341,6 +358,10 @@ int main(int argc, char** argv)
         {
             int i = attempted - 1; controls[3] = i >= 600 && i % 600 < 480 ? 1.0f : 0.0f;
             controls[4] = (float)((mirror ? -1 : 1) * 2.4 * sin(i * .12)); controls[5] = (float)(.4 + 1.5 * cos(i * .17));
+            if (!strcmp(argv[2], "changing"))
+            { controls[4] = (float)(-3.25 + 3.75 * sin(i * .043)); controls[5] = (float)(10.0 / 3 - 25.0 / 6 * cos(i * .071)); }
+            else if (!strcmp(argv[2], "horizontal"))
+            { controls[4] = i / 6 % 2 == 0 ? -2.0f : 2.0f; controls[5] = 1.5f; }
         }
         error = dango_physics_world_step(handle, .0166666f, &id, controls, 1, &state_id, row, 42, &count, &contacts, &latched);
         if (error || latched || count != 1 || state_id != id) break;

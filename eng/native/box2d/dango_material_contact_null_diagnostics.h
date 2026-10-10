@@ -51,7 +51,7 @@ static inline void dango_mcn_json_certificate(dango_mcn_json_writer* w,
         (unsigned long long)c->residual_visits, (unsigned long long)c->rows_checked, c->time_available ? "true" : "false");
     dango_mcn_json_field(w, "elapsed_seconds", c->elapsed_seconds, c->time_available);
     fputs(",\"rows\":[", w->file);
-    int n = c->dimension < 17 ? c->dimension : 17;
+    int n = c->dimension < DANGO_MATERIAL_CONTACT_CERTIFICATE_CAPACITY ? c->dimension : DANGO_MATERIAL_CONTACT_CERTIFICATE_CAPACITY;
     for (int i = 0; i < n; ++i)
     {
         fprintf(w->file, "%s{\"index\":%d,\"evaluated\":%s", i ? "," : "", i, c->evaluated[i] ? "true" : "false");
@@ -78,7 +78,7 @@ static inline void dango_mcn_json_certificate(dango_mcn_json_writer* w,
 static inline void dango_mcn_json_report(FILE* file, const dango_material_contact_null_report* r)
 {
     dango_mcn_json_writer writer = {file, 0}; dango_mcn_json_writer* w = &writer;
-    int n = r->dimension < 16 ? r->dimension : 16;
+    int n = r->dimension < DANGO_MATERIAL_CONTACT_NULL_CAPACITY ? r->dimension : DANGO_MATERIAL_CONTACT_NULL_CAPACITY;
     if (n < 0) n = 0;
     fprintf(file, "{\"schema\":1,\"status\":%d,\"mode_index\":%d,\"dimension\":%d,\"rank\":%d,\"nullity\":%d,\"free_column_id\":%d,\"used\":%s,\"used_scope\":\"Internal reaction choice; final block, float, cap and native publication are separate gates.\",\"pivot_searches\":%llu,\"pivot_eliminations\":%llu",
         r->status, r->mode_index, r->dimension, r->rank, r->nullity, r->free_column_id, r->used ? "true" : "false",

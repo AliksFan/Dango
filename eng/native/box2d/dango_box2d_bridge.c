@@ -2031,9 +2031,19 @@ static void dango_self_update_joint_parameters(
 {
     for (int index = 0; index < body->node_count; ++index)
     {
+#if defined(DANGO_MATERIAL_RANGE_CACHE_CANDIDATE)
+        // SetLengthRange clears spring and limit impulses even for equal values.
+        // This private causal variant updates only an actually changed range.
+        float minimum = body->radial_rest_length * config->radial_minimum_ratio;
+        float maximum = body->radial_rest_length * config->radial_maximum_ratio;
+        if (b2DistanceJoint_GetMinLength(body->radial_joint_ids[index]) != minimum ||
+            b2DistanceJoint_GetMaxLength(body->radial_joint_ids[index]) != maximum)
+            b2DistanceJoint_SetLengthRange(body->radial_joint_ids[index], minimum, maximum);
+#else
         b2DistanceJoint_SetLengthRange(body->radial_joint_ids[index],
             body->radial_rest_length * config->radial_minimum_ratio,
             body->radial_rest_length * config->radial_maximum_ratio);
+#endif
         b2DistanceJoint_SetSpringHertz(body->radial_joint_ids[index], config->radial_hertz);
         b2DistanceJoint_SetSpringDampingRatio(body->radial_joint_ids[index], config->radial_damping);
         b2DistanceJoint_SetSpringHertz(body->perimeter_joint_ids[index], config->perimeter_hertz);
@@ -2715,7 +2725,13 @@ int dango_self_world_create(const dango_self_physics_config* config,dango_self_s
     ground_shape_def.material.restitution = config->restitution;
     ground_shape_def.filter.categoryBits = 0x00000001;
     ground_shape_def.filter.maskBits = 0x00000002;
+#if defined(DANGO_MATERIAL_CONTACT_WIDE_GROUND_CANDIDATE)
+    // The isolated sample's permitted throw trajectory crosses the old +/-8
+    // corner, where a vertical-plane contact adapter must reject angled normals.
+    b2Polygon ground_box = b2MakeBox(64.0f, 0.08f);
+#else
     b2Polygon ground_box = b2MakeBox(8.0f, 0.08f);
+#endif
     body->ground_shape_id = b2CreatePolygonShape(body->ground_body_id, &ground_shape_def, &ground_box);
 
     if (!b2Body_IsValid(body->ground_body_id) || !b2Shape_IsValid(body->ground_shape_id))

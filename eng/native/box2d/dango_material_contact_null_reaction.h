@@ -8,8 +8,18 @@
 #include <time.h>
 #endif
 
+#ifdef DANGO_MATERIAL_CONTACT_EXTENDED_CAPACITY_CANDIDATE
+#define DANGO_MATERIAL_CONTACT_NULL_CAPACITY 32
+#define DANGO_MATERIAL_CONTACT_CERTIFICATE_CAPACITY 32
+#else
 #define DANGO_MATERIAL_CONTACT_NULL_CAPACITY 16
+#define DANGO_MATERIAL_CONTACT_CERTIFICATE_CAPACITY 17
+#endif
+#ifdef DANGO_MATERIAL_CONTACT_EXTENDED_CAPACITY_CANDIDATE
+#define DANGO_MATERIAL_CONTACT_NULL_CONSTRAINTS 128
+#else
 #define DANGO_MATERIAL_CONTACT_NULL_CONSTRAINTS 64
+#endif
 
 typedef enum dango_material_contact_null_status
 {
@@ -41,9 +51,9 @@ typedef struct dango_material_contact_operator_certificate
     double elapsed_seconds;
     bool time_available;
     // Matrix stages use n entries; the reaction stage uses all 17 bodies.
-    double operator_scale[17], coordinate_scale[17], rhs_scale[17], scale[17];
-    bool evaluated[17], operator_finite[17], coordinate_finite[17], rhs_finite[17], scale_finite[17];
-    bool zero_operator[17], zero_coordinate[17], zero_scale[17];
+    double operator_scale[DANGO_MATERIAL_CONTACT_CERTIFICATE_CAPACITY], coordinate_scale[DANGO_MATERIAL_CONTACT_CERTIFICATE_CAPACITY], rhs_scale[DANGO_MATERIAL_CONTACT_CERTIFICATE_CAPACITY], scale[DANGO_MATERIAL_CONTACT_CERTIFICATE_CAPACITY];
+    bool evaluated[DANGO_MATERIAL_CONTACT_CERTIFICATE_CAPACITY], operator_finite[DANGO_MATERIAL_CONTACT_CERTIFICATE_CAPACITY], coordinate_finite[DANGO_MATERIAL_CONTACT_CERTIFICATE_CAPACITY], rhs_finite[DANGO_MATERIAL_CONTACT_CERTIFICATE_CAPACITY], scale_finite[DANGO_MATERIAL_CONTACT_CERTIFICATE_CAPACITY];
+    bool zero_operator[DANGO_MATERIAL_CONTACT_CERTIFICATE_CAPACITY], zero_coordinate[DANGO_MATERIAL_CONTACT_CERTIFICATE_CAPACITY], zero_scale[DANGO_MATERIAL_CONTACT_CERTIFICATE_CAPACITY];
 } dango_material_contact_operator_certificate;
 
 static inline void dango_mcn_operator_certificate_init(dango_material_contact_operator_certificate* certificate)
@@ -72,7 +82,7 @@ typedef struct dango_material_contact_null_report
     bool used;
     uint64_t pivot_searches, pivot_eliminations;
     double matrix_infinity_norm, pivot_threshold;
-    int original_row_ids[16], row_permutation[16], column_permutation[16];
+    int original_row_ids[DANGO_MATERIAL_CONTACT_NULL_CAPACITY], row_permutation[DANGO_MATERIAL_CONTACT_NULL_CAPACITY], column_permutation[DANGO_MATERIAL_CONTACT_NULL_CAPACITY];
     bool factor_available, raw_pair_available, effective_pair_available;
     bool pair_checks_available, reaction_checks_available, interval_available;
     bool selection_available, selected_pair_available;
@@ -83,22 +93,22 @@ typedef struct dango_material_contact_null_report
     int factor_mode_index, raw_pair_mode_index, effective_pair_mode_index;
     int pair_checks_mode_index, reaction_mode_index, interval_mode_index;
     int selection_mode_index, selected_mode_index;
-    double raw_z_particular[16], raw_z_direction[16];
-    double raw_lambda_particular[16], raw_lambda_direction[16];
-    double effective_z_particular[16], effective_z_direction[16];
-    double effective_lambda_particular[16], effective_lambda_direction[16];
+    double raw_z_particular[DANGO_MATERIAL_CONTACT_NULL_CAPACITY], raw_z_direction[DANGO_MATERIAL_CONTACT_NULL_CAPACITY];
+    double raw_lambda_particular[DANGO_MATERIAL_CONTACT_NULL_CAPACITY], raw_lambda_direction[DANGO_MATERIAL_CONTACT_NULL_CAPACITY];
+    double effective_z_particular[DANGO_MATERIAL_CONTACT_NULL_CAPACITY], effective_z_direction[DANGO_MATERIAL_CONTACT_NULL_CAPACITY];
+    double effective_lambda_particular[DANGO_MATERIAL_CONTACT_NULL_CAPACITY], effective_lambda_direction[DANGO_MATERIAL_CONTACT_NULL_CAPACITY];
     double direction_normalization;
-    double particular_residual[16], particular_allowance[16];
-    double direction_residual[16], direction_allowance[16];
+    double particular_residual[DANGO_MATERIAL_CONTACT_NULL_CAPACITY], particular_allowance[DANGO_MATERIAL_CONTACT_NULL_CAPACITY];
+    double direction_residual[DANGO_MATERIAL_CONTACT_NULL_CAPACITY], direction_allowance[DANGO_MATERIAL_CONTACT_NULL_CAPACITY];
     int first_particular_row_id, first_direction_row_id, first_reaction_body;
     dango_material_contact_vec2 reaction_delta[17];
-    double reaction_scale[17], reaction_residual[17], reaction_allowance[17];
+    double reaction_scale[DANGO_MATERIAL_CONTACT_CERTIFICATE_CAPACITY], reaction_residual[17], reaction_allowance[17];
     int constraint_count, empty_row_id;
     dango_material_contact_null_constraint constraints[DANGO_MATERIAL_CONTACT_NULL_CONSTRAINTS];
     bool lower_bounded, upper_bounded;
     double lower, upper, selected_alpha;
-    double selected_lambda[16], selected_z[16];
-    double selected_residual[16], selected_allowance[16];
+    double selected_lambda[DANGO_MATERIAL_CONTACT_NULL_CAPACITY], selected_z[DANGO_MATERIAL_CONTACT_NULL_CAPACITY];
+    double selected_residual[DANGO_MATERIAL_CONTACT_NULL_CAPACITY], selected_allowance[DANGO_MATERIAL_CONTACT_NULL_CAPACITY];
     int first_selected_row_id;
 #ifdef DANGO_MATERIAL_CONTACT_OPERATOR_CERTIFICATE_CANDIDATE
     dango_material_contact_operator_certificate particular_certificate, direction_certificate;
@@ -229,16 +239,16 @@ static inline void dango_mcn_clear_effective(dango_material_contact_null_report*
 // pivot selection and output publication of the retained block linear routine.
 // Rank n-1 retains raw z_p (free=0), q (free=1); it does not publish a solution.
 static inline bool dango_mcn_factor(int n, const int* row_ids,
-    const double matrix[16][16], const double* rhs, double* solution,
+    const double matrix[DANGO_MATERIAL_CONTACT_NULL_CAPACITY][DANGO_MATERIAL_CONTACT_NULL_CAPACITY], const double* rhs, double* solution,
     dango_material_contact_null_report* report)
 {
     if (!report) return false;
     dango_mcn_report_init(report);
-    if (!row_ids || !matrix || !rhs || !solution || n <= 0 || n > 16)
+    if (!row_ids || !matrix || !rhs || !solution || n <= 0 || n > DANGO_MATERIAL_CONTACT_NULL_CAPACITY)
         return dango_mcn_fail(report, DANGO_MATERIAL_CONTACT_NULL_INVALID_INPUT);
     report->dimension = n;
-    double a[16][16] = {{0}}, b[16] = {0}, x[16] = {0}, q[16] = {0};
-    int rows[16], columns[16];
+    double a[DANGO_MATERIAL_CONTACT_NULL_CAPACITY][DANGO_MATERIAL_CONTACT_NULL_CAPACITY] = {{0}}, b[DANGO_MATERIAL_CONTACT_NULL_CAPACITY] = {0}, x[DANGO_MATERIAL_CONTACT_NULL_CAPACITY] = {0}, q[DANGO_MATERIAL_CONTACT_NULL_CAPACITY] = {0};
+    int rows[DANGO_MATERIAL_CONTACT_NULL_CAPACITY], columns[DANGO_MATERIAL_CONTACT_NULL_CAPACITY];
     double norm = 0;
     for (int i = 0; i < n; ++i)
     {
@@ -336,10 +346,10 @@ static inline bool dango_mcn_factor(int n, const int* row_ids,
     report->raw_pair_mode_index = report->mode_index; return true;
 }
 
-static inline bool dango_mcn_row_residuals(int n, const double matrix[16][16],
+static inline bool dango_mcn_row_residuals(int n, const double matrix[DANGO_MATERIAL_CONTACT_NULL_CAPACITY][DANGO_MATERIAL_CONTACT_NULL_CAPACITY],
     const double* rhs, const double* z, bool homogeneous, double* residuals, double* allowances)
 {
-    if (!matrix || !rhs || !z || !residuals || !allowances || n <= 0 || n > 16) return false;
+    if (!matrix || !rhs || !z || !residuals || !allowances || n <= 0 || n > DANGO_MATERIAL_CONTACT_NULL_CAPACITY) return false;
     bool valid = true;
     for (int i = 0; i < n; ++i)
     {
@@ -357,13 +367,13 @@ static inline bool dango_mcn_row_residuals(int n, const double matrix[16][16],
 #ifdef DANGO_MATERIAL_CONTACT_OPERATOR_CERTIFICATE_CANDIDATE
 // Independent fixed operator certificate. No coordinate is clipped, and the
 // unmultiplied finite scale must exist before the epsilon coefficient is used.
-static inline bool dango_mcn_operator_row_residuals(int n, const double matrix[16][16],
+static inline bool dango_mcn_operator_row_residuals(int n, const double matrix[DANGO_MATERIAL_CONTACT_NULL_CAPACITY][DANGO_MATERIAL_CONTACT_NULL_CAPACITY],
     const double* rhs, const double* z, bool homogeneous, double* residuals, double* allowances,
     dango_material_contact_operator_certificate* certificate, int mode_index)
 {
     if (!certificate) return false;
     dango_mcn_operator_certificate_init(certificate);
-    if (!matrix || !rhs || !z || !residuals || !allowances || n <= 0 || n > 16) return false;
+    if (!matrix || !rhs || !z || !residuals || !allowances || n <= 0 || n > DANGO_MATERIAL_CONTACT_NULL_CAPACITY) return false;
     certificate->available = certificate->finite = true;
     certificate->mode_index = mode_index; certificate->dimension = n;
     struct timespec started = {0}; bool timed = timespec_get(&started, TIME_UTC) == TIME_UTC;
@@ -424,13 +434,13 @@ static inline bool dango_mcn_operator_row_residuals(int n, const double matrix[1
 #endif
 
 static inline bool dango_mcn_effective_pair(int n, const int* row_ids, const double* scaling,
-    const bool* fixed, const double* fixed_values, const double matrix[16][16], const double* rhs,
+    const bool* fixed, const double* fixed_values, const double matrix[DANGO_MATERIAL_CONTACT_NULL_CAPACITY][DANGO_MATERIAL_CONTACT_NULL_CAPACITY], const double* rhs,
     dango_material_contact_null_report* report)
 {
     if (!report) return false;
     if (report->status != DANGO_MATERIAL_CONTACT_NULL_OK) return false;
     dango_mcn_clear_effective(report);
-    if (!row_ids || !scaling || !fixed || !fixed_values || !matrix || !rhs || n <= 0 || n > 16 ||
+    if (!row_ids || !scaling || !fixed || !fixed_values || !matrix || !rhs || n <= 0 || n > DANGO_MATERIAL_CONTACT_NULL_CAPACITY ||
         n != report->dimension || !report->factor_passed || !report->raw_pair_available || report->nullity != 1 ||
         report->factor_mode_index != report->mode_index || report->raw_pair_mode_index != report->mode_index)
         return dango_mcn_fail(report, DANGO_MATERIAL_CONTACT_NULL_INVALID_INPUT);
@@ -505,7 +515,7 @@ static inline bool dango_mcn_operator_reaction_checks(const dango_material_conta
     certificate->mode_index = report->mode_index; certificate->dimension = 17;
     struct timespec started = {0}; bool timed = timespec_get(&started, TIME_UTC) == TIME_UTC;
     double coordinate = 0, gradient_sum[17] = {0};
-    bool coordinate_finite = true, operator_finite[17], residual_finite[17];
+    bool coordinate_finite = true, operator_finite[DANGO_MATERIAL_CONTACT_CERTIFICATE_CAPACITY], residual_finite[17];
     for (int body = 0; body < 17; ++body)
     { operator_finite[body] = residual_finite[body] = true; }
     for (int i = 0; i < n; ++i)
@@ -594,7 +604,7 @@ static inline bool dango_mcn_reaction_null(const dango_material_contact_solver* 
     if (!report) return false;
     if (report->status != DANGO_MATERIAL_CONTACT_NULL_OK) return false;
     dango_mcn_clear_reaction(report);
-    if (!reference || !row_ids || n <= 0 || n > 16 || n != report->dimension ||
+    if (!reference || !row_ids || n <= 0 || n > DANGO_MATERIAL_CONTACT_NULL_CAPACITY || n != report->dimension ||
         !report->pair_checks_passed || !report->effective_pair_available ||
         report->effective_pair_mode_index != report->mode_index || report->pair_checks_mode_index != report->mode_index)
         return dango_mcn_fail(report, DANGO_MATERIAL_CONTACT_NULL_INVALID_INPUT);
@@ -718,13 +728,13 @@ static inline bool dango_mcn_interval_select(dango_material_contact_null_report*
     return true;
 }
 
-static inline bool dango_mcn_selected(int n, const double* scaling, const double matrix[16][16],
+static inline bool dango_mcn_selected(int n, const double* scaling, const double matrix[DANGO_MATERIAL_CONTACT_NULL_CAPACITY][DANGO_MATERIAL_CONTACT_NULL_CAPACITY],
     const double* rhs, dango_material_contact_null_report* report, double* multipliers, double* solution)
 {
     if (!report) return false;
     if (report->status != DANGO_MATERIAL_CONTACT_NULL_OK) return false;
     dango_mcn_clear_selected(report);
-    if (!scaling || !matrix || !rhs || !multipliers || !solution || n <= 0 || n > 16 ||
+    if (!scaling || !matrix || !rhs || !multipliers || !solution || n <= 0 || n > DANGO_MATERIAL_CONTACT_NULL_CAPACITY ||
         n != report->dimension || !report->selection_available || !report->selection_passed ||
         !report->pair_checks_passed || !report->reaction_checks_passed || !report->interval_passed ||
         report->selection_mode_index != report->mode_index || report->pair_checks_mode_index != report->mode_index ||

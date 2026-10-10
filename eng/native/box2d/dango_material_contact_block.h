@@ -9,7 +9,11 @@
 #include "dango_material_contact_null_reaction.h"
 #endif
 
+#ifdef DANGO_MATERIAL_CONTACT_EXTENDED_CAPACITY_CANDIDATE
+#define DANGO_MATERIAL_CONTACT_BLOCK_CAPACITY 32
+#else
 #define DANGO_MATERIAL_CONTACT_BLOCK_CAPACITY 16
+#endif
 #define DANGO_MATERIAL_CONTACT_BLOCK_SOLVES 32
 
 typedef enum dango_material_contact_block_status
@@ -461,7 +465,7 @@ static inline bool dango_mcb_null_solve(const dango_material_contact_solver* ref
     report->pivot_threshold = null_report->pivot_threshold;
     if (!factored) return dango_mcb_null_failure(report);
     if (null_report->nullity == 0) return true;
-    bool fixed[16] = {false}; double fixed_values[16] = {0};
+    bool fixed[DANGO_MATERIAL_CONTACT_BLOCK_CAPACITY] = {false}; double fixed_values[DANGO_MATERIAL_CONTACT_BLOCK_CAPACITY] = {0};
     for (int i = 0; i < n; ++i)
     {
         if (report->modes[i] == DANGO_MATERIAL_CONTACT_BLOCK_RELEASED) fixed[i] = true;
@@ -565,12 +569,140 @@ static inline bool dango_mcb_full_rows(const dango_material_contact_solver* cont
     report->status = DANGO_MATERIAL_CONTACT_OK; return true;
 }
 
-// Geometry/IDs are immutable. Returning just one ascending-ID violation keeps
-// mode transitions separate even when changing N also changes a T budget.
+#ifdef DANGO_MATERIAL_CONTACT_FRICTION_MODE_PRIORITY_CANDIDATE
+static inline bool dango_mcb_trial_seen(const dango_material_contact_block_report* report,
+    int change, dango_material_contact_block_mode mode)
+{
+    if (!report || report->active_count < 0 || report->active_count > DANGO_MATERIAL_CONTACT_BLOCK_CAPACITY ||
+        change < 0 || change >= report->active_count ||
+        report->mode_history_count < 0 || report->mode_history_count > DANGO_MATERIAL_CONTACT_BLOCK_SOLVES) return true;
+    for (int previous = 0; previous < report->mode_history_count; ++previous)
+    {
+        bool same = true;
+        for (int i = 0; i < report->active_count; ++i)
+            if ((i == change ? mode : report->modes[i]) != report->mode_history[previous][i]) same = false;
+        if (same) return true;
+    }
+    return false;
+}
+#endif
+
+// Geometry/IDs are immutable. Each trial changes one mode and rebuilds the
+// system, including the tangent budget affected by its paired normal.
 static inline int dango_mcb_next_mode(const dango_material_contact_solver* contact,
     const dango_material_contact_solver* reference, const dango_material_contact_block_report* report,
     dango_material_contact_block_mode* next_mode)
 {
+#ifdef DANGO_MATERIAL_CONTACT_FRICTION_MODE_PRIORITY_CANDIDATE
+#ifdef DANGO_MATERIAL_CONTACT_CONE_ACTIVATION_STICK_CANDIDATE
+    // A tangent leaving a zero cone can choose a sliding equation whose coupled
+    // normal reaction makes its own cone negative. Try the unseen stick mode
+    // before unrelated negative-reaction releases erase that causal transition.
+    if (report->mode_history_count >= 2)
+        for (int i = 0; i < report->active_count; ++i)
+        {
+            int id = report->active_row_ids[i];
+            dango_material_contact_block_mode mode = report->modes[i];
+            if (id < 144 || (mode != DANGO_MATERIAL_CONTACT_BLOCK_SLIDE_POSITIVE &&
+                mode != DANGO_MATERIAL_CONTACT_BLOCK_SLIDE_NEGATIVE) ||
+                !(dango_mc_friction_bound(contact, id - 144) < 0) ||
+                report->mode_history[report->mode_history_count - 2][i] != DANGO_MATERIAL_CONTACT_BLOCK_ZERO ||
+                dango_mcb_trial_seen(report, i, DANGO_MATERIAL_CONTACT_BLOCK_STICK)) continue;
+            bool sole_transition = true;
+            for (int j = 0; j < report->active_count; ++j)
+                if (j != i && report->mode_history[report->mode_history_count - 2][j] != report->modes[j]) sole_transition = false;
+            if (sole_transition) { *next_mode = DANGO_MATERIAL_CONTACT_BLOCK_STICK; return i; }
+        }
+#endif
+    // Repair infeasible compressive reactions before allowing a previously
+    // released row to reactivate and recreate the same impossible mode.
+    int negative = -1; double negative_scaled = 0;
+    for (int i = 0; i < report->active_count; ++i)
+    {
+        int id = report->active_row_ids[i];
+        if (id < 144 && report->modes[i] == DANGO_MATERIAL_CONTACT_BLOCK_ENABLED &&
+            contact->rows[id].multiplier < 0)
+        {
+            double scaled = contact->rows[id].multiplier / report->scaling[i];
+            if (scaled < negative_scaled) { negative = i; negative_scaled = scaled; }
+        }
+    }
+    if (negative >= 0) { *next_mode = DANGO_MATERIAL_CONTACT_BLOCK_RELEASED; return negative; }
+    // Bring tangent modes into the current normal cone before reactivating
+    // unilateral rows. In particular a released normal can leave a stale stick
+    // equation with a zero cone; reactivating shape rows first cycles that mode.
+    for (int i = 0; i < report->active_count; ++i)
+    {
+        int id = report->active_row_ids[i];
+        if (id < 144) continue;
+        int node = id - 144;
+        dango_material_contact_block_mode mode = report->modes[i];
+        double bound = dango_mc_friction_bound(contact, node);
+        double total = reference->support[node].base_tangent + contact->rows[id].multiplier;
+        double epsilon = 32 * DBL_EPSILON * fmax(bound, fabs(total));
+        if (bound == 0 && mode != DANGO_MATERIAL_CONTACT_BLOCK_ZERO)
+        { *next_mode = DANGO_MATERIAL_CONTACT_BLOCK_ZERO; return i; }
+        if (bound > 0 && mode == DANGO_MATERIAL_CONTACT_BLOCK_ZERO)
+        {
+#ifdef DANGO_MATERIAL_CONTACT_ZERO_TO_SLIDE_CANDIDATE
+            double rate = dango_mc_rate(&reference->rows[id], contact->velocities);
+            double normalized = rate / reference->geometry.radial_length;
+            *next_mode = normalized > DANGO_MATERIAL_CONTACT_RATE_TOLERANCE ? DANGO_MATERIAL_CONTACT_BLOCK_SLIDE_NEGATIVE :
+                (normalized < -DANGO_MATERIAL_CONTACT_RATE_TOLERANCE ? DANGO_MATERIAL_CONTACT_BLOCK_SLIDE_POSITIVE : DANGO_MATERIAL_CONTACT_BLOCK_STICK);
+#else
+            *next_mode = DANGO_MATERIAL_CONTACT_BLOCK_STICK;
+#endif
+            return i;
+        }
+        if (mode == DANGO_MATERIAL_CONTACT_BLOCK_STICK && fabs(total) > bound + epsilon)
+        {
+            *next_mode = total > 0 ? DANGO_MATERIAL_CONTACT_BLOCK_SLIDE_POSITIVE : DANGO_MATERIAL_CONTACT_BLOCK_SLIDE_NEGATIVE;
+#ifdef DANGO_MATERIAL_CONTACT_OUTCONE_FRESH_TRIAL_CANDIDATE
+            dango_material_contact_block_mode opposite = total > 0 ?
+                DANGO_MATERIAL_CONTACT_BLOCK_SLIDE_NEGATIVE : DANGO_MATERIAL_CONTACT_BLOCK_SLIDE_POSITIVE;
+            if (dango_mcb_trial_seen(report, i, *next_mode) && !dango_mcb_trial_seen(report, i, opposite)) *next_mode = opposite;
+#endif
+            return i;
+        }
+    }
+    // Resolve every cone violation before undoing a slide trial: another
+    // contact's stale stick equation can reverse the first trial's slip rate.
+    for (int i = 0; i < report->active_count; ++i)
+    {
+        int id = report->active_row_ids[i];
+        if (id < 144) continue;
+        dango_material_contact_block_mode mode = report->modes[i];
+        double sign = mode == DANGO_MATERIAL_CONTACT_BLOCK_SLIDE_POSITIVE ? 1 :
+            (mode == DANGO_MATERIAL_CONTACT_BLOCK_SLIDE_NEGATIVE ? -1 : 0);
+        double rate = dango_mc_rate(&reference->rows[id], contact->velocities);
+        if (sign != 0 && sign * rate / reference->geometry.radial_length > DANGO_MATERIAL_CONTACT_RATE_TOLERANCE)
+        {
+            // The coupled normal cone can make the stick extrapolation choose
+            // the wrong sliding branch. If stick already failed in this exact
+            // other-row mode, trial the opposite branch once under the same
+            // history/budget and complete physical checks.
+#ifdef DANGO_MATERIAL_CONTACT_FRESH_TRIAL_CANDIDATE
+            dango_material_contact_block_mode opposite = sign > 0 ?
+                DANGO_MATERIAL_CONTACT_BLOCK_SLIDE_NEGATIVE : DANGO_MATERIAL_CONTACT_BLOCK_SLIDE_POSITIVE;
+            *next_mode = dango_mcb_trial_seen(report, i, DANGO_MATERIAL_CONTACT_BLOCK_STICK) &&
+                !dango_mcb_trial_seen(report, i, opposite) ? opposite : DANGO_MATERIAL_CONTACT_BLOCK_STICK;
+#else
+            *next_mode = DANGO_MATERIAL_CONTACT_BLOCK_STICK;
+#endif
+            return i;
+        }
+    }
+    int closing = -1; double closing_rate = -DANGO_MATERIAL_CONTACT_RATE_TOLERANCE;
+    for (int i = 0; i < report->active_count; ++i)
+    {
+        int id = report->active_row_ids[i];
+        if (id >= 144 || report->modes[i] != DANGO_MATERIAL_CONTACT_BLOCK_RELEASED) continue;
+        double rate = dango_mc_rate(&reference->rows[id], contact->velocities);
+        double normalized = dango_mc_is_angle(reference->rows[id].kind) ? rate : rate / reference->geometry.radial_length;
+        if (normalized < closing_rate) { closing = i; closing_rate = normalized; }
+    }
+    if (closing >= 0) { *next_mode = DANGO_MATERIAL_CONTACT_BLOCK_ENABLED; return closing; }
+#endif
     for (int i = 0; i < report->active_count; ++i)
     {
         int id = report->active_row_ids[i];
@@ -640,6 +772,106 @@ static inline bool dango_mcb_modes_valid(const dango_material_contact_solver* co
     }
     return true;
 }
+
+#if defined(DANGO_MATERIAL_CONTACT_MODE_TRANSITION_CANDIDATE)
+// An empty reaction interval rejects the current active mode, not necessarily
+// the physical problem. Only a fully certified particular may identify the next
+// mode. This temporary state is never a selected solution or published output.
+static inline bool dango_mcb_null_next_mode(const dango_material_contact_solver* reference,
+    dango_material_contact_block_report* report)
+{
+    if (!reference || !report || report->active_count <= 0 ||
+        report->active_count > DANGO_MATERIAL_CONTACT_BLOCK_CAPACITY) return false;
+    const dango_material_contact_null_report* nr = &report->null_reaction;
+    if (nr->status != DANGO_MATERIAL_CONTACT_NULL_INTERVAL_EMPTY ||
+        !nr->factor_passed || !nr->pair_checks_passed || !nr->reaction_checks_passed ||
+        !nr->factor_available || !nr->raw_pair_available || !nr->effective_pair_available ||
+        !nr->pair_checks_available || !nr->reaction_checks_available ||
+        !nr->interval_available || nr->interval_passed || nr->selected_pair_available ||
+        nr->nullity != 1 || nr->dimension != report->active_count ||
+        nr->mode_index != report->matrix_mode_index ||
+        nr->factor_mode_index != nr->mode_index || nr->raw_pair_mode_index != nr->mode_index ||
+        nr->effective_pair_mode_index != nr->mode_index || nr->pair_checks_mode_index != nr->mode_index ||
+        nr->reaction_mode_index != nr->mode_index || nr->interval_mode_index != nr->mode_index ||
+        nr->used || nr->selection_available)
+        return false;
+    dango_material_contact_solver probe = *reference;
+    for (int i = 0; i < report->active_count; ++i)
+    {
+        int id = report->active_row_ids[i];
+        if (id < 0 || id >= DANGO_MATERIAL_CONTACT_ROWS || !reference->rows[id].active ||
+            nr->original_row_ids[i] != id || !isfinite(nr->effective_lambda_particular[i])) return false;
+        probe.rows[id].multiplier = nr->effective_lambda_particular[i];
+    }
+    for (int id = 0; id < DANGO_MATERIAL_CONTACT_ROWS; ++id)
+    {
+        const dango_material_contact_row* row = &probe.rows[id];
+        if (!row->active) continue;
+        for (int j = 0; j < row->count; ++j)
+        {
+            int node = row->ids[j];
+            dango_material_contact_vec2 delta = dango_mc_mul(reference->geometry.inverse_mass[node] * row->multiplier, row->gradients[j]);
+            probe.velocities[node] = dango_mc_add(probe.velocities[node], delta);
+            if (!dango_mc_finite(probe.velocities[node])) return false;
+        }
+    }
+    dango_material_contact_block_mode next = DANGO_MATERIAL_CONTACT_BLOCK_ENABLED;
+    int change = dango_mcb_next_mode(&probe, reference, report, &next);
+    if (change < 0) return false;
+    report->modes[change] = next;
+    return true;
+}
+#endif
+
+#if defined(DANGO_MATERIAL_CONTACT_RANK_MODE_CANDIDATE)
+// A dependent enabled shape equality can be removed from the current mode,
+// while its unilateral physical row remains active and is checked in full.
+// This is a bounded mode trial, never acceptance of an inconsistent solution.
+static inline bool dango_mcb_rank_next_mode(const dango_material_contact_solver* reference,
+    dango_material_contact_block_report* report)
+{
+    if (!reference || !report || report->active_count <= 0 ||
+        report->active_count > DANGO_MATERIAL_CONTACT_BLOCK_CAPACITY) return false;
+    const dango_material_contact_null_report* nr = &report->null_reaction;
+    if ((nr->status != DANGO_MATERIAL_CONTACT_NULL_NULLITY && nr->status != DANGO_MATERIAL_CONTACT_NULL_INCONSISTENT &&
+        nr->status != DANGO_MATERIAL_CONTACT_NULL_REACTION) ||
+        !report->matrix_available || !nr->factor_available || nr->rank < 0 || nr->rank >= nr->dimension ||
+        nr->dimension != report->active_count || nr->nullity != nr->dimension - nr->rank ||
+        nr->factor_mode_index != report->matrix_mode_index || nr->mode_index != report->matrix_mode_index ||
+        nr->used || nr->selection_available || nr->selected_pair_available) return false;
+    for (int j = nr->rank; j < nr->dimension; ++j)
+    {
+        int id = nr->column_permutation[j];
+        if (id < 0 || id >= 128 || !reference->rows[id].active) continue;
+        for (int i = 0; i < report->active_count; ++i)
+            if (report->active_row_ids[i] == id && report->modes[i] == DANGO_MATERIAL_CONTACT_BLOCK_ENABLED)
+            {
+#ifdef DANGO_MATERIAL_CONTACT_FRESH_TRIAL_CANDIDATE
+                if (dango_mcb_trial_seen(report, i, DANGO_MATERIAL_CONTACT_BLOCK_RELEASED)) continue;
+#endif
+                report->modes[i] = DANGO_MATERIAL_CONTACT_BLOCK_RELEASED;
+                return true;
+            }
+    }
+    // Complete pivoting may retain the dependent shape in the basis and leave
+    // a tangent column free. Try the first enabled unilateral shape instead;
+    // the unchanged final gates decide whether that mode is physically legal.
+    for (int i = 0; i < report->active_count; ++i)
+    {
+        int id = report->active_row_ids[i];
+        if (id >= 0 && id < 128 && reference->rows[id].active &&
+            report->modes[i] == DANGO_MATERIAL_CONTACT_BLOCK_ENABLED)
+        {
+#ifdef DANGO_MATERIAL_CONTACT_FRESH_TRIAL_CANDIDATE
+            if (dango_mcb_trial_seen(report, i, DANGO_MATERIAL_CONTACT_BLOCK_RELEASED)) continue;
+#endif
+            report->modes[i] = DANGO_MATERIAL_CONTACT_BLOCK_RELEASED;
+            return true;
+        }
+    }
+    return false;
+}
+#endif
 
 static inline bool dango_mcb_finish(dango_material_contact_block* block,
     dango_material_contact_block_report* report, const struct timespec* started, bool timed, bool result)
@@ -728,7 +960,15 @@ static inline bool dango_material_contact_block_solve(dango_material_contact_blo
                 !dango_mcb_linear_solve(n, block->report.active_row_ids, block->report.scaled_matrix,
                     block->report.scaled_rhs, block->report.linear_solution, &block->report))
 #endif
+            {
+#if defined(DANGO_MATERIAL_CONTACT_MODE_TRANSITION_CANDIDATE)
+                if (dango_mcb_null_next_mode(&reference, &block->report)) continue;
+#endif
+#if defined(DANGO_MATERIAL_CONTACT_RANK_MODE_CANDIDATE)
+                if (dango_mcb_rank_next_mode(&reference, &block->report)) continue;
+#endif
                 return dango_mcb_finish(block, report, &started, timed, false);
+            }
             block->report.linear_solution_available = true;
             block->report.solution_mode_index = block->report.mode_history_count - 1;
             for (int id = 0; id < DANGO_MATERIAL_CONTACT_ROWS; ++id) block->contact.rows[id].multiplier = 0;

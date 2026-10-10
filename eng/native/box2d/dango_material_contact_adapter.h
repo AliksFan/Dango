@@ -6,6 +6,9 @@
 #include "dango_material_forces.h"
 #if defined(DANGO_MATERIAL_CONTACT_BLOCK_CANDIDATE)
 #include "dango_material_contact_block.h"
+#if defined(DANGO_MATERIAL_CONTACT_SINGLE_ROUND_PUBLICATION_CANDIDATE)
+#include "dango_material_contact_double_publication.h"
+#endif
 #endif
 
 typedef struct dango_material_contact_diagnostic
@@ -30,6 +33,15 @@ static b2BodyId dango_mca_id(dango_self_soft_body* body, int n)
 
 static int dango_mca_failure(dango_material_contact_diagnostic* diagnostic, int error)
 { diagnostic->error = error; return error; }
+
+static bool dango_mca_spin_enabled(void)
+{
+#if defined(DANGO_MATERIAL_EXPERIMENT_MODE)
+    return (DANGO_MATERIAL_EXPERIMENT_MODE & 8) == 0;
+#else
+    return true;
+#endif
+}
 
 static bool dango_mca_receipts(dango_self_soft_body* body, dango_material_contact_diagnostic* diagnostic)
 {
@@ -83,7 +95,8 @@ static bool dango_mca_geometry(const dango_constraint_state* state)
 }
 
 static int dango_material_contact_substep(dango_self_soft_body* body, const dango_self_physics_config* config,
-    float dt, const float* controls, dango_material_contact_diagnostic* diagnostic)
+    float dt, const float* controls, dango_material_contact_diagnostic* diagnostic
+    )
 {
     unsigned long long substeps = diagnostic->substeps + 1;
     memset(diagnostic, 0, sizeof(*diagnostic)); diagnostic->substeps = substeps; diagnostic->phase = 1;
@@ -120,13 +133,19 @@ static int dango_material_contact_substep(dango_self_soft_body* body, const dang
     diagnostic->phase = 3;
     bool near_ground = false, active = controls[0] != 0 || controls[1] != 0 || controls[2] != 0 || controls[3] != 0;
     for (int n = 0; n < 16; ++n) if (state.positions[n].y - config->node_radius <= config->ground_height + .001f) near_ground = true;
-    passive_spin(state.positions, state.velocities, masses, dt, near_ground, active);
+    if (dango_mca_spin_enabled())
+        passive_spin(state.positions, state.velocities, masses, dt, near_ground, active);
     if (near_ground && !active)
     {
         float mass = 0, horizontal = 0;
         for (int n = 0; n < 17; ++n) { mass += masses[n]; horizontal += masses[n] * state.velocities[n].x; }
         float delta = b2ClampFloat(horizontal / mass, -35 * dt, 35 * dt);
-        for (int n = 0; n < 17; ++n) state.velocities[n].x = (state.velocities[n].x - delta) * expf(-60 * dt);
+        for (int n = 0; n < 17; ++n)
+#if defined(DANGO_MATERIAL_NO_INTERNAL_HORIZONTAL_DAMPING_CANDIDATE)
+            state.velocities[n].x -= delta;
+#else
+            state.velocities[n].x = (state.velocities[n].x - delta) * expf(-60 * dt);
+#endif
     }
     diagnostic->damped = state; diagnostic->phase = 4;
 #ifdef DANGO_IDLE_TRACE_STATE
@@ -155,15 +174,27 @@ static int dango_material_contact_substep(dango_self_soft_body* body, const dang
     for (int n = 0; n < 17; ++n) maximum = fmaxf(maximum, b2Length(state.velocities[n]));
     if (!isfinite(maximum)) return dango_mca_failure(diagnostic, -87);
     diagnostic->final_speed_scale = maximum > config->maximum_speed ? (config->maximum_speed * .99999f) / maximum : 1.0f;
+#if defined(DANGO_MATERIAL_CONTACT_SINGLE_ROUND_PUBLICATION_CANDIDATE)
+    for (int n = 0; n < 17; ++n)
+        state.velocities[n] = (b2Vec2){
+            (float)(diagnostic->block.contact.velocities[n].x * (double)diagnostic->final_speed_scale),
+            (float)(diagnostic->block.contact.velocities[n].y * (double)diagnostic->final_speed_scale)};
+#else
     if (diagnostic->final_speed_scale < 1)
         for (int n = 0; n < 17; ++n) state.velocities[n] = b2MulSV(diagnostic->final_speed_scale, state.velocities[n]);
+#endif
     diagnostic->output = state;
 #ifdef DANGO_IDLE_TRACE_STATE
     DANGO_IDLE_TRACE_STATE(6, &state);
 #endif
 #if defined(DANGO_MATERIAL_CONTACT_BLOCK_CANDIDATE)
+#if defined(DANGO_MATERIAL_CONTACT_SINGLE_ROUND_PUBLICATION_CANDIDATE)
+    if (!dango_material_contact_block_validate_after_double_scale(&diagnostic->block, &diagnostic->uncapped,
+        &state, diagnostic->final_speed_scale, config->maximum_speed, &diagnostic->cap_report)) return dango_mca_failure(diagnostic, -87);
+#else
     if (!dango_material_contact_block_validate_after_uniform_scale(&diagnostic->block, &diagnostic->uncapped,
         &state, diagnostic->final_speed_scale, config->maximum_speed, &diagnostic->cap_report)) return dango_mca_failure(diagnostic, -87);
+#endif
 #else
     if (!dango_material_contact_validate_after_uniform_scale(&diagnostic->solver, &diagnostic->uncapped,
         &state, diagnostic->final_speed_scale, config->maximum_speed, &diagnostic->cap_report)) return dango_mca_failure(diagnostic, -87);

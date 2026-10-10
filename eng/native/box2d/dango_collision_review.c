@@ -447,7 +447,8 @@ DANGO_API int dango_collision_step(void* handle, float dt, const float* controls
             if (p->capacity!=1 || p->count!=1 || p->disable_damping_for_test) { p->error=-410; break; }
             // This private single-body path performs position, original damping,
             // final velocity and original global speed cap before one writeback.
-            p->error=dango_material_contact_substep(p->bodies[0],&p->config,small_dt,controls,&p->candidate_diagnostic);
+            p->error=dango_material_contact_substep(p->bodies[0],&p->config,small_dt,controls,&p->candidate_diagnostic
+                );
 #if defined(DANGO_MATERIAL_IDLE_TRACE)
             dango_it_after(&p->idle_trace,p->bodies[0],&p->candidate_diagnostic);
 #endif
