@@ -1,6 +1,6 @@
 # 家具编辑接入主程序普通房：实施与验证
 
-日期：2026-10-10。状态：**I0–I3 本地实现已完成，最终源码 Release 回归 235/235 通过；I4 真实产品往返、保存及独立进程恢复已完成。用户明确结束持续观察以使用电脑，观察与人工验收待完成，阶段尚未验收。**
+日期：2026-10-10。状态：**I0–I3 本地实现已完成，最终源码 Release 回归 235/235 通过；I4 真实产品往返、保存、独立进程恢复及完整 600 秒有效观察已通过，正常释放断言通过。实际主程序候选已打开供用户操作，人工验收与 OS DPI／辅助设置／既有 59 FPS 门禁待完成，阶段尚未验收。**
 
 依据[接入计划](../planning/2026-10-10-furniture-room-integration-plan.md)与[I0 合同](../planning/2026-10-10-furniture-room-i0-contract.md)。用户批准主程序普通房、本地单人范围并回复“开始实现”，授权本轮实现、隔离构建、测试、真实候选窗口与本地提交。实现分支为 `codex/furniture-room-integration`，起点 `4765435e`，包含家具来源 `06c367f` 和批准的主线界面规范 `2acb532`。原独立家具试窗人工通过不能替代本轮验收。
 
@@ -41,6 +41,7 @@ Core 增加显式 Trial／OrdinaryRoom 合同，保持旧 API 默认 Trial。Des
 | 正式产品候选构建 | product-r2 Release，0 错误／0 警告 | `artifacts/furniture-room/product-r2/` |
 | 最终正式产品候选构建 | product-r3 Release，0 错误／0 警告，源码为本地实现提交 `776ed4b` | `artifacts/furniture-room/product-r3/` |
 | 最终产品软件驱动实时验证 | 50 次房间往返、50 次编辑开关、51 次逐次核对保存、两次独立 OS 进程恢复；活动观察 246.2541/600 秒后按用户要求结束，整体观察未通过 | `artifacts/furniture-room/product-r3/verification/progress.json`、`product-r3/observation-deferred.json` |
+| 用户重新授权后的完整观察 | 复用同一 product-r3 Release，50／50 往返、51 次保存、两次独立进程恢复；有效观察 600.054 秒、排除 5.015 秒；故障 0、过载 1、长暂停 0；正常释放三项均通过，进程退出码 0 | `artifacts/furniture-room/product-r3-resumed-r3/verification/verification-summary.json`、`owned-process-result.json`、`final-identity-and-process-check.json` |
 
 各轮不相加冒充同一全量结果。r3 的 9 项缺 native 环境失败、r5 的 2 个真实交接失败及修复前 I4 product-r1 退出失败均保留。最初物理 r1 的 7 个失败来自缺失／错误对照模块，补齐独立旧库后同门禁 r2 通过，未改测试约束。
 
@@ -68,7 +69,15 @@ I4 product-r2 完成实际产品 host 的 50 次编辑和房间往返、51 次�
 
 product-r3 已完成上述 50／50 循环、51 次保存及两次独立进程恢复。提交边界 p95 5.6442 ms、最大 6.5358 ms；部分活动观察累计 246.2541 秒，健康 Synced、0 scheduler faults。窗口再次隐藏后停止累积；用户回复“别执着于观察了，我还要用电脑”，据此核实路径并结束所属 verifier PID 35124，没有降低 600 秒门槛或改报通过。保留 progress 与 observation-deferred 证据。进程被准确终止，不能把未执行的最终 Dispose 释放断言写成该观察通过；r13 的产品退出测试仍是单独通过证据。
 
-600 秒活动时间要求窗口可见、未最小化、活动焦点、健康且唯一 driver 已准入，并有真实物理步增加；采样期间生命周期变化整段排除。工具有内部观察界限和外部进程超时，仅清理本次所属进程。正常完成结果写入 `verification/verification-summary.json`；本次按用户要求提前结束，没有该完成结果，不视为通过，不自动继续观察或安排唤醒。
+600 秒活动时间要求窗口可见、未最小化、活动焦点、健康且唯一 driver 已准入，并有真实物理步增加；采样期间生命周期变化整段排除。工具有内部观察界限和外部进程超时，仅清理本次所属进程。正常完成结果写入 `verification/verification-summary.json`；最初按用户要求提前结束，没有该完成结果，不视为通过，当时没有自动继续观察或安排唤醒。
+
+用户随后明确回复“你可以观察了”，重新授权本轮观察。直接复用冻结的 product-r3 Release 可执行文件与模块，不重新构建或重复运行已完成的测试。首次恢复的临时数据 purpose 写成 `ordinary-furniture-room-resumed-observation`，被 CLI 的精确 `ordinary-furniture-room-acceptance` 校验拒绝；PID 34544 已退出，尚未创建观察输出，保留 `product-r3-resumed/startup-failure.json`，未修改产品源。新的 `product-r3-resumed-r2` 自动生成正确 owner，完成往返与恢复后失焦，有效 119.356 秒、排除 180.735 秒。排除时间已经超过冻结观察墙钟上限 720 秒的 120 秒余量，不可能再累计满 600 秒；经路径核实结束所属 PID 35508，保留 `aborted-observation.json`，不将部分时间相加，也不声称最终 Dispose 已运行。用户回复“已切回普通房窗口”后，使用另一个全新数据及证据目录重开。
+
+完整成功结果为 `product-r3-resumed-r3/verification/verification-summary.json`：PID 20264，有效观察 600.053985 秒，排除 5.014845 秒，含前置流程的墙钟 657.524201 秒；同一世界和实体，布局版本 51，51 次保存均逐次核对文件／native／锚点／版本。观察内真实物理步增加 36293，Scheduler Faults 0、Overloads 1、LongPauses 0。提交边界 p95 4.111 ms、最大 4.2864 ms。WPF distinct Rendering 回调 35961，回调率约 59.93/s，仍不能视为 compositor Present 或既有 59 FPS 门禁通过。
+
+持续运行第 2 分钟后至结束的资源采样，私有内存 188.19–190.19 MiB、句柄 682–693、线程 36–41；本次采样未见持续上升，不能据此推定更长运行没有泄漏。两个独立恢复子进程 PID 23900／24300 均读取相同版本 1、operationId、锚点 1440/120 和文件 SHA，真实 native 平台载入及三项正常释放均通过。主进程 `ReleasedFrameOwner`、`ReleasedNativeWorld`、`ClosedOwnedWindows` 全为 true，正常退出码 0，900 秒外部 watchdog 未触发。最终复核时 verifier／子进程没有残留；数据、锁文件和失败证据均保留。
+
+运行前后六个冻结 review／托管／native 文件 hash 全部一致，保护 DLL hash 未变；实际人工候选的 `Dango.Desktop.dll` 与已验证副本一致，native 仍为冻结候选。`final-identity-and-process-check.json` 记录核对结果，源码相对构建提交只有本文及接入计划两个文档变化。本轮没有改变门禁或产品行为。
 
 导出实际 `LocalRoomWindow.Content` 最小／横向／默认窗口的 96 与 144 DPI 离屏图，用于布局核对。144 DPI 图片不是 OS 150% 的真实布局／输入验收。WPF Rendering 回调率单列，不能冒充 compositor Present、应用 59 FPS 或人工手感。
 
@@ -78,7 +87,7 @@ product-r3 已完成上述 50／50 循环、51 次保存及两次独立进程恢
 
 待用户在实际 `Dango.Desktop --local-room-review` 中操作：主页 W 进门廊、面向本地普通房 E、房内 Esc 菜单、预览拖动与微调、穿入拒绝／相切允许、确认保存、接触删除、本人手套及释放、右键镜头与退出恢复、按钮焦点不跳跃、失焦／捕获清理、隐藏／恢复、回门廊／重入及重启恢复。100%／150% OS DPI、高对比、减少动画及既有 59 FPS 门禁未完成时继续标记未验证。
 
-验证数据、布局与 `.lock` 是任务独占的虚构本地证据，保留不删除。真实产品人工窗口的数据与自动验证数据独立。测试没有数据库、对象存储、网络端口或服务；结束后核查没有 Dango verifier／子进程或本次窗口残留。为尊重用户使用电脑的要求，本次没有在观察结束后再弹出人工窗口，独立候选程序与只含 owner 标识的人工数据根已准备。
+验证数据、布局与 `.lock` 是任务独占的虚构本地证据，保留不删除。真实产品人工窗口的数据与自动验证数据独立。测试没有数据库、对象存储、网络端口或服务。最初依用户使用电脑的要求没有再弹出人工窗口；重新授权的完整观察完成后，先确认准确的 `Local\Dango.Phase1.App.LocalRoomReview.Mutex` 没有其他 review 占用，再启动同一 product-r3 实际 `Dango.Desktop --local-room-review`。新 PID 1984 已通过路径、初始存活和可见窗口句柄核对，保持打开供人工验收；记录见 `product-r3/manual-window.json`。这是本次有意保留的唯一产品人工进程，未借用自动观察布局。
 
 有空时可从仓库根运行最终候选（普通房 review 与日常安装和其他 review 模式有独立 mutex）：
 
@@ -86,6 +95,6 @@ product-r3 已完成上述 50／50 循环、51 次保存及两次独立进程恢
 .\artifacts\furniture-room\product-r3\bin\Dango.Desktop\release\Dango.Desktop.exe --local-room-review
 ```
 
-进入路径为首页 W 到门廊，面向本地普通房门 E 进入布置；正常入房后 Esc 菜单也能进入。人工数据根为同一候选 bin 目录下 `local-room-review-state`，不借用自动验证存档或日常数据。持续观察、真实输入、OS DPI／高对比／减少动画、既有 59 FPS 及人工确认继续开放，不因用户暂时结束观察而删除门禁。
+进入路径为首页 W 到门廊，面向本地普通房门 E 进入布置；正常入房后 Esc 菜单也能进入。人工数据根为同一候选 bin 目录下 `local-room-review-state`，不借用自动验证存档或日常数据。600 秒持续观察已由单次完整结果关闭；真实输入、OS DPI／高对比／减少动画、既有 59 FPS 及人工确认继续开放。
 
 本轮仅独立本地候选，本地实现提交为 `776ed4b`，人工尚未验收。未合并 main、推送、部署、更新日常安装、替换生产 DLL 或删除其他工作树／数据。
