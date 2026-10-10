@@ -124,11 +124,15 @@
     #dango-furniture-layout-v1 .nudge-right { grid-column: 3; grid-row: 2; }
     #dango-furniture-layout-v1 .nudge-down { grid-column: 2; grid-row: 3; }
     #dango-furniture-layout-v1 .nudge-center { grid-column: 2; grid-row: 2; place-self: center; width: 5px; height: 5px; border-radius: 50%; background: var(--room-line); }
-    #dango-furniture-layout-v1 .furniture-parameters { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 6px 8px; margin: 0; font-size: 12px; }
-    #dango-furniture-layout-v1 .furniture-parameters dt { color: var(--room-muted); }
-    #dango-furniture-layout-v1 .furniture-parameters dd { margin: 0; overflow-wrap: anywhere; }
-    #dango-furniture-layout-v1 .parameter-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-    #dango-furniture-layout-v1 .parameter-actions button { padding: 6px 9px; font-size: 12px; }
+    #dango-furniture-layout-v1 .parameter-selection { margin-bottom: 8px; font-size: 12px; font-weight: 500; }
+    #dango-furniture-layout-v1 .parameter-controls { display: grid; grid-template-rows: repeat(2, minmax(60px, auto)); gap: 10px; }
+    #dango-furniture-layout-v1 .parameter-controls[data-empty="true"] .parameter-field { visibility: hidden; }
+    #dango-furniture-layout-v1 .parameter-field label { display: block; margin-bottom: 4px; font-size: 12px; }
+    #dango-furniture-layout-v1 .parameter-field input[type="range"] { display: block; width: 100%; margin: 0; accent-color: var(--room-action); opacity: .55; }
+    #dango-furniture-layout-v1 .parameter-directions { display: flex; justify-content: space-between; color: var(--room-muted); font-size: 12px; }
+    #dango-furniture-layout-v1 .parameter-note { margin: 8px 0 0; color: var(--room-muted); font-size: 12px; }
+    #dango-furniture-layout-v1 .parameter-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; min-height: 40px; }
+    #dango-furniture-layout-v1 .parameter-actions button { padding: 6px 7px; font-size: 12px; }
     #dango-furniture-layout-v1 .room-feedback { margin-top: 10px; padding: 8px 10px; background: var(--room-panel); border-radius: 8px; color: var(--room-muted); font-size: 12px; }
     #dango-furniture-layout-v1 .room-feedback[data-error="true"] { color: var(--room-error); background: var(--room-error-fill); }
     #dango-furniture-layout-v1 .room-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 11px 16px; border-top: 1px solid var(--room-line); color: var(--room-muted); font-size: 12px; }
@@ -154,6 +158,7 @@
     }
     @media (pointer: coarse) {
       #dango-furniture-layout-v1 button { min-height: 44px; }
+      #dango-furniture-layout-v1 .parameter-actions { min-height: 44px; }
       #dango-furniture-layout-v1 .nudge-buttons { grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); }
       #dango-furniture-layout-v1 .nudge-buttons button { width: 44px; min-height: 44px; }
       #dango-furniture-layout-v1 .furniture-piece { min-height: 0; }
@@ -178,7 +183,12 @@
             </section>
             <section class="sidebar-section" data-sidebar-section="parameters" aria-label="家具参数">
               <div class="room-section-title">家具参数</div>
-              <dl class="furniture-parameters"><dt>名称</dt><dd data-selection>木平台</dd><dt>尺寸</dt><dd data-param-size>标准（固定）</dd><dt>行为</dt><dd data-param-behavior>静态平台 · 四向摆放</dd></dl>
+              <div class="parameter-selection" data-selection>木平台</div>
+              <div class="parameter-controls" data-parameter-controls>
+                <div class="parameter-field"><label for="dango-furniture-size-preview">大小</label><input id="dango-furniture-size-preview" type="range" value="50" disabled aria-describedby="dango-parameter-placeholder-note" aria-valuetext="示意，参数调节后续接入"><div class="parameter-directions" aria-hidden="true"><span>小</span><span>大</span></div></div>
+                <div class="parameter-field" data-param-elasticity-row hidden><label for="dango-furniture-elasticity-preview">弹性</label><input id="dango-furniture-elasticity-preview" type="range" value="50" disabled aria-describedby="dango-parameter-placeholder-note" aria-valuetext="示意，参数调节后续接入"><div class="parameter-directions" aria-hidden="true"><span>低</span><span>高</span></div></div>
+              </div>
+              <p class="parameter-note" id="dango-parameter-placeholder-note">参数调节后续接入</p>
               <div class="parameter-actions"><button class="cursor-interaction room-quiet" type="button" data-action="remove">移除</button><button class="cursor-interaction" type="button" data-action="place-recommended" hidden>推荐落位</button><button class="cursor-interaction room-quiet" type="button" data-action="cancel-placement" hidden>取消放置</button></div>
             </section>
             <section class="sidebar-section" data-sidebar-section="warehouse" aria-label="家具仓库">
@@ -329,8 +339,8 @@
           const active = selectedItem();
           const parameterItem = placement || active;
           surface.querySelector('[data-selection]').textContent = placement ? '待放置 · ' + nameOf(placement.type) : active ? nameOf(active.type) : '未选择';
-          surface.querySelector('[data-param-size]').textContent = parameterItem ? '标准（固定）' : '—';
-          surface.querySelector('[data-param-behavior]').textContent = parameterItem ? parameterItem.type === 'ball' ? '地面出生 · 仅横向' : '静态平台 · 四向摆放' : '从仓库选择家具';
+          surface.querySelector('[data-parameter-controls]').dataset.empty = String(!parameterItem);
+          surface.querySelector('[data-param-elasticity-row]').hidden = !parameterItem || parameterItem.type !== 'ball';
           surface.querySelector('[data-action="remove"]').hidden = !editing || !active || !!placement;
           surface.querySelector('[data-action="place-recommended"]').hidden = !placement;
           surface.querySelector('[data-action="cancel-placement"]').hidden = !placement;
