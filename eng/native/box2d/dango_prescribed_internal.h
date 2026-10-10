@@ -219,7 +219,13 @@ static bool prescribed_contact(collision_review* p,const int* slots)
         p->prescribed_max_energy_excess=fmax(p->prescribed_max_energy_excess,after-before-work-1e-6-r32-r64);
 #endif
         if (!isfinite(after) || !isfinite(work) || after-before-work>1e-6+r32+r64) return false;
-        for (int b=0;b<2;++b) if (!prescribed_constraints(bodies[b],&p->config)) return false;
+        for (int b=0;b<2;++b)
+        {
+#ifdef DANGO_PRESCRIBED_DIAGNOSTIC_CONTEXT
+            DANGO_PRESCRIBED_DIAGNOSTIC_CONTEXT(p,0,slots[b],1);
+#endif
+            if (!prescribed_constraints(bodies[b],&p->config)) return false;
+        }
         ++p->contact_steps;
     }
     return false;
@@ -348,6 +354,9 @@ DANGO_API int dango_physics_world_step_prescribed(void* handle,const dango_presc
             {
                 b2Vec2 target,velocity; prescribed_curve(&input->bodies[b],u,&target,&velocity);
                 b2Body_SetLinearVelocity(p->bodies[slots[b]]->core_body_id,velocity);
+#ifdef DANGO_PRESCRIBED_DIAGNOSTIC_CONTEXT
+                DANGO_PRESCRIBED_DIAGNOSTIC_CONTEXT(p,sub+1,slots[b],0);
+#endif
                 if (!prescribed_constraints(p->bodies[slots[b]],&p->config)) p->error=-91;
             }
             if (!prescribed_monitor(p,input,slots,u,&trace,true,sub+1)) p->error=-422;

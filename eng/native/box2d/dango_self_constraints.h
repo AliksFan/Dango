@@ -241,18 +241,33 @@ static float dango_constraint_sweep(dango_constraint_state* s, bool correct)
 
 static bool dango_constraint_solve(dango_constraint_state* s)
 {
+#ifdef DANGO_CONSTRAINT_DIAGNOSTIC_OBSERVE
+    DANGO_CONSTRAINT_DIAGNOSTIC_OBSERVE(s, 0, 0);
+#endif
     for (int iteration = 0; iteration < 96; ++iteration)
     {
         float residual = dango_constraint_sweep_order(s, true, iteration % 2 != 0);
         if (!isfinite(residual))
         {
+#ifdef DANGO_CONSTRAINT_DIAGNOSTIC_OBSERVE
+            DANGO_CONSTRAINT_DIAGNOSTIC_OBSERVE(s, 3, iteration + 1);
+#endif
             return false;
         }
+#ifdef DANGO_CONSTRAINT_DIAGNOSTIC_OBSERVE
+        DANGO_CONSTRAINT_DIAGNOSTIC_OBSERVE(s, 1, iteration + 1);
+#endif
         if (dango_constraint_sweep(s, false) <= DANGO_CONSTRAINT_TOLERANCE)
         {
+#ifdef DANGO_CONSTRAINT_DIAGNOSTIC_OBSERVE
+            DANGO_CONSTRAINT_DIAGNOSTIC_OBSERVE(s, 2, iteration + 1);
+#endif
             return true;
         }
     }
+#ifdef DANGO_CONSTRAINT_DIAGNOSTIC_OBSERVE
+    DANGO_CONSTRAINT_DIAGNOSTIC_OBSERVE(s, 3, 96);
+#endif
 #if defined(DANGO_CONSTRAINT_TEST_DIAGNOSTICS)
     fprintf(stderr, "Constraint residual: %.9g\n", (double)dango_constraint_sweep(s, false));
     for (int i = 0; i < 16; ++i)
