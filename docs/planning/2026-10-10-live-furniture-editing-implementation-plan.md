@@ -1,8 +1,8 @@
-# 实时家具编辑：首个本地增量实施准备
+# 实时家具编辑：首个本地增量实施计划
 
-日期：2026-10-10。状态：**按已确认设计继续准备接口、提交与输入合同；尚未开始生产代码、native 修改、构建或真实运行验收。**
+日期：2026-10-10。状态：**用户明确回复“开始”，已授权 C0–C4 本地实现、隔离构建与独立单人验收窗口。定向单元、native、最终 r7 真实文件／物理整链与进程重启门禁，以及同一候选 r8 的 600 秒／50 次配对窗口观察已通过；早退失败记录保留。真实键鼠／DPI 与人工验收未完成，本批保持待人工，不标记已验收。**
 
-依据[实时编辑与手套设计](2026-10-10-live-furniture-editing-design.md)，本计划替代旧 L0–L5 的暂停／整体取消／重建世界路径。新增文件与接口名称是实施目标，不表示已经存在。当前设计分支准备基线为 `codex/furniture-layout-design@2d710cc`。
+依据[实时编辑与手套设计](2026-10-10-live-furniture-editing-design.md)，本计划替代旧 L0–L5 的暂停／整体取消／重建世界路径。实施来源为设计提交 `cba27b9`，在独立 `codex/furniture-layout-live` 分支推进；冻结合同见 [C0](2026-10-10-live-furniture-c0-contract.md)，实际门禁、未验证项与交付状态见[本批实施记录](../verification/2026-10-10-live-furniture-layout-implementation.md)。设计／原型的[历史准备记录](../verification/2026-10-10-furniture-layout-design.md)不替代本批真实实现证据。
 
 ## 第一批交付与来源
 
@@ -11,17 +11,17 @@
 三段侧栏和两列纯图标保留，参数控件明确不可调。原型可显示虚构的另一只团子来评审手套规则，不能将它列为本地真实增量的多人能力。3／5／10 秒限制可做纯规则夹具，真实跨玩家抓取仍须后续服务端和双客户端验证。
 
 - 单平台接口验证可使用本家具分支已有平台兼容模块，保持现有身体／材质参数，仅增加家具变更能力。它是既有物理基线上的隔离增量，新圆形模型须另行准入、接入和重验。
-- 只读核验时圆形模型分支为 `codex/round-material-sample@830e5e3`，存在未提交的被动观测工作；不得复制其未提交文件。当前模块限定单体且无平台导出，最新默认长期稳定性仍未过门禁，不能直接作为家具验收来源。
-- 正式编码时建立独立 `codex/furniture-layout-live` Worktree，先核对分支占用；本设计树、圆形模型树和既有单件小样继续保留。构建使用任务独占目录和候选 DLL，不替换生产 DLL。
+- 准备阶段只读核验的圆形模型分支为 `codex/round-material-sample@830e5e3`，当时存在未提交的被动观测工作、限定单体且无平台导出，默认长期稳定性尚未过门禁。该历史快照不作为当前模型状态证明，也不作为家具验收来源；本批未复制其未提交文件。
+- 已建立独立 `codex/furniture-layout-live` Worktree；本设计树、圆形模型树和既有单件小样继续保留。构建使用任务独占目录和候选 DLL，不替换生产 DLL。
 - 不新增依赖、不修改数据库或启动房间服务。main、推送、日常安装、发布和持久数据删除保持独立范围。
 
 ## R0：同一物理世界内变更家具
 
-当前 `DangoPhysicsWorld.SetStaticPlatform` 拒绝不同定义，native 平台与球／多团子互斥，不能通过 Clear→Set 实现移动。现有 Clear 已清平台接触、重算真实地面接地，且已有删除后跳跃对照夹具；本轮没有执行该夹具，不能把它当新接口通过，也不能将缺少新接口误报为旧删除 bug。
+既有 `DangoPhysicsWorld.SetStaticPlatform` 仍拒绝不同定义，native 平台与球／多团子互斥。本批增加独立的同世界变更接口，不能通过 Clear→Set 实现移动。准备基线中的 Clear 已清平台接触、重算真实地面接地，且已有删除后跳跃对照夹具；历史夹具和源码盘点不替代本批新接口验证，也不能将当时缺少新接口误报为旧删除 bug。
 
-不建设任意家具引擎，先为默认单平台增加可选能力。具体导出名、DTO 及数值容差在 C0 冻结：
+不建设任意家具引擎，本批只为默认单平台增加可选 Furniture ABI 1。具体 DTO、世界几何、`1e-6` p 几何舍入预算及拒绝保持合同已在 [C0](2026-10-10-live-furniture-c0-contract.md)冻结：
 
-| 接口目标 | 合同 |
+| 接口 | 合同 |
 |---|---|
 | `ProbeStaticPlatformChange` | 用当前真实身体轮廓检查 Insert／Move／Delete 的提示，不推进世界、不改变真实定义和身体；结果不是长期有效的确认许可 |
 | `PrepareStaticPlatformChange` | 在物理步之间重新检查布局版本、实例、房间边界及当前真实形状，Move 排除自己的旧实例；预计算定义／接触／支撑及必要资源，正常拒绝不改变真实世界。返回绑定 world generation、scene revision、physics step 与候选内容的短期 token |
@@ -41,13 +41,13 @@ Delete 不因团子接触而拒绝；清除该平台支撑，重算其他合法�
 
 数据明确区分 `AppliedLayout`、`PersistedLayout`、`Preview` 和冻结的 `PendingOperation`。家具预览不改前两者；完成确认并真实应用后才收起预览、显示成功。删选中家具不弹确认框，仍走同一提交合同。
 
-布局保留官方预设、初始锚点、场景／几何版本，新增单调 `layoutVersion` 和 `lastOperationId`。首个 schema 尚未交付正式存档，C0 需冻结完整字段与坐标合同；沿用旧计划的有限值、0／1 件、默认尺寸、出生区、64 KiB、未知／重复字段和坏文件保护规则。保存不含团子位置速度、物理步、相机、手套抓取或冷却。
+布局保留官方预设、初始锚点、场景／几何版本，新增单调 `layoutVersion` 和 `lastOperationId`。本批已实现严格 schema 1，由 `FurnitureLayoutSerializer` 与 `LocalFurnitureSceneGeometry` 共同校验 [C0](2026-10-10-live-furniture-c0-contract.md)冻结的有限值、0／1 件、默认尺寸、出生区、64 KiB、未知／重复字段和坏文件保护规则。版本 0 的操作标识为 null，正版本为非空 GUID；没有存档使用空布局版本 0。保存不含团子位置速度、物理步、相机、手套抓取或冷却。
 
-请求包含 `operationId`、`expectedVersion`、类型、目标实例及不可变候选。最多一个家具请求在途，重试保持 ID 和内容；修改预览生成新 ID。重发最后一次成功操作不再写入、增版本或施加物理；同 ID 不同内容、陈旧版本及超出已知历史的旧请求拒绝，不宣称拥有无限去重历史。
+请求包含 `operationId`、`expectedVersion`、类型、目标实例及不可变候选。最多一个家具请求在途，重试保持 ID 和内容；修改预览生成新 ID。当前 session 保留完整最后成功请求，重发该请求不再写入、增版本或施加物理；同 ID 不同内容及陈旧版本拒绝。重启后缺少完整收据的旧请求安全拒绝，不用 `lastOperationId` 宣称跨重启无限去重。
 
 本地同一路径使用家具专用 `FileShare.None` lease，取得后重读正式文件，提交前再次比对原始字节基线与版本。坏文件、读取暂时失败、外部修改和另一实例争用均不能覆盖为空布局。本地文件锁只协调本地实例，不是在线服务器权限。
 
-文件冲突检查使用 `PersistedLayout.layoutVersion`；native Prepare 使用当前真实 `sceneRevision` 和 `AppliedLayout` 对应的运行基线。scene revision 与持久布局版本是不同计数，C0 冻结二者的应用映射；Saved 与 Applied 不一致时，不能把新保存版本当成当前已应用版本传入 native。
+文件冲突检查使用 `PersistedLayout.layoutVersion`；native Prepare 使用当前真实 `sceneRevision` 和已应用 `Layout` 对应的运行基线。scene revision 与持久布局版本是不同计数，文件 GUID 与 native uint64 实例由唯一 `FurnitureLayoutSceneSession` 映射；Saved 与 Applied 不一致时，不能把新保存版本当成当前已应用版本传入 native。
 
 ### 正常顺序及选择理由
 
@@ -99,16 +99,16 @@ writer 抛错后重读：候选为已提交；等于旧字节，或基线原本�
 
 ## 分批代码与验收计划
 
-正式编码使用独立 Worktree；各批以下目标仅为准备安排，需要明确实现范围后执行。共享入口和集成文件由同一负责人顺序修改。
+用户已经授权下列 C0–C4，本地编码使用独立 Worktree。共享入口和集成文件由同一负责人顺序修改；进度与通过证据分别记录，代码存在不等于运行或人工验收通过。
 
-| 批次 | 文件所有权／目标 | 完成条件 |
-|---|---|---|
-| C0 来源与合同 | 物理来源证据、场景几何／序列化、能力与接口 DTO、候选 manifest | 冻结源提交／DLL hash、默认平台几何、边界及出生区、计时与穿入容差；证明缺能力不能演示成功 |
-| C1 同世界平台变更 | `eng/native/box2d/dango_collision_review.c`、`dango_static_platform.h`、`src/Dango.Physics/DangoPhysicsWorld.cs` 及专用接口类型；定向 Physics 测试 | Prepare／Apply／Cancel／一致只读帧，拒绝完整旧世界保持、成功不重建、删除无旧支撑；身体材质不修改 |
-| C2 数据与文件 | 新 Core Furniture 数据／预览／操作 session，Desktop 家具 Store、lease、writer；定向 Core／Desktop 测试 | 版本与去重、故障三态、Saved／Applied 分离、真实文件保护；纯夹具可与 C1 分开推进 |
-| C3 场景与界面 | 独立 `FurnitureLayoutWindow`、Projection、SceneSession、输入路由；JointReview 专用入口与隔离脚本 | 一只团子单 world 持续步进、预览确认、即删、自拖、图标焦点及相机；C1／C2 通过后集成 |
-| C4 单人真实验收 | 候选及独占数据目录、验证报告、人工窗口 | 真实文件重启恢复、物理拒绝／删除、输入／DPI、提交帧耗时和资源循环；用户人工确认后才验收该批 |
-| 后续多人 | 另行准备 server／client／shared-state 文件和双端批次 | 正式权限、目标抓取独占、权威 3／5／10 秒、版本／幂等广播及断线真实双客户端证据；不从本地测试推定 |
+| 批次 | 实现文件／目标 | 完成条件 | 当前进度 |
+|---|---|---|---|
+| C0 来源与合同 | [C0 合同](2026-10-10-live-furniture-c0-contract.md)、几何／序列化、能力与接口 DTO、候选 manifest | 冻结来源、几何、计时与容差，记录实际候选 DLL hash；证明缺能力不能演示成功 | 合同、native hash 与最终 r7 manifest 已归档 |
+| C1 同世界平台变更 | native 平台、`DangoPhysicsWorld.Furniture.cs` 与 `DangoFurnitureTypes.cs`、定向 Physics 测试 | Prepare／Apply／Cancel／一致只读帧，拒绝完整旧世界保持、成功不重建、删除无旧支撑；身体材质不修改 | 新增 17＋既有平台 41，共 58／58 通过；故意错误候选被门禁检出；既有球 native 回归 0 失败 |
+| C2 数据与文件 | Core Furniture 数据／操作／序列化，Desktop Store／lease／writer，Core／Desktop 测试 | 版本与去重、故障三态、Saved／Applied 分离、真实文件保护 | Core 66／66、Desktop 存储 18／18 定向通过；整链状态不由单元结果推定 |
+| C3 场景与界面 | `FurnitureLayoutWindow`、Projection、SceneSession、InputPolicy，JointReview 入口与隔离脚本 | 一只团子单 world 持续步进、预览确认、即删、自拖、图标焦点及相机 | 最终 r7 Release 0 警告／错误、整链 13／13 与纯窗口 35 checks 通过；硬件输入未验证 |
+| C4 单人真实验收 | 候选及独占数据目录、验证报告、人工窗口 | 真实文件重启恢复、物理拒绝／删除、输入／DPI、提交帧耗时和资源循环；用户人工确认后才验收该批 | 50 个 scene/world 生命周期、150 次保存并应用、两个真实子进程重启，以及 r8 600 秒／50 次配对观察通过；观察资源归零，正常人工窗口已打开，硬件／DPI 与人工验收未完成 |
+| 后续多人 | 另行准备 server／client／shared-state 文件和双端批次 | 正式权限、目标抓取独占、权威 3／5／10 秒、版本／幂等广播及断线真实双客户端证据；不从本地测试推定 | 不属于本批实施 |
 
 原固定平台定义、实际接触几何和身体造型回归门槛不降低。布局保存平台初始配置；游玩时团子运动、手套活动和相机不写成布局。球与多家具另行冻结各自行为合同。
 
@@ -127,4 +127,4 @@ writer 抛错后重读：候选为已提交；等于旧字节，或基线原本�
 
 新的 native 能力、来源或独立只读观测无法证明时，保留失败证据并阻止依赖真实物理的部分，数据／存储规则准备可继续。圆形模型未准入、正式多人硬限制和首次门廊进入／离线睡眠规则不由本批解决。
 
-本轮只读核对与原型操作验证只证明准备产物；生产构建、native 集成、真实存档、运行性能及多人门禁均待执行，见[准备记录](../verification/2026-10-10-furniture-layout-design.md)。
+本批已经从准备进入授权实施。实际构建、native 与文件整链、运行观察和未验证项持续记录在[本批实施记录](../verification/2026-10-10-live-furniture-layout-implementation.md)；[原型准备记录](../verification/2026-10-10-furniture-layout-design.md)保持历史范围。人工验收、main 合并、推送、日常安装与部署均不由自动验证代替。

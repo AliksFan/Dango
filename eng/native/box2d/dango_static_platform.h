@@ -12,6 +12,34 @@ typedef struct dango_static_platform
     float x,y,width,height,friction;
 } dango_static_platform;
 
+// Optional furniture ABI 1. These counters are runtime identities, never the
+// persisted layout version. Geometry admission uses float-rounding only.
+#define DANGO_FURNITURE_ADMISSION_EPSILON 0.000001f
+typedef struct dango_furniture_token
+{
+    uint64_t world_generation,token_id,scene_revision,physics_step;
+} dango_furniture_token;
+typedef struct dango_furniture_probe
+{
+    uint64_t world_generation,scene_revision,physics_step;
+    float minimum_gap;
+    int rejection;
+} dango_furniture_probe;
+typedef struct dango_furniture_frame
+{
+    uint64_t world_generation,scene_revision,physics_step,platform_instance,last_applied_token;
+    dango_static_platform platform;
+    int platform_enabled,error_code,contact_steps,body_count,reserved;
+    int entity_ids[DANGO_PHYSICS_MAX_BODIES];
+    float states[DANGO_PHYSICS_MAX_BODIES*42];
+    float contacts[DANGO_PHYSICS_MAX_BODIES*6];
+    int alignment_padding;
+    uint64_t raw_body_ids[DANGO_PHYSICS_MAX_BODIES*17];
+    float raw_positions_velocities[DANGO_PHYSICS_MAX_BODIES*68];
+    float seconds_since_jump[DANGO_PHYSICS_MAX_BODIES];
+    int drag_active[DANGO_PHYSICS_MAX_BODIES],grounded[DANGO_PHYSICS_MAX_BODIES];
+} dango_furniture_frame;
+
 typedef struct dango_platform_contact
 {
     b2Vec2 normal;

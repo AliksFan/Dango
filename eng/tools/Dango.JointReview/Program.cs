@@ -223,6 +223,20 @@ internal static class Program
     {
         try
         {
+            if (args.Length == 3 && args[0] == "--furniture-layout-verify")
+            {
+                FurnitureLayoutVerification.Run(args[1], args[2]); return 0;
+            }
+            if (args.Length == 4 && args[0] == "--furniture-layout-process-gate")
+            {
+                FurnitureLayoutVerification.RunProcessGate(args[1], args[2], args[3]); return 0;
+            }
+            if (args.Length == 4 && args[0] is "--furniture-layout" or "--furniture-layout-smoke")
+            {
+                var furnitureApp = new Application();
+                var window = new FurnitureLayoutWindow(args[1], args[2], args[3], args[0] == "--furniture-layout-smoke");
+                furnitureApp.Run(window); return window.ExitCode;
+            }
             if (args.Length == 2 && args[0] == "--round-ball")
             {
                 var ballApp = new Application(); var window = new RoundBallWindow(args[1]);

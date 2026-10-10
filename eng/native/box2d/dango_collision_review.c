@@ -18,6 +18,9 @@ _Static_assert(offsetof(dango_round_ball_frame,error_code)==376,"Round-ball erro
 _Static_assert(offsetof(dango_round_ball_frame,entity_ids)==392,"Round-ball IDs offset");
 _Static_assert(offsetof(dango_round_ball_frame,states)==404,"Round-ball states offset");
 _Static_assert(sizeof(dango_round_ball_frame)==912,"Round-ball whole-frame ABI layout");
+_Static_assert(sizeof(dango_furniture_probe)==32,"Furniture probe ABI layout");
+_Static_assert(sizeof(dango_furniture_token)==32,"Furniture token ABI layout");
+_Static_assert(sizeof(dango_furniture_frame)==1936,"Furniture frame ABI layout");
 
 typedef struct dango_native_ball
 {
@@ -43,6 +46,13 @@ typedef struct collision_review
     float preview_jump_speed_scale;
     bool platform_enabled;
     dango_static_platform platform;
+    uint64_t world_generation,platform_instance,next_platform_instance,next_furniture_token,last_applied_furniture_token;
+    bool furniture_prepared;
+    int prepared_kind;
+    dango_furniture_token prepared_token;
+    dango_static_platform prepared_platform;
+    float prepared_platform_contacts[DANGO_PHYSICS_MAX_BODIES][6];
+    bool prepared_grounded[DANGO_PHYSICS_MAX_BODIES];
     float platform_contacts[DANGO_PHYSICS_MAX_BODIES][6];
     float platform_snapshot[DANGO_PHYSICS_MAX_BODIES][6];
     bool ball_scene;
@@ -153,6 +163,8 @@ static bool collision_ball_valid(const collision_review* p)
 
 static void collision_ball_publish(collision_review* p)
 {
+    if (p->furniture_prepared && (p->prepared_token.scene_revision!=p->scene_revision ||
+        p->prepared_token.physics_step!=p->physics_step)) p->furniture_prepared=false;
     p->ball.state.scene_revision=p->scene_revision; p->ball.state.step=p->physics_step;
     p->ball_dango_contact.scene_revision=p->scene_revision; p->ball_dango_contact.step=p->physics_step;
     p->ball_floor_contact.scene_revision=p->scene_revision; p->ball_floor_contact.step=p->physics_step;
@@ -705,6 +717,10 @@ DANGO_API int dango_collision_create(const dango_self_physics_config* config, in
     int error=dango_box2d_self_soft_body_create(config,&first);
     if (error) { free(p); return error; }
     p->bodies[0]=first;
+    // Windows x64 owner identity plus Box2D's recycling generation. Distinct
+    // loaded candidate DLL copies may each have Box2D world index one.
+    p->world_generation=((uint64_t)p->bodies[0]->world_id.generation<<48) |
+        ((uint64_t)(uintptr_t)p & UINT64_C(0x0000FFFFFFFFFFFF));
     if (count==2)
     {
         p->bodies[1]=&p->additional[0];
@@ -905,6 +921,8 @@ DANGO_API int dango_physics_world_create(const dango_self_physics_config* config
     p->preview_jump_speed_scale=1.0f;
     int error=dango_self_world_create(config,&p->bodies[0]);
     if (error) { free(p); return error; }
+    p->world_generation=((uint64_t)p->bodies[0]->world_id.generation<<48) |
+        ((uint64_t)(uintptr_t)p & UINT64_C(0x0000FFFFFFFFFFFF));
     collision_ball_publish(p);
 #ifdef DANGO_ROUND_BALL_CONTRACT_TESTS
     ++round_ball_owner_count;
@@ -1011,6 +1029,7 @@ DANGO_API int dango_physics_world_step(void* handle,float time_step,const int* e
     if (p->count==0 && !p->ball.state.enabled)
     {
         if (!isfinite(time_step) || time_step<=0 || time_step>.1f) return -410;
+        p->furniture_prepared=false;
         *state_count=0; *contact_steps=p->contact_steps; *latched_error=p->error;
         if (!p->error) { ++p->physics_step; collision_ball_publish(p); }
         return 0;
@@ -1025,6 +1044,7 @@ DANGO_API int dango_physics_world_step(void* handle,float time_step,const int* e
         seen[slot]=1; memcpy(slot_controls+slot*6,controls+index*6,6*sizeof(float));
     }
     float slot_states[DANGO_PHYSICS_MAX_BODIES*DANGO_PHYSICS_STATE_FLOATS]={0};
+    p->furniture_prepared=false;
     int error=dango_collision_step(p,time_step,slot_controls,slot_states,DANGO_PHYSICS_MAX_BODIES*42,contact_steps);
     if (error==-400) return -410;
     int output=0;
@@ -1042,6 +1062,7 @@ DANGO_API int dango_physics_world_reset(void* handle)
 {
     collision_review* p=handle;
     if (!p) return -410;
+    p->furniture_prepared=false;
     /* Preserve all valid birth definitions, rather than publishing a Reset
        state that is already outside its scene or overlapping the circle. */
     if (p->ball.state.enabled && !collision_ball_reset_geometry_valid(p,true)) { p->error=-403; return p->error; }
@@ -1275,6 +1296,7 @@ DANGO_API int dango_physics_world_set_static_platform(void* handle,
     for (int r=0;r<p->capacity;++r) if (p->active[r])
         if (!collision_platform_refresh(p,r)) { p->platform_enabled=false; return -410; }
     memcpy(p->platform_snapshot,p->platform_contacts,sizeof p->platform_snapshot);
+    p->platform_instance=++p->next_platform_instance;
     ++p->scene_revision; collision_ball_publish(p);
     return 0;
 }
@@ -1288,6 +1310,7 @@ DANGO_API int dango_physics_world_clear_static_platform(void* handle)
         for (int r=0;r<p->capacity;++r) if (p->active[r])
             p->bodies[r]->grounded=collision_platform_floor(p,p->bodies[r]);
     p->platform_enabled=false; memset(&p->platform,0,sizeof p->platform);
+    p->platform_instance=0;
     memset(p->platform_contacts,0,sizeof p->platform_contacts);
     memset(p->platform_snapshot,0,sizeof p->platform_snapshot);
     if (changed) { ++p->scene_revision; collision_ball_publish(p); }
@@ -1303,6 +1326,158 @@ DANGO_API int dango_physics_world_get_static_platform_contact(void* handle,int e
         memcpy(values,p->platform_snapshot[r],6*sizeof(float)); return 0;
     }
     return -412;
+}
+
+// Admission is read-only. Preparing reserves only metadata; no collider,
+// body transform, velocity, grounding, control or published frame is touched.
+static void collision_furniture_probe(collision_review* p,int kind,uint64_t target,uint64_t expected_revision,
+    const dango_static_platform* candidate,dango_furniture_probe* result,
+    float contacts[DANGO_PHYSICS_MAX_BODIES][6],bool grounded[DANGO_PHYSICS_MAX_BODIES])
+{
+    *result=(dango_furniture_probe){.world_generation=p->world_generation,.scene_revision=p->scene_revision,
+        .physics_step=p->physics_step,.minimum_gap=1024};
+    memset(contacts,0,sizeof(float)*DANGO_PHYSICS_MAX_BODIES*6);
+    memset(grounded,0,sizeof(bool)*DANGO_PHYSICS_MAX_BODIES);
+    if (p->error) { result->rejection=8; return; }
+    if (p->ball.state.enabled || p->count>1) { result->rejection=2; return; }
+    if (expected_revision!=p->scene_revision) { result->rejection=3; return; }
+    if (kind<1 || kind>3 || (kind==1 && (target!=0 || p->platform_enabled)) ||
+        (kind!=1 && (!p->platform_enabled || target==0 || target!=p->platform_instance)))
+    { result->rejection=4; return; }
+    if (kind!=3)
+    {
+        if (!candidate || !platform_valid(candidate)) { result->rejection=1; return; }
+        if (!p->horizontal_bounds_enabled) { result->rejection=5; return; }
+        if (candidate->x-candidate->width*.5f<p->horizontal_left ||
+            candidate->x+candidate->width*.5f>p->horizontal_right ||
+            candidate->y-candidate->height*.5f<p->config.ground_height ||
+            candidate->y+candidate->height*.5f>32)
+        { result->rejection=6; return; }
+    }
+    for (int r=0;r<p->capacity;++r) if (p->active[r])
+    {
+        bool floor=collision_platform_floor(p,p->bodies[r]);
+        grounded[r]=floor;
+        if (kind==3) continue;
+        display_mesh mesh;
+        if (!display_build(p->bodies[r],p->config.node_radius,&mesh)) { result->rejection=8; return; }
+        dango_platform_contact contact=platform_separation(&mesh,candidate);
+        if (!isfinite(contact.gap)) { result->rejection=8; return; }
+        result->minimum_gap=fminf(result->minimum_gap,contact.gap);
+        if (contact.gap<-DANGO_FURNITURE_ADMISSION_EPSILON) { result->rejection=7; return; }
+        b2Vec2 core=b2Body_GetPosition(p->bodies[r]->core_body_id);
+        b2Vec2 velocity=b2Body_GetLinearVelocity(p->bodies[r]->core_body_id);
+        bool support=platform_support_eligible(&contact,core.y,velocity.y,candidate);
+        contacts[r][0]=1; contacts[r][1]=contact.gap<=.008f ? 1.0f : 0.0f;
+        contacts[r][2]=support ? 1.0f : 0.0f;
+        contacts[r][3]=contact.normal.x; contacts[r][4]=contact.normal.y; contacts[r][5]=contact.gap;
+        grounded[r]=floor || support;
+    }
+}
+
+DANGO_API int dango_physics_get_furniture_abi_version(void) { return 1; }
+DANGO_API int dango_physics_get_furniture_frame_size(void) { return sizeof(dango_furniture_frame); }
+
+DANGO_API int dango_physics_world_probe_static_platform_change(void* handle,int kind,uint64_t target,
+    uint64_t expected_revision,const dango_static_platform* candidate,dango_furniture_probe* result,int size)
+{
+    collision_review* p=handle;
+    if (!p || !result || size!=sizeof *result) return -410;
+    float contacts[DANGO_PHYSICS_MAX_BODIES][6]; bool grounded[DANGO_PHYSICS_MAX_BODIES];
+    collision_furniture_probe(p,kind,target,expected_revision,candidate,result,contacts,grounded);
+    return 0;
+}
+
+DANGO_API int dango_physics_world_prepare_static_platform_change(void* handle,int kind,uint64_t target,
+    uint64_t expected_revision,const dango_static_platform* candidate,dango_furniture_probe* result,int size,
+    dango_furniture_token* token)
+{
+    collision_review* p=handle;
+    if (!p || !result || !token || size!=sizeof *result) return -410;
+    *token=(dango_furniture_token){0};
+    float contacts[DANGO_PHYSICS_MAX_BODIES][6]; bool grounded[DANGO_PHYSICS_MAX_BODIES];
+    collision_furniture_probe(p,kind,target,expected_revision,candidate,result,contacts,grounded);
+    if (result->rejection) return 0;
+    p->prepared_kind=kind;
+    p->prepared_platform=kind==3 ? (dango_static_platform){0} : *candidate;
+    memcpy(p->prepared_platform_contacts,contacts,sizeof contacts);
+    memcpy(p->prepared_grounded,grounded,sizeof grounded);
+    p->prepared_token=(dango_furniture_token){.world_generation=p->world_generation,
+        .token_id=++p->next_furniture_token,.scene_revision=p->scene_revision,.physics_step=p->physics_step};
+    p->furniture_prepared=true; *token=p->prepared_token;
+    return 0;
+}
+
+static bool collision_furniture_token_valid(const collision_review* p,const dango_furniture_token* token)
+{
+    return token && p->furniture_prepared && !p->error && token->world_generation==p->world_generation &&
+        token->token_id!=0 && token->token_id==p->prepared_token.token_id &&
+        token->scene_revision==p->scene_revision && token->physics_step==p->physics_step &&
+        token->scene_revision==p->prepared_token.scene_revision && token->physics_step==p->prepared_token.physics_step;
+}
+
+DANGO_API int dango_physics_world_apply_prepared_static_platform_change(void* handle,const dango_furniture_token* token)
+{
+    collision_review* p=handle;
+    if (!p || !collision_furniture_token_valid(p,token)) return -410;
+    // No allocation or fallible solve after file commit. Apply only prepared
+    // geometry and support data at this same physics boundary, exactly once.
+    bool inserted=p->prepared_kind==1;
+    p->platform_enabled=p->prepared_kind!=3; p->platform=p->prepared_platform;
+    if (inserted) p->platform_instance=++p->next_platform_instance;
+    if (!p->platform_enabled) p->platform_instance=0;
+    memcpy(p->platform_contacts,p->prepared_platform_contacts,sizeof p->platform_contacts);
+    memcpy(p->platform_snapshot,p->prepared_platform_contacts,sizeof p->platform_snapshot);
+    for (int r=0;r<p->capacity;++r) if (p->active[r]) p->bodies[r]->grounded=p->prepared_grounded[r];
+    p->furniture_prepared=false; p->last_applied_furniture_token=token->token_id;
+    ++p->scene_revision; collision_ball_publish(p);
+    return 0;
+}
+
+DANGO_API int dango_physics_world_cancel_prepared_static_platform_change(void* handle,const dango_furniture_token* token)
+{
+    collision_review* p=handle;
+    if (!p || !token || token->world_generation!=p->world_generation) return -410;
+    // A delayed cancellation must not cancel a newer operation.
+    if (p->furniture_prepared && token->token_id==p->prepared_token.token_id) p->furniture_prepared=false;
+    return 0;
+}
+
+DANGO_API int dango_physics_world_get_furniture_frame(void* handle,dango_furniture_frame* frame,int size)
+{
+    const collision_review* p=handle;
+    if (!p || !frame || size!=sizeof *frame) return -410;
+    memset(frame,0,sizeof *frame);
+    frame->world_generation=p->world_generation; frame->scene_revision=p->frame_snapshot.snapshot.scene_revision;
+    frame->physics_step=p->frame_snapshot.snapshot.step; frame->platform_instance=p->platform_instance;
+    frame->last_applied_token=p->last_applied_furniture_token; frame->platform_enabled=p->platform_enabled ? 1 : 0;
+    if (p->platform_enabled) frame->platform=p->platform;
+    // Faults retain the last published safe body frame; report live health
+    // separately so stale healthy snapshots cannot authorize more mutations.
+    frame->error_code=p->error; frame->contact_steps=p->frame_snapshot.contact_steps;
+    frame->body_count=p->frame_snapshot.body_count;
+    memcpy(frame->entity_ids,p->frame_snapshot.entity_ids,sizeof frame->entity_ids);
+    memcpy(frame->states,p->frame_snapshot.states,sizeof frame->states);
+    int output=0;
+    for (int r=0;r<p->capacity;++r) if (p->active[r])
+    {
+        memcpy(frame->contacts+6*output,p->platform_snapshot[r],6*sizeof(float));
+        const dango_self_soft_body* body=p->bodies[r];
+        for (int n=0;n<17;++n)
+        {
+            b2BodyId id=n==16 ? body->core_body_id : body->node_body_ids[n];
+            frame->raw_body_ids[17*output+n]=b2StoreBodyId(id);
+            if (!b2Body_IsValid(id)) { frame->error_code=-402; continue; }
+            b2Vec2 position=b2Body_GetPosition(id),velocity=b2Body_GetLinearVelocity(id);
+            int offset=68*output+4*n;
+            frame->raw_positions_velocities[offset]=position.x; frame->raw_positions_velocities[offset+1]=position.y;
+            frame->raw_positions_velocities[offset+2]=velocity.x; frame->raw_positions_velocities[offset+3]=velocity.y;
+        }
+        frame->seconds_since_jump[output]=body->seconds_since_jump;
+        frame->drag_active[output]=body->drag_active ? 1 : 0; frame->grounded[output]=body->grounded ? 1 : 0;
+        ++output;
+    }
+    return 0;
 }
 
 DANGO_API int dango_physics_get_allocated_bytes(void) { return b2GetByteCount(); }
@@ -1537,9 +1712,32 @@ int dango_static_platform_failure_tests(void)
     dango_physics_world_get_static_platform_contact(handle,id,safe_contact,6);
     int safe_contacts=contacts;
     collision_review* world=handle;
+    // The optional editor must preserve both publication and raw live state
+    // when preparing/cancelling or refusing, and cannot reuse a faulted token.
+    dango_furniture_frame old_frame,new_frame;
+    dango_furniture_probe probe; dango_furniture_token token;
+    if (dango_physics_world_get_furniture_frame(handle,&old_frame,sizeof old_frame)!=0) ++failures;
+    int prepared_bytes=b2GetByteCount();
+    if (dango_physics_world_prepare_static_platform_change(handle,3,world->platform_instance,world->scene_revision,
+        NULL,&probe,sizeof probe,&token)!=0 || probe.rejection || !token.token_id) ++failures;
+    if (dango_physics_world_get_furniture_frame(handle,&new_frame,sizeof new_frame)!=0 ||
+        memcmp(&old_frame,&new_frame,sizeof old_frame) || b2GetByteCount()!=prepared_bytes) ++failures;
+    dango_furniture_token cancelled=token;
+    if (dango_physics_world_cancel_prepared_static_platform_change(handle,&cancelled)!=0 ||
+        dango_physics_world_apply_prepared_static_platform_change(handle,&cancelled)!=-410) ++failures;
+    if (dango_physics_world_get_furniture_frame(handle,&new_frame,sizeof new_frame)!=0 ||
+        memcmp(&old_frame,&new_frame,sizeof old_frame)) ++failures;
+    if (dango_physics_world_prepare_static_platform_change(handle,3,world->platform_instance,world->scene_revision,
+        NULL,&probe,sizeof probe,&token)!=0 || probe.rejection) ++failures;
     world->test_platform_collapse_substep=4; // Corrupt real geometry after four actual supported substeps.
     if (dango_physics_world_step(handle,1.0f/60,&id,controls,1,&state_id,states,42,&count,&contacts,&error)!=0 || error!=-402) ++failures;
     if (state_id!=id || count!=1 || contacts!=safe_contacts || memcmp(states,safe,sizeof safe)) ++failures;
+    if (dango_physics_world_apply_prepared_static_platform_change(handle,&token)!=-410 ||
+        dango_physics_world_get_furniture_frame(handle,&new_frame,sizeof new_frame)!=0 || new_frame.error_code!=-402 ||
+        new_frame.scene_revision!=old_frame.scene_revision || new_frame.physics_step!=old_frame.physics_step ||
+        memcmp(new_frame.states,old_frame.states,sizeof old_frame.states)) ++failures;
+    if (dango_physics_world_prepare_static_platform_change(handle,3,world->platform_instance,world->scene_revision,
+        NULL,&probe,sizeof probe,&token)!=0 || probe.rejection!=8 || token.token_id) ++failures;
     dango_physics_world_get_static_platform_contact(handle,id,contact,6);
     if (memcmp(contact,safe_contact,sizeof contact)) ++failures;
     if (dango_physics_world_remove(handle,id)!=-410 || dango_physics_world_clear_static_platform(handle)!=-410 ||
