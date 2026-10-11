@@ -11,6 +11,15 @@ internal static class Program
     {
         try
         {
+            if (args.Contains("--verify-landing-build-size-damping-motion"))
+                return args.Length == 6 && args[1] == "--verify-landing-build-size-damping-motion"
+                    ? LandingBuildSizeDampingMotionVerification.Run(args[0], args[2], args[3], args[4], args[5]) : 2;
+            if (args.Contains("--verify-landing-build-size-damping"))
+                return args.Length == 6 && args[1] == "--verify-landing-build-size-damping"
+                    ? LandingBuildRadialDampingVerification.RunSizeCompensated(args[0], args[2], args[3], args[4], args[5]) : 2;
+            if (args.Contains("--verify-landing-build-radial-damping"))
+                return args.Length == 6 && args[1] == "--verify-landing-build-radial-damping"
+                    ? LandingBuildRadialDampingVerification.Run(args[0], args[2], args[3], args[4], args[5]) : 2;
             if (args.Any(a => a is "--preview-landing-build-recovery" or "--verify-landing-build-recovery-landing") &&
                 !(args.Length == 5 && args[1] == "--preview-landing-build-recovery" ||
                   args.Length == 6 && args[1] == "--verify-landing-build-recovery-landing")) return 2;

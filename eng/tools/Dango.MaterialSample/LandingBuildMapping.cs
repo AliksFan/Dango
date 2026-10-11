@@ -2,7 +2,7 @@ using Dango.Desktop.Physics.Tuning;
 
 namespace Dango.MaterialSample;
 
-internal enum LandingBuildTable { A, B, C, StretchPreview, RecoveryPreview }
+internal enum LandingBuildTable { A, B, C, StretchPreview, RecoveryPreview, RadialDampingPreview, SizeDampingPreview }
 
 internal sealed record LandingBuildFactors(double Radial, double Perimeter, double Area);
 
@@ -19,9 +19,13 @@ internal sealed record LandingBuildControls(double SizePercent = 100, double Sof
             RadialElasticity = baseline.RadialElasticity * factors.Radial,
             PerimeterElasticity = baseline.PerimeterElasticity * factors.Perimeter,
             AreaPreservationStrength = baseline.AreaPreservationStrength * factors.Area,
-            RadialMaximumRatio = table is LandingBuildTable.StretchPreview or LandingBuildTable.RecoveryPreview && LandingBuild < 50
+            RadialMaximumRatio = table is LandingBuildTable.StretchPreview or LandingBuildTable.RecoveryPreview or LandingBuildTable.RadialDampingPreview or LandingBuildTable.SizeDampingPreview && LandingBuild < 50
                 ? 1.30 + (baseline.RadialMaximumRatio - 1.30) * (LandingBuild / 50)
                 : baseline.RadialMaximumRatio,
+            RadialDamping = table is LandingBuildTable.RadialDampingPreview or LandingBuildTable.SizeDampingPreview && LandingBuild < 50
+                ? baseline.RadialDamping - .05 * Math.Max(0, (Softness - 50) / 50) * (1 - LandingBuild / 50) *
+                    (table == LandingBuildTable.SizeDampingPreview ? Math.Clamp((SizePercent - 100) / 20, 0, 1) : 1)
+                : baseline.RadialDamping,
         };
         candidate.Validate();
         return candidate;
@@ -38,6 +42,8 @@ internal static class LandingBuildMapping
         LandingBuildTable.C => "landing-build-v1-C",
         LandingBuildTable.StretchPreview => "landing-build-v3-stretch-preview",
         LandingBuildTable.RecoveryPreview => "landing-build-v4-recovery-preview",
+        LandingBuildTable.RadialDampingPreview => "landing-build-v5-radial-damping-preview",
+        LandingBuildTable.SizeDampingPreview => "landing-build-v6-size-damping-preview",
         _ => throw new ArgumentOutOfRangeException(nameof(table)),
     };
 
@@ -52,6 +58,8 @@ internal static class LandingBuildMapping
             LandingBuildTable.C => (new LandingBuildFactors(.50, .85, .85), new LandingBuildFactors(1.60, 1.15, 1.15)),
             LandingBuildTable.StretchPreview => (new LandingBuildFactors(.50, .70, 1.00), new LandingBuildFactors(1.60, 1.15, 1.15)),
             LandingBuildTable.RecoveryPreview => (new LandingBuildFactors(.50, .72, 1.00), new LandingBuildFactors(1.60, 1.15, 1.15)),
+            LandingBuildTable.RadialDampingPreview => (new LandingBuildFactors(.50, .70, 1.00), new LandingBuildFactors(1.60, 1.15, 1.15)),
+            LandingBuildTable.SizeDampingPreview => (new LandingBuildFactors(.50, .70, 1.00), new LandingBuildFactors(1.60, 1.15, 1.15)),
             _ => throw new ArgumentOutOfRangeException(nameof(table)),
         };
         if (build == 50) return new(1, 1, 1);

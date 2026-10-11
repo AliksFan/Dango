@@ -137,7 +137,7 @@ internal static class LandingBuildRecoveryVerification
         finally { completed = outcome is not "running" and not "execution-incomplete"; Save(); }
     }
 
-    private static IReadOnlyList<LandingMotionTrial> ImportStop(byte[] bytes, string landingHash)
+    internal static IReadOnlyList<LandingMotionTrial> ImportStop(byte[] bytes, string landingHash)
     {
         using var document = JsonDocument.Parse(bytes);
         var root = document.RootElement;
