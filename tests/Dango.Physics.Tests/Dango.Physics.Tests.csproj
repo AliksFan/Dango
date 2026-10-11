@@ -11,5 +11,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Dango.Physics\Dango.Physics.csproj" />
+    <ProjectReference Include="..\..\eng\tools\Dango.SafeSpawnAdmission.Core\Dango.SafeSpawnAdmission.Core.csproj" />
   </ItemGroup>
 </Project>
