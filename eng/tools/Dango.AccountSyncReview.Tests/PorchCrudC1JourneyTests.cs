@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using Dango.Client.Sync.Rooms;
+using Dango.Core.Animation;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Protocol;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -146,7 +147,13 @@ public sealed class PorchCrudC1JourneyTests
         rig.Wait(() => ((Grid)rig.Home.FindName("Stage")).IsKeyboardFocused);
         Assert.IsTrue(Math.Abs(start - x) > 50); var frame = rig.Home.BoundRuntime!.LastPhysicsFrame;
         keyboard.Down(key);
-        try { rig.Wait(() => Math.Abs(rig.Home.PorchScene.PetWorldX - x) < 35, 35); }
+        try
+        {
+            var intent = PorchCrudC1DesktopRig.Field<DirectionalControlIntent>(rig.Home, "liveIntent");
+            Assert.IsTrue(key == 0x41 ? intent.Left && !intent.Right : intent.Right && !intent.Left,
+                "The original native key must be delivered to gameplay; idle wandering is not evidence of controlled movement.");
+            rig.Wait(() => { keyboard.AssertForegroundOwned(); return rig.Home.PorchScene.NearbyDoorId == target; }, 35);
+        }
         finally { keyboard.Up(key); }
         Assert.AreEqual(target, rig.Home.PorchScene.NearbyDoorId);
         Assert.AreNotSame(frame, rig.Home.BoundRuntime.LastPhysicsFrame); rig.AssertHealthyFrame();

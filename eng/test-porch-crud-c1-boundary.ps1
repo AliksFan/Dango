@@ -15,12 +15,12 @@ Assert-DangoPorchCrudC1ScopeInputs $taskScope;$taskChecks++
 $taskSql=Get-DangoPorchCrudC1ScopedSql $taskScope
 $taskRoundtrip=ConvertFrom-DangoPorchCrudC1SqlIdentity $taskSql
 if($taskSql -cne (Get-DangoPorchCrudC1ScopedSql $taskRoundtrip)){throw 'porch_c1_offline_sql_roundtrip_failed'};$taskChecks++
-$taskOutput=Join-Path $taskRoot 'artifacts/porch-crud-c1-candidate/scoped-sql-review.json'
+$taskOutput=Join-Path $taskRoot 'artifacts/porch-crud-c1-r2-candidate/scoped-sql-review.json'
 [void][IO.Directory]::CreateDirectory((Split-Path -Parent $taskOutput))
 Write-DangoProfileJson $taskOutput ([pscustomobject]@{Version=1;Scope=$taskScope;Sql=$taskSql})
-foreach($change in @('budget','run','filter','extra')){
+foreach($change in @('budget','run','filter','extra','old-stage')){
     $mutated=Copy-TestValue $taskPlan
-    switch($change){budget{$mutated.Budgets.Create=2};run{$mutated.EvidenceDirectory+='-other'};filter{$mutated.Filter='TestCategory=PorchCrudC1'};extra{$mutated|Add-Member Extra $true}}
+    switch($change){budget{$mutated.Budgets.Create=2};run{$mutated.EvidenceDirectory+='-other'};filter{$mutated.Filter='TestCategory=PorchCrudC1'};extra{$mutated|Add-Member Extra $true};old-stage{$mutated.Stage='PorchCrudC1'}}
     Confirm-Rejected {Assert-DangoPorchCrudC1FixedPlan $mutated}
 }
 foreach($change in @('nickname','pet','session','request','extra')){

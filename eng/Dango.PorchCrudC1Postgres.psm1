@@ -8,14 +8,14 @@ function Get-DangoPorchCrudC1Plan {
     param([string]$Repository)
     Assert-DangoPorchCrudC1PathText $Repository
     $state=Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Dango/BackendDevelopment/run20261008b0'
-    [pscustomobject]@{Version=1;Stage='PorchCrudC1';RunName='run20261008b0';Executed=$false
+    [pscustomobject]@{Version=1;Stage='PorchCrudC1r2';RunName='run20261008b0';Executed=$false
         Repository=[IO.Path]::GetFullPath($Repository);StateDirectory=$state;DataDirectory=(Join-Path $state 'pgdata')
-        EvidenceDirectory=(Join-Path (Split-Path -Parent $state) 'run20261011porchcrudc1')
+        EvidenceDirectory=(Join-Path (Split-Path -Parent $state) 'run20261011porchcrudc1r2')
         PostgresBinDirectory=(Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'PostgreSQL/18/bin')
         Database='dango_backend_b0';Role='dango_b0_owner';DatabasePort=63237;ExpectedTests=1;MaximumToolProcesses=10
         Filter='FullyQualifiedName=Dango.AccountSyncReview.Tests.PorchCrudC1JourneyTests.NativePorchCrudPersistsAndForeignAccountCannotReadOrMutate'
-        CandidateDirectory='artifacts/porch-crud-c1-candidate/bin/Dango.AccountSyncReview.Tests/release'
-        ApprovalVariable='DANGO_BACKEND_PORCHCRUD_C1_APPROVED';TrxFileName='porch-crud-c1.trx'
+        CandidateDirectory='artifacts/porch-crud-c1-r2-candidate/bin/Dango.AccountSyncReview.Tests/release'
+        ApprovalVariable='DANGO_BACKEND_PORCHCRUD_C1R2_APPROVED';TrxFileName='porch-crud-c1.trx'
         PriorMigrations=@('20261008074701_InitialAccountRoomFoundation','20261008085521_AccountLifecycle',
             '20261009031410_RoomManagement','20261009055558_RoomAccess','20261009062701_RoomAccessIntegrity',
             '20261009124814_AccessoryAccountBackup','20261010055529_AccountProfile')
@@ -89,10 +89,11 @@ function Get-DangoPorchCrudC1Inputs {
     $fixed=Assert-DangoPorchCrudC1FixedPlan $Plan
     $files=@('eng/Dango.PorchCrudC1Postgres.psm1','eng/invoke-porch-crud-c1-tests.ps1','eng/test-porch-crud-c1-boundary.ps1',
         'eng/Dango.AccountProfilePostgres.psm1','eng/Dango.AccountSyncPostgres.psm1','eng/Dango.AccountSyncClosurePostgres.psm1',
-        'eng/Dango.AccountSyncB1c2Postgres.psm1','docs/planning/2026-10-11-porch-crud-c1-local-plan.md','Directory.Build.props','global.json',
+        'eng/Dango.AccountSyncB1c2Postgres.psm1','docs/planning/2026-10-11-porch-crud-c1r2-local-plan.md','Directory.Build.props','global.json',
         'tests/Dango.Server.Tests/Configuration/PorchCrudC1ScopedSqlMetadataTests.cs',
         'tests/Dango.Desktop.Tests/AppShell/RoomIntegrationBoundaryTests.cs',
         'tests/Dango.Desktop.Tests/AppShell/PorchAccountSceneTests.cs','tests/Dango.Desktop.Tests/AppShell/RoomPanelViewTests.cs',
+        'tests/Dango.Desktop.Tests/AppShell/ProductHomeInteractionTests.cs','tests/Dango.Desktop.Tests/AppShell/AccountPanelViewTests.cs',
         'artifacts/main-absorption/9db6fd423e364e488967e0696ecc05d1/native/Release/dango_physics_module.dll')
     foreach($relativeRoot in @('src','eng/tools/Dango.AccountSyncReview.Tests')){
         $root=Join-Path $fixed.Repository $relativeRoot;Assert-DangoProfileRegularPath $root

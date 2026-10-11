@@ -233,11 +233,11 @@ try {
     $taskPorchC1PsqlEnvironment=@{PGPASSWORD=$taskPorchC1Password;PGCLIENTENCODING='UTF8'}
     $taskPorchC1Before=Invoke-DangoPorchCrudC1Snapshot 'before'
     $taskPorchC1Connection="Host=127.0.0.1;Port=63237;Database=dango_backend_b0;Username=dango_b0_owner;Password=$taskPorchC1Password;Include Error Detail=false"
-    $taskPorchC1TestEnvironment=@{DANGO_BACKEND_PORCHCRUD_C1_APPROVED='1';
-        DANGO_BACKEND_PORCHCRUD_C1_OWNER_ID=$taskPorchC1Reservation.OwnerId.ToString('D');
-        DANGO_BACKEND_PORCHCRUD_C1_OWNER_PID=[string]$taskPorchC1Reservation.Owner.OwnerPid;
-        DANGO_BACKEND_PORCHCRUD_C1_RUN_DIRECTORY=$taskPorchC1Plan.EvidenceDirectory;
-        DANGO_BACKEND_PORCHCRUD_C1_OWNER_MANIFEST_SHA256=$taskPorchC1Reservation.ManifestSha256;
+    $taskPorchC1TestEnvironment=@{DANGO_BACKEND_PORCHCRUD_C1R2_APPROVED='1';
+        DANGO_BACKEND_PORCHCRUD_C1R2_OWNER_ID=$taskPorchC1Reservation.OwnerId.ToString('D');
+        DANGO_BACKEND_PORCHCRUD_C1R2_OWNER_PID=[string]$taskPorchC1Reservation.Owner.OwnerPid;
+        DANGO_BACKEND_PORCHCRUD_C1R2_RUN_DIRECTORY=$taskPorchC1Plan.EvidenceDirectory;
+        DANGO_BACKEND_PORCHCRUD_C1R2_OWNER_MANIFEST_SHA256=$taskPorchC1Reservation.ManifestSha256;
         DANGO_BACKEND_TEST_CONNECTION=$taskPorchC1Connection;DANGO_BACKEND_TEST_DATA_DIRECTORY=$taskPorchC1Plan.DataDirectory;
         DANGO_BACKEND_B1_KEY_DIRECTORY=(Join-Path $taskPorchC1Plan.StateDirectory 'b1tests-keys');
         DANGO_BACKEND_B1_RECOVERY_EPOCH=$taskPorchC1Facts.Epoch.ToString('D')}

@@ -39,6 +39,8 @@ namespace Dango.AccountSyncReview.Tests;
         private DangoApplicationHost? host;
         private ControlCenterWindow? window;
         private DesktopAccountController? controller;
+        private DesktopRoomController? roomController;
+        private Func<bool>? roomDrain;
         private AppearanceSettingsSession? appearance;
         private StackedDangoSceneRuntime? runtime;
         private nint handle;
@@ -51,7 +53,7 @@ namespace Dango.AccountSyncReview.Tests;
         private readonly int index;
         private Uri Origin => Fixture.Endpoint;
         internal AccountSyncB1c2MemorySecrets Secrets { get; }
-        internal DesktopRoomController Rooms => Field<DesktopRoomController>(host!, "roomController");
+        internal DesktopRoomController Rooms => roomController ?? throw new AssertFailedException("The original room controller is required.");
         internal ControlCenterWindow Window => window!;
         internal ProductHomeView Home => window!.ProductHome;
         internal DesktopAccountController Controller => controller ?? throw new AssertFailedException("The production account controller is required.");
@@ -90,6 +92,8 @@ namespace Dango.AccountSyncReview.Tests;
                 hostStarted = true;
                 window = Field<ControlCenterWindow>(host, "controlCenterWindow");
                 controller = Field<DesktopAccountController>(host, "accountController");
+                roomController = Field<DesktopRoomController>(host, "roomController");
+                roomDrain = CaptureRoomDrain(roomController);
                 appearance = Field<AppearanceSettingsSession>(host, "appearance");
                 appearance.SavedToDisk += OnSaved;
                 window.Left = 80; window.Top = 80; window.ShowInTaskbar = false;
@@ -267,8 +271,9 @@ namespace Dango.AccountSyncReview.Tests;
                 });
                 Cleanup("RoomOperationsDrain", () =>
                 {
-                    Wait(() => Field<SemaphoreSlim>(Rooms, "operations").CurrentCount == 1);
-                    roomOperationsDrained = Field<SemaphoreSlim>(Rooms, "operations").CurrentCount == 1;
+                    Assert.IsNotNull(roomDrain, "The original room operations must be captured before host disposal.");
+                    Wait(roomDrain);
+                    roomOperationsDrained = roomDrain();
                     Assert.IsTrue(roomOperationsDrained);
                 });
                 // The production fire-and-forget DisposeAfterPumpAsync task is not observable here.
@@ -302,7 +307,7 @@ namespace Dango.AccountSyncReview.Tests;
                 if (journeyPassed)
                 {
                     Assert.IsTrue(hostDisposed && hwndClosed && uiSettled && pumpsSettled && httpSettled && timerStopped
-                        && hostTimersStopped && runtimeStopped && homeDriverReleased && coordinatorsStopped && accountOperationsDrained && secretsDisposed);
+                        && hostTimersStopped && runtimeStopped && homeDriverReleased && coordinatorsStopped && accountOperationsDrained && roomOperationsDrained && secretsDisposed);
                     Assert.AreEqual(0, failures.Count, "Every owned cleanup step must settle independently.");
                 }
             }
@@ -356,6 +361,11 @@ namespace Dango.AccountSyncReview.Tests;
         }
     }
 
+        internal static Func<bool> CaptureRoomDrain(DesktopRoomController original)
+        {
+            var operations = Field<SemaphoreSlim>(original, "operations");
+            return () => operations.CurrentCount == 1;
+        }
         internal static T Field<T>(object instance, string name)
         {
             var field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic) ?? throw new AssertFailedException("Owned host field missing: " + name);

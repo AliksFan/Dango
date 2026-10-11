@@ -26,9 +26,10 @@ internal sealed class PorchCrudC1Keyboard : IDisposable
             Assert.Inconclusive("Windows refused foreground activation of this exact isolated scene; no native input was injected.");
     }
     internal void Press(ushort key) { Down(key); Up(key); }
+    internal void AssertForegroundOwned() => Assert.AreEqual(handle, GetForegroundWindow(), "Foreground changed; input must stay inside the owned scene.");
     internal void Down(ushort key)
     {
-        Assert.AreEqual(handle, GetForegroundWindow(), "Foreground changed; input must stay inside the owned scene.");
+        AssertForegroundOwned();
         if (!owned.Add(key)) return;
         Send(key, false); Pump();
     }

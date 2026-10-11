@@ -59,7 +59,7 @@ public sealed class PorchCrudC1ScopedSqlMetadataTests
     private static string ReadSql()
     {
         DirectoryInfo? root = new(Directory.GetCurrentDirectory()); while (root is not null && !File.Exists(Path.Combine(root.FullName, "AGENTS.md"))) root = root.Parent;
-        using var doc = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(root!.FullName, "artifacts/porch-crud-c1-candidate/scoped-sql-review.json")));
+        using var doc = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(root!.FullName, "artifacts/porch-crud-c1-r2-candidate/scoped-sql-review.json")));
         return doc.RootElement.GetProperty("Sql").GetString()!;
     }
 }

@@ -12,6 +12,8 @@ public sealed class PorchCrudC1BoundaryTests
     public void OldGrantsCannotReachTheC1ResourceFactory()
     {
         Assert.IsFalse(PorchCrudC1TestOwner.IsApprovalGranted(key => key == "DANGO_BACKEND_ACCOUNTSYNC_B1C2_APPROVED" ? "1" : null));
+        Assert.IsFalse(PorchCrudC1TestOwner.IsApprovalGranted(key => key == "DANGO_BACKEND_PORCHCRUD_C1_APPROVED" ? "1" : null));
+        Assert.IsTrue(PorchCrudC1TestOwner.IsApprovalGranted(key => key == "DANGO_BACKEND_PORCHCRUD_C1R2_APPROVED" ? "1" : null));
         var loaded = false;
         Assert.ThrowsExactly<AssertInconclusiveException>(() => PorchCrudC1TestOwner.RequireWithFactory(false, () => { loaded = true; throw new Exception(); }));
         Assert.IsFalse(loaded);

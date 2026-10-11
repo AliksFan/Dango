@@ -13,9 +13,9 @@ namespace Dango.AccountSyncReview.Tests;
 
 internal sealed class PorchCrudC1TestOwner : IDisposable
 {
-    internal const string ApprovalVariable = "DANGO_BACKEND_PORCHCRUD_C1_APPROVED";
-    internal const string Stage = "PorchCrudC1";
-    internal const string RunName = "run20261011porchcrudc1";
+    internal const string ApprovalVariable = "DANGO_BACKEND_PORCHCRUD_C1R2_APPROVED";
+    internal const string Stage = "PorchCrudC1r2";
+    internal const string RunName = "run20261011porchcrudc1r2";
     private static readonly object initializationGate = new();
     private static PorchCrudC1TestOwner? instance;
     private static bool initializationAttempted;
@@ -60,7 +60,7 @@ internal sealed class PorchCrudC1TestOwner : IDisposable
         // The only operation preceding this check is reading the independent grant.
         // No old B1/B5/Profile/B1a grant authorizes this stage or even its resource reads.
         if (!approved)
-            Assert.Inconclusive("PorchCrudC1 resource access and fictional writes need their own exact approval.");
+            Assert.Inconclusive("PorchCrudC1r2 resource access and fictional writes need their own exact approval.");
         lock (initializationGate)
         {
             if (instance is not null) { instance.CheckAlive(); return instance; }
@@ -109,7 +109,7 @@ internal sealed class PorchCrudC1TestOwner : IDisposable
         if (!OperatingSystem.IsWindows()) throw Reject("windows_required");
         var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Dango", "BackendDevelopment", RunName);
-        if (!SamePath(RequiredEnvironment("DANGO_BACKEND_PORCHCRUD_C1_RUN_DIRECTORY"), directory))
+        if (!SamePath(RequiredEnvironment("DANGO_BACKEND_PORCHCRUD_C1R2_RUN_DIRECTORY"), directory))
             throw Reject("run_directory_rejected");
         RequireRegularPath(directory);
         var info = new DirectoryInfo(directory);
@@ -124,12 +124,12 @@ internal sealed class PorchCrudC1TestOwner : IDisposable
                 && (rule.FileSystemRights & (FileSystemRights.Write | FileSystemRights.Modify | FileSystemRights.FullControl)) != 0)
                 throw Reject("run_acl_rejected");
 
-        if (!Guid.TryParseExact(RequiredEnvironment("DANGO_BACKEND_PORCHCRUD_C1_OWNER_ID"), "D", out var ownerId) || ownerId == Guid.Empty
-            || !int.TryParse(RequiredEnvironment("DANGO_BACKEND_PORCHCRUD_C1_OWNER_PID"), out var ownerPid) || ownerPid <= 0)
+        if (!Guid.TryParseExact(RequiredEnvironment("DANGO_BACKEND_PORCHCRUD_C1R2_OWNER_ID"), "D", out var ownerId) || ownerId == Guid.Empty
+            || !int.TryParse(RequiredEnvironment("DANGO_BACKEND_PORCHCRUD_C1R2_OWNER_PID"), out var ownerPid) || ownerPid <= 0)
             throw Reject("owner_identity_rejected");
         var manifestPath = Path.Combine(directory, "owner-manifest.json");
         var manifestBytes = ReadBoundedFile(manifestPath, 65536);
-        var expectedDigest = RequiredEnvironment("DANGO_BACKEND_PORCHCRUD_C1_OWNER_MANIFEST_SHA256");
+        var expectedDigest = RequiredEnvironment("DANGO_BACKEND_PORCHCRUD_C1R2_OWNER_MANIFEST_SHA256");
         if (expectedDigest.Length != 64 || expectedDigest.Any(character => character is not (>= '0' and <= '9') and not (>= 'A' and <= 'F'))
             || Convert.ToHexString(SHA256.HashData(manifestBytes)) != expectedDigest)
             throw Reject("owner_manifest_digest_rejected");

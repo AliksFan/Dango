@@ -1,5 +1,9 @@
 # Dango 分阶段开发计划 v0.1
 
+> 2026-10-11 门廊CRUD C1r2准备：已用离线完整宿主复现并修正游戏焦点的IME按键拦截，表单／编辑区保留IME；行走要求原生方向指令、实际目标互动范围及全过程自有前台HWND，排空检查捕获释放前原房间操作对象。最终完整宿主三目标与C#边界8项、PowerShell51项、SQL metadata 2项、桌面70项及独立前台按键1项、共享B1c2工具511项通过；原失败及组内1项NotExecuted保留。见[修正准备记录](verification/2026-10-11-porch-crud-c1r2-preparation.md)和[新精确计划](planning/2026-10-11-porch-crud-c1r2-local-plan.md)。新Stage／grant／一次性目录隔离原C1已用授权，真实C1r2未执行，等待新的精确批准；完整CRUD闭环／主观／C2／多人／运维未验收。未合main、推送、部署、更新安装或替换生产DLL。
+
+> 2026-10-11 门廊CRUD C1真实执行：用户精确批准后仅运行一次，完整Desktop／正式HTTPS／PostgreSQL旅程在第一次实际行走的位置等待处失败，共12次业务／40次HTTP，房间写入为零；另有测试工具在Host.Dispose后读空roomController的排空检查失败。外层只收尾，PostgreSQL／桥进程／工具／HTTPS／HWND／临时CNG私钥退出证据已保留，数据与密钥保留；后置数据库快照、最终归属与会话撤销未验证，不能标为闭环通过。见[失败记录](verification/2026-10-11-porch-crud-c1-failed.md)。继续离线复现与修正；新真实执行需独立精确批准，原清单与失败结果不改写。未合main、推送、部署、更新安装或替换生产DLL。
+
 > 2026-10-11 门廊CRUD C1：正式Desktop／HTTPS／PostgreSQL房间创建、修改、解散、恢复的固定验证候选与一次性外层工具准备完成；离线C#边界5项、PowerShell正反例50项、SQL metadata 2项、目标桌面48项及独立按键1项、共享B1c2工具511项通过，原桌面1项NotExecuted及初次失败保留。见[准备记录](verification/2026-10-11-porch-crud-c1-preparation.md)和[精确计划](planning/2026-10-11-porch-crud-c1-local-plan.md)。真实C1闭环尚未执行，等待新的精确数据批准；主观验收、C2故障验证、完整B5／多人／运维与生产部署仍待完成。未合入main、推送、部署、更新安装或替换生产DLL。
 
 > 2026-10-11 账号同步B1c2：用户批准后的唯一一次完整Desktop／正式HTTPS／PostgreSQL跨账号旅程及外层门禁通过。21次业务、66次HTTP登记／64次实际Send、两次正常注销取消已核实，旧22表摘要多重集合保全、四会话逐行归属与撤销、最终双账号scoped均通过，资源收尾并保留数据。见[完整记录](verification/2026-10-11-account-sync-b1c2-passed.md)。B1c1原失败不追认；门廊正式CRUD闭环及主观验收仍待完成，不表示完整B5／多人可玩／运维或生产部署通过。未合入main、推送、部署、更新安装或替换生产DLL。以下较早记录保留当时停止点。

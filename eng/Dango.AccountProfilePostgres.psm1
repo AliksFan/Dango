@@ -273,7 +273,7 @@ function Get-DangoProfileFixedPlan {
             Assert-DangoAccountSyncB1cFixedPlan $Plan
         } elseif ($Plan.Stage -ceq 'AccountSyncB1c2') {
             Assert-DangoAccountSyncB1c2FixedPlan $Plan
-        } elseif ($Plan.Stage -ceq 'PorchCrudC1') {
+        } elseif ($Plan.Stage -ceq 'PorchCrudC1r2') {
             Assert-DangoPorchCrudC1FixedPlan $Plan
         } else { throw 'rejected' }
         if (@($Plan.PSObject.Properties).Count -ne @($fixed.PSObject.Properties).Count) { throw 'rejected' }

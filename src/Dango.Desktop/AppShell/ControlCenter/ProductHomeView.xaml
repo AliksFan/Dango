@@ -227,7 +227,7 @@
                       SizeChanged="OnHomeContentSizeChanged"
                       HorizontalContentAlignment="Stretch" VerticalContentAlignment="Top">
             <Grid x:Name="Stage" Margin="24,10,24,10" MinHeight="330" SizeChanged="OnStageSizeChanged"
-                  ClipToBounds="False" Background="Transparent" Focusable="True" MouseDown="OnStageMouseDown">
+                  ClipToBounds="False" Background="Transparent" Focusable="True" InputMethod.IsInputMethodEnabled="False" MouseDown="OnStageMouseDown">
                 <Grid.RowDefinitions>
                     <RowDefinition x:Name="PresenceStageRow" Height="*" />
                     <RowDefinition x:Name="DetailStageRow" Height="0" />
@@ -306,7 +306,7 @@
                             </StackPanel>
                         </Button>
                 </Canvas>
-                <Grid x:Name="EditorPanel" Grid.Column="2" Opacity="0" Visibility="Hidden" IsEnabled="False" IsHitTestVisible="False"
+                <Grid x:Name="EditorPanel" Grid.Column="2" Opacity="0" Visibility="Hidden" IsEnabled="False" IsHitTestVisible="False" InputMethod.IsInputMethodEnabled="True"
                       Margin="4,10,4,10" MinHeight="310" VerticalAlignment="Top" KeyboardNavigation.TabNavigation="Continue" AutomationProperties.Name="外观预览选项">
                     <Grid.RenderTransform><TranslateTransform x:Name="PanelTranslation" X="46" /></Grid.RenderTransform>
                     <Grid.RowDefinitions><RowDefinition x:Name="EditorHeadingRow" Height="36" /><RowDefinition Height="*" /></Grid.RowDefinitions>
@@ -362,7 +362,7 @@
                       </Grid>
                     </ScrollViewer>
                 </Grid>
-                <Grid x:Name="FaceEditorTools" Grid.Column="2" Grid.RowSpan="2" Visibility="Hidden" Opacity="0"
+                <Grid x:Name="FaceEditorTools" Grid.Column="2" Grid.RowSpan="2" Visibility="Hidden" Opacity="0" InputMethod.IsInputMethodEnabled="True"
                       IsEnabled="False" IsHitTestVisible="False" Margin="4,8,4,8" VerticalAlignment="Center"
                       KeyboardNavigation.TabNavigation="Continue" AutomationProperties.Name="捏脸预览与保存">
                     <Grid.RowDefinitions>
@@ -453,7 +453,7 @@
                         </StackPanel>
                     </StackPanel>
                 </Grid>
-                <Grid x:Name="AccessoryEditorTools" Grid.Column="2" Grid.RowSpan="2" Visibility="Hidden" Opacity="0"
+                <Grid x:Name="AccessoryEditorTools" Grid.Column="2" Grid.RowSpan="2" Visibility="Hidden" Opacity="0" InputMethod.IsInputMethodEnabled="True"
                       IsEnabled="False" IsHitTestVisible="False" Margin="4,8,4,8" VerticalAlignment="Center"
                       KeyboardNavigation.TabNavigation="Continue" AutomationProperties.Name="换装预览与保存">
                     <Grid.RowDefinitions>
@@ -489,7 +489,7 @@
                     <Button x:Name="BackFromPorchButton" Content="首页 ↗" HorizontalAlignment="Right" VerticalAlignment="Top" BorderBrush="Transparent"
                             Padding="8,4" MinHeight="30" Click="OnBackFromPorchClick" AutomationProperties.Name="返回我的团子" ToolTip="Esc · 返回首页" />
                     <Border x:Name="PorchOperations" Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Top"
-                            Panel.ZIndex="5" Width="360" MaxHeight="300" KeyboardNavigation.TabNavigation="Cycle"
+                            Panel.ZIndex="5" Width="360" MaxHeight="300" KeyboardNavigation.TabNavigation="Cycle" InputMethod.IsInputMethodEnabled="True"
                             AutomationProperties.Name="门廊目标操作区">
                         <Grid>
                             <local:RoomPanelView x:Name="RoomContent" Visibility="Collapsed" HorizontalAlignment="Stretch" />
