@@ -178,3 +178,25 @@ fresh S2在第163项120／100／胖0 changing遇到原生−96，立即停止，
 S2终态独立审查已封闭，报告`matrix/motion-review/review-final.json` SHA`006804D56D0A3FAB88CB35EAF069F12BF602B391DCD41DEFE90A5462F6673089`；auditPassed为true、physicalPassed为false，明确不准入S3。严格163项prefix、前162项全部原物理门槛、失败4446／4445计数和实际首行−96均经复核。独立从样本重算60个flight圆窗、108个release恢复汇总及72个控制位移，并由实际app离线重算7894个保存采样的ShapeMetrics／WPF边界，全部一致。前143项全部保存字段除Elapsed外与旧endpoint通过项精确相等；仍不声称未保存整帧流相同。审查零world，不据此推断根因。
 
 已审查S2失败现场另存工作区外`singleton-motion-215710`，754文件源／目标SHA全部一致；backup manifest SHA`737c88337103a72318490e6aa9d861d4bd8bba606246f3148142c60c3ad1d674`。副本如实记录hard-failure-stop、163个记录trial、auditPassed=true、physicalPassed=false及not-admitted-to-S3；不将文件保全成功标为物理通过。
+
+协调器及S2终态记录已本地提交`5815b29`，恰包含本轮四个root文件，raw暂存blob与live逐字节一致；原四项dirty及cache排除。该提交不代表运动整批或人工验收通过。
+
+## 第四失败冻结诊断与唯一固定输入参考（已独立复核，待新合同批准）
+
+实际managed边界包`fourth-failure/managed-input/manifest.json` SHA`9b7c40cb3beeda338cbeb5137e6980b538c6dc5f30f057b2a296c2a42cac9148`。独立零world审查`matrix/fourth-failure-review/managed-freeze/review-final.json` SHA`dc8e13630dc6b3c3fefce7bbb7e3b85c64efcdd14294cb0978d59076233fa631`通过：实际程序集41字段／164字节配置、全部4446行actual Step lambda输入、初始高度5d／3及Add的conv.r4、FixedStep166666 ticks／dt、最终double目标位值均精确相同。34份原包及保全副本全部SHA不变。
+
+四个实际DLL从同一冻结边界独立运行，都在公开4446帧锁存−96，健康4445帧及停帧保留行完全相同；完整公开流SHA`398edbf775b91010fb8ac56994983d363c5297f7ae03b805f4b3ce8ab5e345f4`，每pair的186690健康float字段0位差，末健康行与实际S2报告按位相同。内部停止必须区别：旧认可版在71124小步拒绝已经离地的超锥记录；receipt-v10、endpoint-v5、singleton-v5在该步正确退休该记录，在71125小步拒绝新触地记录。公开相同不代表失败帧内部world／小步状态相同。
+
+当前71125小步node3的y与float(ground+radius)都为`-.6660000085830688`，gap严格0；原tolerance为`8.1599996412731746e-06`。真实raw N／T为`.08098693192005157`／`-.060812924057245255`，mixed friction为`.7200000286102295`。实际摩擦末态N为`.08446238934993744`，恢复法向差量`-.0034754574298858643`、切向差量0；原摩擦末态通过，恢复后锥超量为`.0025023307577534126`，超过原余量。实时node／live／generation／point／方向／来源、负恢复差量、原摩擦末态、float前后状态、stored／rest检查全部成立，唯一失败guard为detached。原离地入口在此场景正确拒绝，不能把触地记录退休。
+
+source-equivalent observer公开流与实际singleton DLL全字节相同；失败diagnostic仅history.source运行指针前8字节不同，其余200704字节相同。233个原Box2D文件和全部观测插桩逆还原已独立核验。此前71124的合法退休事件与当前分类拒绝分开；singleton当前没有original selection事件，last-event全零，block／rank／selection／retry及下游检查均未到。不能使用旧事件放行当前记录。
+
+唯一私有固定输入参考零world、只执行一次：保留pinned node3真实raw N／T和touching两条active行，诊断副本仅改变该冻结输入的入口guard及该例外slack为0。原入口仍BUILD／RECEIPT失败，参考原build／完整solve、double／float行与账本、原double-scale cap全部通过；solves1、active10、原limit32，额外modeAttempts0。独立重建160条几何／梯度，实际active IDs为6、41、43、45、61、63、84、86、131、147；全17节点速度／冲量、能量、动量及角动量账本均通过。最终node3总N／T为`.2969305336411595`／`-.19582786455627618`，锥excess为`-.01796212816060938`。capScale1；没有主动缩放限速覆盖，也没有新候选运行或完整矩阵通过。
+
+封闭清单`fourth-failure/closure-manifest.json` SHA`2b47eccec7efdfba44da81564432554f66a316a9a541888ac21c20edb263363d`，guard-result SHA`ffde22fb968a651c8bf0a6477f0aa00ca84304cda06a3faf7eb5497f116f640f`，reference JSON SHA`ce0684f30dc99a39a2f33a6883130adbe7e51b17d8365078bd6e201ce72dbaac`，original JSON SHA`e107b0b7602215f1dfb2eaa9fde580ea72aac29498a384d4e7fce8407574b573`，pre-run manifest SHA`7a647efdd6807f01d0a6e375c3f299ae235f6a90b7b0a22bfb1111c95711c5e7`。350项闭包文件及closure自身已独立保全，692个受保护native／旧证据文件未变；HEAD5815b29为根正常提交，不冒充原封闭时点HEAD。
+
+独立证据终报`matrix/fourth-failure-review/native-reference/review-final.json` SHA`16cee207a9b92f6c166ae8a3e40d7f650a0e68d49451c5b0cc87d8105a58222f`，合同审查`contract-review.json` SHA`9338a53b5152a47f7e1b8f47332ed1697405deac383430f564d0e62c95dae3fe`，呈审终报`presentation-review-final.json` SHA`8f488c1950e3e22567f639f13535f4c95cc606db7bb908ccbbb887fef4a70f7c`。当前证书的sequence／step／view71125、shape／body／point／generation及恢复N／T与实际diagnostic逐字段、二进制一致，补充SHA`d54160eb445c9a3963aee84283bcf4e13a5b9a5c5e2043c759268619a632b653`。审查零新world、零native执行，无源码／index／门槛／S3变更。
+
+根计划新增“第四失败的触地记录导入方案（待用户批准）”，审核原raw SHA`11dcaaa80544ba71b2832979b429c15c8ae41a0c03851aa961a14853ae235726`，已保全为contract-draft-preserved.md。独立审查仅确认证据与最小合同足以呈审：gap严格0、整次最多一条单point、fresh完整来源、raw留current及active接触行、该例外slack0、原全部终态门槛和共享补救预算不扩大。新私有目录／运行时入口尚未批准或实施；S2仍失败，candidate及S3均未准入，真实窗口／人工验收／main合并／推送／安装／正式DLL替换未开展。
+
+第四失败及呈审证据另存工作区外`singleton-fourth-223254`，834文件源／目标SHA全部一致，backup manifest SHA`696a5c55ef6cd2540a34b629c1c0ae39b9a7b3b2b73f00bc2e5f6cc86863a0c9`；同时复核前序`singleton-motion-215710`的754份封存文件未变。新副本明确包含实际DLL／observer冻结世界旁路，唯一固定参考则为零world／1次执行；记录physicalMatrixPassed=false、candidateImplemented=false、S3未开始及仍需用户批准，不把审查或保全成功描述为物理验收。
