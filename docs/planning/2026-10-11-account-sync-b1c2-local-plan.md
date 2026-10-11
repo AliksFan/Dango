@@ -1,6 +1,6 @@
 # B1c2 请求生命周期与完整桌面跨账号候选
 
-日期：2026-10-11。状态：诊断候选离线门禁完成，本阶段真实资源尚未批准或执行。新C#60、旧helper276、SQL元数据151、Windows账号装配／UIA11及PowerShell新增511＋旧2350检查通过；固定正式入口在旧grant开启／新grant关闭时精确1个NotExecuted，止于资源初始化前。冻结前修正外层TRX遗留旧方法名，并增加14项精确入口与结果关联检查，正式业务和资源预算不变。构建与失败保留见[准备记录](../verification/2026-10-11-account-sync-b1c2-preparation.md)。冻结提交、清单和摘要以最终精确授权消息为准。前次[B1c1一次执行](../verification/2026-10-11-account-sync-b1c1-failed.md)整体失败且授权已消耗；其冻结清单、二进制、原始证据和失败回执保持原样。本阶段不能补写旧请求的取消原因，也不能借旧授权重跑或补SQL。
+日期：2026-10-11。状态：用户批准后的唯一一次冻结执行已通过，本阶段技术门禁完成，授权已执行完毕。正式TRX精确1个Passed，外层runner及最终双账号scoped通过；21次业务reservation、66次HTTP登记／64次实际Send、2次未发送的正常注销取消均已核实。22表旧行与全部数据／密钥／恢复代际保留，本次资源收尾通过，详见[完整验证记录](../verification/2026-10-11-account-sync-b1c2-passed.md)。冻结提交为44a4ca1c15df3f69e4e9d96bb729700dc79deb4f，清单SHA256为8AF08481865049615ECAE220314AD5DB18C9B9177F6173882E25751E4D9AB0DC。以下正文保留获批计划快照；本状态更新不改变冻结提交、原清单和回执，也不授权重跑或追加资源。执行前新C#60、旧helper276、SQL元数据151、Windows账号装配／UIA11及PowerShell新增511＋旧2350检查通过，见[准备记录](../verification/2026-10-11-account-sync-b1c2-preparation.md)。前次[B1c1执行](../verification/2026-10-11-account-sync-b1c1-failed.md)仍为整体失败，原证据不被追认。
 
 ## 定位与修复边界
 
