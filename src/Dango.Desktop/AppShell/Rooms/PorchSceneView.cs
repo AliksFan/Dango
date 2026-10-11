@@ -61,6 +61,7 @@ public sealed class PorchSceneView : Grid
     internal event Action<string>? DoorSelected;
     internal event Action? GameplayFocusRequested;
     internal event Action? LocalRoomRequested;
+    internal event Action? LocalFurnitureRequested;
     internal event Action? DesktopPetRoomRequested;
     internal bool IsReviewMode { get; private set; }
     internal int DoorCount => VisibleDoors.Length;
@@ -134,6 +135,14 @@ public sealed class PorchSceneView : Grid
 
     private void UpdateProjection() => liveLayer.RenderTransform = new MatrixTransform(
         SceneScale, 0, 0, SceneScale, -CameraX * SceneScale, FrontGroundY - liveGroundY * SceneScale);
+
+    internal bool RequestNearbyFurniture()
+    {
+        if (!localRoomEnabled || unavailable || NearbyDoorId != "local-single") return false;
+        selectedDoor = "local-single";
+        LocalFurnitureRequested?.Invoke();
+        return true;
+    }
 
     internal bool InteractNearestDoor()
     {

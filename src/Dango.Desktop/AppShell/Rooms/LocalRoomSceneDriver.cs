@@ -3,6 +3,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using Dango.Core.Animation;
 using Dango.Core.Coordinates;
+using Dango.Desktop.Furniture;
 using Dango.Desktop.DesktopHost;
 using Dango.Desktop.DesktopHost.Interaction;
 using Dango.Desktop.Physics.Presentation;
@@ -30,6 +31,9 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     private bool hasPositionSample;
     private LocalRoomSceneView? view;
     private DirectionalControlIntent intent;
+    private readonly bool furnitureEnabled;
+    private bool furnitureGloveActive;
+    internal OrdinaryRoomFurnitureSession? Furniture => runtime.Furniture;
     private bool alignmentPending;
     private bool readySent;
     private long generation;
@@ -39,6 +43,7 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     internal event Action<long, string>? Failed;
     internal event Action? PointerCancelled;
     internal bool OwnsRuntime => scheduler.OwnsRuntime;
+    internal bool IsReady => readySent && scheduler.OwnsRuntime;
     internal HostFrameDiagnostics FrameDiagnostics => scheduler.Snapshot;
     internal bool RuntimeRunning => runtime.IsRunning;
     internal bool RuntimeHealthy => runtime.LastError is null && runtime.LastFrame is not null;
@@ -51,10 +56,12 @@ internal sealed class LocalRoomSceneDriver : IDisposable
         $"NativeBody={runtime.LastPhysicsFrame?.Bodies.FirstOrDefault()}; Cancel={lastPointerCancellation}";
     internal void ResetEntryPosition() => resumeX = LocalRoomSceneView.WorldWidth / 2;
     internal LocalRoomSceneDriver(DesktopSceneSession session, StackedDangoSceneRuntime runtime,
-        IHostFrameSource? frameSource = null, Func<long>? timestamp = null, long frequency = 0)
+        IHostFrameSource? frameSource = null, Func<long>? timestamp = null, long frequency = 0, string? furnitureDataRoot = null)
     {
         this.session = session;
         this.runtime = runtime;
+        furnitureEnabled = furnitureDataRoot is not null;
+        if (furnitureDataRoot is not null) runtime.ConfigureOrdinaryFurniture(furnitureDataRoot);
         pointer = new(runtime, allowPhysicalDrag: false);
         runtime.InputCancelled += OnRuntimeInputCancelled;
         scheduler = new(runtime, Prepare, CreateInput, Apply, frameSource, timestamp, frequency);
@@ -68,9 +75,9 @@ internal sealed class LocalRoomSceneDriver : IDisposable
         pointer = new(runtime, allowPhysicalDrag: target.DesktopPetPresentationEnabled,
             constrainPhysicalTarget: target.DesktopPetPresentationEnabled ? ClampPhysicalDragTarget : null);
         activeSurface = target.DesktopPetPresentationEnabled ? target.DesktopPetWorldSurface : Surface;
-        if (view is not null) view.InputInvalidated -= CancelPointer;
+        if (view is not null) view.InputInvalidated -= CancelRoomPointers;
         view = target;
-        target.InputInvalidated += CancelPointer;
+        target.InputInvalidated += CancelRoomPointers;
         generation = attempt;
         readySent = false;
         intent = DirectionalControlIntent.None;
@@ -97,7 +104,7 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     {
         if (runtime.CurrentSelectedCenter is { } center && scheduler.OwnsRuntime) resumeX = center.X;
         ClearInput();
-        if (view is not null) view.InputInvalidated -= CancelPointer;
+        if (view is not null) view.InputInvalidated -= CancelRoomPointers;
         scheduler.Stop();
         positions.Clear();
         hasPositionSample = false;
@@ -111,7 +118,7 @@ internal sealed class LocalRoomSceneDriver : IDisposable
 
     internal void ClearInput()
     {
-        CancelPointer();
+        CancelRoomPointers();
         intent = DirectionalControlIntent.None;
         view?.ClearWheel();
         if (scheduler.OwnsRuntime) runtime.CancelInput();
@@ -142,6 +149,45 @@ internal sealed class LocalRoomSceneDriver : IDisposable
         if (!CanContinuePointer() || !TryPointerWorld(sceneDip, out var world)) { CancelPointer(); return true; }
         pointer.End(world, nowMilliseconds ?? Environment.TickCount64, shift);
         return true;
+    }
+
+    private void CancelRoomPointers()
+    {
+        CancelPointer();
+        CancelFurnitureGlove();
+    }
+
+    internal bool BeginFurnitureGlove(Point sceneDip)
+    {
+        if (!CanContinuePointer() || Furniture?.CanEdit != true || !view!.IsPetHit(sceneDip)) return false;
+        CancelRoomPointers();
+        var anchor = view.ScreenToFurnitureAnchor(sceneDip);
+        furnitureGloveActive = runtime.BeginOrdinaryFurnitureGlove(anchor.X, anchor.Y);
+        return furnitureGloveActive;
+    }
+
+    internal bool MoveFurnitureGlove(Point sceneDip)
+    {
+        if (!furnitureGloveActive) return false;
+        if (!CanContinuePointer()) { CancelFurnitureGlove(); return false; }
+        var anchor = view!.ScreenToFurnitureAnchor(sceneDip);
+        runtime.UpdateOrdinaryFurnitureGlove(anchor.X, anchor.Y);
+        return true;
+    }
+
+    internal bool EndFurnitureGlove(Point sceneDip)
+    {
+        if (!furnitureGloveActive) return false;
+        MoveFurnitureGlove(sceneDip);
+        CancelFurnitureGlove();
+        return true;
+    }
+
+    internal void CancelFurnitureGlove()
+    {
+        if (!furnitureGloveActive) return;
+        furnitureGloveActive = false;
+        runtime.EndOrdinaryFurnitureGlove();
     }
 
     internal void CancelPointer()
@@ -216,6 +262,11 @@ internal sealed class LocalRoomSceneDriver : IDisposable
         // BeginPhysicalDrag can cancel the old light target during conversion.
         // LightInteractionSession clears it first and then establishes the drag target.
         if (pointer.IsActive) CancelPointerCore("runtime cancelled input");
+        if (furnitureGloveActive)
+        {
+            furnitureGloveActive = false;
+            PointerCancelled?.Invoke();
+        }
     }
 
     internal bool Key(System.Windows.Input.Key key, bool down, bool repeat)
@@ -235,7 +286,7 @@ internal sealed class LocalRoomSceneDriver : IDisposable
 
     private bool Prepare()
     {
-        if (pointer.IsActive && !CanContinuePointer()) CancelPointer();
+        if ((pointer.IsActive || furnitureGloveActive) && !CanContinuePointer()) CancelRoomPointers();
         if (!scheduler.OwnsRuntime || view is null || !view.IsVisible || view.ActualWidth <= 0 || view.ActualHeight <= 0) return false;
         if (runtime.LastError is not null) { ReportFailure("团子暂不可用，请返回设置重试。"); return false; }
         try
@@ -254,6 +305,9 @@ internal sealed class LocalRoomSceneDriver : IDisposable
                 runtime.SetHorizontalBounds(left, right);
                 alignmentPending = false;
             }
+            if (furnitureEnabled && view.WindowCameraEnabled && !view.DesktopPetPresentationEnabled &&
+                !runtime.AttachOrdinaryFurniture())
+            { ReportFailure(Furniture?.Status ?? "家具布局暂不可用，请返回门廊重试。"); return false; }
             runtime.SetDirectionalControl(view.InputBlocked ? DirectionalControlIntent.None : intent);
             runtime.UpdateQuietIdleHost(this, true);
             return true;
@@ -270,6 +324,8 @@ internal sealed class LocalRoomSceneDriver : IDisposable
 
     private void Apply(StackedPhysicsPresentationFrame frame)
     {
+        if (view?.WindowCameraEnabled == true && furnitureEnabled)
+            view.SetFurnitureFrame(Furniture?.RenderItems ?? [], Furniture?.Preview, false);
         if (view is null || alignmentPending || !view.ApplyFrame(frame, runtime))
         { if (runtime.LastError is not null) ReportFailure("房间首帧不可用，请返回门廊重试。"); return; }
         if (readySent || confirmation is not null) return;

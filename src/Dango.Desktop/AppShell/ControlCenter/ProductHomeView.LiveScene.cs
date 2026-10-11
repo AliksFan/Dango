@@ -29,6 +29,16 @@ public partial class ProductHomeView
     internal StackedDangoSceneRuntime? BoundRuntime { get; private set; }
     internal bool OwnsLiveFrameDriver => liveScheduler?.OwnsRuntime == true;
     internal void ReleaseLiveScene() => StopLiveScene();
+    internal void UnbindLiveScene()
+    {
+        StopLiveScene();
+        DetachLiveFocusSafety();
+        if (liveScheduler is not null) liveScheduler.CallbackCompleted -= PresentAccessoryPreview;
+        liveScheduler = null;
+        BoundRuntime = null;
+        BoundSceneSession = null;
+        liveSceneSuspended = true;
+    }
 
     internal void SuspendForRoom()
     {
