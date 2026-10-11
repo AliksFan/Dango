@@ -20,6 +20,8 @@ public sealed class Evidence
     public int ProcessId { get; set; } = Environment.ProcessId;
     public string SourceHash { get; set; } = "";
     public string DllHash { get; set; } = "";
+    public string NativePlatform { get; set; } = "";
+    public string BuildRecordHash { get; set; } = "";
     public string ParameterHash { get; set; } = "";
     public bool Pass { get; set; }
     public List<ProbeCheck> Checks { get; set; } = [];
@@ -50,7 +52,6 @@ public sealed record NativeProbeEvidence(int ProcessId,int ExitCode,ulong LastSa
 
 internal static class Program
 {
-    private const string FrozenDll = "59EC861EE748BA93E661D058EEBD01D3E8A04ABF9D24F0376BACB4D98015B6DC";
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
     private static readonly DateTimeOffset Now = new(2026,10,11,0,0,0,TimeSpan.Zero);
     public static int Main(string[] args)
@@ -63,29 +64,46 @@ internal static class Program
         nint library=0;
         try
         {
-            if(e.Mode=="verify") return Verify(Option("--output"));
+            var buildRecord = options.ContainsKey("--linux-build-record") ? Option("--linux-build-record") : null;
+            if(e.Mode=="verify") return Verify(Option("--output"),Option("--dll"),Option("--probe"),buildRecord);
             string dll = Path.GetFullPath(Option("--dll"));
             e.DllHash = Hash(File.ReadAllBytes(dll));
             e.ParameterHash=NativeParameterHash();
-            e.SourceHash=SourceHash();
-            e.Check("frozen-dll",e.DllHash==FrozenDll,e.DllHash);
-            if(e.DllHash!=FrozenDll) throw new InvalidOperationException("Wrong frozen R1 binary.");
-            library=NativeLibrary.Load(dll);
-            var allocated=Marshal.GetDelegateForFunctionPointer<AllocatedBytes>(NativeLibrary.GetExport(library,"dango_physics_get_allocated_bytes"));
-            e.Allocation.Before=allocated();
+            e.SourceHash=NativeBinaryProfile.SourceHash();
+            e.NativePlatform=NativeBinaryProfile.Platform;
+            if(buildRecord is not null && File.Exists(buildRecord)) e.BuildRecordHash=Hash(File.ReadAllBytes(buildRecord));
+            bool admitted=false;
+            string profileDetail;
             try
             {
-                switch(e.Mode)
-                {
-                    case "suite": Suite(dll,Option("--probe"),e); break;
-                    case "planner": PlannerChecks(e); break;
-                    case "containment": ContainmentChecks(dll,e); break;
-                    case "produce": Produce(dll,Option("--probe"),Option("--metadata"),Option("--disposition","lost"),int.Parse(Option("--steps","60")),e); break;
-                    case "consume": Consume(dll,Option("--metadata"),Option("--disposition","lost"),e); break;
-                    default: throw new ArgumentException("Mode must be suite, produce, consume or verify.");
-                }
+                var profile=NativeBinaryProfile.Validate(dll,Option("--probe"),buildRecord);
+                if(e.Mode=="profilecheck" || profile.Platform=="linux-x64")
+                    NativeBinaryProfile.ValidateLoader(dll,allExports:profile.Platform=="linux-x64");
+                admitted=true;profileDetail=$"{profile.Platform}; {profile.ModuleHash}; build record {profile.BuildRecordHash}";
             }
-            finally { e.Allocation.After=allocated(); }
+            catch(Exception error) { profileDetail=error.Message; }
+            e.Check("frozen-dll",admitted,profileDetail);
+            if(e.Mode=="profilecheck") e.Check("native-binary-profile",admitted,profileDetail);
+            if(admitted)
+            {
+                library=NativeLibrary.Load(dll);
+                var allocated=Marshal.GetDelegateForFunctionPointer<AllocatedBytes>(NativeLibrary.GetExport(library,"dango_physics_get_allocated_bytes"));
+                e.Allocation.Before=allocated();
+                try
+                {
+                    switch(e.Mode)
+                    {
+                        case "suite": Suite(dll,Option("--probe"),e); break;
+                        case "planner": PlannerChecks(e); break;
+                        case "containment": ContainmentChecks(dll,e); break;
+                        case "produce": Produce(dll,Option("--probe"),Option("--metadata"),Option("--disposition","lost"),int.Parse(Option("--steps","60")),e); break;
+                        case "consume": Consume(dll,Option("--metadata"),Option("--disposition","lost"),e); break;
+                        case "profilecheck": break;
+                        default: throw new ArgumentException("Mode must be suite, planner, containment, produce, consume, profilecheck or verify.");
+                    }
+                }
+                finally { e.Allocation.After=allocated(); }
+            }
             e.Check("native-allocation-returned",e.Allocation.Before==e.Allocation.After,$"{e.Allocation.Before}->{e.Allocation.After}");
             e.Check("native-owner-disposed",e.NativeCounts.Created==e.NativeCounts.Disposed,$"{e.NativeCounts.Created}/{e.NativeCounts.Disposed}");
         }
@@ -107,18 +125,6 @@ internal static class Program
         var size=Marshal.SizeOf(type); var memory=Marshal.AllocHGlobal(size);
         try { Marshal.StructureToPtr(value,memory,false);var bytes=new byte[size];Marshal.Copy(memory,bytes,0,size);return Hash(bytes); }
         finally {Marshal.FreeHGlobal(memory);}
-    }
-    private static string SourceHash()
-    {
-        var project=Path.GetFullPath("../../..",AppContext.BaseDirectory);
-        var root=Path.GetFullPath("../../..",project);
-        var files=new[]{"eng/tools/Dango.SafeSpawnAdmission","eng/tools/Dango.SafeSpawnAdmission.Core","src/Dango.Physics","eng/native/box2d"}
-            .SelectMany(part=>Directory.EnumerateFiles(Path.Combine(root,part),"*",SearchOption.AllDirectories))
-            .Where(path=>!path.Split(Path.DirectorySeparatorChar).Any(p=>p is "bin" or "obj"))
-            .OrderBy(path=>Path.GetRelativePath(root,path),StringComparer.Ordinal);
-        using var hash=IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        foreach(var file in files) {hash.AppendData(Encoding.UTF8.GetBytes(Path.GetRelativePath(root,file).Replace('\\','/')));hash.AppendData(File.ReadAllBytes(file));}
-        return Convert.ToHexString(hash.GetHashAndReset());
     }
     private static NativeRecoveryOwner Fresh(string dll,NativeCounts counts,int count=2,Guid? epoch=null)
     {
@@ -522,12 +528,30 @@ internal static class Program
         for(int t=1;t<600;t++) owner.Step();
         e.Check("recovery-600-steps",owner.Read().Authority.Tick==600,"every step passed raw contour/contact/frame gates");
     }
-    private static int Verify(string path)
+    private static int Verify(string path,string dll,string probe,string? buildRecord)
     {
-        var e=JsonSerializer.Deserialize<Evidence>(File.ReadAllText(path),Json);
-        bool pass=e is not null && e.Version==1 && e.Checks.Count>0 && e.Checks.All(c=>c.Pass) && e.Pass &&
-            e.DllHash==FrozenDll && e.NativeCounts.Created==e.NativeCounts.Disposed && e.Allocation.Before==e.Allocation.After &&
-            e.Recovery.RecordValidationToHealthyMs<=5000;
+        bool pass=false;
+        try
+        {
+            var e=JsonSerializer.Deserialize<Evidence>(File.ReadAllText(path),Json);
+            // The executing platform and current files determine the expectation;
+            // report metadata never selects a more permissive binary profile.
+            var platform=NativeBinaryProfile.Platform;
+            var expectedHash=NativeBinaryProfile.FrozenDll;
+            var sourceHash="";var recordHash="";
+            if(platform=="linux-x64")
+            {
+                var profile=NativeBinaryProfile.Validate(dll,probe,buildRecord);
+                NativeBinaryProfile.ValidateLoader(dll,allExports:true);
+                expectedHash=profile.ModuleHash;sourceHash=profile.SourceHash;recordHash=profile.BuildRecordHash;
+            }
+            else if(platform!="win-x64" || buildRecord is not null) throw new InvalidOperationException("Invalid verify platform/profile.");
+            pass=e is not null && e.Version==1 && e.Checks.Count>0 && e.Checks.All(c=>c.Pass) && e.Pass &&
+                e.NativePlatform==platform && e.BuildRecordHash==recordHash && (platform!="linux-x64" || e.SourceHash==sourceHash) &&
+                e.DllHash==expectedHash && e.NativeCounts.Created==e.NativeCounts.Disposed && e.Allocation.Before==e.Allocation.After &&
+                e.Recovery.RecordValidationToHealthyMs<=5000;
+        }
+        catch(Exception) { pass=false; }
         Console.WriteLine(JsonSerializer.Serialize(new {Version=1,Mode="verify",Pass=pass},Json));return pass?0:1;
     }
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int AllocatedBytes();
