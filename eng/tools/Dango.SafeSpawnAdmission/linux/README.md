@@ -28,6 +28,10 @@ the system math library, then builds the existing `net10.0` console tool offline
 `linux-build-record.json` contains exactly the approved 12 version-1 fields. Actual
 ELF64/x86-64 identities, 35 header exports, loader ABI, source/file hashes, Box2D tree,
 compiler/SDK/environment and exact build commands are retained separately.
+After building and again after verification, `check-box2d` recomputes the actual
+extracted Box2D tree's hash and complete path/size/SHA inventory, checks the actual
+license and fixed origin, and compares every entry with the extraction snapshot.
+Both check receipts are required before the root manifest can pass.
 
 The independent verifier checks:
 
