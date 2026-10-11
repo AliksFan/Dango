@@ -200,8 +200,27 @@ public sealed class PorchAccountSceneTests
         native.Advance(90);
         var entity = native.Runtime.EntityIds.Single();
         using var keyboard = nativeKeyboard ? new OwnedPorchKeyboard(native.Window) : null;
-        ((Grid)home.FindName("Stage")).Focus();
-        if (keyboard is not null) keyboard.Press(0x57);
+        var stage = (Grid)home.FindName("Stage");
+        stage.Focus();
+        if (keyboard is not null)
+        {
+            PumpUntil(() => stage.IsKeyboardFocused);
+            Assert.IsTrue(home.IsKeyboardFocusWithin, "Native input requires this owned scene to have WPF focus.");
+            var trace = new List<object>();
+            KeyEventHandler observe = (_, input) => trace.Add(new
+            {
+                Key = input.Key.ToString(), ImeKey = input.ImeProcessedKey.ToString(),
+                input.Handled, StageFocused = stage.IsKeyboardFocused, home.IsAccountPanelOpen,
+                home.IsEditing, home.IsInPorch, Modifiers = Keyboard.Modifiers.ToString()
+            });
+            home.AddHandler(Keyboard.PreviewKeyDownEvent, observe, true);
+            try { keyboard.Press(0x57); }
+            finally
+            {
+                home.RemoveHandler(Keyboard.PreviewKeyDownEvent, observe);
+                Console.WriteLine("Owned W input: " + System.Text.Json.JsonSerializer.Serialize(trace));
+            }
+        }
         else
         {
             var peer = UIElementAutomationPeer.CreatePeerForElement((Button)home.FindName("EnterRoomButton"))!;

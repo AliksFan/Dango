@@ -349,7 +349,10 @@ public partial class ProductHomeView : UserControl
             return;
         if (IsInPorch && IsAppearanceInputFocused())
             return;
-        if (e.Key == Key.Escape)
+        // Resolve IME-wrapped physical keys only after account/text input owns
+        // its event, so composition in an editor cannot navigate the scene.
+        var key = e.Key == Key.ImeProcessed ? e.ImeProcessedKey : e.Key;
+        if (key == Key.Escape)
         {
             if (e.IsRepeat) { e.Handled = IsSettingsOpen || IsInPorch || IsEditing; return; }
             if (IsSettingsOpen)
@@ -365,19 +368,19 @@ public partial class ProductHomeView : UserControl
         }
         if (IsAccessoryPreview && !IsSettingsOpen && !IsDangoAway)
         {
-            e.Handled = SetLiveDirectionalKey(e.Key, true, e.IsRepeat);
+            e.Handled = SetLiveDirectionalKey(key, true, e.IsRepeat);
             return;
         }
         if (IsSettingsOpen || IsDangoAway || IsAppearanceInputFocused())
             return;
-        if (!IsInPorch && e.Key is (Key.A or Key.D))
+        if (!IsInPorch && key is (Key.A or Key.D))
         {
-            if (!e.IsRepeat) ShowEditor(e.Key == Key.D ? HomeEditor.Face : HomeEditor.Wardrobe);
+            if (!e.IsRepeat) ShowEditor(key == Key.D ? HomeEditor.Face : HomeEditor.Wardrobe);
             e.Handled = true;
             return;
         }
-        if (IsEditing && e.Key is not (Key.S or Key.Space)) return;
-        if (e.Key == Key.W)
+        if (IsEditing && key is not (Key.S or Key.Space)) return;
+        if (key == Key.W)
         {
             if (!e.IsRepeat)
             {
@@ -387,20 +390,21 @@ public partial class ProductHomeView : UserControl
             e.Handled = true;
             return;
         }
-        e.Handled = SetLiveDirectionalKey(e.Key, true, e.IsRepeat);
+        e.Handled = SetLiveDirectionalKey(key, true, e.IsRepeat);
     }
 
     private void OnPreviewKeyUp(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (IsAccountPanelOpen) { ClearLiveDirectionalInput(); return; }
+        var key = e.Key == Key.ImeProcessed ? e.ImeProcessedKey : e.Key;
         if (IsAccessoryPreview)
         {
-            e.Handled = SetLiveDirectionalKey(e.Key, false, false);
+            e.Handled = SetLiveDirectionalKey(key, false, false);
             return;
         }
         if (IsSettingsOpen || IsDangoAway || IsAppearanceInputFocused()) { ClearLiveDirectionalInput(); return; }
-        if (!IsInPorch && e.Key is (Key.A or Key.D)) { e.Handled = true; return; }
-        e.Handled = SetLiveDirectionalKey(e.Key, false, false);
+        if (!IsInPorch && key is (Key.A or Key.D)) { e.Handled = true; return; }
+        e.Handled = SetLiveDirectionalKey(key, false, false);
     }
 
     private void OnBackFromPorchClick(object sender, RoutedEventArgs e) => LeavePorch();
