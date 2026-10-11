@@ -22,6 +22,13 @@ workspace. The container owner removes the temporary container after retaining e
 This entry does not start Docker, install packages, connect a network, open a window or
 modify production source, native ABI, solver configuration or Windows frozen hashes.
 
+The Windows host wrapper bounds each Docker metadata query to five seconds (the
+owned container stop request has a fifteen-second outer deadline). Startup retains
+its 180-second deadline. A hung owned query is terminated and its actual exit,
+timeout, PID and drained output are recorded; a timeout cannot confirm cleanup.
+The host helper's normal-output, actual nonzero-exit and hung-process tests run via
+`test-bounded-process.ps1 -EvidenceDirectory <new-artifacts-directory>`.
+
 The entry checks archive and license bytes before extracting the official Box2D tree.
 It builds the unchanged module and independent C probe in Release, with Linux PIC and
 the system math library, then builds the existing `net10.0` console tool offline.

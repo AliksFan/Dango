@@ -6,6 +6,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'BoundedProcess.ps1')
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../..'))
 $archive = (Resolve-Path -LiteralPath $Box2DArchivePath).Path
 $evidence = [IO.Path]::GetFullPath($EvidenceDirectory)
@@ -49,6 +50,21 @@ $createAttempted = $false
 $daemonStarted = $false
 $hostResult = [ordered]@{Version=1;GitHead=$gitHead;ContainerName=$container;TaskLabel=$label;SdkImage=$SdkImage;
     DaemonStartedByTask=$false;ContainerRemoved=$false;ContainerCreationAttempted=$false;VerificationNetwork='none';PublishedPorts=@();Pass=$false}
+$queryProcesses = [Collections.Generic.List[object]]::new()
+
+function Invoke-DockerQuery([string]$Name, [string[]]$Arguments, [int]$TimeoutMilliseconds = 5000) {
+    $result = Invoke-DangoBoundedProcess $docker (@('--context','desktop-linux') + $Arguments) $TimeoutMilliseconds
+    $queryProcesses.Add([pscustomobject]@{Name=$Name;ProcessId=$result.ProcessId;ExitCode=$result.ExitCode;
+        TimedOut=$result.TimedOut;Exited=$result.Exited;WallMilliseconds=$result.WallMilliseconds})
+    $result.StdErr | Set-Content -LiteralPath (Join-Path $evidence "$Name.log") -Encoding utf8
+    return $result
+}
+
+function Read-DockerQuery([string]$Name, [string[]]$Arguments, [int]$TimeoutMilliseconds = 5000) {
+    $result = Invoke-DockerQuery $Name $Arguments $TimeoutMilliseconds
+    if ($result.TimedOut -or $result.ExitCode -ne 0) { throw "Docker query $Name failed or timed out; state is unconfirmed." }
+    return $result.StdOut
+}
 
 function Invoke-DockerLogged([string]$Name, [string[]]$Arguments) {
     & $docker --context desktop-linux @Arguments 2>&1 | Set-Content -LiteralPath (Join-Path $evidence "$Name.log") -Encoding utf8
@@ -58,29 +74,36 @@ function Invoke-DockerLogged([string]$Name, [string[]]$Arguments) {
 try {
     $dockerContext = (& $docker context show).Trim()
     if ($LASTEXITCODE -ne 0 -or $dockerContext -cne 'desktop-linux') { throw 'Expected the existing desktop-linux Docker context.' }
-    & $docker --context desktop-linux info --format '{{.OSType}}' 2>$null | Out-Null
-    if ($LASTEXITCODE -ne 0) {
+    $initial = Invoke-DockerQuery 'engine-initial' @('info','--format','{{.OSType}}')
+    if ($initial.TimedOut -or $initial.ExitCode -ne 0) {
         $desktop = Join-Path $env:ProgramFiles 'Docker/Docker/Docker Desktop.exe'
         if (-not (Test-Path -LiteralPath $desktop)) { throw 'Existing Docker Desktop installation unavailable.' }
         Write-Host 'Starting the existing Docker Desktop for the user-selected temporary Linux run.'
         Start-Process -FilePath $desktop -WindowStyle Hidden
         $daemonStarted = $true
         $boot = [Diagnostics.Stopwatch]::StartNew()
-        do {
-            Start-Sleep -Seconds 3
-            & $docker --context desktop-linux info --format '{{.OSType}}' 2>$null | Out-Null
-            $engineReady = $LASTEXITCODE -eq 0
-        } while (-not $engineReady -and $boot.Elapsed.TotalSeconds -lt 180)
+        $engineReady = $false
+        $probeNumber = 0
+        while (-not $engineReady -and $boot.Elapsed.TotalMilliseconds -lt 180000) {
+            $remainingMilliseconds = [int][Math]::Floor(180000 - $boot.Elapsed.TotalMilliseconds)
+            Start-Sleep -Milliseconds ([Math]::Min(3000,$remainingMilliseconds))
+            $remainingMilliseconds = [int][Math]::Floor(180000 - $boot.Elapsed.TotalMilliseconds)
+            if ($remainingMilliseconds -le 0) { break }
+            $probeNumber++
+            $probe = Invoke-DockerQuery "engine-boot-$probeNumber" @('info','--format','{{.OSType}}') ([Math]::Min(5000,$remainingMilliseconds))
+            $engineReady = -not $probe.TimedOut -and $probe.ExitCode -eq 0
+        }
+        $hostResult.EngineStartupMilliseconds = $boot.Elapsed.TotalMilliseconds
         if (-not $engineReady) { throw 'Docker engine did not become available; user assistance may be needed in Docker Desktop.' }
     }
-    $engine = (& $docker --context desktop-linux info --format '{{json .}}' | ConvertFrom-Json)
-    if ($LASTEXITCODE -ne 0 -or $engine.OSType -cne 'linux' -or $engine.Architecture -cnotin @('x86_64','amd64')) { throw 'Docker engine must run Linux x64.' }
+    $engine = Read-DockerQuery 'engine-details' @('info','--format','{{json .}}') | ConvertFrom-Json
+    if ($engine.OSType -cne 'linux' -or $engine.Architecture -cnotin @('x86_64','amd64')) { throw 'Docker engine must run Linux x64.' }
     $hostResult.DaemonStartedByTask = $daemonStarted
     $hostResult.Engine = [ordered]@{ServerVersion=$engine.ServerVersion;OSType=$engine.OSType;Architecture=$engine.Architecture}
     Write-Host 'Pulling the official SDK image; the exact image digest is frozen before execution.'
     Invoke-DockerLogged -Name 'image-pull' -Arguments @('pull','--platform','linux/amd64',$SdkImage)
-    $sdk = (& $docker --context desktop-linux image inspect $SdkImage | ConvertFrom-Json)[0]
-    if ($LASTEXITCODE -ne 0 -or $sdk.Os -cne 'linux' -or $sdk.Architecture -cne 'amd64' -or @($sdk.RepoDigests).Count -eq 0) { throw 'SDK image platform or immutable digest is missing.' }
+    $sdk = (Read-DockerQuery 'image-inspect' @('image','inspect',$SdkImage) | ConvertFrom-Json)[0]
+    if ($sdk.Os -cne 'linux' -or $sdk.Architecture -cne 'amd64' -or @($sdk.RepoDigests).Count -eq 0) { throw 'SDK image platform or immutable digest is missing.' }
     $hostResult.ImageId = $sdk.Id
     $hostResult.RepoDigests = $sdk.RepoDigests
     $hostResult.ImageArchitecture = $sdk.Architecture
@@ -94,8 +117,8 @@ try {
     Invoke-DockerLogged -Name 'container-tools' -Arguments @('exec','--env','DEBIAN_FRONTEND=noninteractive',$container,'bash','-c',
         'apt-get update && apt-get install -y --no-install-recommends build-essential cmake python3 binutils unzip')
     Invoke-DockerLogged -Name 'container-network-disconnect' -Arguments @('network','disconnect','bridge',$container)
-    $isolated = (& $docker --context desktop-linux inspect $container | ConvertFrom-Json)[0]
-    if ($LASTEXITCODE -ne 0 -or @($isolated.NetworkSettings.Networks.PSObject.Properties).Count -ne 0 -or
+    $isolated = (Read-DockerQuery 'container-isolation-inspect' @('inspect',$container) | ConvertFrom-Json)[0]
+    if (@($isolated.NetworkSettings.Networks.PSObject.Properties).Count -ne 0 -or
         @($isolated.HostConfig.PortBindings.PSObject.Properties).Count -ne 0 -or $isolated.HostConfig.Privileged) { throw 'Container isolation does not match the approved plan.' }
     $inputMount = @($isolated.Mounts | Where-Object { $_.Destination -ceq '/inputs' })
     $outputMount = @($isolated.Mounts | Where-Object { $_.Destination -ceq '/evidence' })
@@ -120,21 +143,20 @@ finally {
     $hostResult.DaemonStartedByTask = $daemonStarted
     if ($createAttempted) {
         try {
-            $listed = @(& $docker --context desktop-linux container ls --all --no-trunc --filter "name=^/$container$" --format '{{.ID}}')
-            if ($LASTEXITCODE -ne 0) { throw 'Docker query failed; task container state is unknown.' }
+            $listing = Read-DockerQuery 'cleanup-list-before' @('container','ls','--all','--no-trunc','--filter',"name=^/$container$",'--format','{{.ID}}')
+            $listed = @($listing -split '\r?\n' | Where-Object { $_.Length -gt 0 })
             if ($listed.Count -gt 1) { throw 'Unique task container query returned multiple objects.' }
             if ($listed.Count -eq 1) {
                 $ownedId = $listed[0].Trim()
-                $owned = @(& $docker --context desktop-linux inspect $ownedId | ConvertFrom-Json)
-                if ($LASTEXITCODE -ne 0 -or $owned.Count -ne 1 -or $owned[0].Id -cne $ownedId -or
+                $owned = @(Read-DockerQuery 'cleanup-owned-inspect' @('inspect',$ownedId) | ConvertFrom-Json)
+                if ($owned.Count -ne 1 -or $owned[0].Id -cne $ownedId -or
                     $owned[0].Name -cne "/$container" -or $owned[0].Config.Labels.'dango.p1.run' -cne $container) {
                     throw 'Task container ownership could not be confirmed; no container was stopped.'
                 }
                 $hostResult.ContainerId = $ownedId
-                & $docker --context desktop-linux stop --time 10 $ownedId 2>&1 | Set-Content -LiteralPath (Join-Path $evidence 'container-stop.log') -Encoding utf8
-                if ($LASTEXITCODE -ne 0) { throw 'Stopping the task container failed.' }
-                $remaining = @(& $docker --context desktop-linux container ls --all --no-trunc --filter "name=^/$container$" --format '{{.ID}}')
-                if ($LASTEXITCODE -ne 0) { throw 'Docker query after cleanup failed; removal is unconfirmed.' }
+                $stopped = Read-DockerQuery 'container-stop' @('stop','--time','10',$ownedId) 15000
+                $remainingListing = Read-DockerQuery 'cleanup-list-after' @('container','ls','--all','--no-trunc','--filter',"name=^/$container$",'--format','{{.ID}}')
+                $remaining = @($remainingListing -split '\r?\n' | Where-Object { $_.Length -gt 0 })
                 if ($remaining.Count -ne 0) { throw 'Task container still exists after cleanup.' }
             }
             $hostResult.ContainerRemoved = $true
@@ -144,8 +166,16 @@ finally {
             $hostResult.CleanupError = $_.Exception.Message
         }
     }
-    & $docker --context desktop-linux info --format '{{.OSType}}' 2>$null | Out-Null
-    $hostResult.DockerEngineStillRunning = $LASTEXITCODE -eq 0
+    try {
+        $finalProbe = Invoke-DockerQuery 'engine-final' @('info','--format','{{.OSType}}')
+        $hostResult.DockerEngineStillRunning = -not $finalProbe.TimedOut -and $finalProbe.ExitCode -eq 0
+    }
+    catch {
+        $hostResult.DockerEngineStillRunning = $false
+        $hostResult.EngineFinalProbeError = $_.Exception.Message
+        $hostResult.Pass = $false
+    }
+    $hostResult.QueryProcesses = $queryProcesses.ToArray()
     $hostResult | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $evidence 'host-manifest.json') -Encoding utf8
 }
 if (-not $hostResult.Pass) { throw 'Linux gate or task-owned container cleanup failed.' }
