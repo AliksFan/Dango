@@ -38,3 +38,5 @@ Box2D保持v3.1.1、commit `8c661469c9507d3ad6fbd2fea3f1aa71669c2fe3`；复用�
 ## 5. 首次执行状态
 
 2026-10-11：严格profile、独立runner及host wrapper已本地实现、审查并集成；Windows受影响21项测试及真实profile接受／拒绝／verify通过，Python13项helper通过。首次按用户选定环境启动既有Docker Desktop，等待180秒后Linux引擎仍不可用，实际exit1；未pull镜像、创建容器或运行Linux门禁。已请求用户查看Docker Desktop提示，保留原门槛与所有失败证据。详见[实际报告](../verification/2026-10-11-dual-player-p1-linux.md)；P1仍不准入、P2停止。
+
+后续按用户授权由人工清理已确认的通信标记；第二次失败复现Docker查询自身挂起超过启动截止，增加有界查询及3个真实进程检查通过。第三次截止收尾成功，但Docker仍在另一个9月8日旧通信标记处启动失败，未创建容器。用户明确选择“先停止Docker排障，Linux保持未验证”；本增量停止环境执行，所有原门槛和失败证据保留。当前阻断及资源边界见实际报告§5，不自动继续Docker、Linux或P2。

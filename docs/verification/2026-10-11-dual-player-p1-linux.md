@@ -1,6 +1,6 @@
 # 双人 P1：Linux 门禁准备与首次环境启动
 
-日期：2026-10-11。用户选择本机 Docker 临时容器，按[冻结计划](../planning/2026-10-11-dual-player-p1-linux-plan.md)实施。**验证工具及受影响 Windows 回归完成；首次 Docker 引擎启动失败，Linux 实际门禁未验证。P1 整体不准入，P2 停止。**
+日期：2026-10-11。用户选择本机 Docker 临时容器，按[冻结计划](../planning/2026-10-11-dual-player-p1-linux-plan.md)实施。**验证工具及受影响 Windows 回归完成；三次 Docker 启动均未成功，用户选择停止 Docker 排障，Linux 实际门禁保持未验证。P1 整体不准入，P2 停止。**
 
 ## 1. 本地实现与审查
 
@@ -40,3 +40,17 @@ A／authority／日常／B replay／R1 五项受保护产物在启动前后均�
 Linux 实际构建／运行、真实语义呈现、正式账号／Hub／持久生命周期、多客户端与人工双机均未验证。下一窄呈现增量已只读核对可复用原 R1 冻结轨迹和两个独立 WPF 管线，本轮未实施或启动。隔离窗口也不能替代正式多人验收。
 
 交付限本地任务分支源码、计划和本报告；未合回 main、推送、安装、部署或标记阶段已验收。
+
+## 5. 用户协助、重试与停止点
+
+用户截图与本地日志确认首次失败在 Ingest listener 重命名 `sailor-ingest.sock`；该文件为9月8日遗留、0字节、AF_UNIX reparse tag `0x80000023`。用户单独授权精确清理后，自动审批拒绝组合操作及随后仅针对该文件的删除，均只返回“blocked by policy”，没有详细理由。没有改用其他方式绕过；用户手动删除，根只读确认。
+
+第二次证据 `artifacts/p1-linux/docker-r2/`：原 listener 已成功创建，随后卡在同批旧 `dockerInference`。根仅检查 Docker 运行目录的元信息，列出3个9月8日旧端点和重试创建的新端点。用户明确完成四个通信文件的手动清理，根逐项确认已不存在；没有删除镜像、容器、卷、文件夹或 WSL 磁盘。
+
+第二次还复现 host 超时缺口：单个 `docker info` 子进程从18:19到18:24仍未返回，外层180秒循环无法检查截止时间；证据为 `docker-r2/startup-query-hang.json`。它在用户退出 Docker 后返回，runner最终exit1、创建尝试false。根为此增加 `fb85f08`：每个元信息查询等待期限5秒，超时只终止自有查询进程，终止／输出收尾各有2秒期限；容器stop仍请求10秒，外部等待15秒。实际exit、PID、超时及退出事实记录，不将查询错误视为清理成功，原managed每子进程60秒门未变。
+
+根运行3个进程边界检查均通过：正常参数与stdout／stderr、真实exit7、故意10秒sleep在250ms触发超时并约322ms完成退出，PID不再存活。证据 `artifacts/p1-linux/bounded-query-tests/results.json`。PowerShell三文件解析和diff检查通过；没有改生产solver、ABI、参数或C# profile，不无理由重复已通过Windows矩阵。
+
+第三次证据 `artifacts/p1-linux/docker-r3/`：此前四个文件清理确已生效，阻断推进到另一目录的 `docker-secrets-engine/engine.sock`，同为9月8日0字节通信标记；只检查了该文件元信息，没有读取Secrets Engine内容或修改它。180秒截止后有界终止与收尾，启动实测180190.3846ms；24个元信息查询全部退出，23个被判超时，最长完整进程生命周期5310.5386ms（含启动与终止／输出收尾）。wrapper实际exit1，`ContainerCreationAttempted=false`。三次均未pull镜像、创建容器或执行Linux门禁，不能宣称容器实际清理测试已通过。
+
+用户随后选择“先停止 Docker 排障，Linux 保持未验证”。根停止环境排障，不再重启或执行Linux；新增通信文件未清理。五项受保护产物仍匹配，见 `protected-after-attempt3.json`。本轮工具进程已退出，Docker应用此前因启动异常停在错误状态，根未再操作它；不推定全机资源为空。旧证据、输入快照、构建产物和工作树保留。P1仍不准入、P2停止；记录收尾与本地提交不代表人工验收。
