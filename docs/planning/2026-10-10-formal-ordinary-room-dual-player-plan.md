@@ -21,9 +21,9 @@
 | 阶段 | 具体交付与 owner | 必须通过的门禁 | 资源与授权 |
 |---|---|---|---|
 | P0 合同冻结 | 根负责源基线、仿射坐标、状态 schema、误差／延迟预算、输入限频／期限、ready、成员生命周期与存档 fence 合同；Protocol／Physics 提供 oracle | 未知版本／非有限值／错单位／非法身份能失败；两份 ADR 0006 不被覆盖；先固定基准与容差，再实现 | 2026-10-11已批准并冻结；后续协议只是合同，尚未接线 |
-| P1 技术准入 | Physics owner：无 UI 双体 authority、完整恢复／输出 ABI；presentation owner：权威语义驱动局部显示；独立工具与反例 | 保留推挤承重、单人对照、故障锁存、恢复及线程门禁；Windows headless／Linux分别核对；真实语义呈现无虚假承重 | 隔离构建及虚构夹具，无正式后端／数据库；缺环境需协助，不能宣布平台通过 |
+| P1 技术准入 | Physics owner：无 UI 双体 authority／输出 ABI、世界丢失后的安全出生；presentation owner：权威语义驱动局部显示；独立工具与反例 | 保留推挤承重、单人对照、故障锁存、健康world续接／丢失world安全出生及线程门禁；Windows headless／Linux分别核对；真实语义呈现无虚假承重 | 隔离构建及虚构夹具，无正式后端／数据库；缺环境需协助，不能宣布平台通过 |
 | P2 正式玩法服务 | Protocol→Server owner：正式玩法 DTO、准入适用性／ready／逐次出站授权、单房权威运行时、有界调度、input watchdog、共同帧与恢复接口 | 旧身份／连接／控制代际／挑战、过期排队输入、重复 Jump、丢 Stop、迁移／撤权竞态、队列饱和与安全帧反例 | 先用可控 clock／auth fixtures；这些测试不冒充真实正式服务 |
-| P3 持久生命周期 | Server persistence owner：成员生命周期过滤、存档所有权／顺序 fence、整房 checkpoint、正式睡眠／重启、前向迁移和数据执行计划 | checkpoint 损坏／版本不兼容拒绝；接管保留身体、离房重入不复用旧身体；旧 writer／倒序写入拒绝；事务／写入失败不假成功 | 迁移、真实 fixture、worker／写入须新的精确数据计划批准后才执行 |
+| P3 持久生命周期 | Server persistence owner：成员生命周期过滤、恢复元数据所有权／顺序 fence、正式睡眠／重启安全出生、前向迁移和数据执行计划 | 元数据损坏／版本不兼容拒绝；接管保留身体、离房重入不复用旧身体；旧 writer／倒序写入拒绝；事务／写入失败不假成功 | 迁移、真实 fixture、worker／写入须新的精确数据计划批准后才执行 |
 | P4 Windows 接线 | Client owner：FormalPlaySession；Desktop owner：账号／场景生命周期、双团子呈现、输入／就绪／镜头 | 菜单关闭不掉租约、未 ready 不输入、观察设备不能控制、账号切换旧帧失效、隐藏恢复不暂停服务器 | 离屏和真实窗口分开；实际正常入口接线，不用专属演出窗替代 |
 | P5 同机正式整合 | 根负责已批准的 HTTPS／正式 Hub／PostgreSQL 与两个独立实际客户端，保存一套候选身份 | 正式准入、同时输入、推挤／堆叠、重连／接管、权限变化、服务重启和释放完整通过 | 使用新的精确预算；WebSocket 与回退传输分开记，不共享日常数据 |
 | P6 双机人工 | 两台 Windows，各操作自己的账号，延迟／断网及持续运行观察 | 真实不同镜头／DPI、互相推挤／承重／堆叠、断网后正确恢复、旧设备失效；主观手感通过 | 需第二设备与人工窗口；M7、性能和环境项分别记，不沿用单机结果 |
@@ -50,9 +50,13 @@ P1 不解除家具单团子 guard，不接服务器正式账号，不升级 body
 
 ## 4. P1：服务器玩法物理准入
 
-2026-10-11恢复改约：[安全出生ADR](../adr/proposals/2026-10-11-world-loss-safe-spawn.md)已批准。下列完整solver checkpoint导入／续步对照为原要求，失败证据保留但不再作为修订后首版恢复准入项；须以另行冻结的world丢失／释放后安全出生及领域恢复语义门替代，不把旧红灯补成绿灯。当前仅开展[R0自身约束诊断](2026-10-11-dual-player-p1-r0-contract.md)，尚未实现该恢复路径，P2仍停止。
+2026-10-11恢复改约：[安全出生ADR](../adr/proposals/2026-10-11-world-loss-safe-spawn.md)已批准。下列完整solver checkpoint导入／续步对照为原要求，失败证据保留但不再作为修订后首版恢复准入项；以world丢失／释放后安全出生及领域恢复语义门替代，不把旧红灯补成绿灯。R0及获批R1已完成隔离验证，见[R1报告](../verification/2026-10-11-dual-player-p1-r1.md)；已准备[安全出生恢复首轮计划](2026-10-11-dual-player-p1-safe-spawn-plan.md)，恢复实现尚未开始，P2仍停止。
 
 目标模块：`eng/native/box2d/dango_physics_module.h`、`dango_collision_review.c`、独立 headless 验证工具、`src/Dango.Physics` 的中立 adapter 与对应测试。新增能力采用独立版本化可选 ABI；旧导出签名、状态槽和无变化单人路径保留，不能靠改既有帧尺寸迫使日常 DLL 失效。
+
+现行恢复增量只依赖已有authority API与原参数：健康world的重连／接管／内存暂停保留原身体；实际丢失／合法释放后校验领域元数据、最新成员及运行所有权，全组安全出生并发布新epoch及原因。先在独立工具验证，不接旧匿名Server或正式数据库；完整checkpoint capability继续unsupported。首轮合同、失败矩阵、预算和P3后置项见上述计划。
+
+以下两段保留**修订前完整恢复门的历史来源**，不是现行首版实现任务：
 
 输入来自两份独立虚构控制流，由唯一线程按固定步送入同一个世界。增加可校验的中心速度、支撑／接触输出以及整房内部 checkpoint export／import；checkpoint 无句柄／地址、包含完整恢复必要状态及版本，导入先验证再原子应用，失败保留旧世界与最后安全帧。
 
@@ -74,9 +78,9 @@ P1 成功后记录新的 solver 来源／ABI／参数 hash、状态合同、平�
 
 P2 同时实现准入提交前玩法适用性复查、当前 ready 挑战验证、输入出队期限／代际检查与结果更新，以及玩法帧／事件／快照逐次出站资格复核。已排队发送在撤权后不得泄漏旧房数据；控制浮层和 SignalR group 都不是授权事实。真实服务启动与集成在后续已批准资源计划下执行。
 
-P3 新迁移只维护必要 checkpoint／模板版本、PresenceGeneration、RuntimeRevision 及一致恢复事实，不在 `pet_room_states` 逐帧堆积状态。后台写入来自步边界复制的不可变安全快照；按当前运行所有权、PlayEpoch、单调 checkpoint revision／Tick 条件提交。测旧 Tick 晚完成、旧运行者在新世界之后迟写、写失败后重启；旧写不得覆盖新状态，所有权递增不能删除最后合法成功存档，未保存状态不标成持久成功。
+P3 新迁移只维护必要恢复元数据／模板版本、PresenceGeneration、RuntimeRevision及一致恢复事实，不在 `pet_room_states` 逐帧堆积状态，不保存完整solver checkpoint。后台写入来自一致边界的不可变领域／配置记录；按当前运行所有权、PlayEpoch、单调记录revision及同epoch内Tick条件提交，新epoch的Tick重新起算。测旧Tick晚完成、旧运行者在新世界之后迟写、写失败后重启；旧写不得覆盖新状态，所有权递增不能删除最后合法成功存档，未保存状态不标成持久成功。
 
-恢复按最新 RoomId＋PetId＋PresenceGeneration 过滤，接管保留位置、速度和支撑；旧生命周期移除，新成员或重入成员安全出生，不清空正式占位或重置幸存身体。首次无 checkpoint 可以初始化，坏／不兼容 checkpoint 阻止就绪；成功恢复后新 PlayEpoch、零输入。全房保存／休眠以最新正式有效租约事实为准，包含控制和观察设备，保持 30 秒业务容错，不能由 UI 隐藏或 bare disconnect 触发。专用数据计划列出迁移 ID、虚构账号／房间数量、写入额度、端口／进程、目录、保留与收尾方式；不把上轮 B5C 额度当无限授权。
+恢复按最新 RoomId＋PetId＋PresenceGeneration 过滤；world健康时接管保留位置、速度和支撑，旧生命周期移除、新成员或重入成员安全出生且幸存身体不重建。world实际丢失／释放时当前合法成员整组安全出生，新PlayEpoch、零旧输入／惯性／支撑并明确提示；首个健康步仍正常受重力。首次确实无记录可以初始化，坏／不兼容记录阻止就绪。全房保存／休眠以最新正式有效租约事实为准，包含控制和观察设备，保持30秒业务容错，不能由UI隐藏或bare disconnect触发。专用数据计划列出迁移ID、虚构账号／房间数量、写入额度、端口／进程、目录、保留与收尾方式；不把上轮B5C额度当无限授权。
 
 Client 新增唯一 `FormalPlaySession` 和共同 Replica，稳定 PetId 映射独立呈现实例；只接受当前账号、房间、epoch、模拟／几何版本的共同帧。原 `FormalRoomSession` 持有 lease owner 的职责需与账号绑定一致，控制浮层关闭只取消订阅。Desktop 接线在 `DangoApplicationHost`／房间 handoff、输入与普通房场景模块；不让 `LocalRoomSceneDriver` 的隐藏暂停或本地随机走动改变在线世界。
 
@@ -102,10 +106,10 @@ Client 新增唯一 `FormalPlaySession` 和共同 Replica，稳定 PetId 映射�
 | 不支持的玩法准入 | 本机预检、服务端提交复查；模板／版本／人数已知不支持时不迁入目标房，管理／只读路径仍可用 |
 | 首帧／模板就绪失败 | 来源恢复入口可用，无输入权限；不以 0,0／旧快照／部分身体假装入房 |
 | 断线重连／公共超时 | 有效租约取共同快照恢复；过期不自动 Enter 或抢控制，无资格时明确需要重新准入 |
-| 服务重启／坏 checkpoint | 新 epoch、最新身份过滤、零输入与可验证完整恢复；坏数据拒绝，不复活离房团子或静默重置 |
+| 服务重启／合法释放后唤醒 | 原world确实丢失后新epoch、最新成员整组安全出生、零旧输入并明确提示；健康world不得误重生 |
 | 接管与同 Pet 离房重入 | 接管不更换 PresenceGeneration／身体；重入新代际不消费旧身体存档，新成员安全出生且幸存成员不重建 |
 | 首次无记录／已有坏记录 | 从未存档可按批准出生区初始化；已有损坏记录不可被当作新房，拒绝玩法就绪 |
-| checkpoint 故意倒序完成／旧 writer | 旧 Tick／revision 与失去 RuntimeRevision 所有权的写入拒绝；新 world 未存档前保留合法恢复点，写失败不假成功 |
+| 恢复记录故意倒序完成／旧 writer | 同epoch旧Tick／revision与失去RuntimeRevision所有权的写入拒绝；新world未存档前保留合法恢复记录，写失败不假成功 |
 | 多种镜头／DPI | 同一逻辑位置、支撑及碰撞，UI projection 不改 shared state；真实 OS DPI 单列 |
 | 队列／资源／故障 | 有界积压与补步、整房安全帧、唯一线程／owner、所属进程和 native 正常释放 |
 
@@ -117,4 +121,4 @@ Client 新增唯一 `FormalPlaySession` 和共同 Replica，稳定 PetId 映射�
 
 P5 同机证据与 P6 双机证据分开。双机测试前列明设备、DPI、传输方式、断网／延迟条件、600 秒观察要求及人工可操作时间；不自动占用用户电脑补门禁。若条件不足保持未验证，不扩大 main 整合或数据操作授权。
 
-设计交付时仅有本地 docs 提交；2026-10-11已在独立实施树冻结P0并开展P1 native／managed／headless／呈现实验。A＋B原后续验证的同构建跨进程重放精确，但体积／耗时预算失败，旧堆叠停止证据保留。用户随后批准world实际丢失／释放后安全出生语义，普通重连／接管／内存暂停仍保持原状态，恢复实现尚未开始；见[已批准ADR](../adr/proposals/2026-10-11-world-loss-safe-spawn.md)。R0定位原堆叠失败，已批准R1地面感知位置投影；[R1报告](../verification/2026-10-11-dual-player-p1-r1.md)局部夹具及推挤／堆叠／真实撤支撑三档帧率九条完整600步轨迹通过。仍为隔离候选，完整checkpoint unsupported，Linux、实际UI／多客户端、恢复接线及人工双机未验证，P1不准入、P2停止。原结果见[第二轮报告](../verification/2026-10-11-dual-player-p1-followup.md)和[第一轮报告](../verification/2026-10-11-dual-player-physics-admission.md)。尚无正式多人可玩候选；未合并 main、推送、安装、部署或替换日常DLL，数据与发布边界仍单独授权。
+设计交付时仅有本地 docs 提交；2026-10-11已在独立实施树冻结P0并开展P1 native／managed／headless／呈现实验。A＋B原后续验证的同构建跨进程重放精确，但体积／耗时预算失败，旧堆叠停止证据保留。用户随后批准world实际丢失／释放后安全出生语义，普通重连／接管／内存暂停仍保持原状态，恢复实现尚未开始；见[已批准ADR](../adr/proposals/2026-10-11-world-loss-safe-spawn.md)及[首轮实施计划](2026-10-11-dual-player-p1-safe-spawn-plan.md)。R0定位原堆叠失败，已批准R1地面感知位置投影；[R1报告](../verification/2026-10-11-dual-player-p1-r1.md)局部夹具及推挤／堆叠／真实撤支撑三档帧率九条完整600步轨迹通过。仍为隔离候选，完整checkpoint unsupported，Linux、实际UI／多客户端、恢复接线及人工双机未验证，P1不准入、P2停止。原结果见[第二轮报告](../verification/2026-10-11-dual-player-p1-followup.md)和[第一轮报告](../verification/2026-10-11-dual-player-physics-admission.md)。本轮按用户要求将本地main `44a8775`合入当前隔离分支（`6135c03`），只吸收两份界面规范；没有将候选合回main。尚无正式多人可玩候选，未推送、安装、部署或替换日常DLL，数据与发布边界仍单独授权。
