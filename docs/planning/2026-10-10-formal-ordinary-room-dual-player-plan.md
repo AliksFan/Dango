@@ -50,7 +50,7 @@ P1 不解除家具单团子 guard，不接服务器正式账号，不升级 body
 
 ## 4. P1：服务器玩法物理准入
 
-2026-10-11恢复改约：[安全出生ADR](../adr/proposals/2026-10-11-world-loss-safe-spawn.md)已批准。下列完整solver checkpoint导入／续步对照为原要求，失败证据保留但不再作为修订后首版恢复准入项；以world丢失／释放后安全出生及领域恢复语义门替代，不把旧红灯补成绿灯。R0及获批R1已完成隔离验证，见[R1报告](../verification/2026-10-11-dual-player-p1-r1.md)；已准备[安全出生恢复首轮计划](2026-10-11-dual-player-p1-safe-spawn-plan.md)，恢复实现尚未开始，P2仍停止。
+2026-10-11恢复改约：[安全出生ADR](../adr/proposals/2026-10-11-world-loss-safe-spawn.md)已批准。下列完整solver checkpoint导入／续步对照为原要求，失败证据保留但不再作为修订后首版恢复准入项；以world丢失／释放后安全出生及领域恢复语义门替代，不把旧红灯补成绿灯。R0及获批R1已完成隔离验证，见[R1报告](../verification/2026-10-11-dual-player-p1-r1.md)；[安全出生恢复首轮S0–S4](2026-10-11-dual-player-p1-safe-spawn-plan.md)已完成Windows隔离实现／自动验证，见[实际报告](../verification/2026-10-11-dual-player-p1-safe-spawn.md)。P1仍缺Linux、真实窗口／多客户端等独立门禁，P2停止。
 
 目标模块：`eng/native/box2d/dango_physics_module.h`、`dango_collision_review.c`、独立 headless 验证工具、`src/Dango.Physics` 的中立 adapter 与对应测试。新增能力采用独立版本化可选 ABI；旧导出签名、状态槽和无变化单人路径保留，不能靠改既有帧尺寸迫使日常 DLL 失效。
 
@@ -121,4 +121,4 @@ Client 新增唯一 `FormalPlaySession` 和共同 Replica，稳定 PetId 映射�
 
 P5 同机证据与 P6 双机证据分开。双机测试前列明设备、DPI、传输方式、断网／延迟条件、600 秒观察要求及人工可操作时间；不自动占用用户电脑补门禁。若条件不足保持未验证，不扩大 main 整合或数据操作授权。
 
-设计交付时仅有本地 docs 提交；2026-10-11已在独立实施树冻结P0并开展P1 native／managed／headless／呈现实验。A＋B原后续验证的同构建跨进程重放精确，但体积／耗时预算失败，旧堆叠停止证据保留。用户随后批准world实际丢失／释放后安全出生语义，普通重连／接管／内存暂停仍保持原状态，恢复实现尚未开始；见[已批准ADR](../adr/proposals/2026-10-11-world-loss-safe-spawn.md)及[首轮实施计划](2026-10-11-dual-player-p1-safe-spawn-plan.md)。R0定位原堆叠失败，已批准R1地面感知位置投影；[R1报告](../verification/2026-10-11-dual-player-p1-r1.md)局部夹具及推挤／堆叠／真实撤支撑三档帧率九条完整600步轨迹通过。仍为隔离候选，完整checkpoint unsupported，Linux、实际UI／多客户端、恢复接线及人工双机未验证，P1不准入、P2停止。原结果见[第二轮报告](../verification/2026-10-11-dual-player-p1-followup.md)和[第一轮报告](../verification/2026-10-11-dual-player-physics-admission.md)。本轮按用户要求将本地main `44a8775`合入当前隔离分支（`6135c03`），只吸收两份界面规范；没有将候选合回main。尚无正式多人可玩候选，未推送、安装、部署或替换日常DLL，数据与发布边界仍单独授权。
+设计交付时仅有本地 docs 提交；2026-10-11已在独立实施树冻结P0并开展P1 native／managed／headless／呈现实验。A＋B原后续验证的同构建跨进程重放精确，但体积／耗时预算失败，旧堆叠停止证据保留。用户随后批准world实际丢失／释放后安全出生语义，普通重连／接管／内存暂停仍保持原状态；见[已批准ADR](../adr/proposals/2026-10-11-world-loss-safe-spawn.md)及[首轮实施计划](2026-10-11-dual-player-p1-safe-spawn-plan.md)。R0定位原堆叠失败，获批R1的九条完整600步轨迹通过；随后安全出生S0–S4隔离实现、49项语义／authority集成、43项正常suite、17项真实错误退出和六组跨进程均通过，见[实际报告](../verification/2026-10-11-dual-player-p1-safe-spawn.md)。完整checkpoint仍unsupported；Linux、实际UI／多客户端、正式持久接线及人工双机未验证，P1不准入、P2停止。原结果见[第二轮报告](../verification/2026-10-11-dual-player-p1-followup.md)和[第一轮报告](../verification/2026-10-11-dual-player-physics-admission.md)。本轮以`6135c03`吸收旧main `44a8775`，用户提醒后以`844e944`补合最新main `a4acdeb`，已包含界面规范和子Agent模型规则；没有将候选合回main。尚无正式多人可玩候选，未推送、安装、部署或替换日常DLL，数据与发布边界仍单独授权。

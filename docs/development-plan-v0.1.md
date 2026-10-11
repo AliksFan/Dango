@@ -1,5 +1,7 @@
 # Dango 分阶段开发计划 v0.1
 
+> 2026-10-11安全出生恢复：用户要求吸收main后继续原目标，最新main `a4acdeb`已合入隔离实施分支，子Agent规则已采用。编码前冻结合同并完成[恢复首轮S0–S4](planning/2026-10-11-dual-player-p1-safe-spawn-plan.md)：根49项语义／authority、43项正常native suite、17项错误变体真实exit1、六组跨进程通过，成功出生校验到首健康帧93–111ms、领域记录601／602bytes；审查修正及原失败保留，见[实际报告](verification/2026-10-11-dual-player-p1-safe-spawn.md)。仅Windows隔离证据，完整checkpoint仍unsupported；Linux、真实窗口／多客户端、正式持久接线和人工双机未验证，P1整体不准入、P2停止。未合回main、推送、安装、部署、启动Linux资源或替换日常DLL。下方状态保留各自历史范围。
+
 > 2026-10-11后续决策：用户选择“接受上述安全出生规则，先做堆叠诊断”。已批准[world丢失／释放后安全出生](adr/proposals/2026-10-11-world-loss-safe-spawn.md)，普通重连／接管／内存暂停保持原状态。[R0诊断](verification/2026-10-11-dual-player-p1-r0.md)定位底部径向／raw角与地面约束竞争；用户随后回复“继续”批准[R1候选](planning/2026-10-11-dual-player-p1-r1-proposal.md)。[R1实际验证](verification/2026-10-11-dual-player-p1-r1.md)局部夹具6轮通过，三档帧率推挤／堆叠／真实撤支撑九条轨迹均完整600步通过，旧行为及家具回归通过；仅隔离候选，恢复接线、Linux、真实窗口／多客户端／人工双机未验证。旧失败证据保留，P1仍未准入、P2停止；未授权正式服务／数据库、Linux环境启动、main整合、推送、安装／部署或日常DLL替换。
 
 > 2026-10-11 普通房双人P0–P1隔离验证：用户批准真实推挤、承重和堆叠设计及P0–P1本地实施／验证／提交，随后批准规定中心／局部节点与同构建跨进程重放两条隔离验证线。第二轮推挤三个帧率完整通过，堆叠／撤支撑仍在Tick42停止；9个重放场景精确，但600秒历史的固定体积／耗时预算失败。原行为30项、旧家具与headless回归通过；完整checkpoint仍unsupported，Linux／实际UI／人工双机未验证，P1不准入、P2停止。原产品恢复要求和门槛保留。见[第二轮报告](verification/2026-10-11-dual-player-p1-followup.md)、[第一轮报告](verification/2026-10-11-dual-player-physics-admission.md)、[P0合同](planning/2026-10-11-dual-player-p0-contract.md)、[已批准方案](planning/2026-10-11-dual-player-p1-followup-proposal.md)及[本轮合同](planning/2026-10-11-dual-player-p1-followup-contract.md)。正式账号／服务／数据、main整合、推送、安装、部署及受保护DLL替换仍未授权，不能将隔离物理计算标为在线双人验收。
