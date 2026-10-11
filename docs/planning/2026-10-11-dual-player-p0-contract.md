@@ -1,5 +1,7 @@
 # 双人玩法 P0：隔离准入冻结合同
 
+> 2026-10-11现行平台顺序：[Windows先行修订](2026-10-11-dual-player-windows-first-plan.md)已由用户批准。Linux移至部署准备前独立门禁；下文历史“Linux缺口停止P2”由此替代。Windows物理／呈现／恢复和正式后端条件仍需满足，全部数值门槛保留。
+
 日期：2026-10-11。用户在已交付设计／计划后指示“继续”，本轮批准设计及 P0–P1 隔离实施、构建、虚构夹具和本地提交。P2–P6、正式服务、数据库操作、main 整合、推送、安装与部署未授权。
 
 依据[设计](2026-10-10-formal-ordinary-room-dual-player-design.md)、[计划](2026-10-10-formal-ordinary-room-dual-player-plan.md)和[ADR](../adr/proposals/2026-10-10-authoritative-room-physics.md)。本合同在新增实现和失败验证前冻结；失败只记录，不事后放宽。
