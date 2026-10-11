@@ -1,5 +1,6 @@
 using System.IO;
 using Dango.Client.Sync.Accounts;
+using Dango.Client.Sync.Pets;
 
 namespace Dango.Desktop.AppShell;
 
@@ -7,7 +8,9 @@ namespace Dango.Desktop.AppShell;
 internal sealed class DangoAccountDependencies
 {
     internal DangoAccountDependencies(Uri origin, IAccountSecretStore secretStore,
-        Func<Uri, IAccountSecretStore, FormalAccountClient> createClient)
+        Func<Uri, IAccountSecretStore, FormalAccountClient> createClient,
+        Func<IRemotePetConfigurationClient, IRemotePetConfigurationClient>? observeSyncRemote = null,
+        Action<IRemotePetConfigurationClient, PetConfigurationLiveSyncCoordinator>? syncCreated = null)
     {
         ArgumentNullException.ThrowIfNull(origin);
         ArgumentNullException.ThrowIfNull(secretStore);
@@ -19,11 +22,16 @@ internal sealed class DangoAccountDependencies
         Origin = origin;
         SecretStore = secretStore;
         CreateClient = createClient;
+        ObserveSyncRemote = observeSyncRemote;
+        SyncCreated = syncCreated;
     }
 
     internal Uri Origin { get; }
     internal IAccountSecretStore SecretStore { get; }
     internal Func<Uri, IAccountSecretStore, FormalAccountClient> CreateClient { get; }
+    // Integration-only observation; the default production composition is unchanged.
+    internal Func<IRemotePetConfigurationClient, IRemotePetConfigurationClient>? ObserveSyncRemote { get; }
+    internal Action<IRemotePetConfigurationClient, PetConfigurationLiveSyncCoordinator>? SyncCreated { get; }
 }
 
 internal sealed partial class DangoApplicationHost

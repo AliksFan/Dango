@@ -32,7 +32,13 @@ internal sealed partial class DangoApplicationHost
                 if (!signedIn) roomController?.Reset();
                 onlineRoomController?.SynchronizeBinding();
                 home.SetAccountStatus(signedIn, ready, accountController?.Nickname); home.RefreshAccountAppearance();
-            }, createClient: dependencies?.CreateClient, createSync: CreatePetConfigurationLiveSync);
+            }, createClient: dependencies?.CreateClient, createSync: (remote, baseline) =>
+            {
+                var observed = dependencies?.ObserveSyncRemote?.Invoke(remote) ?? remote;
+                var sync = CreatePetConfigurationLiveSync(observed, baseline);
+                dependencies?.SyncCreated?.Invoke(observed, sync);
+                return sync;
+            });
         appearance.SavedToDisk += OnAccountAppearanceSaved;
         roomController = new(home.RoomPanel, () => accountController.RoomClient, home.HideAccountPanel,
             home.ShowAccountPanel, rejected => { accountController.RejectRoomAuthentication(rejected); home.ShowAccountPanel(); });
