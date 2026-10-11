@@ -1,5 +1,7 @@
 # Dango 分阶段开发计划 v0.1
 
+> 2026-10-11 Linux平台增量：用户选择本机Docker临时容器，按[冻结计划](planning/2026-10-11-dual-player-p1-linux-plan.md)完成严格profile与独立runner实现／审查、Windows21项受影响测试及profile实际接受／拒绝回归、Python13项helper。首次启动既有Docker Desktop等待180秒后引擎不可用，exit1，未pull镜像、创建容器或执行Linux；需用户查看Desktop提示。详见[实际报告](verification/2026-10-11-dual-player-p1-linux.md)。Linux、真实窗口／正式服务／多客户端／人工双机仍未验证，P1不准入、P2停止；本地提交，无main整合、推送、安装／部署或日常DLL替换。下方条目保留各自历史范围。
+
 > 2026-10-11安全出生恢复：用户要求吸收main后继续原目标，最新main `a4acdeb`已合入隔离实施分支，子Agent规则已采用。编码前冻结合同并完成[恢复首轮S0–S4](planning/2026-10-11-dual-player-p1-safe-spawn-plan.md)：根49项语义／authority、43项正常native suite、17项错误变体真实exit1、六组跨进程通过，成功出生校验到首健康帧93–111ms、领域记录601／602bytes；审查修正及原失败保留，见[实际报告](verification/2026-10-11-dual-player-p1-safe-spawn.md)。仅Windows隔离证据，完整checkpoint仍unsupported；Linux、真实窗口／多客户端、正式持久接线和人工双机未验证，P1整体不准入、P2停止。未合回main、推送、安装、部署、启动Linux资源或替换日常DLL。下方状态保留各自历史范围。
 
 > 2026-10-11后续决策：用户选择“接受上述安全出生规则，先做堆叠诊断”。已批准[world丢失／释放后安全出生](adr/proposals/2026-10-11-world-loss-safe-spawn.md)，普通重连／接管／内存暂停保持原状态。[R0诊断](verification/2026-10-11-dual-player-p1-r0.md)定位底部径向／raw角与地面约束竞争；用户随后回复“继续”批准[R1候选](planning/2026-10-11-dual-player-p1-r1-proposal.md)。[R1实际验证](verification/2026-10-11-dual-player-p1-r1.md)局部夹具6轮通过，三档帧率推挤／堆叠／真实撤支撑九条轨迹均完整600步通过，旧行为及家具回归通过；仅隔离候选，恢复接线、Linux、真实窗口／多客户端／人工双机未验证。旧失败证据保留，P1仍未准入、P2停止；未授权正式服务／数据库、Linux环境启动、main整合、推送、安装／部署或日常DLL替换。

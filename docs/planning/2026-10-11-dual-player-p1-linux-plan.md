@@ -34,3 +34,7 @@ Box2D保持v3.1.1、commit `8c661469c9507d3ad6fbd2fea3f1aa71669c2fe3`；复用�
 报告区分静态、真实Linuxheadless、Windows受影响profile回归、真实呈现／人工与Git／资源。仅对修改影响的Windows哈希/profile拒绝路径和必要能力重验，不无理由重跑旧完整native矩阵。全部实际child退出、native分配归零；只删除本轮临时容器，不删除cached镜像、旧证据或工作树，报告Docker引擎是否仍运行。
 
 本轮不打开前台窗口。P1真实语义呈现可在下一增量用原R1语义记录驱动两个独立呈现管线和现有WPF团子控件，按桌面规范v0.1 §§2–6；隔离重放窗不证明网络、多客户端或账号授权。Linux通过也不能单独准入P1或启动P2，正式接线和同机／双机仍按原阶段复核。
+
+## 5. 首次执行状态
+
+2026-10-11：严格profile、独立runner及host wrapper已本地实现、审查并集成；Windows受影响21项测试及真实profile接受／拒绝／verify通过，Python13项helper通过。首次按用户选定环境启动既有Docker Desktop，等待180秒后Linux引擎仍不可用，实际exit1；未pull镜像、创建容器或运行Linux门禁。已请求用户查看Docker Desktop提示，保留原门槛与所有失败证据。详见[实际报告](../verification/2026-10-11-dual-player-p1-linux.md)；P1仍不准入、P2停止。
