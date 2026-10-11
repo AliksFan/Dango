@@ -41,7 +41,7 @@ position修正后node15的gap为`9.816884994506836e−5`，原row touching toler
 
 旧DLL的新基线已实际退出0：45组各3600帧全部新跑、原短时停稳和效果门槛通过，120／100／胖0恢复169帧通过；80／50／胖0 changing仍在5865帧以原生−96停止，健康／绘制5864帧、session／attempt5865帧。该预期停止是原问题重现，仍是物理失败。
 
-新报告明确`freshRebaseline`并保存原丢失报告SHA，路径`receipt-history/matrix/fresh-old-baseline.json`，SHA`212A4805E8F63E3E8FD1EC1A907226500062AE03E108E1ABCF13158C0468321B`。实际工具SHA`C2FA0A1BA0BA376ECC5A7438029D08ABC261CAF30A72E47D6758A85A1674286E`；四个实际加载依赖的集合SHA`5872C3054AD540523214D6EC95FC7485016615FF5C2C71C9950EDD0BCF4F7573`。独立脚本v2及独立审查复算45组配置／完整窗口／全部效果／恢复／严格−96及实际工具和依赖均通过，三个指纹已冻结。
+新报告明确`freshRebaseline`并保存原丢失报告SHA，路径`receipt-history/matrix/fresh-old-baseline.json`，SHA`212A4805E8F63E3E8FD1EC1A907226500062AE03E108E1ABCF13158C0468321B`。实际工具SHA`C2FA0A1BA0BA376ECC5A7438029D08ABC261CAF30A72E47D6758A85A1674286E`；四个实际加载依赖的集合SHA`5872C3054AD540523214D6EC95FC7485016615FF5C2C71C9950EDD0BCF4F7573`。独立脚本v2及独立审查复算45组配置／全部效果／恢复，核对完整窗口计数与汇总／严格−96及实际工具和依赖均通过；不是完整逐帧窗口重算，三个指纹已冻结。
 
 新的协调器构建通过（0警告、0错误）；旧native准入未改，v10候选SHA已据有限门禁与独立审查准入。6个严格错误码案例（2正向、4负向）和最新old-baseline／former／landing的裸flag、错误位置、错误DLL、篡改来源、保全已有输出等负例均已实测通过；基线审计另拒绝坏恢复／−960／配置漂移。证据为`matrix/negative-*`，不引用清理前草稿负例冒充最新通过。
 
@@ -61,7 +61,7 @@ position修正后node15的gap为`9.816884994506836e−5`，原row touching toler
 
 实际null报告及严格标量算术独立复核：rank5／nullity1，factor／pair／reaction／interval各检查通过，原区间为`[0.00035281981301362044, 0.0067916135845054884]`。原选lower端点，仅normal row132／kind1的`a*alpha+b`为`+4.1359030627651384e−25`，其余10式≤0；精确有理数同样证实原表示点在该约束外。原报告将此选择失败标为INTERVAL_EMPTY，区间本身并非空。
 
-唯一固定算术诊断邻点为`nextafter(lower,+∞)=0.0003528198130136205`，仅前进1个double表示值，仍在原bounds且全部11条原零容差式及有理数检查通过。原source明定“exactly one selection: never move the endpoint”，改变此选择须批准[新草案](../planning/2026-10-11-landing-build-receipt-history-repair.md#第二失败的有限修正草案待批准)。不把该标量例改判为修复或矩阵通过。
+唯一固定算术诊断邻点为`nextafter(lower,+∞)=0.0003528198130136205`，仅前进1个double表示值，仍在原bounds且全部11条原零容差式及有理数检查通过。原source明定“exactly one selection: never move the endpoint”，改变此选择属于独立[新方案](../planning/2026-10-11-landing-build-receipt-history-repair.md#第二失败的有限修正方案已批准实施中)。不把该标量例改判为修复或矩阵通过。
 
 证据在`receipt-history/second-failure/`：actual-DLL结果SHA`b4ba4325c6143e41af24d1c4e12d7325eab466722e102cf44ce59fb3b3efe37e`；精确布局解码SHA`72120ab0be5ebf02380a009fe5172b5646f95934ba3ff9b62c0ff361d93ca40e`；null解码SHA`0ad2cca2f6ae45024af53aa3f83a2b5848dfde460660a76234104c8544bb0eb5`；标量邻点诊断SHA`08bdf84fb94f0305fefb045a116c714f17d36f0efb5951c4767833b088dca44d`。实际DLL、12项已提交native源及原shared源码未修改。
 
@@ -71,4 +71,42 @@ position修正后node15的gap为`9.816884994506836e−5`，原row touching toler
 
 ## 交付边界
 
-原认可候选DLL与正式DLL保持原哈希。未替换正式DLL、更新日常安装、合入main、推送或部署。现阶段通过原生有限门禁、原失败完整复测和新S1；新S2出现上述新失败，完整物理矩阵和人工手感仍未验收。第二失败的唯一邻点固定输入参考及独立审查通过，具体选择合同草案等待用户批准，尚未实现新候选或推进后续矩阵。根本地提交仅包含本轮协调器／计划／结果四文件，保留此前四项dirty文档，不提前标记完成。
+原认可候选DLL与正式DLL保持原哈希。未替换正式DLL、更新日常安装、合入main、推送或部署。现阶段通过原生有限门禁、原失败完整复测和新S1；新S2出现上述新失败，完整物理矩阵和人工手感仍未验收。第二失败的唯一邻点固定输入参考及独立审查通过。首轮根本地提交`8587cad`仅包含协调器／计划／结果四文件，保留此前四项dirty文档，不提前标记完成。
+
+2026-10-11用户随后明确回复“批准”，新的有限端点选择合同进入实施：单独native候选及协调器，旧v10入口／报告与原shared源码保留。授权当时新候选、两失败各6660帧、fresh45组S1／171项S2尚未通过；S3不得提前实施／运行。
+
+## 新端点候选复验（进行中）
+
+独立私有v5候选有限门禁与只读审查通过。124项固定断言／43个新增负例、原71收据负例／20普通路径完整字段位比较／23175原断言通过。审查发现并修正了过期INTERVAL_EMPTY报告被复用以及生成器未固定认可manifest字节指纹的资格缺口；v4及更早候选的测试／审查证据保留。候选仍只允许本次原合法选择失败后，尝试一个向原非空区间内部的相邻double，整次block最多一次；物性、自然骨架、原严格门槛及shared源码均未变。
+
+实际v5 DLL SHA为`D70D1348C76F27E4EB8A122C771DA68D41A446EF71E1F32C0BB4B51E9CA6FBC0`，有限清单`endpoint-selection/native-final-manifest-v5.json` SHA为`3cfb13707654e477badbd87441a891d9d67f1e40c8f27057748c2eb02c9049e6`。243个生成文件、233个原Box2D文件、源码精确逆还原及旧来源保护独立复核通过。实际DLL的第一处6000帧／252000字段与v10逐位一致；第二处前4088帧／171696字段逐位一致，第4089帧产生新合法输出。原完整11条失败约束、唯一nextafter及累计一次尝试独立核验。私有trace尾部从旧诊断prefix 138720字节后追加，总诊断157832字节，trace 19112字节；reset及新world清零、小buffer拒绝保全均通过。
+
+实际第二处有限探针最后合法小步的double／float冲量、能量、动量和角动量账本独立复算通过，两个导出缓存均为float，未冒充没有导出的瞬时double缓存。该账本不是更早被修复小步本身的旁路账本；本例capScale=1，没有实际触发限速。修复小步原selected／block／double／float／ledger／cap调用链保留，并有固定输入的完整原门禁对照。10个新native文件已本地提交`d941da57`，提交blob字节与已审核清单相同。
+
+新协调器和严格CLI构建0警告／0错误，源码及独立审计脚本均已只读复核。脚本从真实Samples的float32轮廓复算圆度、恢复连续帧及方向控制位移，绑定实际退出码／报告／日志／工具／依赖指纹；伪造汇总、零移动伪通过、错误退出码及严格释放变形边界负控均正确拒绝。已有输出保全、两个来源篡改、错误native／位置／裸flag和新类严格−96六例实测通过，不依赖PENDING较早拒绝冒充后序负例。
+
+新DLL的80／50／胖0 changing与80／50／瘦100 ground-swing按原顺序各新跑6660帧，实际退出0；报告`endpoint-selection/matrix/former-failures.json` SHA为`8624924F900F62899A6B383C6B8BFBA91A37D390E6E64E5CED280AB68AB7CFB2`。实际工具SHA为`E21711CE8E393F74CE4BC7065D3AC1511F61EC89A45C626B365819DF26A855E6`，依赖集合SHA为`2A0BE404C8ECC8F70A0631B7A9FCA537EAEEE1ED5C0C659CFAA287B675F245F6`。独立脚本及只读审查复算通过，真实float32控制位移分别为`1.6681843996047974`、`1.4335687160491943`，均达到原≥.04门槛；三个来源指纹已固定准入S1。当时S1／S2的新物理trial尚未开始，S3／真实窗口／人工验收仍未开展。
+
+随后新建app-landing（0警告／0错误），fresh45组S1全部通过，共162000健康／绘制帧，恢复角点亦通过；实际退出0。报告`endpoint-selection/matrix/landing.json` SHA为`5AB7B9921B9A312960F40A47985E902033915E9F9E0F31E7BC9E83618A1E699E`，工具SHA为`92E58D8159EA0CBDBEA49D4D4C344EDFE4E0E2681C1BECD9D67923D3F838DB19`，依赖集合SHA为`715F428B704769665BC09594FC5B9F74A89A83BA4E25F457A3DBDD8952B74EEB`。独立脚本及只读审查复算配置／全部效果，核对完整窗口计数与汇总；各trial除耗时外全部报告字段与旧新基线精确相等，额外135个检查点形状复算通过，不扩大为全部162000帧逐位一致或逐帧重算窗口。默认胖端实际绘制宽／高变化各0像素。7个准入／保全案例均命中预期位置，六个严格错误码案例通过。三个指纹已固定准入S2；没有实施S3或打开人工验收窗口。
+
+新建app-motion从头执行171项S2，实际退出1，在第144项立即停止。前143项为45项flight、45项recovery、53项drag，全部完整通过；第144项size100／soft100／瘦100 ground-swing在第3463帧以HealthOrStop／原生−96停止，attempt／session3463，健康／绘制／最后合法帧3462，requested6660，ExecutionCompleted与Passed均为false。当时仍在swing阶段、拖拽活动，尚未进入释放或再次方向控制，Moved为null。后27项size120 drag未执行；不能用先前两处修复的通过推定该组合通过。
+
+失败报告`endpoint-selection/matrix/motion.json` SHA为`DFCF1B672429CC6239AC5C58DD5A3B4FEA3DCFDBF7645B04E56F8BDF4F960DCB`，实际工具SHA为`5DE0E09BD9565C60009C2E56619FAC7F0AFB768131E2DC59E98A25949D64235A`，依赖集合SHA为`715F428B704769665BC09594FC5B9F74A89A83BA4E25F457A3DBDD8952B74EEB`；实际执行回执记退出1、耗时1084.528167秒。独立脚本及只读审查核固定有序prefix、全部通过项原门槛、真实float32形状／恢复／控制位移、实际来源／日志／退出码及唯一首失败一致。`auditPassed=true`仅表示证据一致，`physicalPassed=false`仍为物理失败。与v10原前107项相比，除耗时外全部报告字段精确相同；原两个卡点在本矩阵内重新跑满6660帧通过。S3未实施／未运行，真实窗口和人工验收未开展。
+
+仅对这一个新失败开展旁路诊断。`third-failure/managed-input/`以实际app-motion程序集反射调用`NativeConfiguration.From`及`DangoPhysicsWorld.Step`内实际float输入映射，固定164字节配置、3463×24字节controls、4字节dt；三角函数由.NET Math计算，末目标double与失败trial按位一致，固定步长为166666 ticks／float `0.0166666`。输入导出没有物理世界步进，manifest SHA为`0D2268EE3EDE8733CFF46EAAB9143CAAB66458F38FCA8393D5ED6B55C1617815`。当时准备让实际v5／v10／旧认可DLL独立消费这三个字节输入进行复现，不改物性／原门槛／native来源，不额外扫描邻点。第三失败根因当时尚待复核；既有world最后失败trace可能是旧事件，须按当前来源核对身份后才能判因。
+
+## 第三失败的诊断及待批准参考
+
+三版实际DLL均完成3462健康帧，在3463帧锁存−96；全部145404健康float字段逐位相同，失败返回保留最后合法帧，最后合法42字段与实际S2报告按位一致。三份含重复最后合法行的轨迹SHA均为`71c80d604a582025b43c18312a476dc517a1d1025314c6b25f7983518297a0fa`。第55408小步phase4、block NULL_REACTION；v5／v10 history阶段3／状态1、退休事件0，全部2份原收据合法。原input／damped372字节以及current block／null事实在三版之间均相同。这只证实当前精确轨迹前缀没有v5回归，不代表其它组合通过。
+
+v5只有3463帧发生一次original failure，neighbor attempts0；实际导出的19112字节trace与当前诊断尾部逐字相同，不是此前事件。当前mode0、dimension6／rank5／nullity1，factor／pair／reaction／interval和mode来源均有效；唯一邻点资格拒绝为两个有界端点相等，原选择为`−4.332322529620401e−6`。原row142 SIGN式残差为`+1.6155871338926322e−27`，独立C与Python原10式残差逐位相同。
+
+精确有理数复算表明当前捕获double a/b的真实lower高于upper约`4.0213580048162753e−22`；double端点除法把两端舍入为同一点，当前10式严格可行集实际为空。lower由row59的perimeter node13→14上限绑定，upper由node14地面normal row142绑定；原选中点的row59反力为0，row142反力为微小负数。不能在原区间内再找邻点解决，也不能据此断言其它模式或原物理问题全局无解。原selected／完整double／float／cone／ledger／cap等后序检查均未到达。
+
+诊断清单`third-failure/diagnosis-final-manifest.json` SHA为`9062327b9010fcfbf76e15869fe47fa4f3c75012c7a86ba17644106f2a0d5676`，冻结74份证据、28份原native源码及原第二失败50份证据的保全结果。`diagnosisVerified=true`不等于物理通过，`physicalTrialPassed=false`。fresh entry状态由原源码调用路径证明，未导出的入口bool不冒充实测字段。解码时的CMake字节快照另行保全，原解码结果未覆盖。
+
+仅本小步的ignored `third-failure/fixed-mode-reference/`对照已完成：两个standalone EXE，零world、无DLL。原EXE继续同row142选择失败；参考对同一冻结10式／effective pair／mode／rank使用原certified-particular next-mode helper，在观察副本上改变两个阶段准入标志，仅复制唯一模式变化。原失败报告保留为失败；helper选择node14 normal row142的RELEASED模式，原loop重新构建全部系统、仍保留全部active物理行，不能把临时particular当解或裁剪反力。
+
+参考2次linear solve／1次full-row check／1次float check，重建后为满秩，原fresh double／float行、冲量账本及single-round cap门槛均通过；独立逐体反力、总动量、角动量和能量账本均通过，+.001速度负控被拒绝。double能量`1.184485857734353→1.184485759277408`；实际capScale1、最高速度`3.8404760360717773<12`，没有实际限速降幅。summary SHA为`42108880c2533875503707fd3e6a064e8cae70dd9c8d5f5450f2f9e2411491cb`。
+
+该参考仅支持[待批准的有限模式重建方案](../planning/2026-10-11-landing-build-receipt-history-repair.md#第三失败的有限模式重建方案待批准)，不证明一般入口资格、共享一次补救预算或候选负例，不将观察标志改写作为候选实现。独立只读审查已复跑两个EXE，stdout与保存JSON精确一致；逐体double／float反力速度、能量、动量、角动量及cap全部数值与独立summary精确一致；诊断74份证据、固定参考21份证据、28份原native及原第二失败50份证据指纹核验通过。固定参考final manifest SHA为`3e67cb4c166683a2e257ae374ecbdb027809af8562f5e74bddc41274c155e995`。审查仅支持该固定例及待批方案，不证明一般唯一可切换行。尚未批准或实施第三处新候选，没有修复后轨迹、新完整S2、S3或实时手感结果；原物性、shared源码及正式DLL未改。

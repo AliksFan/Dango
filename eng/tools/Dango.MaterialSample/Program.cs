@@ -11,6 +11,17 @@ internal static class Program
     {
         try
         {
+            if (args.Contains("--verify-landing-build-endpoint-selection-old-error-gate"))
+                return args.Length == 1 ? LandingBuildEndpointSelectionVerification.VerifyOldErrorGate() : 2;
+            if (args.Contains("--verify-landing-build-endpoint-selection-former"))
+                return args.Length == 5 && args[1] == "--verify-landing-build-endpoint-selection-former"
+                    ? LandingBuildEndpointSelectionVerification.RunFormerFailures(args[0], args[2], args[3], args[4]) : 2;
+            if (args.Contains("--verify-landing-build-endpoint-selection-landing"))
+                return args.Length == 5 && args[1] == "--verify-landing-build-endpoint-selection-landing"
+                    ? LandingBuildEndpointSelectionVerification.RunLanding(args[0], args[2], args[3], args[4]) : 2;
+            if (args.Contains("--verify-landing-build-endpoint-selection-motion"))
+                return args.Length == 5 && args[1] == "--verify-landing-build-endpoint-selection-motion"
+                    ? LandingBuildEndpointSelectionVerification.RunMotion(args[0], args[2], args[3], args[4]) : 2;
             if (args.Contains("--verify-landing-build-receipt-history-old-error-gate"))
                 return args.Length == 1 ? LandingBuildReceiptHistoryVerification.VerifyOldErrorGate() : 2;
             if (args.Contains("--verify-landing-build-receipt-history-old-baseline"))
