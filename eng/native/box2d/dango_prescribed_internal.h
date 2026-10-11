@@ -2,6 +2,7 @@
 #define DANGO_PRESCRIBED_INTERNAL_H
 #include <float.h>
 #include "dango_self_constraints.h"
+#include "dango_prescribed_position_projection.h"
 #ifndef DANGO_PRESCRIBED_TEST_VARIANT
 #define DANGO_PRESCRIBED_TEST_VARIANT 0
 #endif
@@ -40,7 +41,7 @@ static bool prescribed_constraints(dango_self_soft_body* body,const dango_self_p
         s.positions[n]=b2Body_GetPosition(id); s.velocities[n]=b2Body_GetLinearVelocity(id);
         s.inverse_mass[n]=n==16 ? 0 : 1/b2Body_GetMass(id);
     }
-    if (!dango_constraint_solve(&s)) return false;
+    if (!r1_prescribed_solve(&s)) return false;
     for (int n=0;n<16;++n)
     {
         b2BodyId id=body->node_body_ids[n];

@@ -117,4 +117,4 @@ Client 新增唯一 `FormalPlaySession` 和共同 Replica，稳定 PetId 映射�
 
 P5 同机证据与 P6 双机证据分开。双机测试前列明设备、DPI、传输方式、断网／延迟条件、600 秒观察要求及人工可操作时间；不自动占用用户电脑补门禁。若条件不足保持未验证，不扩大 main 整合或数据操作授权。
 
-设计交付时仅有本地 docs 提交；2026-10-11已在独立实施树冻结P0并开展P1 native／managed／headless／呈现实验。用户随后批准A＋B隔离后续验证：推挤呈现完整通过，堆叠／撤支撑仍停止；同构建跨进程重放精确，但体积／耗时预算失败。完整checkpoint仍unsupported，Linux未验证，P1不准入、P2停止。详细结果见[第二轮报告](../verification/2026-10-11-dual-player-p1-followup.md)和[第一轮报告](../verification/2026-10-11-dual-player-physics-admission.md)。尚无正式多人可玩候选；未合并 main、推送、安装、部署或替换日常DLL，数据与发布边界仍单独授权。
+设计交付时仅有本地 docs 提交；2026-10-11已在独立实施树冻结P0并开展P1 native／managed／headless／呈现实验。A＋B原后续验证的同构建跨进程重放精确，但体积／耗时预算失败，旧堆叠停止证据保留。用户随后批准world实际丢失／释放后安全出生语义，普通重连／接管／内存暂停仍保持原状态，恢复实现尚未开始；见[已批准ADR](../adr/proposals/2026-10-11-world-loss-safe-spawn.md)。R0定位原堆叠失败，已批准R1地面感知位置投影；[R1报告](../verification/2026-10-11-dual-player-p1-r1.md)局部夹具及推挤／堆叠／真实撤支撑三档帧率九条完整600步轨迹通过。仍为隔离候选，完整checkpoint unsupported，Linux、实际UI／多客户端、恢复接线及人工双机未验证，P1不准入、P2停止。原结果见[第二轮报告](../verification/2026-10-11-dual-player-p1-followup.md)和[第一轮报告](../verification/2026-10-11-dual-player-physics-admission.md)。尚无正式多人可玩候选；未合并 main、推送、安装、部署或替换日常DLL，数据与发布边界仍单独授权。

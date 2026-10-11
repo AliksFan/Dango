@@ -66,44 +66,40 @@ public sealed class SemanticPresentationPrescribedNativeTests
     }
 
     [TestMethod]
-    public void RealStackFirstFailureLatchesAndPreservesTheLastLegalOutput()
+    public void ImpossibleSampleAfterLegalPrefixLatchesAndPreservesTheLastLegalOutput()
     {
-        var source = SemanticPresentationNativeTests.BuildTrace("stack");
-        var published = source.Where((_, index) => index % 3 == 0 || index == source.Count - 1)
-            .Select(SemanticPresentationNativeTests.Snapshot).ToArray();
-        var sampler = new SemanticPresentationSampler();
-        sampler.BindEpoch("semantic-fixture");
-        Assert.IsTrue(sampler.Push(published[0]));
+        // A healthy stack is the R1 positive gate. Fault preservation must use
+        // a genuinely impossible input, rather than require the repaired bug.
         using var replica = NewReplica();
         SemanticPresentedFrame? lastLegal = null;
         Exception? failure = null;
-        var cursor = 1;
-        var latest = published[0].Tick;
-        double? failureTick = null;
+        int? failureTick = null;
         try
         {
-            for (var tick = 1; tick <= 600; tick++)
+            for (var tick = 1; tick <= 96; tick++)
             {
-                while (latest < tick)
-                {
-                    var next = published[cursor++];
-                    Assert.IsTrue(sampler.Push(next)); latest = next.Tick;
-                }
-                var sample = sampler.Sample(tick);
+                // At most .05 p per fixed step with zero endpoint velocities:
+                // Hermite derivative stays below 4.51 p/s, within original 12.
+                // A sufficiently low prescribed core cannot keep the entire
+                // bounded radial body above the ground. No instant teleport.
+                var sample = new SemanticPresentationSample("semantic-fixture", tick,
+                    [Body(1, 0, 2 - Math.Max(0, tick - 3) * .05)], [], 1);
                 try { lastLegal = replica.Advance(sample); }
                 catch (InvalidOperationException error)
                 {
                     failure = error; failureTick = tick;
-                    Assert.IsNotNull(lastLegal, "This counterexample requires a real legal prefix before a native or drawn failure.");
+                    Assert.IsNotNull(lastLegal);
+                    Assert.IsTrue(replica.LastNativeTrace is { SubstepCount: > 0, ErrorCode: not 0 },
+                        "Fault preservation must follow actual native solving, not a syntax precheck.");
                     Assert.AreSame(lastLegal, replica.LastPresentedFrame);
                     Assert.ThrowsExactly<InvalidOperationException>(() => replica.Advance(sample with { Tick = tick + 1 }));
                     Assert.AreSame(lastLegal, replica.LastPresentedFrame);
                     break;
                 }
             }
-            Assert.IsNotNull(failure, "The frozen stack fixture must expose the current solver stop without changing its thresholds.");
+            Assert.IsNotNull(failure, "An impossible below-floor core must explicitly fail without fallback.");
         }
-        finally { Save("real-stack-first-failure", replica, failure, new { failureTick, lastLegalTick = lastLegal?.Tick }); }
+        finally { Save("below-floor-after-legal-prefix", replica, failure, new { failureTick, lastLegalTick = lastLegal?.Tick }); }
     }
 
     [TestMethod]
@@ -183,9 +179,9 @@ public sealed class SemanticPresentationPrescribedNativeTests
     private static void Save(string name, SemanticPresentationReplica replica, Exception? failure, object? observations = null)
     {
         var evidenceName = Environment.GetEnvironmentVariable("DANGO_SEMANTIC_EVIDENCE_NAME") ?? "semantic-prescribed";
-        if (evidenceName is not ("semantic-prescribed" or "semantic-prescribed-final" or "semantic-prescribed-final2"))
+        if (evidenceName is not ("semantic-prescribed" or "semantic-prescribed-final" or "semantic-prescribed-final2" or "semantic-r1"))
             throw new ArgumentException("Counterexamples write only their named isolated evidence directories.");
-        var directory = Path.Combine(PhysicsTestLibraries.Root, "artifacts", "p1-followup", $"{evidenceName}-counterexamples");
+        var directory = Path.Combine(PhysicsTestLibraries.Root, "artifacts", evidenceName == "semantic-r1" ? "p1-r1" : "p1-followup", $"{evidenceName}-counterexamples");
         Directory.CreateDirectory(directory);
         File.WriteAllText(Path.Combine(directory, $"{name}.json"), JsonSerializer.Serialize(new
         {

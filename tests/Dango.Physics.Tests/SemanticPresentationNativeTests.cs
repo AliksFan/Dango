@@ -23,7 +23,7 @@ public sealed class SemanticPresentationNativeTests
     public void TwentyHertzAuthorityMustMeetFrozenDrawnContactGate(int renderRate, string scenario)
     {
         var evidenceName = Environment.GetEnvironmentVariable("DANGO_SEMANTIC_EVIDENCE_NAME") ?? "semantic-prescribed";
-        if (evidenceName is not ("semantic-prescribed" or "semantic-prescribed-final" or "semantic-prescribed-final2"))
+        if (evidenceName is not ("semantic-prescribed" or "semantic-prescribed-final" or "semantic-prescribed-final2" or "semantic-r1"))
             throw new ArgumentException("The semantic probe writes only its named isolated evidence directories.");
         var moduleSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(PhysicsTestLibraries.Unified)));
         var trace = BuildTrace(scenario);
@@ -137,7 +137,7 @@ public sealed class SemanticPresentationNativeTests
         }
         finally
         {
-            var directory = Path.Combine(PhysicsTestLibraries.Root, "artifacts", "p1-followup", evidenceName);
+            var directory = Path.Combine(PhysicsTestLibraries.Root, "artifacts", evidenceName == "semantic-r1" ? "p1-r1" : "p1-followup", evidenceName);
             Directory.CreateDirectory(directory);
             var path = Path.Combine(directory, $"{scenario}-{renderRate}hz.json");
             File.WriteAllText(path, JsonSerializer.Serialize(new
