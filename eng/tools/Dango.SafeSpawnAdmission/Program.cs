@@ -79,6 +79,7 @@ internal static class Program
                 {
                     case "suite": Suite(dll,Option("--probe"),e); break;
                     case "planner": PlannerChecks(e); break;
+                    case "containment": ContainmentChecks(dll,e); break;
                     case "produce": Produce(dll,Option("--probe"),Option("--metadata"),Option("--disposition","lost"),int.Parse(Option("--steps","60")),e); break;
                     case "consume": Consume(dll,Option("--metadata"),Option("--disposition","lost"),e); break;
                     default: throw new ArgumentException("Mode must be suite, produce, consume or verify.");
@@ -130,7 +131,9 @@ internal static class Program
     private static void SpawnTrajectory(string dll,int count,Evidence e)
     {
         using var a=Fresh(dll,e.NativeCounts,count);
-        e.Check($"tick0-{count}",NativeFrameVerifier.TickZero(a.Read(),a.Ids),"zero velocity/support/cooldown and complete raw+semantic frame");
+        bool tickZero=NativeFrameVerifier.TickZero(a.Read(),a.Ids);
+        e.Check($"tick0-{count}",tickZero,"zero velocity/support/cooldown and complete raw+semantic frame");
+        if(!tickZero) throw new InvalidOperationException("Tick0 gate stopped trajectory before first native step.");
         var first=a.Step();
         e.Check($"gravity-{count}",first.Authority.Bodies.All(b=>b.CoreVelocityY<0),"native first gravity step retained");
         bool healthy=true; for(var tick=1;tick<600;tick++) healthy &= NativeFrameVerifier.Healthy(a.Step(),a.Ids);
@@ -301,6 +304,7 @@ internal static class Program
             e.Check(result.Name,result.OraclePassed,result.Detail); return;
         }
         PlannerChecks(e);
+        ContainmentChecks(dll,e);
         SpawnTrajectory(dll,1,e); SpawnTrajectory(dll,2,e);
         foreach(var scene in new[]{"push","stack","airborne"}) foreach(var transition in new[]{"reconnect","takeover","pause"}) Continuity(dll,scene,transition,e);
         CandidateFailures(dll,e); Members(dll,e); Probe(probe,"",e);
@@ -318,6 +322,73 @@ internal static class Program
         var dummy=new DangoBodyState(new(1),Array.AsReadOnly(new float[32]),10,0,1,0,0,0,0,false,-1,16);
         var full=new DangoPhysicsFrame([dummy,dummy with {EntityId=new(2),CoreX=11}],0,0);
         e.Check("planner-live-capacity-rejected",!SpawnPlanner.CanAdd(legal[0],full),"third member rejected before native Add");
+    }
+    private static void ContainmentChecks(string dll,Evidence e)
+    {
+        foreach(var boundary in new[]{"right","left","ground"})
+        {
+            using var owner=new NativeRecoveryOwner(dll,e.NativeCounts);
+            double x=boundary=="right"?13.2f-.69f:boundary=="left"?-13.2f+.69f:0;
+            double y=boundary=="ground"?(float)DangoPhysicsDefaults.Current.GroundHeight+.7f-(float)DangoPhysicsDefaults.Current.DropHeight:0;
+            // Existing native Add does not enforce birth containment. This is
+            // an actual native Tick0 raw frame, not an invented contour.
+            owner.Add(x,y);var frame=owner.Read();var body=frame.Raw.Bodies.Single();
+            var drawn=Dango.Physics.Presentation.SemanticDrawnGeometry.SampleContour(body.Contour,body.CoreX,body.CoreY);
+            var raw=Enumerable.Range(0,body.PointCount).Select(i=>(X:(double)body.CoreX+body.Contour[2*i],Y:(double)body.CoreY+body.Contour[2*i+1])).ToArray();
+            bool semanticInside=drawn.All(p=>p.X>=-13.2f && p.X<=13.2f && p.Y>=(float)DangoPhysicsDefaults.Current.GroundHeight);
+            bool rawOutside=raw.Any(p=>p.X< -13.2f-.005f || p.X>13.2f+.005f || p.Y<(float)DangoPhysicsDefaults.Current.GroundHeight-.005f);
+            e.Check($"real-native-raw-{boundary}-containment",semanticInside && rawOutside && !NativeFrameVerifier.Healthy(frame,owner.Ids),
+                $"nativeAdd succeeded, semanticInside={semanticInside}, rawOutside={rawOutside}, rawX=[{raw.Min(p=>p.X):R},{raw.Max(p=>p.X):R}], rawMinY={raw.Min(p=>p.Y):R}; original Box2D slop=.005p");
+        }
+        foreach(var pose in new[]{(Name:"ground",X:0f,Y:-2f),(Name:"right",X:12.5f,Y:0f)})
+        {
+            var id=new DangoEntityId(1);
+            var contour=Enumerable.Range(0,16).SelectMany(i=>new[]{.725f*MathF.Cos(i*MathF.PI/8),.725f*MathF.Sin(i*MathF.PI/8)}).ToArray();
+            float area=Enumerable.Range(0,16).Sum(i=>contour[2*i]*contour[2*((i+1)%16)+1]-contour[2*i+1]*contour[2*((i+1)%16)])/2;
+            var body=new DangoBodyState(id,Array.AsReadOnly(contour),pose.X,pose.Y,area,0,0,0,0,false,-1,16);
+            var authority=new DangoAuthorityBodyState(id,null,false,false,DangoAuthorityJumpResult.None,pose.X,pose.Y,0,0,0,0,0,0);
+            var frame=new CommonFrame(new(0,1,0,[authority],[]),new([body],0,0));
+            e.Check($"readonly-dto-raw-{pose.Name}-containment",!NativeFrameVerifier.Healthy(frame,[id]) && !NativeFrameVerifier.TickZero(frame,[id]),
+                "explicit read-only DTO fixture; raw escape cannot pass health or Tick0, not claimed as solver trajectory");
+        }
+        TickZeroStopsPublication(dll,e);
+    }
+    private static bool TryAcceptTickZero(CommonFrame frame,NativeRecoveryOwner owner,RecoveryStateMachine machine)
+    {
+        if(NativeFrameVerifier.TickZero(frame,owner.Ids)) return true;
+        machine.AbortCandidate();return false;
+    }
+    private static void TickZeroStopsPublication(string dll,Evidence e)
+    {
+        foreach(var inherited in new[]{"velocity","support","cooldown"})
+        {
+            var configuration=SafeSpawnFixtures.Configuration(e.ParameterHash);
+            var prior=SafeSpawnFixtures.Record(configuration,Guid.NewGuid());
+            var store=new ConditionalRecoveryStoreFixture(SafeSpawnFixtures.OwnerId,1,prior);
+            store.TryClaim(SafeSpawnFixtures.OwnerId,1,Guid.NewGuid(),out var claim);
+            var facts=SafeSpawnFixtures.Facts(RuntimeDisposition.ConfirmedWorldLost,claim!.RuntimeRevision) with {OwnerId=claim.OwnerId};
+            var machine=new RecoveryStateMachine(configuration,store);
+            var candidate=machine.Prepare(MetadataInput.Existing(RecoveryRecordCodec.Encode(prior)),facts,claim,Now).Candidate!;
+            var steps=e.NativeCounts.Steps;var disposed=e.NativeCounts.Disposed;bool rejected;
+            using(var owner=Fresh(dll,e.NativeCounts,epoch:candidate.Epoch))
+            {
+                var actual=owner.Read();var bodies=actual.Authority.Bodies.ToArray();
+                bodies[0]=inherited switch
+                {
+                    "velocity"=>bodies[0] with {CoreVelocityX=.25f},
+                    "support"=>bodies[0] with {SupportEntityId=bodies[1].EntityId},
+                    _=>bodies[0] with {CooldownRemainingSeconds=.45f}
+                };
+                var fixture=actual with {Authority=actual.Authority with {Bodies=bodies}};
+                rejected=!TryAcceptTickZero(fixture,owner,machine);
+                // Same gate consumed by real Consume. Its false branch cannot
+                // reach Step or CommitPublication; owner disposal follows.
+            }
+            e.Check($"tick0-{inherited}-stops-before-publication",rejected && machine.State==RecoveryState.RecoveryBlocked &&
+                machine.CurrentEpoch==Guid.Empty && machine.PublishedFrame is null && machine.PublishedReason is null &&
+                e.NativeCounts.Steps==steps && e.NativeCounts.Disposed==disposed+1 && store.LastSuccessfulRecord==prior,
+                "actual private native candidate; explicit corrupted read-only Tick0 DTO fixture, zero Step/epoch/ready/publication, full owner Dispose");
+        }
     }
     private static void SpawnMutation(string dll,Evidence e)
     {
@@ -419,7 +490,13 @@ internal static class Program
         }
         var candidate=decision.Candidate;
         using var owner=Fresh(dll,e.NativeCounts,candidate.Members.Length,candidate.Epoch);
-        var zero=owner.Read(); e.Check("recover-tick0",NativeFrameVerifier.TickZero(zero,owner.Ids),"all native core velocity/support/cooldown clear");
+        var zero=owner.Read(); bool tickZero=TryAcceptTickZero(zero,owner,machine);
+        e.Check("recover-tick0",tickZero,"all native core velocity/support/cooldown clear; failure aborts before Step/publication");
+        if(!tickZero)
+        {
+            e.Recovery.Blocked=true;e.Recovery.Reason="invalidTickZero";
+            throw new InvalidOperationException("Tick0 rejected; candidate aborted before first native step and publication.");
+        }
         var first=owner.Step(); var valid=NativeFrameVerifier.Healthy(first,owner.Ids);
         bool committed=machine.CommitPublication(candidate,new(candidate.Epoch,first.Authority.Tick,first.Authority.SceneRevision,candidate.Members,valid),facts,Now);
         watch.Stop();

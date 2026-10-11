@@ -19,6 +19,10 @@ CLI options are key/value pairs:
   private candidate failure, publication race, owner affinity and native probe.
 - `--mode planner` independently verifies exact tangent, invalid bounds, group
   separation and live capacity rejections without creating a world.
+- `--mode containment` verifies actual native Tick0 raw frames that escape
+  left/right/ground while their scaled semantic contour still appears inside.
+  Raw `Core+Contour` already includes radius and uses the original `.005 p`
+  Box2D linear slop, separately from display contact and support thresholds.
 - `--probe <independent-native-probe-EXE>` is required for suite and fault producer.
 - `--mode produce --metadata <record.json> --disposition lost|released|fault|unknown
   --steps 120` writes fictitious domain metadata only. The separate
