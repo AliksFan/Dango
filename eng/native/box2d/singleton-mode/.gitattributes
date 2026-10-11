@@ -1,0 +1,3 @@
+# Preserve the byte-pinned source files exactly as reviewed.
+audit.py -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+CMakeLists.txt -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
