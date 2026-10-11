@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dango 常驻细条样板</title>
+<style>
+body { margin: 0; padding: 20px 12px; background: #fdfcf9; color: #443d34; font: 14px/1.6 'Segoe UI', 'Microsoft YaHei', sans-serif; }
+.sample-description { max-width: 430px; margin: 0 auto; }
+h1 { font-size: 18px; font-weight: 500; margin: 0 0 8px; }
+p { margin: 0; color: #807568; }
+</style>
+</head>
+<body>
+<div class="sample-description">
+<h1>Dango 常驻细条样板</h1>
+<p>滚轮平滑滚动，侧边滚动条与参数拖动直接跟手。此页用于规范对照，生产页面卡顿仍需单独复现和验收。</p>
+</div>
+<div id="dango-scroll-controls" class="dango-design-sample" aria-label="Dango 常驻细条样板">
+  <section data-variant="常驻细条" aria-label="常驻细条方案">
+    <div class="dango-demo" data-mode="reserved" aria-label="饰品材质控件样板">
+      <header><span>Dango</span><span class="dango-caption">饰品 · 材质</span></header>
+      <div class="dango-viewport">
+        <div class="dango-scroll-content" aria-label="可滚动的参数区域"></div>
+        <input class="dango-scrollbar" type="range" min="0" max="100" step="1" value="0" aria-label="上下滚动参数区域" aria-orientation="vertical">
+      </div>
+    </div>
+  </section>
+</div>
+<style>
+  #dango-scroll-controls { padding: 20px 10px 0; }
+  #dango-scroll-controls > section { min-height: 470px; }
+  #dango-scroll-controls .dango-demo {
+    --dango-bg: #fdfcf9; --dango-ink: #443d34; --dango-muted: #807568;
+    --dango-line: #e9e4da; --dango-soft: #f3efe8; --dango-accent: #885e3e;
+    --dango-thumb: #b7a28e; --dango-focus: #885e3e; --dango-scroll-width: 6px;
+    --dango-rail-height: 3px; --dango-knob: 12px;
+    color-scheme: light; background: var(--dango-bg); color: var(--dango-ink);
+    font: 14px/1.5 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    max-width: 430px; margin: 0 auto; padding: 22px 22px 18px;
+    border: 1px solid var(--dango-line); border-radius: 10px; box-sizing: border-box;
+  }
+  #dango-scroll-controls .dango-demo *, #dango-scroll-controls .dango-demo *::before,
+  #dango-scroll-controls .dango-demo *::after { box-sizing: border-box; }
+  #dango-scroll-controls header { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 20px; }
+  #dango-scroll-controls .dango-caption { color: var(--dango-muted); }
+  #dango-scroll-controls .dango-viewport { height: 350px; position: relative; }
+  #dango-scroll-controls .dango-scroll-content { overflow-y: auto; overflow-x: hidden; height: 100%; padding: 0 26px 4px 4px; scrollbar-width: none; scroll-behavior: auto; overscroll-behavior: auto; }
+  #dango-scroll-controls .dango-scroll-content::-webkit-scrollbar { display: none; }
+  #dango-scroll-controls .dango-group { margin: 0 0 22px; }
+  #dango-scroll-controls .dango-group h3 { font-size: 13px; font-weight: 400; color: var(--dango-muted); margin: 0 0 14px; }
+  #dango-scroll-controls .dango-parameter { margin: 0 0 18px; }
+  #dango-scroll-controls .dango-heading { display: flex; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 6px; min-height: 28px; }
+  #dango-scroll-controls .dango-heading label { min-width: 0; }
+  #dango-scroll-controls .dango-value {
+    width: 64px; flex: 0 0 64px; min-width: 0; height: 28px; text-align: right;
+    background: transparent; color: var(--dango-ink); border: 1px solid transparent;
+    border-radius: 4px; padding: 2px 4px; font: inherit; font-variant-numeric: tabular-nums;
+  }
+  #dango-scroll-controls .dango-value:hover { border-color: var(--dango-line); }
+  #dango-scroll-controls .dango-value:focus-visible { border-color: var(--dango-accent); }
+  #dango-scroll-controls .dango-value[aria-invalid="true"] { border-color: #a04b3b; }
+  #dango-scroll-controls .dango-parameter-slider {
+    appearance: none; -webkit-appearance: none; background: transparent;
+    width: 100%; height: 28px; padding: 0; margin: 0; display: block;
+    accent-color: var(--dango-accent); touch-action: pan-y;
+  }
+  #dango-scroll-controls .dango-parameter-slider::-webkit-slider-runnable-track {
+    height: var(--dango-rail-height); border-radius: 8px;
+    background: linear-gradient(to right, var(--dango-accent) 0 var(--dango-fill), var(--dango-line) var(--dango-fill) 100%);
+  }
+  #dango-scroll-controls .dango-parameter-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: var(--dango-knob); height: var(--dango-knob);
+    border-radius: 50%; background: var(--dango-accent); border: 0;
+    margin-top: calc((var(--dango-rail-height) - var(--dango-knob)) / 2);
+  }
+  #dango-scroll-controls .dango-parameter-slider::-moz-range-track { height: var(--dango-rail-height); background: var(--dango-line); border-radius: 8px; }
+  #dango-scroll-controls .dango-parameter-slider::-moz-range-progress { height: var(--dango-rail-height); background: var(--dango-accent); border-radius: 8px; }
+  #dango-scroll-controls .dango-parameter-slider::-moz-range-thumb { width: var(--dango-knob); height: var(--dango-knob); border: 0; border-radius: 50%; background: var(--dango-accent); }
+  #dango-scroll-controls .dango-parameter-slider:hover::-webkit-slider-thumb,
+  #dango-scroll-controls .dango-parameter-slider:active::-webkit-slider-thumb { box-shadow: 0 0 0 4px #885e3e18; }
+  #dango-scroll-controls .dango-parameter-slider:disabled { opacity: 0.45; }
+  #dango-scroll-controls .dango-parameter-slider:focus-visible,
+  #dango-scroll-controls .dango-scrollbar:focus-visible,
+  #dango-scroll-controls .dango-value:focus-visible { outline: 2px solid var(--dango-focus); outline-offset: 2px; border-radius: 4px; }
+  #dango-scroll-controls .dango-divider { height: 1px; background: var(--dango-line); margin: 4px 0 22px; }
+  #dango-scroll-controls .dango-scrollbar {
+    appearance: none; -webkit-appearance: none; writing-mode: vertical-lr; direction: ltr;
+    position: absolute; top: 0; right: 0; height: 100%; width: 16px;
+    padding: 0; margin: 0; background: transparent; touch-action: none;
+    --dango-handle-height: 70px;
+  }
+  #dango-scroll-controls .dango-scrollbar::-webkit-slider-runnable-track {
+    width: var(--dango-scroll-width); height: 100%; background: var(--dango-soft); border-radius: 12px;
+  }
+  #dango-scroll-controls .dango-scrollbar::-webkit-slider-thumb {
+    appearance: none; -webkit-appearance: none;
+    width: var(--dango-scroll-width); height: var(--dango-handle-height);
+    border: 0; border-radius: 12px; background: var(--dango-thumb);
+  }
+  #dango-scroll-controls .dango-scrollbar::-moz-range-track { width: var(--dango-scroll-width); background: var(--dango-soft); border-radius: 12px; }
+  #dango-scroll-controls .dango-scrollbar::-moz-range-thumb { width: var(--dango-scroll-width); height: var(--dango-handle-height); border: 0; border-radius: 12px; background: var(--dango-thumb); }
+  #dango-scroll-controls .dango-scrollbar:hover::-webkit-slider-thumb,
+  #dango-scroll-controls .dango-scrollbar:focus-visible::-webkit-slider-thumb,
+  #dango-scroll-controls .dango-scrollbar:active::-webkit-slider-thumb { background: var(--dango-accent); }
+  @media (max-width: 380px) { #dango-scroll-controls .dango-demo { padding: 18px 14px; } }
+  @media (forced-colors: active) {
+    #dango-scroll-controls .dango-demo { --dango-bg: Canvas; --dango-ink: CanvasText; --dango-muted: CanvasText; --dango-line: GrayText; --dango-soft: Canvas; --dango-accent: Highlight; --dango-thumb: Highlight; --dango-focus: Highlight; }
+    #dango-scroll-controls .dango-parameter-slider,
+    #dango-scroll-controls .dango-scrollbar { forced-color-adjust: none; }
+  }
+</style>
+<script>
+(() => {
+  const root = document.getElementById('dango-scroll-controls');
+  const motion = matchMedia('(prefers-reduced-motion: reduce)');
+  const definitions = [
+    { title: '连接', items: [['softness', '柔软度', 0, 100, 35, 1], ['deformation', '形变上限 %', 0, 200, 40, 1], ['strength', '连接强度', 0, 100, 80, 1], ['travel', '连接行程上限 %', 0, 200, 25, 1]] },
+    { title: '旋转', items: [['damping', '旋转阻尼', 0, 100, 45, 1], ['return', '回正强度', 0, 100, 60, 1], ['swing', '最大摆角 °', 0, 180, 45, 1], ['gravity', '重力影响', 0, 100, 50, 1]] },
+    { title: '摆放', items: [['size', '尺寸 %', 10, 400, 100, 1], ['angle', '基础角度 °', -180, 180, 0, 1], ['body-x', '附着 X', 0, 1, 0.5, 0.01], ['body-y', '附着 Y', 0, 1, 0.15, 0.01]] }
+  ];
+  const design = { scrollWidth: 6, railHeight: 3, knobSize: 12, settling: 180 };
+  const demos = [];
+  root.querySelectorAll('.dango-demo').forEach((demo, index) => {
+    const content = demo.querySelector('.dango-scroll-content');
+    const bar = demo.querySelector('.dango-scrollbar');
+    definitions.forEach((group, gi) => {
+      if (gi) { const line = document.createElement('div'); line.className = 'dango-divider'; content.append(line); }
+      const section = document.createElement('section'); section.className = 'dango-group';
+      const heading = document.createElement('h3'); heading.textContent = group.title; section.append(heading);
+      group.items.forEach(([key, label, min, max, value, step]) => {
+        const row = document.createElement('div'); row.className = 'dango-parameter';
+        const top = document.createElement('div'); top.className = 'dango-heading';
+        const caption = document.createElement('label'); caption.textContent = label;
+        const slider = document.createElement('input'); slider.type = 'range'; slider.className = 'dango-parameter-slider';
+        slider.id = `dango-${index}-${key}`; caption.htmlFor = slider.id;
+        slider.min = min; slider.max = max; slider.step = step; slider.value = value;
+        slider.setAttribute('aria-label', label);
+        const number = document.createElement('input'); number.type = 'text'; number.inputMode = 'decimal'; number.className = 'dango-value'; number.value = value;
+        number.setAttribute('aria-label', `${label}数值`);
+        const update = () => { number.value = slider.value; slider.style.setProperty('--dango-fill', `${(Number(slider.value) - min) / (max - min) * 100}%`); number.removeAttribute('aria-invalid'); };
+        slider.addEventListener('input', update);
+        const commit = () => { const n = number.value.trim() === '' ? NaN : Number(number.value); if (!Number.isFinite(n) || n < min || n > max) { number.setAttribute('aria-invalid', 'true'); return; } slider.value = n; update(); };
+        number.addEventListener('change', commit);
+        number.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); commit(); } });
+        update(); top.append(caption, number); row.append(top, slider); section.append(row);
+      });
+      content.append(section);
+    });
+    let target = 0, position = 0, raf = 0, last = 0;
+    const limit = () => Math.max(0, content.scrollHeight - content.clientHeight);
+    const stop = () => { if (raf) cancelAnimationFrame(raf); raf = 0; last = 0; };
+    const sync = () => {
+      const maximum = limit(); bar.max = maximum; bar.value = content.scrollTop;
+      bar.disabled = maximum === 0;
+      bar.setAttribute('aria-valuetext', `${Math.round(maximum ? content.scrollTop / maximum * 100 : 0)}%`);
+      const height = Math.min(content.clientHeight, Math.max(28, content.clientHeight * content.clientHeight / Math.max(1, content.scrollHeight)));
+      bar.style.setProperty('--dango-handle-height', `${height}px`);
+    };
+    const tick = now => {
+      const elapsed = last ? Math.min(40, now - last) : 16; last = now;
+      target = Math.max(0, Math.min(limit(), target));
+      const difference = target - position;
+      if (Math.abs(difference) < 0.6) { content.scrollTop = target; stop(); sync(); return; }
+      position += difference * (1 - Math.exp(-elapsed / (design.settling / 3)));
+      content.scrollTop = position;
+      sync(); raf = requestAnimationFrame(tick);
+    };
+    content.addEventListener('wheel', e => {
+      if (e.ctrlKey || Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.deltaY === 0) return;
+      const delta = e.deltaY * (e.deltaMode === 1 ? 18 : e.deltaMode === 2 ? content.clientHeight : 1);
+      const current = content.scrollTop;
+      if ((delta < 0 && current <= 0) || (delta > 0 && current >= limit())) return;
+      e.preventDefault();
+      if (!raf || Math.sign(delta) !== Math.sign(target - current)) { target = current; position = current; }
+      target = Math.max(0, Math.min(limit(), (raf ? target : current) + delta));
+      if (motion.matches) { stop(); content.scrollTop = target; sync(); }
+      else if (!raf) raf = requestAnimationFrame(tick);
+    }, { passive: false });
+    bar.addEventListener('pointerdown', () => { stop(); target = content.scrollTop; });
+    bar.addEventListener('input', () => { stop(); target = Number(bar.value); content.scrollTop = target; sync(); });
+    bar.addEventListener('keydown', e => {
+      const steps = { PageDown: content.clientHeight * 0.9, PageUp: -content.clientHeight * 0.9, Home: -limit(), End: limit() };
+      if (!(e.key in steps)) return;
+      e.preventDefault(); stop(); target = Math.max(0, Math.min(limit(), content.scrollTop + steps[e.key])); content.scrollTop = target; sync();
+    });
+    content.addEventListener('pointerdown', () => { stop(); target = content.scrollTop; });
+    content.addEventListener('scroll', () => { if (!raf) target = content.scrollTop; sync(); });
+    motion.addEventListener('change', () => { stop(); target = content.scrollTop; });
+    const resize = new ResizeObserver(() => { stop(); target = Math.min(content.scrollTop, limit()); sync(); });
+    resize.observe(content); sync();
+    demos.push({ demo, sync });
+  });
+  const renderDesign = () => demos.forEach(({ demo, sync }) => {
+    demo.style.setProperty('--dango-scroll-width', `${design.scrollWidth}px`);
+    demo.style.setProperty('--dango-rail-height', `${design.railHeight}px`);
+    demo.style.setProperty('--dango-knob', `${design.knobSize}px`); sync();
+  });
+  renderDesign();
+})();
+</script>
+
+</body>
+</html>
