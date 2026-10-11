@@ -11,6 +11,20 @@ internal static class Program
     {
         try
         {
+            if (args.Contains("--verify-landing-build-receipt-history-old-error-gate"))
+                return args.Length == 1 ? LandingBuildReceiptHistoryVerification.VerifyOldErrorGate() : 2;
+            if (args.Contains("--verify-landing-build-receipt-history-old-baseline"))
+                return args.Length == 3 && args[1] == "--verify-landing-build-receipt-history-old-baseline"
+                    ? LandingBuildReceiptHistoryVerification.RunFreshOldBaseline(args[0], args[2]) : 2;
+            if (args.Contains("--verify-landing-build-receipt-history-former"))
+                return args.Length == 4 && args[1] == "--verify-landing-build-receipt-history-former"
+                    ? LandingBuildReceiptHistoryVerification.RunFormerFailure(args[0], args[2], args[3]) : 2;
+            if (args.Contains("--verify-landing-build-receipt-history-landing"))
+                return args.Length == 5 && args[1] == "--verify-landing-build-receipt-history-landing"
+                    ? LandingBuildReceiptHistoryVerification.RunLanding(args[0], args[2], args[3], args[4]) : 2;
+            if (args.Contains("--verify-landing-build-receipt-history-motion"))
+                return args.Length == 5 && args[1] == "--verify-landing-build-receipt-history-motion"
+                    ? LandingBuildReceiptHistoryVerification.RunMotion(args[0], args[2], args[3], args[4]) : 2;
             if (args.Contains("--verify-landing-build-size-damping-motion"))
                 return args.Length == 6 && args[1] == "--verify-landing-build-size-damping-motion"
                     ? LandingBuildSizeDampingMotionVerification.Run(args[0], args[2], args[3], args[4], args[5]) : 2;
