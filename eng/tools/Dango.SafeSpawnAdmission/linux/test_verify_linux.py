@@ -141,6 +141,43 @@ class EvidenceGateTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(gate.GateError):
                 validate(record | {key: value})
 
+    def test_actual_box2d_single_source_tamper_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "box2d"
+            evidence = Path(directory) / "evidence"
+            (root / "src").mkdir(parents=True)
+            evidence.mkdir()
+            license_path = Path(__file__).resolve().parents[3] / "native/box2d/LICENSE.box2d.txt"
+            (root / "LICENSE").write_bytes(license_path.read_bytes())
+            source = root / "src/fictional.c"
+            source.write_bytes(b"fictional original source\n")
+            tree_hash, files = gate.inventory(root)
+            gate.write_json(evidence / "box2d-source-files.json", {"Commit": gate.COMMIT, "ArchiveHash": gate.ARCHIVE_HASH,
+                            "LicenseHash": gate.LICENSE_HASH, "TreeHash": tree_hash, "Files": files})
+            unchanged = gate.verify_box2d_tree(root, evidence)
+            self.assertTrue(unchanged["Pass"])
+            self.assertEqual(tree_hash, unchanged["TreeHash"])
+            source.write_bytes(b"fictional tampered source\n")
+            with self.assertRaisesRegex(gate.GateError, "build source tree changed"):
+                gate.verify_box2d_tree(root, evidence)
+
+    def test_box2d_full_inventory_and_provenance_are_required(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "box2d"
+            evidence = Path(directory) / "evidence"
+            root.mkdir()
+            evidence.mkdir()
+            license_path = Path(__file__).resolve().parents[3] / "native/box2d/LICENSE.box2d.txt"
+            (root / "LICENSE").write_bytes(license_path.read_bytes())
+            tree_hash, files = gate.inventory(root)
+            frozen = {"Commit": gate.COMMIT, "ArchiveHash": gate.ARCHIVE_HASH, "LicenseHash": gate.LICENSE_HASH,
+                      "TreeHash": tree_hash, "Files": files}
+            for field, value in (("Commit", "0" * 40), ("ArchiveHash", "0" * 64), ("LicenseHash", "0" * 64),
+                                 ("TreeHash", "0" * 64), ("Files", [])):
+                gate.write_json(evidence / "box2d-source-files.json", frozen | {field: value})
+                with self.subTest(field=field), self.assertRaises(gate.GateError):
+                    gate.verify_box2d_tree(root, evidence)
+
 
 if __name__ == "__main__":
     unittest.main()

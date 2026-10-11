@@ -197,6 +197,27 @@ def prepare(args):
                "LicenseHash": LICENSE_HASH, "TreeHash": box_hash, "Files": box_files})
 
 
+def verify_box2d_tree(root, evidence):
+    frozen = load_json(Path(evidence) / "box2d-source-files.json")
+    require(type(frozen) is dict and set(frozen) == {"Commit", "ArchiveHash", "LicenseHash", "TreeHash", "Files"},
+            "Frozen Box2D inventory fields differ")
+    require(frozen["Commit"] == COMMIT and frozen["ArchiveHash"] == ARCHIVE_HASH and frozen["LicenseHash"] == LICENSE_HASH,
+            "Frozen Box2D provenance differs")
+    require(file_hash(Path(root) / "LICENSE") == LICENSE_HASH, "Actual Box2D license changed after extraction")
+    actual_hash, actual_files = inventory(root)
+    require(actual_hash == frozen["TreeHash"] and actual_files == frozen["Files"],
+            "Actual Box2D build source tree changed after extraction")
+    return {"Pass": True, "Commit": COMMIT, "ArchiveHash": ARCHIVE_HASH, "LicenseHash": LICENSE_HASH,
+            "TreeHash": actual_hash, "FileCount": len(actual_files)}
+
+
+def check_box2d(args):
+    checked = verify_box2d_tree(args.box2d_root, args.evidence)
+    checked["Stage"] = args.stage
+    write_json(Path(args.evidence) / ("box2d-check-" + args.stage + ".json"), checked)
+    print(f"Box2D {args.stage}: complete actual source inventory unchanged", flush=True)
+
+
 def record(args):
     require(sys.platform == "linux" and platform.machine() == "x86_64", "Record requires actual Linux x86-64")
     evidence = Path(args.evidence)
@@ -482,10 +503,19 @@ def summarize(args):
     source = load_json(evidence / "linux-source-files.json")
     require(result["SourceHash"] == source["SourceHash"] and result["BuildRecordHash"] == file_hash(evidence / "linux-build-record.json"),
             "Root manifest provenance differs")
+    box2d = load_json(evidence / "box2d-source-files.json")
+    box2d_checks = []
+    for stage in ("after-build", "after-run"):
+        check = load_json(evidence / ("box2d-check-" + stage + ".json"))
+        require(check.get("Pass") is True and check.get("Stage") == stage and check.get("TreeHash") == box2d["TreeHash"] and
+                check.get("Commit") == COMMIT and check.get("ArchiveHash") == ARCHIVE_HASH and check.get("LicenseHash") == LICENSE_HASH and
+                check.get("FileCount") == len(box2d["Files"]), "Required actual Box2D tree recheck is missing or differs")
+        box2d_checks.append(check)
     _, files = inventory(evidence)
     write_json(evidence / "manifest.json", {"Gate": "isolated-safe-spawn-linux-build-and-run", "Pass": True,
         "LinuxVerified": True, "RunManifest": "run/manifest.json", "BuildRecord": "linux-build-record.json",
         "SourceHash": result["SourceHash"], "BuildRecordHash": result["BuildRecordHash"], "EvidenceFiles": files,
+        "Box2DTreeHash": box2d["TreeHash"], "Box2DChecks": box2d_checks,
         "FormalServerVerified": False, "DatabaseVerified": False, "RealWindowVerified": False,
         "MultiClientVerified": False, "ManualAcceptance": False, "CompleteCheckpointAdmitted": False})
 
@@ -493,7 +523,7 @@ def summarize(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("prepare", "record", "verify", "summarize", "failure"):
+    for name in ("prepare", "record", "verify", "check-box2d", "summarize", "failure"):
         child = commands.add_parser(name)
         child.add_argument("--evidence", required=True)
         if name in ("prepare", "record", "verify"):
@@ -509,6 +539,9 @@ def main():
             child.add_argument("--build-record", required=True)
         if name == "failure":
             child.add_argument("--error", required=True)
+        if name == "check-box2d":
+            child.add_argument("--box2d-root", required=True)
+            child.add_argument("--stage", required=True, choices=("after-build", "after-run"))
     args = parser.parse_args()
     try:
         if args.command == "verify":
@@ -517,7 +550,7 @@ def main():
         elif args.command == "failure":
             write_json(Path(args.evidence) / "failure.json", {"Gate": "isolated-safe-spawn-linux-build-and-run", "Pass": False, "Error": args.error})
         else:
-            globals()[args.command](args)
+            globals()[args.command.replace("-", "_")](args)
         return 0
     except Exception as error:
         print(f"Linux gate failed: {error}", file=sys.stderr)
