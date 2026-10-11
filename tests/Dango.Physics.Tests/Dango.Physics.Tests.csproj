@@ -12,5 +12,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Dango.Physics\Dango.Physics.csproj" />
     <ProjectReference Include="..\..\eng\tools\Dango.SafeSpawnAdmission.Core\Dango.SafeSpawnAdmission.Core.csproj" />
+    <Compile Include="..\..\eng\tools\Dango.SafeSpawnAdmission\NativeBinaryProfile.cs" Link="Admission/NativeBinaryProfile.cs" />
   </ItemGroup>
 </Project>
