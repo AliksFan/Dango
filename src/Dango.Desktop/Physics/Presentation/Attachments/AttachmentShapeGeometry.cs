@@ -9,20 +9,31 @@ public readonly record struct AttachmentPoint(double X, double Y)
     public double Dot(AttachmentPoint other) => X * other.X + Y * other.Y;
 }
 public sealed record ShapeTilt(double Angle, double Confidence, string Reason);
+internal readonly record struct AttachmentBoundaryEdge(AttachmentPoint Start, AttachmentPoint End,
+    AttachmentPoint Delta, double LengthSquared);
 
 public sealed class AttachmentShapeGeometry
 {
     // Tighter than the 0.0005 gate, leaving room for contact-fit error.
     public const double MaximumChordError = 0.00005;
     private readonly AttachmentPoint[] controls;
+    private readonly AttachmentBoundaryEdge[] boundaryEdges;
     private AttachmentShapeGeometry(AttachmentPoint[] controls, AttachmentPoint[] boundary)
     {
         this.controls = controls;
         Boundary = Array.AsReadOnly(boundary);
+        boundaryEdges = new AttachmentBoundaryEdge[boundary.Length];
+        for (var index = 0; index < boundary.Length; index++)
+        {
+            var start = boundary[index]; var end = boundary[(index + 1) % boundary.Length];
+            var delta = end - start;
+            boundaryEdges[index] = new(start, end, delta, delta.Dot(delta));
+        }
         Left = boundary.Min(p => p.X); Right = boundary.Max(p => p.X);
         Bottom = boundary.Min(p => p.Y); Top = boundary.Max(p => p.Y);
     }
     public IReadOnlyList<AttachmentPoint> Boundary { get; }
+    internal ReadOnlySpan<AttachmentBoundaryEdge> BoundaryEdges => boundaryEdges;
     public double Left { get; }
     public double Right { get; }
     public double Bottom { get; }

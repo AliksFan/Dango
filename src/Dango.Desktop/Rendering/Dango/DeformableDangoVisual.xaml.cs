@@ -9,6 +9,8 @@ public partial class DeformableDangoVisual : System.Windows.Controls.UserControl
     private static readonly StreamGeometry FallbackGeometry = CreateFallbackGeometry();
     private readonly UIElement oldLeftEye;
     private readonly UIElement oldRightEye;
+    private readonly System.Windows.Shapes.Path compiledLeftEye = new() { IsHitTestVisible = false };
+    private readonly System.Windows.Shapes.Path compiledRightEye = new() { IsHitTestVisible = false };
     private bool candidateEyes;
     private readonly System.Windows.Controls.TextBlock[] dozeLetters;
     private HatAppearance appearance;
@@ -124,8 +126,8 @@ public partial class DeformableDangoVisual : System.Windows.Controls.UserControl
 
         if (frame.Attachments is not null && !useFallback)
         {
-            DrawEye(LeftEyeLayer, frame.Attachments.Face.Left);
-            DrawEye(RightEyeLayer, frame.Attachments.Face.Right);
+            DrawEye(LeftEyeLayer, compiledLeftEye, frame.Attachments.Face.Left);
+            DrawEye(RightEyeLayer, compiledRightEye, frame.Attachments.Face.Right);
             candidateEyes = true;
             if (!candidateHat) HatLayer.RenderTransform = AttachmentGeometryFactory.ScaleHatTransform(AttachmentTransform(frame.Hat, new PresentationPoint(0, 0.82), true), HatSize, true);
             return;
@@ -175,16 +177,17 @@ public partial class DeformableDangoVisual : System.Windows.Controls.UserControl
         }
     }
 
-    private void DrawEye(System.Windows.Controls.Canvas layer, Dango.Desktop.Physics.Presentation.Attachments.EyePresentationFrame eye)
+    private void DrawEye(System.Windows.Controls.Canvas layer, System.Windows.Shapes.Path path,
+        Dango.Desktop.Physics.Presentation.Attachments.EyePresentationFrame eye)
     {
         layer.RenderTransform = Transform.Identity;
-        layer.Children.Clear();
-        layer.Children.Add(new System.Windows.Shapes.Path
+        if (layer.Children.Count != 1 || !ReferenceEquals(layer.Children[0], path))
         {
-            Data = AttachmentGeometryFactory.CreateEye(eye),
-            Fill = EyeFill,
-            IsHitTestVisible = false,
-        });
+            layer.Children.Clear();
+            layer.Children.Add(path);
+        }
+        path.Data = AttachmentGeometryFactory.CreateEye(eye);
+        path.Fill = EyeFill;
     }
 
     private void DrawDebug(IReadOnlyList<PresentationPoint> contour, bool useFallback)

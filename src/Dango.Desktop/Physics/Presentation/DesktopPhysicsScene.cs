@@ -34,6 +34,9 @@ public sealed class DesktopPhysicsScene : IDisposable
     private bool jumpWasHeld;
     private bool paused;
     private bool disposed;
+    private bool unboundedHorizontalPreview;
+    private double horizontalCoreOffset;
+    private const double HorizontalRebaseThreshold = 4;
 
     public DesktopPhysicsScene(string nativeLibraryPath, LogicalRect referenceBounds)
     {
@@ -59,11 +62,68 @@ public sealed class DesktopPhysicsScene : IDisposable
     public DesktopPhysicsSceneFrame? LastFrame { get; private set; }
     public IReadOnlyList<DangoEntityId> EntityIds => Array.AsReadOnly(presenters.Keys.ToArray());
     public double GroundY => ToHost(new(0, DangoPhysicsDefaults.Current.GroundHeight)).Y;
+    internal bool UnboundedHorizontalPreview => unboundedHorizontalPreview;
+    internal int HorizontalRebaseCount { get; private set; }
+    internal double PreviewJumpSpeedScale => world.PreviewJumpSpeedScale;
+    internal double ContinuousCoreX(DangoBodyState body) => body.CoreX + horizontalCoreOffset;
+
+    internal void SetPreviewJumpSpeedScale(double scale)
+    {
+        VerifyAccess();
+        if (scale != 1) EnsureHealthy();
+        world.SetPreviewJumpSpeedScale(scale);
+    }
+
+    /// <summary>
+    /// Uses a rolling local origin for the single-body editor preview. The native
+    /// floor remains finite; rebasing before a step keeps the body over that floor
+    /// while host coordinates, velocities, input and presentation history continue.
+    /// </summary>
+    internal void SetUnboundedHorizontalPreview(bool enabled)
+    {
+        VerifyAccess();
+        EnsureHealthy();
+        if (unboundedHorizontalPreview == enabled) return;
+        if (enabled)
+        {
+            if (Count != 1) throw new InvalidOperationException("无边界编辑预览只支持当前单团子。");
+            // Validate both optional exports before the first walking step. A
+            // missing capability must not become a picture-only approximation.
+            world.TranslateHorizontal(0);
+            world.ClearHorizontalBounds();
+        }
+        unboundedHorizontalPreview = enabled;
+    }
+
+    private void RebaseHorizontalPreview()
+    {
+        if (!unboundedHorizontalPreview || LastFrame is not { Physics.Succeeded: true } frame) return;
+        if (Count != 1) throw new InvalidOperationException("无边界编辑预览只支持当前单团子。");
+        var selected = frame.Physics.Bodies.Single(body => body.EntityId == SelectedEntity);
+        if (Math.Abs(selected.CoreX) < HorizontalRebaseThreshold) return;
+        var shift = (double)selected.CoreX;
+        // Translate moves the existing nodes, core and floor together. Restoring
+        // the floor afterwards leaves the rig near zero without clearing input,
+        // cooldowns, smoothing state or adding a simulation step.
+        world.TranslateHorizontal(-shift);
+        world.ClearHorizontalBounds();
+        origin = new(origin.X + shift * width / 2, origin.Y);
+        horizontalCoreOffset += shift;
+        HorizontalRebaseCount++;
+        LastFrame = frame with
+        {
+            Physics = frame.Physics with
+            {
+                Bodies = frame.Physics.Bodies.Select(body => body with { CoreX = (float)(body.CoreX - shift) }).ToArray(),
+            },
+        };
+    }
 
     public void SetHorizontalBounds(double hostLeft, double hostRight)
     {
         VerifyAccess();
         EnsureHealthy();
+        if (unboundedHorizontalPreview) throw new InvalidOperationException("请先退出无边界编辑预览，再设置房间边界。");
         world.SetHorizontalBounds(ToWorld(new(hostLeft, origin.Y)).X, ToWorld(new(hostRight, origin.Y)).X);
     }
 
@@ -139,6 +199,7 @@ public sealed class DesktopPhysicsScene : IDisposable
         world.ClearHorizontalBounds();
         var horizontal = -(double)selected.CoreX;
         world.TranslateHorizontal(horizontal);
+        horizontalCoreOffset = 0;
         origin = new(actualCenter.X, actualCenter.Y + selected.CoreY * height / 2);
         var translation = new LogicalVector(actualCenter.X - selectedBounds.Center.X, actualCenter.Y - selectedBounds.Center.Y);
         LastFrame = frame with
@@ -279,6 +340,7 @@ public sealed class DesktopPhysicsScene : IDisposable
         }
         if (!double.IsFinite(autonomousHorizontal) || Math.Abs(autonomousHorizontal) > .35)
             throw new ArgumentOutOfRangeException(nameof(autonomousHorizontal));
+        RebaseHorizontalPreview();
         var horizontal = intent.Left == intent.Right ? 0d : intent.Left ? -1d : 1d;
         if (horizontal == 0 && !intent.Jump && !intent.Squash && !dragActive && Count == 1)
             horizontal = autonomousHorizontal;
@@ -313,6 +375,8 @@ public sealed class DesktopPhysicsScene : IDisposable
     {
         VerifyAccess();
         world.Reset();
+        horizontalCoreOffset = 0;
+        HorizontalRebaseCount = 0;
         foreach (var presenter in presenters.Values) presenter.Reset();
         foreach (var id in facing.Keys.ToArray()) facing[id] = DangoFacingDirection.Center;
         ClearInput();

@@ -48,6 +48,9 @@ internal sealed class RoomViewController
     private bool hasPet;
     private bool calibrated;
     private bool windowCameraEnabled;
+    private bool unboundedFollow;
+    private double groundInset = GroundInset;
+    private double followBottomInset = FollowBottomInset;
     private double cameraVelocity;
     private double cameraTarget;
     private double cameraVelocityY;
@@ -116,6 +119,21 @@ internal sealed class RoomViewController
         ResetMotion();
     }
 
+    // The accessory preview owns a rolling physics origin and has no room edges.
+    // This opt-in preserves every existing finite-room camera contract.
+    internal void EnableUnboundedFollow(double groundInset, double bottomInset)
+    {
+        RequireFinite(groundInset, nameof(groundInset));
+        RequireFinite(bottomInset, nameof(bottomInset));
+        if (groundInset < 0 || bottomInset < 0) throw new ArgumentOutOfRangeException(nameof(groundInset));
+        this.groundInset = groundInset;
+        followBottomInset = bottomInset;
+        unboundedFollow = windowCameraEnabled = true;
+        CameraMode = RoomCameraMode.Follow;
+        Recalculate();
+        ResetMotion();
+    }
+
     internal void SelectCameraMode(RoomCameraMode mode)
     {
         if (mode is not (RoomCameraMode.Follow or RoomCameraMode.EdgeFollow or RoomCameraMode.Manual))
@@ -153,7 +171,7 @@ internal sealed class RoomViewController
     {
         RequirePositive(width, nameof(width));
         RequirePositive(height, nameof(height));
-        if (height <= GroundInset + TopInset) throw new ArgumentOutOfRangeException(nameof(height));
+        if (height <= groundInset + TopInset) throw new ArgumentOutOfRangeException(nameof(height));
         RequireFinite(groundWorldY, nameof(groundWorldY));
         RequirePositive(safeWorldHeight, nameof(safeWorldHeight));
         if (hasViewport && this.width == width && this.height == height &&
@@ -220,7 +238,7 @@ internal sealed class RoomViewController
         RequireFinite(petWorldCenter.Y, nameof(petWorldCenter));
         RequireFinite(elapsedMs, nameof(elapsedMs));
         if (bodyWorldBottom.HasValue) RequireFinite(bodyWorldBottom.Value, nameof(bodyWorldBottom));
-        petWorldX = Math.Clamp(petWorldCenter.X, 0, WorldWidth);
+        petWorldX = unboundedFollow ? petWorldCenter.X : Math.Clamp(petWorldCenter.X, 0, WorldWidth);
         petWorldY = petWorldCenter.Y;
         var firstPet = !hasPet;
         if (!hasViewport)
@@ -272,7 +290,7 @@ internal sealed class RoomViewController
         double? bodyWorldBottom)
     {
         var minimumFollowY = advanceVertical && CameraMode == RoomCameraMode.Follow && bodyWorldBottom.HasValue
-            ? ClampCameraY(bodyWorldBottom.Value - (height - FollowBottomInset) / Scale)
+            ? ClampCameraY(bodyWorldBottom.Value - (height - followBottomInset) / Scale)
             : double.NegativeInfinity;
         if (firstPet)
         {
@@ -292,7 +310,6 @@ internal sealed class RoomViewController
         }
         if (CameraMode == RoomCameraMode.Manual) return;
         var visibleWidth = width / Scale;
-        var maximum = Math.Max(0, WorldWidth - visibleWidth);
         var target = cameraTarget;
         if (CameraMode == RoomCameraMode.Follow)
             target = petWorldX - visibleWidth / 2;
@@ -300,7 +317,7 @@ internal sealed class RoomViewController
             target = petWorldX - visibleWidth * .2;
         else if (petWorldX > CameraX + visibleWidth * .8)
             target = petWorldX - visibleWidth * .8;
-        target = Math.Clamp(target, 0, maximum);
+        target = ClampCameraX(target);
         var targetY = cameraTargetY;
         if (advanceVertical)
         {
@@ -323,7 +340,7 @@ internal sealed class RoomViewController
         }
 
         var horizontal = AdvanceDampedAxis(CameraX, cameraVelocity, cameraTarget, target, elapsedMs);
-        CameraX = Math.Clamp(horizontal.Position, 0, maximum);
+        CameraX = ClampCameraX(horizontal.Position);
         cameraVelocity = CameraX == horizontal.Position ? horizontal.Velocity : 0;
         cameraTarget = target;
         if (advanceVertical)
@@ -378,18 +395,20 @@ internal sealed class RoomViewController
         return (position, velocity);
     }
 
-    private double AvailableHeight => height - GroundInset - TopInset;
+    private double AvailableHeight => height - groundInset - TopInset;
     private double MaximumScale => Math.Min(StandardScale * 1.3, AvailableHeight / safeWorldHeight);
     private double WholeScale => Math.Min(StandardScale,
         Math.Min(width / WorldWidth, AvailableHeight / Math.Max(WorldHeight, safeWorldHeight)));
-    private bool WholeWorldVisible => width / Scale >= WorldWidth;
+    private bool WholeWorldVisible => !unboundedFollow && width / Scale >= WorldWidth;
     private LogicalPoint ViewportCenter => new(
         (width / 2 - Projection.OffsetX) / Scale, (height / 2 - Projection.OffsetY) / Scale);
-    private double DefaultGroundAnchorTop => groundWorldY - (height - GroundInset) / Scale;
+    private double DefaultGroundAnchorTop => groundWorldY - (height - groundInset) / Scale;
     // A finite presentation margin includes the existing wall above/below the
     // ground framing and scales naturally with a future taller room.
-    private double ClampCameraY(double top) =>
+    private double ClampCameraY(double top) => unboundedFollow ? top :
         Math.Clamp(top, DefaultGroundAnchorTop - WorldHeight, DefaultGroundAnchorTop + WorldHeight);
+    private double ClampCameraX(double left) => unboundedFollow ? left :
+        Math.Clamp(left, 0, Math.Max(0, WorldWidth - width / Scale));
 
     private void Recalculate(LogicalPoint? retainedCenter = null)
     {
@@ -400,11 +419,11 @@ internal sealed class RoomViewController
             return;
         }
         var center = retainedCenter ?? ViewportCenter;
-        Scale = Preset == RoomViewPreset.Whole ? WholeScale :
+        Scale = unboundedFollow ? StandardScale : Preset == RoomViewPreset.Whole ? WholeScale :
             Math.Clamp(StandardScale * requestedPercent / 100, WholeScale, MaximumScale);
         if (windowCameraEnabled && hasPet)
         {
-            CameraX = WholeWorldVisible ? 0 : Math.Clamp(center.X - width / Scale / 2, 0, WorldWidth - width / Scale);
+            CameraX = WholeWorldVisible ? 0 : ClampCameraX(center.X - width / Scale / 2);
             CameraY = ClampCameraY(center.Y - height / Scale / 2);
             ResetMotion();
         }
@@ -414,13 +433,13 @@ internal sealed class RoomViewController
 
     private void CenterCamera()
     {
-        CameraX = WholeWorldVisible ? 0 : Math.Clamp(petWorldX - width / Scale / 2, 0, WorldWidth - width / Scale);
+        CameraX = WholeWorldVisible ? 0 : ClampCameraX(petWorldX - width / Scale / 2);
         CameraY = DefaultGroundAnchorTop;
     }
 
     private void ApplyProjection() => Projection = new(Scale,
         WholeWorldVisible ? (width - WorldWidth * Scale) / 2 : -CameraX * Scale,
-        windowCameraEnabled ? -CameraY * Scale : height - GroundInset - groundWorldY * Scale);
+        windowCameraEnabled ? -CameraY * Scale : height - groundInset - groundWorldY * Scale);
 
     private static void RequirePositive(double value, string name)
     {

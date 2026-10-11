@@ -689,15 +689,25 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
         for (var i = 0; i < 3; i++)
         {
             var show = !dangoAbove && i < (frame?.Bodies.Count ?? 1);
-            bodyVisuals[i].Visibility = hatVisuals[i].Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            bodyVisuals[i].Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            var customized = motionRuntime.AppearanceEntity is null ? i == 0 :
+                frame is not null && i < frame.EntityIds.Count && frame.EntityIds[i] == motionRuntime.AppearanceEntity;
+            hatVisuals[i].Visibility = show && !(motionRuntime.AccessoriesEnabled && customized)
+                ? Visibility.Visible : Visibility.Collapsed;
+            if (show && frame is not null)
+                DangoHostFrameBinding.Apply(bodyVisuals[i], hatVisuals[i], frame, i,
+                    appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize,
+                    bodyFillOverride: motionRuntime.BodyPreviewFill, eyeFillOverride: motionRuntime.EyePreviewFill,
+                    appearanceEntity: motionRuntime.AppearanceEntity, runtime: motionRuntime);
+            if (!show) Dango.Desktop.Accessories.AccessoryHostBinding.Hide(bodyVisuals[i]);
         }
         CushionVisual.Visibility = cushionAbove ? Visibility.Collapsed : Visibility.Visible;
         IslandVisual.Visibility = Visibility.Collapsed;
         dangoAboveWindow.SetInteractionEnabled(isInteractionEnabled && motionRuntime.LastError is null);
-        if (frame is not null) dangoAboveWindow.ApplyFrame(frame, motionRuntime.DisplayHatAppearance, motionRuntime.DisplayHatSize, motionRuntime.BodyPreviewFill, motionRuntime.EyePreviewFill, motionRuntime.AppearanceEntity);
+        if (frame is not null) dangoAboveWindow.ApplyFrame(frame, motionRuntime.DisplayHatAppearance, motionRuntime.DisplayHatSize, motionRuntime.BodyPreviewFill, motionRuntime.EyePreviewFill, motionRuntime.AppearanceEntity, motionRuntime);
         SetWindowVisibility(dangoAboveWindow, dangoAbove && frame is not null);
         // Apply physical window coordinates after SourceInitialized on first Show.
-        if (dangoAboveWindow.IsVisible && frame is not null) dangoAboveWindow.ApplyFrame(frame, motionRuntime.DisplayHatAppearance, motionRuntime.DisplayHatSize, motionRuntime.BodyPreviewFill, motionRuntime.EyePreviewFill, motionRuntime.AppearanceEntity);
+        if (dangoAboveWindow.IsVisible && frame is not null) dangoAboveWindow.ApplyFrame(frame, motionRuntime.DisplayHatAppearance, motionRuntime.DisplayHatSize, motionRuntime.BodyPreviewFill, motionRuntime.EyePreviewFill, motionRuntime.AppearanceEntity, motionRuntime);
         cushionAboveWindow.SetPosition(WpfCanvas.GetLeft(CushionVisual), WpfCanvas.GetTop(CushionVisual));
         SetWindowVisibility(cushionAboveWindow, cushionAbove);
         islandOverlayWindow.SetDesiredVisibility(true);
@@ -857,9 +867,9 @@ public partial class WorkerWWindow : WpfUserControl, IDesktopHostControl, IDeskt
 
     private void ApplyPresentationFrame(StackedPhysicsPresentationFrame frame)
     {
-        DangoHostFrameBinding.Apply(DangoVisual, DangoHat, frame, 0, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize, bodyFillOverride: motionRuntime.BodyPreviewFill, eyeFillOverride: motionRuntime.EyePreviewFill, appearanceEntity: motionRuntime.AppearanceEntity);
-        DangoHostFrameBinding.Apply(MiddleDangoVisual, MiddleDangoHat, frame, 1, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize, bodyFillOverride: motionRuntime.BodyPreviewFill, eyeFillOverride: motionRuntime.EyePreviewFill, appearanceEntity: motionRuntime.AppearanceEntity);
-        DangoHostFrameBinding.Apply(TopDangoVisual, TopDangoHat, frame, 2, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize, bodyFillOverride: motionRuntime.BodyPreviewFill, eyeFillOverride: motionRuntime.EyePreviewFill, appearanceEntity: motionRuntime.AppearanceEntity);
+        DangoHostFrameBinding.Apply(DangoVisual, DangoHat, frame, 0, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize, bodyFillOverride: motionRuntime.BodyPreviewFill, eyeFillOverride: motionRuntime.EyePreviewFill, appearanceEntity: motionRuntime.AppearanceEntity, runtime: motionRuntime);
+        DangoHostFrameBinding.Apply(MiddleDangoVisual, MiddleDangoHat, frame, 1, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize, bodyFillOverride: motionRuntime.BodyPreviewFill, eyeFillOverride: motionRuntime.EyePreviewFill, appearanceEntity: motionRuntime.AppearanceEntity, runtime: motionRuntime);
+        DangoHostFrameBinding.Apply(TopDangoVisual, TopDangoHat, frame, 2, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize, bodyFillOverride: motionRuntime.BodyPreviewFill, eyeFillOverride: motionRuntime.EyePreviewFill, appearanceEntity: motionRuntime.AppearanceEntity, runtime: motionRuntime);
         ApplyObjectLayerVisibility();
     }
 

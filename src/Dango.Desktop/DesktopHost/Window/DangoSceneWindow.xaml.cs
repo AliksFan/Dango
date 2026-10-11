@@ -498,9 +498,9 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
 
     private void ApplyPresentationFrame(StackedPhysicsPresentationFrame frame)
     {
-        DangoHostFrameBinding.Apply(DangoVisual, DangoHat, frame, 0, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize, bodyFillOverride: motionRuntime.BodyPreviewFill, eyeFillOverride: motionRuntime.EyePreviewFill, appearanceEntity: motionRuntime.AppearanceEntity);
-        DangoHostFrameBinding.Apply(MiddleDangoVisual, MiddleDangoHat, frame, 1, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize, bodyFillOverride: motionRuntime.BodyPreviewFill, eyeFillOverride: motionRuntime.EyePreviewFill, appearanceEntity: motionRuntime.AppearanceEntity);
-        DangoHostFrameBinding.Apply(TopDangoVisual, TopDangoHat, frame, 2, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize, bodyFillOverride: motionRuntime.BodyPreviewFill, eyeFillOverride: motionRuntime.EyePreviewFill, appearanceEntity: motionRuntime.AppearanceEntity);
+        DangoHostFrameBinding.Apply(DangoVisual, DangoHat, frame, 0, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize, bodyFillOverride: motionRuntime.BodyPreviewFill, eyeFillOverride: motionRuntime.EyePreviewFill, appearanceEntity: motionRuntime.AppearanceEntity, runtime: motionRuntime);
+        DangoHostFrameBinding.Apply(MiddleDangoVisual, MiddleDangoHat, frame, 1, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize, bodyFillOverride: motionRuntime.BodyPreviewFill, eyeFillOverride: motionRuntime.EyePreviewFill, appearanceEntity: motionRuntime.AppearanceEntity, runtime: motionRuntime);
+        DangoHostFrameBinding.Apply(TopDangoVisual, TopDangoHat, frame, 2, appearance: motionRuntime.DisplayHatAppearance, hatSize: motionRuntime.DisplayHatSize, bodyFillOverride: motionRuntime.BodyPreviewFill, eyeFillOverride: motionRuntime.EyePreviewFill, appearanceEntity: motionRuntime.AppearanceEntity, runtime: motionRuntime);
     }
 
 

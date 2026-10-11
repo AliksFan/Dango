@@ -32,6 +32,7 @@ DANGO_API int dango_physics_world_step(
     int* contact_steps,
     int* latched_error);
 DANGO_API int dango_physics_world_reset(void* handle);
+DANGO_API int dango_physics_world_set_preview_jump_speed_scale(void* handle, float scale);
 DANGO_API int dango_physics_world_set_horizontal_bounds(void* handle, float left, float right);
 DANGO_API int dango_physics_world_clear_horizontal_bounds(void* handle);
 DANGO_API int dango_physics_world_translate_horizontal(void* handle, float translation);

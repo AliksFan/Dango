@@ -62,6 +62,7 @@ public partial class ProductHomeView : UserControl
         InitializeComponent();
         AccountContent.Requested += OnUnboundAccountAction;
         RoomContent.Requested += request => { if (request.Action == RoomPanelAction.Close && RoomDirectoryRequested is null) CloseAccountPanel(); };
+        InitializeAccessories();
         InitializePorchNavigation();
         RefreshAppearanceControls();
         Loaded += OnLoaded;
@@ -90,6 +91,7 @@ public partial class ProductHomeView : UserControl
         if (IsInPorch || IsDangoAway) return;
         ClearLiveDirectionalInput();
         if (IsEditing && SelectedEditor == HomeEditor.Face) CancelAppearancePreview();
+        if (IsEditing && SelectedEditor == HomeEditor.Wardrobe) CancelAccessoryPreview();
         var wasOpen = IsEditing;
         var editorChanged = !wasOpen || SelectedEditor != editor;
         if (editorChanged)
@@ -106,6 +108,8 @@ public partial class ProductHomeView : UserControl
         if (editorChanged) OptionsBody.ScrollToTop();
         RefreshAppearanceControls();
         EditorTitle.Text = editor == HomeEditor.Face ? "捏脸" : "换装";
+        accessoryPanel.Refresh();
+        UpdateAccessoryPreviewMode();
         if (IsLoaded && !IsSettingsOpen) Stage.Focus();
         UpdateTransition(true);
     }
@@ -118,6 +122,7 @@ public partial class ProductHomeView : UserControl
         CancelAppearancePreview();
         if (focusStage) Stage.Focus();
         IsEditing = false;
+        UpdateAccessoryPreviewMode();
         UpdateTransition(true);
     }
 
@@ -333,6 +338,12 @@ public partial class ProductHomeView : UserControl
             if (e.Key == Key.Escape) { CloseAccountPanel(); e.Handled = true; }
             return;
         }
+        if (IsAccessoryPreview && IsKeyboardFocusWithin && Keyboard.Modifiers == ModifierKeys.None && e.Key == Key.Escape)
+        {
+            if (!e.IsRepeat) CloseEditor();
+            e.Handled = true;
+            return;
+        }
         if (!IsKeyboardFocusWithin || Keyboard.Modifiers != ModifierKeys.None ||
             Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.ComboBox or PasswordBox)
             return;
@@ -350,6 +361,11 @@ public partial class ProductHomeView : UserControl
             else if (IsEditing) CloseEditor();
             else return;
             e.Handled = true;
+            return;
+        }
+        if (IsAccessoryPreview && !IsSettingsOpen && !IsDangoAway)
+        {
+            e.Handled = SetLiveDirectionalKey(e.Key, true, e.IsRepeat);
             return;
         }
         if (IsSettingsOpen || IsDangoAway || IsAppearanceInputFocused())
@@ -376,7 +392,13 @@ public partial class ProductHomeView : UserControl
 
     private void OnPreviewKeyUp(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        if (IsAccountPanelOpen || IsSettingsOpen || IsDangoAway || IsAppearanceInputFocused()) { ClearLiveDirectionalInput(); return; }
+        if (IsAccountPanelOpen) { ClearLiveDirectionalInput(); return; }
+        if (IsAccessoryPreview)
+        {
+            e.Handled = SetLiveDirectionalKey(e.Key, false, false);
+            return;
+        }
+        if (IsSettingsOpen || IsDangoAway || IsAppearanceInputFocused()) { ClearLiveDirectionalInput(); return; }
         if (!IsInPorch && e.Key is (Key.A or Key.D)) { e.Handled = true; return; }
         e.Handled = SetLiveDirectionalKey(e.Key, false, false);
     }
@@ -457,7 +479,9 @@ public partial class ProductHomeView : UserControl
         highContrast = contrast;
         Background = contrast ? System.Windows.SystemColors.WindowBrush : Brush("#FDFCF9");
         Foreground = contrast ? System.Windows.SystemColors.WindowTextBrush : Brush("#443D34");
+        Resources["HomeBackground"] = Background;
         Resources["HomeInk"] = Foreground;
+        Resources["HomePrimaryInk"] = contrast ? System.Windows.SystemColors.HighlightTextBrush : Foreground;
         Resources["HomeMuted"] = contrast ? Foreground : Brush("#807568");
         Resources["HomeLine"] = contrast ? Foreground : Brush("#E9E4DA");
         Resources["HomeSoft"] = contrast ? Background : Brush("#F3EFE8");
@@ -592,9 +616,9 @@ public partial class ProductHomeView : UserControl
         if (Stage is null || HomeContent is null) return;
         var commonHeight = CommonPreviewTop + BasePreviewWidth * .75 + HomeLauncherSpace;
         Stage.MinHeight = Math.Max(minimumStageHeight, IsPortraitLayout ? PortraitPreviewHeight : commonHeight);
-        if (IsEditing && SelectedEditor == HomeEditor.Face && !IsPortraitLayout)
+        if (IsEditing && !IsPortraitLayout)
             Stage.MinHeight = Math.Max(Stage.MinHeight, CommonPreviewTop + BasePreviewWidth * .75 + ShadowHeight +
-                FaceEditorSaveActions.DesiredSize.Height + 16);
+                EditorSaveActionsHeight + 16);
         var available = HomeContent.ActualHeight - Stage.Margin.Top - Stage.Margin.Bottom;
         var height = Math.Max(Stage.MinHeight, available);
         if (double.IsNaN(Stage.Height) || Math.Abs(Stage.Height - height) > .5) Stage.Height = height;
@@ -615,8 +639,10 @@ public partial class ProductHomeView : UserControl
 
     private double ShadowHeight => BasePreviewWidth * .045;
     private double HomeLauncherSpace => ShadowHeight + 4 + 60;
+    private double EditorSaveActionsHeight => SelectedEditor == HomeEditor.Face
+        ? FaceEditorSaveActions.DesiredSize.Height : AccessorySaveActionsSlot.DesiredSize.Height;
     private double PortraitPreviewHeight => CommonPreviewTop + BasePreviewWidth * .75 + ShadowHeight +
-        (IsEditing && SelectedEditor == HomeEditor.Face ? Math.Max(64, FaceEditorSaveActions.DesiredSize.Height + 20) : 64);
+        (IsEditing ? Math.Max(64, EditorSaveActionsHeight + 20) : 64);
     // Use the visible home area, not the editor's variable content height. The
     // projected native jump can rise 42 canvas units. Keep a further 20 DIP
     // above that arc; the native jump gate also measures the rendered hats.
@@ -650,6 +676,7 @@ public partial class ProductHomeView : UserControl
         var compactLandscape = !portrait && ActualWidth < 800;
         var shortLandscape = !portrait && ActualHeight <= 400;
         var faceEditing = IsEditing && SelectedEditor == HomeEditor.Face;
+        var accessoryEditing = IsEditing && SelectedEditor == HomeEditor.Wardrobe;
         var panelOnLeft = SelectedEditor == HomeEditor.Wardrobe &&
             (IsEditing || EditorPanel.Visibility == Visibility.Visible && !IsInPorch);
         var panelShare = compactLandscape ? SelectedEditor == HomeEditor.Face && ActualWidth < 600 ? 33 : 50 : 43;
@@ -662,10 +689,9 @@ public partial class ProductHomeView : UserControl
         Grid.SetRow(EditorPanel, portrait ? 1 : 0);
         Grid.SetColumn(EditorPanel, portrait ? 0 : panelOnLeft ? 0 : 2);
         Grid.SetColumnSpan(EditorPanel, portrait ? 3 : 1);
-        EditorHeading.Visibility = EditorTitle.Visibility = SelectedEditor == HomeEditor.Face ? Visibility.Collapsed : Visibility.Visible;
-        EditorHeadingRow.Height = new GridLength(SelectedEditor == HomeEditor.Face ? 0 : 36);
-        OptionsBody.Margin = SelectedEditor == HomeEditor.Face ? new Thickness(0) : shortLandscape
-            ? new Thickness(0, 8, 0, 8) : portrait ? new Thickness(0, 14, 0, 12) : new Thickness(0, 26, 0, 20);
+        EditorHeading.Visibility = EditorTitle.Visibility = Visibility.Collapsed;
+        EditorHeadingRow.Height = new GridLength(0);
+        OptionsBody.Margin = new Thickness(0);
         EditorPanel.MinHeight = portrait ? 0 : shortLandscape ? 245 : compactLandscape ? 300 : 340;
         EditorPanel.Margin = portrait ? new Thickness(12, 4, 12, 8)
             : shortLandscape ? new Thickness(4) : new Thickness(4, 8, 4, 8);
@@ -679,6 +705,15 @@ public partial class ProductHomeView : UserControl
         FaceParameterSpacerRow.Height = new GridLength(0);
         FaceEditorSaveActions.Width = portrait ? BasePreviewWidth : double.NaN;
         FaceEditorSaveActions.HorizontalAlignment = portrait ? System.Windows.HorizontalAlignment.Center : System.Windows.HorizontalAlignment.Stretch;
+        Grid.SetColumn(AccessoryEditorTools, portrait ? 0 : 2);
+        Grid.SetColumnSpan(AccessoryEditorTools, portrait ? 3 : 1);
+        Grid.SetRowSpan(AccessoryEditorTools, portrait ? 1 : 2);
+        AccessoryEditorTools.Margin = FaceEditorTools.Margin;
+        AccessoryEditorTools.VerticalAlignment = FaceEditorTools.VerticalAlignment;
+        AccessoryEditorPreviewRegion.Width = BasePreviewWidth + 76;
+        AccessoryPreviewSlot.Width = BasePreviewWidth;
+        AccessorySaveActionsSlot.Width = portrait ? BasePreviewWidth : double.NaN;
+        AccessorySaveActionsSlot.HorizontalAlignment = portrait ? System.Windows.HorizontalAlignment.Center : System.Windows.HorizontalAlignment.Stretch;
         Grid.SetRow(PorchContent, 0);
         Grid.SetColumn(PorchContent, 0);
         Grid.SetColumnSpan(PorchContent, 3);
@@ -704,11 +739,12 @@ public partial class ProductHomeView : UserControl
         animate &= IsLoaded && !ReduceMotion && SystemParameters.ClientAreaAnimation;
         UpdateLauncherSelection();
         var horizontalPanelHeight = Math.Max(EditorPanel.MinHeight,
-            faceEditing ? height - EditorPanel.Margin.Top - EditorPanel.Margin.Bottom
+            IsEditing ? height - EditorPanel.Margin.Top - EditorPanel.Margin.Bottom
                 : Math.Min(420, height - EditorPanel.Margin.Top - EditorPanel.Margin.Bottom));
         EditorPanel.Height = portrait ? double.NaN : horizontalPanelHeight;
         FaceEditorTools.Height = portrait ? Math.Max(0, PresenceStageRow.Height.Value -
             FaceEditorTools.Margin.Top - FaceEditorTools.Margin.Bottom) : horizontalPanelHeight;
+        AccessoryEditorTools.Height = FaceEditorTools.Height;
         PorchContent.Height = double.NaN;
         Presence.IsHitTestVisible = Presence.IsEnabled = !IsInPorch;
         UpdateHomeEntryPositions(width, previewWidth);
@@ -716,8 +752,9 @@ public partial class ProductHomeView : UserControl
         Launchers.Visibility = IsEditing ? Visibility.Collapsed : Visibility.Visible;
         EnterRoomButton.Visibility = IsEditing ? Visibility.Collapsed : Visibility.Visible;
         EnterRoomButton.IsEnabled = !IsEditing && !IsInPorch;
-        Brand.Visibility = faceEditing ? Visibility.Collapsed : Visibility.Visible;
+        Brand.Visibility = IsEditing ? Visibility.Collapsed : Visibility.Visible;
         FaceBrandIcon.Visibility = faceEditing ? Visibility.Visible : Visibility.Collapsed;
+        AccessoryBrandIcon.Visibility = accessoryEditing ? Visibility.Visible : Visibility.Collapsed;
         if (BoundRuntime is null) PetShadow.Visibility = IsInPorch ? Visibility.Collapsed : Visibility.Visible;
         PorchBrand.Visibility = IsInPorch ? Visibility.Visible : Visibility.Collapsed;
         TopNavigation.IsHitTestVisible = !IsInPorch;
@@ -726,7 +763,9 @@ public partial class ProductHomeView : UserControl
         TopNavigation.IsEnabled = HomeFooter.IsEnabled = !IsInPorch && !IsAccountPanelOpen;
         EditorPanel.IsEnabled = EditorPanel.IsHitTestVisible = IsEditing;
         FaceEditorTools.IsEnabled = FaceEditorTools.IsHitTestVisible = faceEditing;
+        AccessoryEditorTools.IsEnabled = AccessoryEditorTools.IsHitTestVisible = accessoryEditing;
         if (faceEditing) FaceEditorTools.Visibility = Visibility.Visible;
+        if (accessoryEditing) AccessoryEditorTools.Visibility = Visibility.Visible;
         if (IsEditing) EditorPanel.Visibility = Visibility.Visible;
         PorchContent.IsEnabled = IsInPorch;
         PorchContent.IsHitTestVisible = IsInPorch;
@@ -746,6 +785,10 @@ public partial class ProductHomeView : UserControl
         Animate(FaceEditorTools, OpacityProperty, faceEditing ? 1 : 0, animate, () =>
         {
             if (version == transitionVersion && !faceEditing && !IsDangoAway) FaceEditorTools.Visibility = Visibility.Hidden;
+        });
+        Animate(AccessoryEditorTools, OpacityProperty, accessoryEditing ? 1 : 0, animate, () =>
+        {
+            if (version == transitionVersion && !accessoryEditing && !IsDangoAway) AccessoryEditorTools.Visibility = Visibility.Hidden;
         });
         Animate(PorchContent, OpacityProperty, IsInPorch ? 1 : 0, animate, () =>
         {
