@@ -269,6 +269,8 @@ function Get-DangoProfileFixedPlan {
             Get-DangoAccountSyncClosurePlan $Plan.Repository
         } elseif ($Plan.Stage -ceq 'AccountSyncB1b1') {
             Assert-DangoAccountSyncB1bFixedPlan $Plan
+        } elseif ($Plan.Stage -ceq 'AccountSyncB1c1') {
+            Assert-DangoAccountSyncB1cFixedPlan $Plan
         } else { throw 'rejected' }
         if (@($Plan.PSObject.Properties).Count -ne @($fixed.PSObject.Properties).Count) { throw 'rejected' }
         foreach ($property in $fixed.PSObject.Properties) {
@@ -414,13 +416,13 @@ function Invoke-DangoProfileProcess {
         [Collections.Generic.List[object]]$Receipts,
         [scriptblock]$IdentityProbe={ param($process,$expected) Get-DangoProfileProcessIdentity $process $expected },
         [scriptblock]$ProcessFactory={ param($info) $process=[Diagnostics.Process]::new(); $process.StartInfo=$info; return $process },
-        [ValidateSet('CompleteEof','PostgresStartIgnored','PostgresEvidenceJson','AccountSyncStartIgnored','AccountSyncEvidenceJson','AccountSyncB1bEvidenceJson','AccountSyncB1bSmallJson',IgnoreCase=$false)][string]$OutputContract='CompleteEof',
+        [ValidateSet('CompleteEof','PostgresStartIgnored','PostgresEvidenceJson','AccountSyncStartIgnored','AccountSyncEvidenceJson','AccountSyncB1bEvidenceJson','AccountSyncB1bSmallJson','AccountSyncB1cEvidenceJson','AccountSyncB1cSmallJson',IgnoreCase=$false)][string]$OutputContract='CompleteEof',
         $PostgresStartPlan, [int]$PostgresStartPort=0,
         $PostgresEvidencePlan, [int]$PostgresEvidencePort=0,
         [switch]$PreserveRawOutput)
     $ignoreStartOutput=$OutputContract -cin @('PostgresStartIgnored','AccountSyncStartIgnored')
-    $b1bRawOutput=$OutputContract -cin @('AccountSyncB1bEvidenceJson','AccountSyncB1bSmallJson')
-    $evidenceOutput=$OutputContract -cin @('PostgresEvidenceJson','AccountSyncEvidenceJson','AccountSyncB1bEvidenceJson')
+    $b1bRawOutput=$OutputContract -cin @('AccountSyncB1bEvidenceJson','AccountSyncB1bSmallJson','AccountSyncB1cEvidenceJson','AccountSyncB1cSmallJson')
+    $evidenceOutput=$OutputContract -cin @('PostgresEvidenceJson','AccountSyncEvidenceJson','AccountSyncB1bEvidenceJson','AccountSyncB1cEvidenceJson')
     if ($PreserveRawOutput) {
         if ($OutputContract -cne 'CompleteEof' -or $null -ne $PostgresStartPlan -or $PostgresStartPort -ne 0 -or
             $null -eq $PostgresEvidencePlan -or $PostgresEvidencePlan.Stage -cne 'AccountSyncB1a2Closure' -or
@@ -432,8 +434,13 @@ function Invoke-DangoProfileProcess {
         if($PreserveRawOutput -or $null -ne $PostgresStartPlan -or $PostgresStartPort -ne 0 -or $TimeoutSeconds -ne 30){
             throw 'profile_run_b1b_output_contract_rejected'
         }
-        Assert-DangoAccountSyncB1bEvidenceContract $Executable $Arguments $WorkingDirectory $PostgresEvidencePlan $PostgresEvidencePort `
-            $EnvironmentValues ([bool]$KillOwnedTree) $OutputContract
+        if($OutputContract -cin @('AccountSyncB1cEvidenceJson','AccountSyncB1cSmallJson')) {
+            Assert-DangoAccountSyncB1cEvidenceContract $Executable $Arguments $WorkingDirectory $PostgresEvidencePlan $PostgresEvidencePort `
+                $EnvironmentValues ([bool]$KillOwnedTree) $OutputContract
+        } else {
+            Assert-DangoAccountSyncB1bEvidenceContract $Executable $Arguments $WorkingDirectory $PostgresEvidencePlan $PostgresEvidencePort `
+                $EnvironmentValues ([bool]$KillOwnedTree) $OutputContract
+        }
     } elseif ($ignoreStartOutput) {
         if ($null -ne $PostgresEvidencePlan -or $PostgresEvidencePort -ne 0) { throw 'profile_run_start_output_contract_rejected' }
         if ($OutputContract -ceq 'AccountSyncStartIgnored') {
