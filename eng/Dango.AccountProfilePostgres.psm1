@@ -273,6 +273,8 @@ function Get-DangoProfileFixedPlan {
             Assert-DangoAccountSyncB1cFixedPlan $Plan
         } elseif ($Plan.Stage -ceq 'AccountSyncB1c2') {
             Assert-DangoAccountSyncB1c2FixedPlan $Plan
+        } elseif ($Plan.Stage -ceq 'PorchCrudC1') {
+            Assert-DangoPorchCrudC1FixedPlan $Plan
         } else { throw 'rejected' }
         if (@($Plan.PSObject.Properties).Count -ne @($fixed.PSObject.Properties).Count) { throw 'rejected' }
         foreach ($property in $fixed.PSObject.Properties) {
@@ -418,13 +420,13 @@ function Invoke-DangoProfileProcess {
         [Collections.Generic.List[object]]$Receipts,
         [scriptblock]$IdentityProbe={ param($process,$expected) Get-DangoProfileProcessIdentity $process $expected },
         [scriptblock]$ProcessFactory={ param($info) $process=[Diagnostics.Process]::new(); $process.StartInfo=$info; return $process },
-        [ValidateSet('CompleteEof','PostgresStartIgnored','PostgresEvidenceJson','AccountSyncStartIgnored','AccountSyncEvidenceJson','AccountSyncB1bEvidenceJson','AccountSyncB1bSmallJson','AccountSyncB1cEvidenceJson','AccountSyncB1cSmallJson','AccountSyncB1c2EvidenceJson','AccountSyncB1c2SmallJson',IgnoreCase=$false)][string]$OutputContract='CompleteEof',
+        [ValidateSet('CompleteEof','PostgresStartIgnored','PostgresEvidenceJson','AccountSyncStartIgnored','AccountSyncEvidenceJson','AccountSyncB1bEvidenceJson','AccountSyncB1bSmallJson','AccountSyncB1cEvidenceJson','AccountSyncB1cSmallJson','AccountSyncB1c2EvidenceJson','AccountSyncB1c2SmallJson','PorchCrudC1EvidenceJson','PorchCrudC1SmallJson',IgnoreCase=$false)][string]$OutputContract='CompleteEof',
         $PostgresStartPlan, [int]$PostgresStartPort=0,
         $PostgresEvidencePlan, [int]$PostgresEvidencePort=0,
         [switch]$PreserveRawOutput)
     $ignoreStartOutput=$OutputContract -cin @('PostgresStartIgnored','AccountSyncStartIgnored')
-    $b1bRawOutput=$OutputContract -cin @('AccountSyncB1bEvidenceJson','AccountSyncB1bSmallJson','AccountSyncB1cEvidenceJson','AccountSyncB1cSmallJson','AccountSyncB1c2EvidenceJson','AccountSyncB1c2SmallJson')
-    $evidenceOutput=$OutputContract -cin @('PostgresEvidenceJson','AccountSyncEvidenceJson','AccountSyncB1bEvidenceJson','AccountSyncB1cEvidenceJson','AccountSyncB1c2EvidenceJson')
+    $b1bRawOutput=$OutputContract -cin @('AccountSyncB1bEvidenceJson','AccountSyncB1bSmallJson','AccountSyncB1cEvidenceJson','AccountSyncB1cSmallJson','AccountSyncB1c2EvidenceJson','AccountSyncB1c2SmallJson','PorchCrudC1EvidenceJson','PorchCrudC1SmallJson')
+    $evidenceOutput=$OutputContract -cin @('PostgresEvidenceJson','AccountSyncEvidenceJson','AccountSyncB1bEvidenceJson','AccountSyncB1cEvidenceJson','AccountSyncB1c2EvidenceJson','PorchCrudC1EvidenceJson')
     if ($PreserveRawOutput) {
         if ($OutputContract -cne 'CompleteEof' -or $null -ne $PostgresStartPlan -or $PostgresStartPort -ne 0 -or
             $null -eq $PostgresEvidencePlan -or $PostgresEvidencePlan.Stage -cne 'AccountSyncB1a2Closure' -or
@@ -436,7 +438,10 @@ function Invoke-DangoProfileProcess {
         if($PreserveRawOutput -or $null -ne $PostgresStartPlan -or $PostgresStartPort -ne 0 -or $TimeoutSeconds -ne 30){
             throw 'profile_run_b1b_output_contract_rejected'
         }
-        if($OutputContract -cin @('AccountSyncB1c2EvidenceJson','AccountSyncB1c2SmallJson')) {
+        if($OutputContract -cin @('PorchCrudC1EvidenceJson','PorchCrudC1SmallJson')) {
+            Assert-DangoPorchCrudC1EvidenceContract $Executable $Arguments $WorkingDirectory $PostgresEvidencePlan $PostgresEvidencePort `
+                $EnvironmentValues ([bool]$KillOwnedTree) $OutputContract
+        } elseif($OutputContract -cin @('AccountSyncB1c2EvidenceJson','AccountSyncB1c2SmallJson')) {
             Assert-DangoAccountSyncB1c2EvidenceContract $Executable $Arguments $WorkingDirectory $PostgresEvidencePlan $PostgresEvidencePort `
                 $EnvironmentValues ([bool]$KillOwnedTree) $OutputContract
         } elseif($OutputContract -cin @('AccountSyncB1cEvidenceJson','AccountSyncB1cSmallJson')) {

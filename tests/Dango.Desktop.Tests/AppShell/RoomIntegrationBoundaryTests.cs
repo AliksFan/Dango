@@ -128,11 +128,11 @@ public sealed class RoomIntegrationBoundaryTests
         var view = new RoomPanelView(); var remote = new Remote { Next = Guid.NewGuid() };
         using var controller = Controller(view, () => remote);
         controller.Open(); Assert.AreEqual(1, remote.Lists.Count);
-        Assert.AreEqual(("active", (Guid?)null, 20), remote.Lists[0]);
+        Assert.AreEqual(("active", (Guid?)null, 4), remote.Lists[0]);
         Send(controller, RoomPanelAction.NextPage);
-        Assert.AreEqual(("active", remote.Next, 20), remote.Lists[1]);
+        Assert.AreEqual(("active", remote.Next, 4), remote.Lists[1]);
         Send(controller, RoomPanelAction.DissolvedDirectory);
-        Assert.AreEqual(("dissolved", (Guid?)null, 20), remote.Lists[2]);
+        Assert.AreEqual(("dissolved", (Guid?)null, 4), remote.Lists[2]);
     });
 
     [STATestMethod]
@@ -189,7 +189,7 @@ public sealed class RoomIntegrationBoundaryTests
     [STATestMethod]
     [DataRow(1024, 640)]
     [DataRow(336, 360)]
-    public void CenteredRoomOverlaySwitchesFromAccountClearsSecretsAndKeepsBackgroundDisabled(int width, int height)
+    public void SceneRoomPanelSwitchesFromAccountClearsSecretsAndKeepsNavigationDisabled(int width, int height)
     {
         var home = new ProductHomeView { ReduceMotion = true };
         home.ShowAccountPanel();
@@ -201,13 +201,19 @@ public sealed class RoomIntegrationBoundaryTests
         Assert.IsTrue(home.IsRoomPanelOpen);
         Assert.AreEqual("", home.AccountPanel.Password);
         Assert.AreEqual(Visibility.Collapsed, home.AccountPanel.Visibility);
-        Assert.IsFalse(((ScrollViewer)home.FindName("HomeContent")).IsEnabled);
-        var bounds = home.RoomPanel.TransformToAncestor(home).TransformBounds(new Rect(home.RoomPanel.RenderSize));
-        Assert.AreEqual(width / 2d, bounds.X + bounds.Width / 2, 1);
-        Assert.IsTrue(bounds.Top >= 0 && bounds.Bottom <= height);
+        Assert.IsTrue(home.IsInPorch);
+        Assert.IsFalse(((FrameworkElement)home.FindName("TopNavigation")).IsEnabled);
+        Assert.AreEqual(Visibility.Collapsed, ((FrameworkElement)home.FindName("AccountOverlay")).Visibility);
+        var operations = (FrameworkElement)home.FindName("PorchOperations");
+        var porch = (FrameworkElement)home.FindName("PorchContent");
+        Assert.AreSame(porch, operations.Parent);
+        var bounds = operations.TransformToAncestor(porch).TransformBounds(new Rect(operations.RenderSize));
+        Assert.IsTrue(bounds.Left >= 0 && bounds.Top >= 0 && bounds.Right <= porch.ActualWidth + 1 && bounds.Bottom <= porch.ActualHeight + 1);
         Assert.AreEqual(0d, ((ScrollViewer)home.RoomPanel.FindName("RoomScroll")).ScrollableWidth);
         ((Button)home.RoomPanel.FindName("RoomClose")).RaiseEvent(new(Button.ClickEvent));
         Assert.IsFalse(home.IsAccountPanelOpen);
+        Assert.IsTrue(home.IsInPorch);
+        Assert.IsFalse(((FrameworkElement)home.FindName("TopNavigation")).IsEnabled);
         Assert.IsTrue(((ScrollViewer)home.FindName("HomeContent")).IsEnabled);
         home.ShowRoomPanel(); home.ShowAccountPanel();
         Assert.IsTrue(home.IsAccountPanelOpen);

@@ -1,5 +1,7 @@
 # Dango 分阶段开发计划 v0.1
 
+> 2026-10-11 门廊CRUD C1：正式Desktop／HTTPS／PostgreSQL房间创建、修改、解散、恢复的固定验证候选与一次性外层工具准备完成；离线C#边界5项、PowerShell正反例50项、SQL metadata 2项、目标桌面48项及独立按键1项、共享B1c2工具511项通过，原桌面1项NotExecuted及初次失败保留。见[准备记录](verification/2026-10-11-porch-crud-c1-preparation.md)和[精确计划](planning/2026-10-11-porch-crud-c1-local-plan.md)。真实C1闭环尚未执行，等待新的精确数据批准；主观验收、C2故障验证、完整B5／多人／运维与生产部署仍待完成。未合入main、推送、部署、更新安装或替换生产DLL。
+
 > 2026-10-11 账号同步B1c2：用户批准后的唯一一次完整Desktop／正式HTTPS／PostgreSQL跨账号旅程及外层门禁通过。21次业务、66次HTTP登记／64次实际Send、两次正常注销取消已核实，旧22表摘要多重集合保全、四会话逐行归属与撤销、最终双账号scoped均通过，资源收尾并保留数据。见[完整记录](verification/2026-10-11-account-sync-b1c2-passed.md)。B1c1原失败不追认；门廊正式CRUD闭环及主观验收仍待完成，不表示完整B5／多人可玩／运维或生产部署通过。未合入main、推送、部署、更新安装或替换生产DLL。以下较早记录保留当时停止点。
 
 > 2026-10-10 账号／门廊修订：用户已确认每次登录差异选择、会话持续捏脸同步、首次必设可重复昵称及门廊场景直接展开全部房间操作，配饰后续按同规则接入。已整合核心与 Desktop 候选，Client 静态403／403、Protocol12／12、Server无数据库191／191及账号／外观／房间受影响检查通过；迟到任务和最长昵称窄窗口均有实际失败反例。见[设计](planning/2026-10-10-account-sync-nickname-and-porch-design.md)、[联合记录](verification/2026-10-10-account-sync-nickname-and-porch.md)和[门廊实窗证据](verification/2026-10-10-porch-account-scenes.md)。旧R2已收尾、数据保留，新昵称前向迁移及正式服务端联合验证待独立精确数据授权；真实UIA继续推进，主观验收未通过，不改变完整B5／多人／运维状态。未合并main、推送、部署、安装或替换生产DLL。
