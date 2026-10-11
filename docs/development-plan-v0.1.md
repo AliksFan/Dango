@@ -1,5 +1,7 @@
 # Dango 分阶段开发计划 v0.1
 
+> 2026-10-11 Windows双人呈现：按已批准Windows先行修订完成独立WPF工具，9组真实几何／两实例调度完整10800步、4个指定错误变体及可见窗口3场景3600步短验证通过，native分配归零，见[实际记录](verification/2026-10-11-dual-player-windows-review.md)。33秒活动不替代600秒持续观察，人工／OS专项仍待完成；P1-W未标记准入，正式接线未开始。Linux后置至部署前、保持未验证，Docker排障停止；本地提交，不自动合入main或部署。
+
 > 2026-10-11推进顺序修订：用户批准[Windows先行计划](planning/2026-10-11-dual-player-windows-first-plan.md)，P1拆为Windows物理／呈现／恢复P1-W和部署前Linux平台P1-L。Docker排障停止、Linux未验证；先继续W0–W4独立WPF语义呈现，后端条件具备后推进Windows正式接线及双客户端。下方P2因Linux停止的表述保留为历史停止点，现行依赖按修订；Windows尚未全部验收，不操作正式服务／数据库、不自动合入main。
 
 > 2026-10-11 Linux平台增量：用户选择本机Docker临时容器，按[冻结计划](planning/2026-10-11-dual-player-p1-linux-plan.md)完成严格profile与独立runner实现／审查、Windows21项受影响测试及profile实际接受／拒绝回归、Python13项helper。Docker三次启动失败，人工精确清理已确认的通信标记后，仍被另一旧端点阻断；复现并修复查询挂起，3项真实进程边界检查通过。未pull镜像、创建容器或执行Linux；用户明确选择停止Docker排障、Linux保持未验证。详见[实际报告](verification/2026-10-11-dual-player-p1-linux.md)。真实窗口／正式服务／多客户端／人工双机仍未验证，P1不准入、P2停止；本地提交，无main整合、推送、安装／部署或日常DLL替换。下方条目保留各自历史范围。

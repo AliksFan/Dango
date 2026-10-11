@@ -1,5 +1,7 @@
 # 双人 P1：Linux 门禁准备与首次环境启动
 
+> 后续决定：用户批准[Windows先行顺序修订](../planning/2026-10-11-dual-player-windows-first-plan.md)，Linux门禁移至部署准备前，Docker排障仍停止、实际平台仍未验证。下文“P1不准入、P2停止”为该批次的历史停止点；现行Windows依赖按修订和[WPF呈现记录](2026-10-11-dual-player-windows-review.md)判断。
+
 日期：2026-10-11。用户选择本机 Docker 临时容器，按[冻结计划](../planning/2026-10-11-dual-player-p1-linux-plan.md)实施。**验证工具及受影响 Windows 回归完成；三次 Docker 启动均未成功，用户选择停止 Docker 排障，Linux 实际门禁保持未验证。P1 整体不准入，P2 停止。**
 
 ## 1. 本地实现与审查

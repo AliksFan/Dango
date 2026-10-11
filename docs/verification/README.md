@@ -4,6 +4,8 @@
 
 ## 阶段记录
 
+- [双人P1-W独立WPF语义呈现](2026-10-11-dual-player-windows-review.md)：9组10800步及4个指定错误变体通过，真实可见窗口3场景3600步／33秒短验证通过。人工、600秒持续观察与正式多人仍待完成；Linux按用户批准后置至部署前，不再单独阻断Windows工作。
+
 - [双人P1 Linux门禁准备与环境排障](2026-10-11-dual-player-p1-linux.md)：严格平台profile、独立验收runner和隔离host实现／审查完成，Windows21项及Python13项通过；三次Docker启动失败，有界查询3项进程检查通过。用户选择停止排障，未创建容器，Linux实际运行未验证。P1不准入、P2停止。
 
 - [双人P1安全出生隔离恢复](2026-10-11-dual-player-p1-safe-spawn.md)：Windows49项语义／authority、43项native正常、17反例和六组跨进程通过；实际world丢失／释放按批准规则安全出生，正式持久化与多人接线后置。
