@@ -115,6 +115,10 @@ public sealed class NativeRecoveryOwner : IDisposable
 // Independent assertions consume the actual read-only raw and semantic frame.
 public static class NativeFrameVerifier
 {
+    // Pinned Box2D 3.1.1 LINEAR_SLOP=.005f*units. Production never changes
+    // units from 1. The existing native bounds/rig-containment gates use this
+    // same tolerance; it is separate from .031 body penetration and .008 support.
+    public const float NativeContainmentSlop = .005f;
     public static bool TickZero(CommonFrame f, IReadOnlyList<DangoEntityId> ids) =>
         f.Authority.Tick == 0 && f.Authority.Bodies.Count == ids.Count &&
         f.Authority.Bodies.All(b => b.CoreVelocityX == 0 && b.CoreVelocityY == 0 &&
@@ -129,6 +133,15 @@ public static class NativeFrameVerifier
             if (!SemanticDrawnGeometry.IsSafeLocalContour(body)) return false;
             var a=f.Authority.Bodies.Single(b=>b.EntityId==body.EntityId);
             if (a.CoreX != body.CoreX || a.CoreY != body.CoreY) return false;
+            for(int node=0;node<body.PointCount;node++)
+            {
+                // Native raw contour already expands nodePos-core radially by
+                // NodeRadius. Use Core+Contour; adding radius again is wrong.
+                double x=(double)body.CoreX+body.Contour[2*node];
+                double y=(double)body.CoreY+body.Contour[2*node+1];
+                if(x < -13.2f-NativeContainmentSlop || x > 13.2f+NativeContainmentSlop ||
+                    y < (float)DangoPhysicsDefaults.Current.GroundHeight-NativeContainmentSlop) return false;
+            }
             var drawn=SemanticDrawnGeometry.SampleContour(body.Contour,body.CoreX,body.CoreY);
             if(drawn.Any(p=>p.X < -13.2-1e-5 || p.X > 13.2+1e-5)) return false;
         }
