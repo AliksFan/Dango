@@ -391,7 +391,7 @@ internal static class LandingBuildParallelLongTrial
                 Require(timer.Elapsed < TimeSpan.FromSeconds(60), "Start barrier timed out with zero worlds.");
                 Thread.Sleep(20);
             }
-            using var start = JsonDocument.Parse(File.ReadAllBytes(startPath));
+            using var start = ReadStartBarrier(startPath, timer, CheckStop);
             var root = start.RootElement;
             Require(root.GetProperty("schema").GetInt32() == 1 && root.GetProperty("index").GetInt32() == index &&
                 root.GetProperty("pid").GetInt32() == Environment.ProcessId && root.GetProperty("maxWorlds").GetInt32() == 1,
@@ -420,6 +420,21 @@ internal static class LandingBuildParallelLongTrial
         {
             using var stream = new FileStream(Path.Combine(controlDirectory, name), FileMode.CreateNew, FileAccess.Write, FileShare.Read);
             JsonSerializer.Serialize(stream, value, Json); stream.Flush(true);
+        }
+    }
+
+    private static JsonDocument ReadStartBarrier(string path, Stopwatch timer, Action checkStop)
+    {
+        while (true)
+        {
+            checkStop();
+            Require(timer.Elapsed < TimeSpan.FromSeconds(60), "Start barrier timed out with zero worlds.");
+            try { return JsonDocument.Parse(File.ReadAllBytes(path)); }
+            catch (IOException error) when ((error.HResult & 0xffff) is 32 or 33)
+            {
+                checkStop();
+                Thread.Sleep(20);
+            }
         }
     }
 
