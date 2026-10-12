@@ -368,3 +368,19 @@ root保存样本有限账本`execution-v1/failure-observation.json`从实际权�
 1048份旧保护文件、11个native live/HEAD raw blob、原dirty／删除状态及正式DLL SHA均核对不变；本阶段全部实际物理worker已退出。下一步正向与镜像旧新4路对照仍仅未批准建议，未实施或创建任何新增诊断world。
 
 新v3停止修正零world独审 `parallel-long/review/stop-patch-review.json` SHA`9A57F9AD0C510F04B659AD21DD83CC15BDC1AFA06137B1DD61BDB7D799DA1249`，patchTestsPassed=true／mayResumeMatrix=false；source/PDB/22runtime／实际CLI及共享取消／独占stop回归收据闭合。独审任务本地提交代码两文件`6291ad44dca39b352788f6d8b7a913abaafacf41`，未纳入既有dirty文档；本轮计划与结果随后单独提交。旧v2执行报告的3条peer-native标签矛盾仍保留，不称修正回写或新物理回归通过。
+
+
+## 用户接受index8后继续：启动争用修正与新静置缺陷
+
+用户明确不要求旧版对照作为接受依据，并接受index8有限宽度漂移，继续其它组合；8原7141帧失败保留，不称完整长时通过，原未实施旧新4路建议取消。恢复仅5／6／7及9～134，共129项，最多4进程；peer-stop部分运行允许重建，已完成／真失败8不重跑。
+
+恢复v1零world准入56项通过（review/resume-v1/admission-review.json SHA DAA4FAF9A32C027373A85D28E8708868A4DAA73E30290FF6ADF2776C1F4E44ED），实际启动文件发生瞬时共享冲突，index6创建world前IOException发布stop。index5推进7帧、index9推进65帧；6／7均零world，全批2world72帧，原报告／输入保留。没有长时物理判断、新物性失败或强制kill。
+
+worker最小修正仅start文件读取：共享冲突Windows32／33在原60秒timer内CheckStop＋20ms等待重试，其它IO／坏JSON仍拒绝；schema／index／PID／maxWorlds不变。build-v4 0警告／错误，复用BD1B依赖，tool SHA8B13BD8AC586A9DCA8E94F22D4BF923305628F2E9269B68AE849F4B97D493A1F。19CLI反例和4actual worker共享取消并行通过，3actual锁测试和5pure helper反例均零world；helper初次缺using System.IO编译失败保留后修正。新64项零world准入 review/resume-v2/admission-review.json SHA6C3098D5821958FDE01DF62642C7B253A1A2EDB29891E7B2A311FBD96A4E0642绑定当前源码／PDB／runtime／实际测试及中断记录，不修改原物性或helper。
+
+实际execution-resume-v2/execution.json SHA2A630047CD723F395C7A8C9F68DB5B4FF19F1F1AA15F2246662BCCC899AF11D1，四路5／6／7／9运行8.188秒，新共享stop发布者9（80／0／50 Idle）。无需拖甩，静置world／idle2341（约39秒）以native Width跨度.0030759572982788086超过.003原门槛；5／6／7为peer-stop部分运行。没有追加派发index10～134、重跑8、kill或来源变化；129项没有完整通过，矩阵未完成。
+
+30个保存gate样本idle601～2341，原double位旁路复算：绘制宽／高跨度.247222900390625／.10531997680664062，可见X中心跨度.001220054580244323，净移-.001220054580244323；native CoreX／CoreY／Width／Height跨度.000011619567430898314／.0012469589710235596／.0030759572982788086／.0010016262531280518，控制项Width。速度首末.00018453304073773324／.00023149112530518323，全部保存样本grounded；不推断周期性、最终收敛、持续单调变化。单位WPF scale105绘制单位，设备DPI／真实窗口未测。未做旧版对照，用户尚未接受index9；暂停新增world，收口后说明影响询问接受。
+
+
+恢复v2终态零world独审通过：review/resume-v2/terminal-review.json SHA9F19D029CF986ED646F0E26DB14B26FB42EF552EB5FE79CB20D0C8F656AAEB8B，独立恢复double位旁路重算30保存gate／bounds、4实际报告与8258健康绘制帧、3peer失败native为空、共享stop index9及所有258快照文件。执行中changedInputs={}；当前唯一live差异是运行结束后本计划文档追加结果，源码／runtime／旧证据保持不变。实际worker均已退出，index8不重跑；审计通过不表示index9物理通过或用户接受，矩阵仍停止。源码最小修正本地提交04a1df0；原dirty／删除保留，正式DLL SHA仍6712D66ECEF9588123CAFCD868455080598B5B58711A698FB8AF022A0CDA191A，不合main／push／install/deploy或替换DLL。审查模型一次capacity中断不算通过，改由有限零world复算完成闭合，未因此重复物理运行。
