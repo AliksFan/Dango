@@ -51,7 +51,8 @@ internal static class LandingBuildLongVerification
     private static readonly int[] CheckpointFrames = [600, 1800, 3600, 7200, 18000, 36000];
 
     internal static LandingLongTrial Run(string library, LandingBuildControls controls,
-        LandingBuildTable table, LandingLongProfile profile)
+        LandingBuildTable table, LandingLongProfile profile,
+        Action<LandingLongSample?, DangoBodyState, double>? retainedDifferenceObserver = null)
     {
         if (profile is not (LandingLongProfile.Idle or LandingLongProfile.Forward or LandingLongProfile.Mirror))
             throw new ArgumentOutOfRangeException(nameof(profile));
@@ -140,7 +141,11 @@ internal static class LandingBuildLongVerification
                 var y = .4 + 1.5 * Math.Cos(i * .17);
                 _ = Advance(active, x, y);
             }
-            if (requestedDragFrames > 0) postTrajectoryStart = lastHealthy;
+            if (requestedDragFrames > 0)
+            {
+                postTrajectoryStart = lastHealthy;
+                retainedDifferenceObserver?.Invoke(null, postTrajectoryStart!, 0);
+            }
             phase = profile == LandingLongProfile.Idle ? "idle" : "post-drag-idle";
             for (var i = 0; i < IdleFrames; i++)
             {
@@ -154,12 +159,19 @@ internal static class LandingBuildLongVerification
                 if (checkpoint)
                     checkpoints.Add(new(completedIdleFrames, session.Frames,
                         completedIdleFrames / 60d, sample, currentNative!));
-                if (!gateSample) continue;
+                if (!gateSample)
+                {
+                    retainedDifferenceObserver?.Invoke(sample, currentNative!, spans.MaximumExistingGateDrift);
+                    continue;
+                }
                 samples.Add(sample);
                 spans.Add(sample);
                 if (!sample.IsGrounded || sample.MaximumSpeed >= .03)
                     throw new LandingGateFailure(LandingFailureKind.LongSettling,
                         $"grounded={sample.IsGrounded}, maximumSpeed={sample.MaximumSpeed:R}, limit=0.03");
+                // Read-only evidence comparison. Preserve the original settling guard
+                // order and reject a new difference at the existing drift boundary.
+                retainedDifferenceObserver?.Invoke(sample, currentNative!, spans.MaximumExistingGateDrift);
                 if (spans.MaximumExistingGateDrift >= .003 &&
                     !failures.Any(item => item.Failure.Kind == LandingFailureKind.LongDrift))
                 {

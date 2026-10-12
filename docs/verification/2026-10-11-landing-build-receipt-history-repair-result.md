@@ -268,3 +268,53 @@ root首个S1备份命令误将review SHA参数分成两段，精确指纹预检�
 1048保护项及11个native提交raw blob不变，原dirty4／cache／正式DLL保全。reviewer首个close helper误用singleton native指纹代替singleton报告指纹，精确断言拒绝；已改为原FourthFailureSha2564401…，失败helper／日志及定位记录保留，不改物理／源码／门槛。正向capScale<1仍未验证，7929保存样本不能离线复算未保存全部拖甩中间帧的全程PeakSpeed／MaximumCanonicalRadius，终报如实限定。S3可开始实施，尚未运行或通过，人工验收仍未开展。
 
 S2封闭证据另存工作区外`touching-motion-114315`，2631文件源／目标SHA全部一致，backup manifest SHA`6284892e80a3623e1b0db96df35feb59dc77acf181d0d7d409b91ed4e47d8fbb`。副本保留app-motion实际对应的源码和完整stage证据，不包含尚未实施的S3；先保全再进入后级，不回写旧清单。
+
+root managed协调器／Program及本轮两份记录仅本地提交`e6e5c31ae84334231522c333f01f34cfa44075da`，恰4文件，live／index／committed raw blob逐字节一致。原dirty4及cache排除，正式DLL不变；未合并main、推送或更新安装。本地提交时S3尚未实施／运行。
+
+## S3长时实施与默认旧差异对照（首新失败已停止）
+
+S2终审及封存完成后开始后级准备。原`drift-repair-v18-wide-post-drag.json`不在恢复后的当前工作区，不能引用缺失报告为新候选准入。使用已封闭app-motion与原认可055B…DLL，原`PostDragIdleDiagnostics`固定100／50／90参数及原6000正向／镜像拖甩＋同世界36000静置，从头重建两条旧DLL对照；执行前保存实际源／app／依赖／DLL／旧说明和输入manifest，执行日志、实际退出及工具指纹分别保留。该对照不算新候选S3 trial、不声称恢复了原报告字节。旧default配置及每项控制／dt／采样轨迹和实际新旧保存结果须独立核实；不能自动给例外或将原失败改判通过。
+
+旧对照实际退出0、耗时265.9708秒，两条各42000健康／绘制帧。正向原漂移`.010632098`失败，镜像`.000845393`通过；报告`matrix/long-old-default/old-default.json` SHA`360C1373DC9A7435D6A4F480EB590BC3885EDAF5D30D92ADC5D2942327E7FB13`，日志SHA`6D3C3173716BA4668B064CA93459838BF45873F13B7A02E150BF8733F7D9D0AA`，输入manifest SHA`A1570F152F2FD08AA2B4D46128E94A606D358E483EA21268DCF99EE51AABDCDD`。实际app-motion工具117984…、依赖BD1B…、原DLL055B…绑定；原输入快照不回写。
+
+新S3模块仅向原long helper增加可选只读保存轨迹observer，保持原settling守卫先于observer、原世界／控制／力／采样／门槛；默认Forward在原漂移阈值出现新不匹配即停止，其它组合observer为空。唯一旧差异须绑定1180保存样本的double位、6检查点完整native float流、拖甩末帧／最后帧、首次漂移时间及peak／spans／计数；原失败不改判通过，未保存中间帧不声称全部离线逐帧复算。
+
+首构建缺少Tuning using导致2个CS0246、0警告，失败源码／诊断保留；修正后v2／v3／v4均新目录构建0警告／0错误。当前app-long-preparation-v4工具SHA`57398F6362AD2B039FF4A0588F7D8837C1D91984CAF8A09503EB1BDCAFDDF166`，纯合同`matrix/long-contract-v4/result.json`通过7个observer及31个counter反例，明确worldCreations0／worldSteps0／physicalTrialsRun0／candidateAdmitted=false。默认指纹仍PENDING，独立准备审查进行中，候选135项尚未运行。
+
+独审用实际v4程序集证明两个验证绑定缺口：首次漂移的candidate NativeBits损坏及WorldManagedSeconds＋1ULP仍可被保留。旧对照只保存首次时间／phase／detail及该帧gate metrics，没有完整首次native frame／bits；不虚构旧帧，也不重跑旧轨迹。root仅补齐已存时间／phase／frame／prefix span／detail位对照、PeakSpeed／Spans double位比较，以及新首次帧与其NativeBits内部一致性。其余完整保存轮廓对照、物理helper／参数／门槛未改。全新app-long-preparation-v5构建0警告／0错误，工具SHA`7DC692D31A14E3BC9A7D7DB1E89729FB30EEBBFAAF410E671B98E25A48811B06`，原38及新12证据反例通过，world0。新正例为明确标注的合成内部一致性fixture，不声称补回缺失旧首漂移全帧。独审待封闭，Known指纹仍PENDING。
+
+独审终封闭前精确拒绝了v5依赖指纹：实际为`B31537C90AF5B55CCBC2F0FA4132ECCF91490BDB2C52150EFBFE70708A3497E6`，不能当成封闭BD1B集合。当前HEAD的SDK构建嵌入e6e…版本字符串，而封闭app-motion为60bcd…；新v6仅显式重现SourceRevisionId，构建0警告／0错误，但依赖仍为`2027CDD437C89D34118A20A97581E231A8B46D9E3A65C9FDA0A671FD5A947D94`，再次精确拒绝，不声称仅版本字段差异或等价。两版实际产物／错误证据均保留，候选world0。
+
+v7采用明确的运行包组装：v5实际tool／PDB及其运行文件不改，四managed依赖DLL与相应PDB逐文件使用封闭app-motion原字节，源／目标指纹在`long-preparation-v7-assembly.json`保存。实际tool仍7DC6…，runtime依赖严格BD1B，50纯合同反例通过；工具不是重新编译，未验证物理。独审正在核验tool AssemblyRef与原依赖AssemblyDef身份、实际v7 Import／合同／WPF及源码PDB绑定。后续全新app-long构建同样保留所有重建依赖字节，再明确采用原封闭运行依赖，实际新tool／runtime仍需零world复核准入。
+
+随后v7独立零world准备终审封闭通过，报告`matrix/long-preparation-review/review-final.json` SHA`763316A69733FDCC8893D16E2EB2087568C59383084F1DD17759851B025C4815`，mayFixKnownDefaultPinAndBuildFreshLong=true、mayRunCandidateLong=false。6项AssemblyRef身份兼容、4DLL/PDB原字节与BD1B、actualtool／PDB4源、171／45 Import、50反例及v4两旧反例拒绝、9实际CLI通过；22份runtime map、1048保护和11native提交blob核验。原旧对照84000帧、2360保存gate metrics／spans及firstDrift world6781／idle781核验；12个实际WPF105检查点复算通过。首漂移完整旧frame缺失与未恢复原报告边界明确保留。准备指纹仍PENDING，没有候选S3 world；后续需要准确pin派生freshbuild及真实准入后零world复核。
+
+准备证据另存工作区外`touching-long-preparation-123911`，690份源／目标SHA全部相同，manifest SHA`94A69325E4B59C48C5F953B69DD0E93355424E768019D4552F3F6591CD9F2AB5`。完成外封存后仅固定KnownDefault pin为360C…，其它三源字节不变。新app-long构建0警告／0错误；210项构建source／project／配置前后SHA相同，实际tool SHA`6C33DBB7E44B796E45439FE4C12DDA888163E30189FEE67471789FBCC2DED982`。原重建4DLL/PDB全部保留，运行包明确采用封闭app-motion原8份DLL/PDB，runtime依赖严格BD1B。根12项实际准入后CLI／3来源篡改／错native／CreateNew输出保全、50合同及严格旧错误通过，world0。
+
+fresh-build独立零world终审封闭通过，报告`matrix/long-preparation-review/fresh-build-review.json` SHA`834C91ADB416ACD13F8F07EAC06D3C66A164722ED884BEE9959599C5B25AB486`，mayRunCandidateLong=true、S3PhysicalPassed=false。build receipt SHA`60EC1EB3DC79D8528FC134926D2893F88D9F053A423D73D08A494BE1DBD25B24`、22份runtime map、新tool／PDB4源／AssemblyRef、准确pin派生、封闭donors与重建保全核验；独立重复12项真实CLI及实际Import／合同／旧反例／WPF通过。外690、1048保护及11native blob不变。下一步按已批准顺序从头运行135项；此终审没有创建候选world，不替代S3物理或人工验收。
+
+root runner首尝试的输入快照因相对CLI路径与绝对repo的relative_to不相容，在空snapshot目录创建后、任何文件复制／report／world创建前退出。原runner、空目录及`long-run-attempt1-failure.json`保留；保全命令一次PowerShell here-string解析错误亦记录，未执行文件操作。仅将输入4路径resolve为绝对路径，改用全新`long-execution-inputs-v2`，其余前置／首失败停止／原门槛未改。重新启动后输入全快照及两审查／runtime全map核验完成，135项从默认Idle开始fresh执行。
+
+实际退出1、耗时576.263264秒，最终`matrix/long.json` SHA`E793C157937160C98821A344812CD87CDD25387C434968473E25FEEB86785B5C`，日志SHA`0241C916A2B6BB20CD331A74FCF9812FDAB3E45E1A952564B177D9AB6D0F48A9`；实际tool6C33…、native4388…、runtime BD1B…及输入manifest`8F75545BC37BF9CD008350E2A5EFF15A921ECE809A49D59E59644CCEA626D5E2`绑定。仅5项执行，共163201健康／绘制帧和4731保存gate样本，后130项未执行。
+
+| 有序项 | 配置（尺寸／柔软度／胖瘦） | Profile | 实际runner结果 | 完成帧 |
+| --- | --- | --- | --- | --- |
+| 1 | 100／50／50 | Idle | PASS | 36000 |
+| 2 | 100／50／50 | Forward | KNOWN-DIFFERENCE，原漂移仍失败 | 42000 |
+| 3 | 100／50／50 | Mirror | PASS | 42000 |
+| 4 | 80／0／0 | Idle | PASS；保存后CoreY span另有1ULP往返边界 | 36000 |
+| 5 | 80／0／0 | Forward | LongDrift，首新失败停止 | 7201 |
+
+第二项原漂移`.010632097721099854`与重建旧默认保存证据精确匹配，保持Passed／thresholdsPassed=false。第五项在world7201／idle1201停止，原控制跨度为CoreX `.0031642913818359375`，原限`.003`；未发生native锁存停止。11个保存样本覆盖idle601～1201，全程grounded，CoreX从`-.5847913026809692`减到`-.5879555940628052`，最大速度从`.0011836476624011993`减到`.0003404579183552414`。该有限窗单向减速不证明最终收敛、周期性或未来总漂移。
+
+零world的`matrix/long-failure-observation.json`明确区分小样Scale105下的物理中心与可见轮廓：gate窗CoreX绘制中心位移`-.33225059509277344`；加上CoreRelativeDisplayPixelsBounds偏移后，可见bounds中心位移为`+.39116477966308594`，左右边界位移约`+.39077950`／`+.39155006`。绘制宽／高跨度仅`.0010223388671875`／`.005092620849609375`。拖甩末帧至停止时CoreX按float32复算位移`-.006991147994995117`、绘制中心`-.7340705394744873`；不能把中心直接称作整个轮廓的位移。上述为保存样本及WPF绘制单位复算，未测设备DPI、未进行真实窗口或人工验收。
+
+原离线audit-long首尝试严格比较第四项非控制CoreY span时拒绝：stored`2.980232238769531e-08`、recomputed`2.9802322387695312e-08`，差`3.308722450212111e-24`，失败证据保留。新独立`audit-long-v2.py`只对非控制聚合span采用既有离线`2e-12×max(1,abs(expected))`比较；控制MaximumExistingGateDrift仍exact、原`.003`物理门槛未改。`long-audit.json`一致性审计通过，matrixCompleted／allOriginalThresholdsPassed均false；原镜像保存数据的纯合成正例及17个反例通过，world0。独审进一步发现实际C# JSON反序列化后的CountsComplete也受该CoreY 1ULP影响，不能将这一边界仅称跨语言差异或说actual exact门禁已通过。原源、实际应用、JSON及首次失败保留，终审结论另记；S3物理未完成、人工验收未准入。
+
+独立零world终态审查已封闭，`matrix/long-review/review-final.json` SHA`0F9E67C1D513B6A31C34185E2F6BA4DEC891BE2E298F0D6A82805540BCB5EBEB`。auditPassed／forensicAuditPassed仅确认完整性、5项有序前缀及首新失败一致；savedReportExactCountsCompletePassed／matrixCompleted／S3PhysicalPassed／mayContinueMatrix均false，mayPreserveFailureScene=true。实际程序集171项Import、45配置、35个保存native轮廓／WPF105 bounds、2个失败位流、默认两方向2360个样本和16个检查点／起止完整native帧核验通过；4731个gate样本和首失败的控制最大跨度精确复算。210 source／build输入、22 runtime文件、1048旧保护及11native提交raw blob不变，原dirty／cache及正式DLL保全。
+
+1ULP边界在实际.NET10.0.12中直接重现：重算CoreY bits为`3E60000000000000`；JsonSerializer.Serialize及Invariant ToString("R")均写`2.980232238769531E-08`，Deserialize及Invariant double.Parse均回`3E5FFFFFFFFFFFFF`。只修改离线副本的这一span后CountsComplete=true，原报告和实际应用不改；该对照只是定位唯一往返拒因，不重新认证第四项saved report。所有实际控制漂移值和物理门槛仍精确。新有限观察像素账本和v2审计／17反例均经独审复现，未创建新的物理world。当前没有活动矩阵runner；计划文档中的有限对照仅供批准后诊断，不将静态审查写成物理通过。
+
+固定失败组合的双DLL有限观测方案已经独立零world呈审，`matrix/long-review/plan-review.json` SHA`F8502AA1DD5AA6D0F066B47B3B94A2CED9EE5E54F5BDB3E99FA49C5B5FBFB565`，绑定计划SHA`6DF5F1637EFBFD4F6F4E082F7C71739D1B31C503D50227DEA6C7A412BC63F500`。planReviewPassed／readyForUserApproval=true，无阻塞修正；mayImplement／mayCreateDiagnosticWorlds／mayResumeS3Matrix均false。方案只对80／0／胖端0 Forward，两版各fresh6000拖甩＋36000静置，最多84000帧；保留LongDrift失败，其它guard／异常／写盘失败停止整体，完整native／double位旁路用于精确复算。用户新批准及实施零world准入前不得创建诊断world；没有实施、观测结果或恢复矩阵。审查一次旧计划SHA断言在创建snapshot前拒绝，保留失败脚本／日志，再审新版本通过，S3原终报字节不动。
+
+本次首失败现场另存工作区外`touching-long-result-132239`，2152文件源／目标SHA全部一致，backup manifest SHA`3C60BF6A847D032C9C75E595428C45302CEC973A7646D26EEEF030686810A662`。包含实际app／构建及执行输入／报告／审查／原失败尝试、v2审计反例和有限像素账本；封存的outcome为hard-failure-stop，matrixCompleted／S3PhysicalPassed／savedReportExactCountsCompletePassed均false。保全通过不表示长时物理通过；候选DLL和正式DLL均未替换或部署。

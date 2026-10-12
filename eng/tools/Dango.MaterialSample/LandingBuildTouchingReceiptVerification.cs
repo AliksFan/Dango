@@ -17,6 +17,9 @@ internal static class LandingBuildTouchingReceiptVerification
     private const string LandingSha256 = "260E3350F4386019D7A2A502E5B448433C3D4375CAE0B448201ECF1F809C1DA2";
     private const string LandingToolSha256 = "AB9CF51957907B61B28AC2673DB8E0E9FEB16B65B30EAE66A4620962F303653F";
     private const string LandingDependenciesSha256 = "BD1B03183480914BC8589EA4B55ACA3305679EB1E08E780C79B2FF9BF9B132D5";
+    private const string MotionSha256 = "7819655A0EB60267798C1F80176C72A637447992ACEA0A1EC384A79E51922843";
+    private const string MotionToolSha256 = "11798494610FE1241B6C5F644DDBD027E15F5F3F9A6192B0FA085BC1150C3777";
+    private const string MotionDependenciesSha256 = "BD1B03183480914BC8589EA4B55ACA3305679EB1E08E780C79B2FF9BF9B132D5";
     private const string OldBaselineSha256 = "212A4805E8F63E3E8FD1EC1A907226500062AE03E108E1ABCF13158C0468321B";
     private const string OldBaselineToolSha256 = "C2FA0A1BA0BA376ECC5A7438029D08ABC261CAF30A72E47D6758A85A1674286E";
     private const string OldBaselineDependenciesSha256 = "5872C3054AD540523214D6EC95FC7485016615FF5C2C71C9950EDD0BCF4F7573";
@@ -270,6 +273,27 @@ internal static class LandingBuildTouchingReceiptVerification
         catch (Exception error) { executionError = error.ToString(); outcome = "execution-incomplete"; return 2; }
         finally { completed = outcome is not "running" and not "execution-incomplete"; Save(); }
     });
+
+    internal static IReadOnlyDictionary<LandingBuildControls, LandingTrial> ImportLongPredecessors(byte[] motionBytes, byte[] oldBytes)
+    {
+        using var motion = ImportStage(motionBytes, "motion", "motion-passed-s3-required", MotionSha256, MotionToolSha256, MotionDependenciesSha256);
+        var root = motion.RootElement;
+        Require(root.GetProperty("requiredTrials").GetInt32() == 171 && root.GetProperty("reusedTrials").GetInt32() == 0 &&
+            root.GetProperty("landing").GetProperty("Sha256").GetString() == LandingSha256 &&
+            root.GetProperty("oldBaseline").GetProperty("Sha256").GetString() == OldBaselineSha256,
+            "Reviewed S2 sources or complete trial counts differ.");
+        using var baseline = ImportOldBaseline(oldBytes);
+        var configurations = FrozenConfigurations(baseline.RootElement);
+        var trials = root.GetProperty("trials").Deserialize<LandingMotionTrial[]>(Options)!;
+        var expected = LandingBuildMatrixVerification.AllControls()
+            .SelectMany(c => new[] { ("flight", (string?)null, c), ("recovery", (string?)null, c) })
+            .Concat(LandingBuildMatrixVerification.AllControls().Where(c => c.LandingBuild is 0 or 50 or 100)
+                .SelectMany(c => new[] { "changing", "horizontal", "ground-swing" }.Select(p => ("drag", (string?)p, c))));
+        Require(trials.Length == 171 && trials.Select(t => (t.Kind, t.Profile, t.Controls)).SequenceEqual(expected) &&
+            trials.All(t => MotionComplete(t) && t.Configuration == configurations[t.Controls].Configuration),
+            "Reviewed S2 ordered matrix, health or frozen configuration differs.");
+        return configurations;
+    }
 
     private static JsonDocument ImportStage(byte[] bytes, string stage, string outcome, string expectedSha256, string expectedToolSha256, string expectedDependenciesSha256)
     {

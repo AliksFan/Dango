@@ -11,6 +11,12 @@ internal static class Program
     {
         try
         {
+            if (args.Contains("--verify-landing-build-touching-receipt-long-contract"))
+                return args.Length == 2 && args[0] == "--verify-landing-build-touching-receipt-long-contract"
+                    ? LandingBuildTouchingReceiptLongVerification.VerifyContract(args[1]) : 2;
+            if (args.Contains("--verify-landing-build-touching-receipt-long"))
+                return args.Length == 6 && args[1] == "--verify-landing-build-touching-receipt-long"
+                    ? LandingBuildTouchingReceiptLongVerification.Run(args[0], args[2], args[3], args[4], args[5]) : 2;
             if (args.Contains("--verify-landing-build-touching-receipt-old-error-gate"))
                 return args.Length == 1 ? LandingBuildTouchingReceiptVerification.VerifyOldErrorGate() : 2;
             if (args.Contains("--verify-landing-build-touching-receipt-former"))
