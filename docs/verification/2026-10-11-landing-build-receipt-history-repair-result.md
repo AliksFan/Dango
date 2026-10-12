@@ -341,3 +341,30 @@ root零world有限账本`execution-v1/finite-observation-v2.json`直接使用dou
 终态零world独审封闭：`drift-diagnostic/review/terminal-review.json` SHA `9284F7CADC7B91DE1AC86E008FE102E668CE250D2FE00C0C37C51F4D79DDDF7B`，auditPassed=true，仅表示记录／来源／执行与复算一致。84000公开记录、2372个实际程序集Shape/WPF原样本／检查点、每帧真实.NET输入位、候选全部已存prefix及root v2账本均核验通过。42000对完整native帧逐位相同，首次分歧null；原`.003`门槛保持失败，originalThresholdsPassed／S3Passed／mayContinueMatrix／manualAcceptance=false。独审首个离线Shape工具在输出后自哈希前仍持有独占句柄，失败脚本／输出／日志保全；关闭句柄后的v2零world复算通过，没有重复物理运行。运行完成后的文档追加单列记录，运行内采用封存输入，不将事后结果记录误判运行输入变动。
 
 `drift-diagnostic/protection-final.json`确认1048旧文件全部不变、11个native live/HEAD raw blob与既有提交指纹相同，3个原dirty存活文档及既有删除保留，正式DLL SHA仍`6712D66ECEF9588123CAFCD868455080598B5B58711A698FB8AF022A0CDA191A`。当前诊断worker均退出；无main合并／推送／安装／部署／正式DLL替换。该有限对照支持“这一个组合与旧认可版在本窗口具有完全相同公开物理输出”，不支持改判通过、一般等价或无限收敛。后续矩阵／差异准入或物性修复由结果复核另行确定。
+
+
+## 剩余S3并行阶段（用户已授权，准备中）
+
+已接受第二差异仅限80／0／0 Forward完整双版逐帧一致的有限观测，原LongDrift失败保留。剩余130项将由最多4个独立进程动态调度，无新增差异例外；当前尚未创建本阶段world。复用index0～4显式引用原报告／诊断及独审，index3历史double1ULP边界保留。详情见计划的新并行阶段；新工具、停止协议及来源零world反例／独审准入后开始。
+
+
+### 四路实际执行及新失败
+
+新worker保持原long helper／MaterialSession／FrameValidator等字节，以每Step前stop及一次world预算派生原Run；不允许新LongDrift继续。初次构建v1因缺using System.IO出现2个编译错误，源／日志保全；补using并统一新worker LF后v2构建0警告／0错误，tool SHA`F4EF267732BACAB15414C0D441BA67DE4FAB4C7FFB771529205615D69ABBEA23`、PDB SHA`066D4884E58BD696AB448DA6688719FC918B7FE55918BB7DFB5A6A7E61EB837C`、build receipt SHA`6BBF9A0EC1692BD16A68203472F6912B46BE88689747607C606E2D87FE2A93A1`。明确复用封闭BD1B runtime并保留rebuilt副本。
+
+19项实际CLI负例4路并行、4个实际worker同control目录Ready→sharedstop测试全零world；CLI receipt SHA`F62A80E0103C4BBF3CD55E6EDA98910007BEF40102A2693BCE2989C8B0896933`、shared-ready SHA`29A237E89C9AA5961756C443F62C2746B96A16E1C78A6C57064688C8BB9731FD`。首次CLI测试错把原报告FileName当matrix内路径，失败保全；修正为receipt-history/matrix真实212A源后第二测试读到半写Ready JSON失败，保全并向自己测试控制目录发stop；第三测试按完整Ready重试及finally精确owned cleanup后通过，物理world始终0。独审复用前一阶段 actual Plan／Import45／CountsComplete／14实际反例／IEEE位旁路，再核对源码／PDB／AssemblyRef、23合成调度反例和实际运行收据闭合。容量限制导致两次审查交接，已完成证据由收口审查复用，不将模型中断写成门槛通过。实际准入`parallel-long/review/admission-review.json` SHA`0CA416D15A4E437D934C9C4E090153776A90E78CDD537104C540F152974FE58C`，绑定supervisor SHA`2D1AD2CBFF9888FC6D9C553B479C5C5FACCEB136B6208BDB181D13F1889B72BE`。
+
+执行`parallel-long/execution-v1/execution.json` SHA`2A8B984B515DAB6D6334AAD1E6D6822EE1DD7DC6B7FF47D69F1C1E423318C751`。动态4进程实际准入index5/6/7/8，峰值4个独立PID／world，每worker仅一次constructor attempt；墙钟28.25秒，共29713 attempted/session/healthy/rendered帧。index8（80／0／25 Mirror，PID15596）在world7141／idle1141以原LongDrift停止并首次发布sharedstop，控制字段是native Width跨度`.0031126737594604492`，原上限`.003`。index5／6／7分别在6738／8665／7169帧响应peerstop，未入场下一Step；原v2报告的peer-stop native标注另有不一致，见后述取证，lastHealthy和rendered计数保留；它们不能当作完整通过或独立物理失败。无强制终止／来源变动／重试，index9～134的126项未派发，130项fresh完整通过数0。原顺序首失败位置未建立，不把并行先观测到的index8写成原序首次失败。整体矩阵和人工验收未通过。
+
+root保存样本有限账本`execution-v1/failure-observation.json`从实际权威double旁路重算10个gate样本idle601～1141。native CoreX／CoreY／Width／Height跨度分别`.00004863739013671875`／`.002627760171890259`／`.0031126737594604492`／`.0023009777069091797`，不是前次胖端0的CoreX控制漂移。显示尺度105下绘制宽／高跨度`.14121246337890625`／`.09134674072265625`；可见X中心跨度`.005253255367279053`，净位移`+.0020086169242858887`。速度首末`.0019780194852501154`／`.0023083731066435575`，既不能宣布持续减速也不能推断最终收敛／周期性。都是WPF绘制单位，设备DPI／真实窗口未测；这个组合尚未与旧版实际对照，不因同映射自动继承已知差异。终态独审正在复核；下一步有限正反两方向对照只作未批准建议，未创建新增诊断world。
+
+
+### 停止字段标注缺陷的取证与最小工具修正
+
+独审v1曾按failedAttemptStatus标签误判三个peer-stop报告没有fallback。root复查实际字段发现index5／6／7的FirstFailure.NativeFrame及NativeBits非null：CheckStop先设StoppedByPeer，再ReadAllText(stop)，与publisher写句柄争用抛IOException，进入泛型catch沿原路径保留session.State。该Frame逐字段等于lastHealthy，38float位也相同，实际counter没有额外未授权Step；但标签声称none-peer-stop／stale=false，与保存字段矛盾。原报告／执行／初审保留不改。v1终审SHA`514471A48E2063E81744F435599DE20CAF13CE7266309BB9E2D9618FA170F1EA`；新零world取证`parallel-long/review/terminal-review-v2.json` SHA`CB4B415ECB16240E62FB02787957B0E999C06359DD1B142D015530A61FAA35FD`明确PeerNativeProvenancePassed=false、receiptConsistencyPassed=false、3条标签矛盾。不能把最初“审计通过”写成所有停止字段自洽，index8真实LongDrift与整批停止事实仍确认，矩阵物理仍失败。
+
+本阶段范围内最小修工具：停止仅查File.Exists，不读取正在写的stop文件；泛型catch若已StoppedByPeer则清空currentNative／attemptedIdleFrame，仅非peer继续原fallback。健康／绘制／lastHealthy计数不变，原物性／guard／helper均不动。v3构建0警告／0错误，tool SHA`610EC5E978F5400667706B12D8C48C5C697E87DE4C9321EE06162E74F42BB705`、PDB SHA`5188B60A95C314183495AE2358142CD37F1AE8C3B2158DB866B3B5524BADE4E3`、build receipt SHA`B9BC6F729FB867D48F79F05C08DB7363D3C71B128EE029D215EB2ACFBF7AB06D`。19实际CLI反例及4worker共享Ready→stop零world回归通过；新独占stop文件实测在FileShare.None保持到进程退出的情况下得到WorkerStopException，未走旧File.ReadAllText，attempt／session／healthy／rendered／worlds均0，exit2。新工具只零world回归，不重跑矩阵／补写旧结果，不称v3完成了物理回归；执行v2原源/PDB/加载包保持在封存inputs中。
+
+1048份旧保护文件、11个native live/HEAD raw blob、原dirty／删除状态及正式DLL SHA均核对不变；本阶段全部实际物理worker已退出。下一步正向与镜像旧新4路对照仍仅未批准建议，未实施或创建任何新增诊断world。
+
+新v3停止修正零world独审 `parallel-long/review/stop-patch-review.json` SHA`9A57F9AD0C510F04B659AD21DD83CC15BDC1AFA06137B1DD61BDB7D799DA1249`，patchTestsPassed=true／mayResumeMatrix=false；source/PDB/22runtime／实际CLI及共享取消／独占stop回归收据闭合。独审任务本地提交代码两文件`6291ad44dca39b352788f6d8b7a913abaafacf41`，未纳入既有dirty文档；本轮计划与结果随后单独提交。旧v2执行报告的3条peer-native标签矛盾仍保留，不称修正回写或新物理回归通过。

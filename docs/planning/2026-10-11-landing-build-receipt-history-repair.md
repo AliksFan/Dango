@@ -138,3 +138,25 @@ S3准备独立终审已通过，实际v7运行包明确复用封闭app-motion四
 并行诊断执行完成：新工具实际零world准入、15项CLI拒绝与15项helper反例均通过；两独立PID在双方Ready零world后共同启动，各fresh42000公开帧，共84000健康／绘制／持久帧，墙钟123.719秒。没有共享stop、强制终止或输入变动。原门槛仍失败，两版均在world7201／idle1201首次LongDrift；只诊断继续，不恢复S3。完整双轨迹native逐位对照及有限像素账本已生成，终态独审正在进行。旧报告和原long helper不改；下一阶段仍须根据复核结果另行确定，不自动扩展KNOWN-DIFFERENCE或调物性。
 
 终态独审已通过：84000公开位流、真实程序集2372原gate样本／检查点及root v2有限账本精确复算一致。两版42000 native帧全部逐位相同；审计通过与物理门槛失败分离，originalThresholdsPassed／S3Passed／mayContinueMatrix／manualAcceptance均false。当前阶段收口到结果复核，不调整物性，不扩大KNOWN-DIFFERENCE，不恢复S3。
+
+
+## 已接受第二已知差异后的剩余S3并行阶段（用户已批准）
+
+用户明确“接受，继续，提高测试效率，合理并行”，授权把固定80／0／胖端0 Forward在完整42000帧与旧认可DLL逐位相同的漂移保留为第二项已知差异，保留原`.003`失败，不将其写为物理通过。原默认Forward差异继续保留。只复用原有序index0～3运行及已接受的index4候选完整诊断，不重跑旧通过项目，不修改历史报告；index3保存CoreY的1ULP缺陷及saved exact失败仍记录，不补造历史权威double旁路。新统一账本显式引用这5项来源和此前独审，区别历史in-memory PASS／保存exact边界／接受差异／新fresh执行。
+
+剩余index5～134各一次fresh world，原45组合×3profiles计划不变。20逻辑CPU采用最多4独立进程动态单trial调度，4个物理world同时上限；最多130次world创建尝试、130world、5,202,000公开帧（43 Idle×36000＋87拖甩profiles×42000）。每worker零world来源／配置／tool／依赖／native核验，独立CreateNew输出与claim／ready／start；supervisor在Ready核验后原子发布本trial start。原long helper、物性、控制、dt、采样和guard字节保留，新worker规范化派生只增加停止／计数／记录。剩余项目不允许任何LongDrift继续或新增known例外。
+
+任一trial失败、来源／counter／前缀／IO／进程异常立即共享stop，不再派发。每Step前与BeforeCreate查stop；已准入在途最多一步完成，下一Step停止，不宣称墙钟stop后绝对零步。并行最先观测失败记firstObservedFailure，已派发较高index的完成／部分结果保留；未完成较低index时不宣称已定位原顺序首失败。禁止重试和第三次执行同一index。worker最长600秒、整项最长7200秒，超界整项停止并保存；只在共享stop15秒未响应时终止supervisor拥有的精确PID。
+
+每trial保存原1180 gate样本、6检查点、拖甩末、lastHealthy、首失败／native bits，double IEEE权威旁路来自原对象；decimal只显示并记录往返状态。无需全矩阵逐帧大流，避免5百万帧重复IO，新增反例／独审可与构建和后处理独立准备并行。源、实际程序集/PDB/AssemblyRef、封闭BD1B运行依赖、两前序报告及supervisor均钉指纹，零world准入后才执行。统一账本只有130项唯一fresh完整、无stop／kill／输入变动且全新trial原门槛通过时完成；整体thresholdsPassed因两个已接受差异仍false，不冒充全部物理通过。
+
+允许本轮文件本地提交；保持原dirty／保护1048文件／11native源码／正式DLL。未授权合main、push、install/deploy或正式DLL替换。新失败收口到现场复核，不自动修物性或扩大native补救。
+
+
+本阶段实际结果：新工具v2及实际19项CLI反例／4worker共用stop零world测试／独审准入封闭后，4路同时准入index5～8。运行28.25秒，共4world／29713公开健康绘制帧，无kill、来源变动或重试。index8（80／0／25 Mirror）在world7141／idle1141以native Width跨度`.0031126737594604492`超过原`.003`，由真实PID15596率先发布共享stop；5／6／7按peerstop退出。index9～134共126项未派发，剩余130没有任何完整通过。不能把并行先发布stop的index8称为原顺序的首失败，因为更低index尚未完成。原helper、物性及两个仅属于复用前缀的known差异不变；阶段回到新失败现场复核。
+
+### 新失败后的有限批量对照建议（未批准，不实施）
+
+建议一次对80／0／25 Forward和Mirror两条轨迹做旧认可／修复候选对照，最多4独立进程、4fresh world、168000公开帧（每world6000拖甩＋36000静置），用于避免正反方向分别出现新漂移时逐项串行诊断。只这两条诊断允许记录LongDrift后继续，原失败及`.003`门槛不改判；健康／绘制／settling／来源／prefix／IO或进程异常共享stop、整项停止，不重试。候选分别精确匹配本阶段已存10gate样本、拖甩末／idle600checkpoint和lastHealthy或7141首失败边界；完整双DLL native位流、新双精度权威旁路、固定尾600和可见绘制bounds有限账本由独审核验。首次native分歧保留，不能依同物性推断相同；不宣称无限收敛、因果或一般等价。原130项矩阵仍停止，不修物性／扩大native补救／新增已知差异／合main／push／install/deploy或替换正式DLL。本建议需要用户明确批准，当前仅呈审。
+
+本阶段停止协议工具另有v2记录标注缺陷：3个peer-stop在读取正在写的stop时IO争用，保留lastHealthy fallback但标注为空。原现场及v1审查保留；v2 forensic明确3条矛盾及receiptConsistency=false。新worker v3仅查stop存在并在peer泛型catch清空失败native，构建与19CLI／4实际共享取消／独占stop零world回归通过；没有重跑物理矩阵。执行快照v2与修复当前v3源分列，后续4路对照建议仍未批准。
