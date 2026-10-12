@@ -423,3 +423,21 @@ root初版观察工具控制台summary在绘图裁掉前600帧后误打印35400�
 修正及有界完整小步诊断提案见本阶段planning新小节，状态为未批准实施：先512小步的被动窗口插桩，逐帧公开位流仍须精确匹配，再依据总账选择位置与最终接触速度一致性的最小修正。当前没有native插桩构建、修物性、新增正式目标、修改门槛或矩阵恢复。originalThresholdsPassed／mathematicalConvergenceProved／manualAcceptance均false。
 
 诊断终态独审`diagnostic-v1/review.json` SHA `CB026EAC29AAA9348B5844AA79C2BF5C9C02AE1CBF98297ADE878880B33ADB94`通过：全部36000前缀、tokens／phase／error／4full diag／工具依赖和SHA一致；原生17点质量加权COM逐帧复算符合保存阶段记录，post601投影零、35326负向／74零／0正向速度变化与模式记录一致。复算不同求和顺序尾位差约1e-17仅用于double派生COM，不涉及原公开38float位流。通过仅为局部诊断完整性，未证明唯一根因或稳定。1048旧保护＋3306既有parallel证据＋11native源码、原dirty／删除和正式DLL全部不变；保护复核首版仅SHA大小写误报，统一hex大小写后通过，未改任何被保护文件。
+
+### 512小步完整阶段账本：横移位于Box2D推进阶段
+
+用户批准只新增隔离native诊断。新副本启用现有idle_trace，只记录594～601／1674～1681／35010～35017／35993～36000四窗共512小步；原4388 DLL、物理解算/物性及正式DLL不动。configure-v1因Windows FileTracker长路径失败；短路径configure成功后，native-v2因旧trace的fopen安全警告/WX失败；改诊断IO为等价exclusive fopen_s；managed首版Stream.Null没有Flush(true)重载失败，修为Flush()。全部失败在world0阶段，源码和日志保留。审查发现stage/finite/计数缺口后，在实际记录与finish加入guard及共享实际谓词的纯合同检查。native b4/最终managed构建0警告/错误，44纯检查31负例及null/ABI检查world0通过，准入独审SHA C531136E132F991794C931EEAEBB4F4472C74D37DD85C06B59798D494C0AF88D；审查一次capacity中断不计通过，没有因此重复物理运行。
+
+实际native SHA FCD9FD5B94C450FD4BDB63093F2B60B825729C3143F1987B44AAD02D6F5FBF40；tool/全部源/封闭依赖/输入/Supervisor绑定在build-receipt与execution-inputs-v1中。PID33460，79.265秒退出0，只有1world/36000公开帧，旧38float+身份逐帧精确匹配。无timeout/kill/changedInputs，未重跑或扩大世界数。trace SHA C14C7C9149E9FC0D7BA92DBEC4B8EDFD4A4F3DED3CBC4AD2CD38325D25E7BD73，111559880字节；END核实512STEP/512完整diag/36000FRAME，原phase/error/current token/finite检查均通过。
+
+`substep-trace-v1/analysis.json`与`stage-ledger.jsonl`复算全部512小步：17点实际mass加权净横移只发生在preWorld→postWorld，后续position-only／damping／contact／cap／written位置X变化均0；窗口内前一步written与下一步begin全状态逐bit相同。四窗128小步COMX净移（WPF scale105）：-1.4670081008220114e-5、-1.596180495436e-5、-.0018180580804663343、-.0018067145720008296。窗口位移闭合残差≤1.703e-17 world，属于double求和末位误差。模式全部ground ENABLED×2/friction STICK×2，不能归因该窗模式重建或横向位置投影。
+
+`contact-ledger.jsonl`逐点反力复算：静摩擦只改11/12节点速度，其他15点完全未变；COMVX变化由移除这两点的damped切向速度按质量加权解释，最大残差6.1409888675936775e-21。末窗两地面点每步仍横移而最终横速最大5.421010862427522e-20；COMVX beforeWorld≈-1.18936e-5、postWorld≈-1.20570e-4、damped≈1.18299e-11、output≈-1.18936e-5 world/s。位置先移动、速度后消除/重分配的循环已在完整16小步窗口内闭合；不是无限期外推，也未细分Box2D内部各joint/solve/relax冲量对位置积分的每项贡献。
+
+分析首版错误要求4个完整诊断跨进程/跨采集时点byte完全相同，失败源码保存analyze-v1-preserved.txt；未重跑物理。实际不同字段仅history.source进程内指针、两份block.elapsed_seconds时间和在公开snapshot发布前记录的snapshot_published=false（旧getter发布后true），其它字节一致；明确枚举这三个遥测类字段后另写新分析，不称完整200736bytes完全匹配。原公开38float全流仍精确匹配。
+
+运行receipt继承了旧getter工具的nativeModified=false标签，语义不准确：实际已新增native instrumentation、物理解算与物性未改。原receipt/源码/输入快照保留，metadata-annotation.json仅作更正说明nativeInstrumentationAdded=true/physicsSolverChanged=false，未回写或重跑。外层execution-receipt.physicsCorrected=false准确。修正设计建议见planning新小节，尚未实施；originalThresholdsPassed／mathematicalConvergenceProved／manualAcceptance／matrixResumed均false，原index15 LongDrift保留。
+
+终态只读独审`substep-trace-v1/review/terminal-review.json` SHA `66817477C2855629168BA8ACA99ABCB7021CD2C97973DEEE97F5E7449AC06A8E`通过：复用只读二进制解析器后独立核对36000公开38float+flags、512阶段/token/finite及512完整diag；按实际mass重算四窗位移，最大闭合残差1.7026447500775106e-17，接触节点11/12速度移除预测残差最大6.1409888675936775e-21，其余15点vx/vy逐bit不变。4份选定完整诊断仅前述指针／两计时／发布标记不同，余字节一致；metadata annotation已存在并绑定SHA。审查没有world创建/推进，导入解析器产生一份额外Python缓存，原样保留并封存。审查通过只表示诊断完整性；归因限于512小步的Box2D外部阶段，尚未分解其内部每项冲量，不证明最终收敛、唯一根因或物理修复，也不替代真实桌面／人工验收。
+
+本轮`substep-trace-v1/protection-final.json`核实1048旧保护文件、3306既有parallel证据、11native live与前序HEAD raw blob、原dirty／删除／缓存、原4388候选及正式DLL不变，PID33460已退出。完整substep目录（含输入、原失败、运行包、trace、分析、审查与标注）、实际trace512-src-v2／trace512-b4及两篇文档另存到`substep-trace-result-174120`；逐项SHA核对源/副本，原外封存不覆盖。仅两篇本阶段文档本地提交，物性未修，原index15失败及24项矩阵暂停不变，未合main／push／install/deploy或替换正式DLL。
