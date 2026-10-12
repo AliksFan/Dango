@@ -11,6 +11,12 @@ internal static class Program
     {
         try
         {
+            if (args.Contains("--verify-landing-build-drift-parallel-contract"))
+                return args.Length == 3 && args[0] == "--verify-landing-build-drift-parallel-contract"
+                    ? LandingBuildDriftDiagnostic.VerifyContract(args[1], args[2]) : 2;
+            if (args.Contains("--diagnose-landing-build-drift-parallel"))
+                return args.Length == 6 && args[1] == "--diagnose-landing-build-drift-parallel"
+                    ? LandingBuildDriftDiagnostic.Run(args[0], args[2], args[3], args[4], args[5]) : 2;
             if (args.Contains("--verify-landing-build-touching-receipt-long-contract"))
                 return args.Length == 2 && args[0] == "--verify-landing-build-touching-receipt-long-contract"
                     ? LandingBuildTouchingReceiptLongVerification.VerifyContract(args[1]) : 2;

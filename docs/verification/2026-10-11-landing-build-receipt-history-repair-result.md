@@ -318,3 +318,26 @@ root runner首尝试的输入快照因相对CLI路径与绝对repo的relative_to
 固定失败组合的双DLL有限观测方案已经独立零world呈审，`matrix/long-review/plan-review.json` SHA`F8502AA1DD5AA6D0F066B47B3B94A2CED9EE5E54F5BDB3E99FA49C5B5FBFB565`，绑定计划SHA`6DF5F1637EFBFD4F6F4E082F7C71739D1B31C503D50227DEA6C7A412BC63F500`。planReviewPassed／readyForUserApproval=true，无阻塞修正；mayImplement／mayCreateDiagnosticWorlds／mayResumeS3Matrix均false。方案只对80／0／胖端0 Forward，两版各fresh6000拖甩＋36000静置，最多84000帧；保留LongDrift失败，其它guard／异常／写盘失败停止整体，完整native／double位旁路用于精确复算。用户新批准及实施零world准入前不得创建诊断world；没有实施、观测结果或恢复矩阵。审查一次旧计划SHA断言在创建snapshot前拒绝，保留失败脚本／日志，再审新版本通过，S3原终报字节不动。
 
 本次首失败现场另存工作区外`touching-long-result-132239`，2152文件源／目标SHA全部一致，backup manifest SHA`3C60BF6A847D032C9C75E595428C45302CEC973A7646D26EEEF030686810A662`。包含实际app／构建及执行输入／报告／审查／原失败尝试、v2审计反例和有限像素账本；封存的outcome为hard-failure-stop，matrixCompleted／S3PhysicalPassed／savedReportExactCountsCompletePassed均false。保全通过不表示长时物理通过；候选DLL和正式DLL均未替换或部署。
+
+## 首新漂移的双版本并行观测（用户已批准，实施中）
+
+用户随后回复“可以测试，但最好进行并行测试，现在这样效率有点低”。仅变更这两条已批准诊断轨迹的调度：原版055B与候选4388使用两个独立进程／world／输出，双方前置通过后共享barrier并行启动。任一非LongDrift或IO／前置失败时整项诊断停止，已准入的一帧在途推进保留，下一Step停止；不重启、不增加world或最大84000公开帧预算。原S3入口、首失败、全部门槛及旧终报不动。
+
+新增独立诊断模块与完整位流记录，原long helper和MaterialSession保持原字节；root负责CLI／构建／协调器与记录，实施子任务负责新诊断源码，独审任务只写新审查目录且不创建world。当前尚未执行本次物理观测；新工具和并行／位流零world门禁独立准入后才启动。
+
+
+### 双进程有限观测的实际执行
+
+实际工具构建0警告／0错误，严格复用封闭BD1B依赖，未将重新构建依赖声称为等价。tool SHA `ADBD5DA81DEC056F4C7F6C4BA76BCA1742ED4DA8379976913FF3F3D8B8239186`；build receipt SHA `B39F52946E27D643C8EA79E97747AFB1533676DFCAA07C0597576C2990F39B3F`。15项实际CLI拒绝和15项实际helper合同反例均零world；包括ready后stop、错误barrier、peer native及相同PID拒绝。实际程序集／PDB／输入位与并行协议零world独审准入见`drift-diagnostic/review/admission-review.json`，SHA `AE5279DD20B1179B866F7DB1CA8832F772C5F20FBF3BEA0EA39507B529B16344`；绑定supervisor SHA `BA043B254F11CB53DF7F2E6ADBD3E4F40E4034D67B6C05774124B9E27BE7B443`。独审准备脚本一次备份路径错误在零world拒绝后保全，修正路径复核通过，程序未改变。
+
+执行见`drift-diagnostic/execution-v1/execution.json`，SHA `1F27292C540F2D2373263F1FCDE36EB2D2AC349E60A370D0F5A8D2808526112A`。2026-10-12T06:23:38.993303Z双方真实PID Ready（0world）后发布barrier；old PID11216、candidate PID4524，分别1次world创建／1world。两版各6000拖甩＋36000静置，各42000 attempted／session／healthy／rendered／persisted帧，均正常exit0，墙钟123.719秒；未发布stop、未强制终止、输入指纹无变动。没有重跑、第三world或135项S3恢复。
+
+root零world有限账本`execution-v1/finite-observation-v2.json`直接使用double权威位旁路及完整native位流。两版42000帧全部38个float位与实体／接触／拖点身份一致，无首分歧；不因此宣称一般等价或修复因果。两版都在world7201／idle1201以原`.003`门槛失败，原Failed／thresholdsPassed保持false；固定窗口1180原gate样本最大跨度CoreX `.00689011812210083`，CoreY `8.940696716308594e-08`、native宽／高`.0003655552864074707`／`.0022226572036743164`。候选已保存6000、idle600、11样本及7201完整首失败／lastHealthy边界精确匹配旧S3。
+
+显示尺度105的原gate样本绘制宽／高跨度`.00113677978515625`／`.006221771240234375`；可见bounds中心必须加`CoreX*105`与core-relative bounds偏移，跨度`.5263025164604187`、起止净移`+.3682200312614441`。预固定尾段idle35401～36000的600帧全部grounded，可见中心跨度／净移绝对值`.02957332134246826`，绘制宽／高跨度`.0001220703125`／`.00003814697265625`，尾段CoreX仍下降`.00028502941131591797`。尾段最大速度首末`.0004438861215021461`／`.00044369263923726976`，瞬时速度存在波动；不能宣称严格单调减速、最终静止、周期性或无限收敛。所有显示数字是WPF绘制单位，设备DPI未测，未作真实窗口或人工验收。
+
+拖甩末→42000的Core显示中心位移为`-1.125282347202301`，直接按native流float位恢复后作double减法，不是整体轮廓位移。root初版账本曾直接解析保存float十进制，得到`-1.125279750000006`；初版保留，v2改用完整位流，门槛、轨迹与报告不改。终态独立复算尚待封闭；当前仅诊断执行完成，不表示S3通过或准入后续矩阵。
+
+终态零world独审封闭：`drift-diagnostic/review/terminal-review.json` SHA `9284F7CADC7B91DE1AC86E008FE102E668CE250D2FE00C0C37C51F4D79DDDF7B`，auditPassed=true，仅表示记录／来源／执行与复算一致。84000公开记录、2372个实际程序集Shape/WPF原样本／检查点、每帧真实.NET输入位、候选全部已存prefix及root v2账本均核验通过。42000对完整native帧逐位相同，首次分歧null；原`.003`门槛保持失败，originalThresholdsPassed／S3Passed／mayContinueMatrix／manualAcceptance=false。独审首个离线Shape工具在输出后自哈希前仍持有独占句柄，失败脚本／输出／日志保全；关闭句柄后的v2零world复算通过，没有重复物理运行。运行完成后的文档追加单列记录，运行内采用封存输入，不将事后结果记录误判运行输入变动。
+
+`drift-diagnostic/protection-final.json`确认1048旧文件全部不变、11个native live/HEAD raw blob与既有提交指纹相同，3个原dirty存活文档及既有删除保留，正式DLL SHA仍`6712D66ECEF9588123CAFCD868455080598B5B58711A698FB8AF022A0CDA191A`。当前诊断worker均退出；无main合并／推送／安装／部署／正式DLL替换。该有限对照支持“这一个组合与旧认可版在本窗口具有完全相同公开物理输出”，不支持改判通过、一般等价或无限收敛。后续矩阵／差异准入或物性修复由结果复核另行确定。
