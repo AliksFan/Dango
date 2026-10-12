@@ -387,3 +387,39 @@ worker最小修正仅start文件读取：共享冲突Windows32／33在原60秒ti
 
 
 用户随后明确接受index9（80／0／50 Idle）的有限静置宽度漂移，并要求在新的对话继续。原2341帧LongDrift及.003失败保留，已观测绘制宽／高变化约.2472／.1053，不称完整36000帧通过或长期稳定。下一对话可继续剩余组合：重建peer-stop中断的5／6／7，首次执行10～134，跳过已接受有限缺陷8／9，复用0～4原前缀。新缺陷说明实际影响并询问接受；不要求旧版对照，不自动降低门槛，不合main／push／install/deploy／替换正式DLL。保持四路并行上限和新失败共享stop，旧部分结果／工具失败记录保留。
+
+
+## 极端组合24项的执行与单组延长观测授权（2026-10-12）
+
+用户确认将128fresh范围缩减为尺寸80／120、柔软度0／100、体型0／100八角点×Idle／Forward／Mirror三工况24项。复用3（历史in-memory PASS及saved double1ULP边界）和4（完整已接受差异），实际fresh22项882000帧。新supervisor SHA1FBCF3A164D3DAEC889984DDF7EA381C055B4A285EEB5ABDD41877C6B891C30A，90项零world独审准入SHA7AE719EEF6F93334635B322ED3FEFCE40A18731002BD3DF2E7F1712275C576FE，未重复旧构建／19CLI／4共享取消／start锁回归。
+
+execution-extreme-v1/execution.json SHA099962E291AB31BD453E75E293E90208E95D30AE850D47810D2ADD27C7713688。5／15／16／17四独立PID分别1297／1681／1517／1512帧，共4world6007健康／绘制／session帧，墙钟5.688秒。index15（80／0／100 Idle）在world／idle1681约28.0166秒以native Width .003052055835723877>.003首次发布共享stop；5／16／17仅peer-stop，不能当完整通过或独立物理失败。18项未派发，fresh完整通过0，角点24及全135均未完成。未重跑8／9，changedInputs={}、无kill／IO故障。
+
+19个gate样本idle601～1681，double权威bits独立复算：绘制宽／高span .21316146850585938／.08768463134765625 WPF单位；可见Xcenter span .0019260326021139917，净移负同值，全部grounded。观察窗口宽度124.88669967651367→124.67353820800781，变化约0.171%；最大速度初末.0004781961324624717／.00048298650654032826，不能断言减速或最终收敛。WPF scale105，设备DPI／真实窗口未测。
+
+终态零world独审 review/extreme-v1/terminal-review.json SHA03E4B29F3991239ABD3265A5B4C1974869D9493011C01A8E53ADE5DDF64BBDCA，通过仅表示来源／计数／19samples／stop／269输入快照和live一致。3个peer首失败native/bits为空，lastHealthy保留，原15门槛仍false；用户未接受15。用户随后要求“延长一下观察”“证明收敛即可”，授权仅对此同组进行延长观测，矩阵暂不恢复；有限观察不能替代数学收敛证明或自行判定用户接受。
+
+
+### 单组36000帧延长观测：未证明稳定／收敛
+
+用户授权的80／0／100 Idle单组fresh延长完成。新被动观测模块只派生原v4；Sample、SpanTracker、Bits、IsComplete、健康／绘制检查、WorkerGate及start重试等关键段逐字一致。隔离artifact项目直接引用封闭BD1B四managed DLL/PDB，原Program／原csproj不改；新StartupObject只接受该单组或零world合同测试。build-v1纯测试token错误、v2隔离项目排除原Program连带缺helper、v3测试缺System.IO三次失败源码和日志均保留，world0；v4构建0警告0错误，tool SHA70B5FB972BEDA1AF20E746660DF23AB7C3030C5ACC009BC25A7B371DFF351FF0，build receipt SHA CE986CBC495E542520BA5728A1092129EA0C5A603E197CABAFB1FE15DA939E99。378项IEEE恢复／纯合同检查、12项实际CLI拒绝均零world；48项独立准入 SHA83A6F6DD60F99D059D2C05CF181A70E771E6FEF972A437380ACA7FADDA584628，绑定新来源和单world协调器。
+
+convergence-observation/execution-v1实际PID26964，fresh1world／1constructor attempt，attempted／session／healthy／rendered／持久记录均36000，墙钟69.469秒。原dt／零输入及物性不改；19保存gate／idle600checkpoint／1681完整native bits精确匹配原失败后才继续1682。原1681 LongDrift和Passed=false保留，只有同组LongDrift诊断继续；无其它guard、IO、sharedstop、kill或changedInputs。完整38float+身份／实际double样本和WPF bounds／原dt+六ABI float输入位流SHA9BBBE4C2E46A58C15B3D222227FDBE34A53E392176E04AB18B1DFC2AEC1663BD，report SHA6ECC839B55823C20AEADDBA645865AAAA7EDBF6AEDD3735E1CB2B97DD837B2AB。
+
+预固定10个每分钟、尾300秒与尾60秒独立位流复算。idle601→36000可见Xcenter净移-6.94949778757973 WPF单位；尾300秒仍-4.037450263276696，尾60秒仍-.8133814930915833。尾60秒绘制宽／高span .018459320068359375／.0133819580078125；全post601宽／高span .8011016845703125／.3129920959472656。速度不持续单调减小，尾60首末.00028729511541314423／.00030225279624573886，最大.00031915385625325143；相邻完整公开native状态最长恒等仅1帧。全部post601保持grounded。轮廓变化变缓不能代表位置稳定；这10分钟窗口仍持续横漂，未证明稳定／收敛，也不据此断言无限时间必然不收敛。
+
+root初版观察工具控制台summary在绘图裁掉前600帧后误打印35400；原saved observation.json始终frames36000、全部指标正确。原脚本逐字封存observe-v1-preserved.py，v1 JSON／PNG保留；新observe.py仅修打印并另产observation-v2.json／PNG，未物理重跑，v2 JSON SHA37FD0B93E78FFB5CFD6E3BAB7A15A3091510ADE6CE037662F029A24DDEED7D6A。终态零world独审SHA CA5ED070F85EBBF431ADC6AC85522F6A64F13E00780BAABD1C3524E9250021B1，逐帧／1180gate／6checkpoint／前缀／完整输入快照／每分钟及固定尾窗精确一致，仅完整性通过；originalThresholdsPassed、mathematicalConvergenceProved、manualAcceptance、matrixResumed均false。
+
+用户得知结果后选择“先定位横向漂移，提出修正方案”。index15未被接受，其它角点暂不恢复；本轮先只读取真实推进／投影／速度／接触反力链并核对现有证据，提出范围明确的诊断／修正方案，未经批准不修改物性/native、不做锚定、冻结或减门槛掩盖漂移。本轮全部worker已退出，无main合并／push／install/deploy／正式DLL替换。
+
+### 现有getter的单组逐帧诊断（定位范围限定为最后小步）
+
+新artifact `parallel-long/convergence-observation/diagnostic-v1`：独立工具引用封闭observation build-v4的5个managed DLL，经实际SHA核对；不改任何tracked native／物性／原MaterialSession。一个fresh world36000帧逐bit匹配原延长观测的38float+身份；每帧既有200736-byte getter读取当前candidate_diagnostic，核对substeps=frame×16、phase6/error0/report_valid及output/public core位置。持久化每帧前5676bytes（204336000bytes）及质量加权阶段JSONL、601／1681／35017／36000四个完整诊断；execution完成退出0、输入哈希无变。构建首版缺命名空间失败，源码保存后仅补using；未创建失败构建world。
+
+独立分析`diagnostic-v1/analysis.json`：post601最后小步全部17点横坐标没有position-only投影；后续速度阶段位置不变。全程初次落地26～31帧确有横向投影，已写入限定；分析首版全程断言失败，保存`analyze-v1-preserved.txt`，修为post601范围，未重跑物理。root早先进度表述过宽，已向用户纠正。
+
+原生inverse_mass倒数归一化质量权重得到601→36000 COMX净移-.0667005854926112 world（scale105 -7.003561476724175 WPF）；尾60秒-.007759176893892071 world（-.8147135738586675 WPF）。这与先前可见中心6.94950 WPF属于不同测量；不声称质量权重是原生mass未舍入真值。尾60最后小步input/damped/output平均COMVX分别-1.1928302042146839e-4、1.1272834599239689e-11、-1.177886675051666e-5 world/s。post601接触阶段COMVX负向变化35326／零74／正0，最后小步active modes全部[0,0,2,2]（ground ENABLED×2、friction STICK×2）。支持继续调查“积分先移动、阻尼/静摩擦后改速度”的时序链，不足以唯一归因全部16小步；不能认定为模式切换或后期最后小步横向投影。
+
+修正及有界完整小步诊断提案见本阶段planning新小节，状态为未批准实施：先512小步的被动窗口插桩，逐帧公开位流仍须精确匹配，再依据总账选择位置与最终接触速度一致性的最小修正。当前没有native插桩构建、修物性、新增正式目标、修改门槛或矩阵恢复。originalThresholdsPassed／mathematicalConvergenceProved／manualAcceptance均false。
+
+诊断终态独审`diagnostic-v1/review.json` SHA `CB026EAC29AAA9348B5844AA79C2BF5C9C02AE1CBF98297ADE878880B33ADB94`通过：全部36000前缀、tokens／phase／error／4full diag／工具依赖和SHA一致；原生17点质量加权COM逐帧复算符合保存阶段记录，post601投影零、35326负向／74零／0正向速度变化与模式记录一致。复算不同求和顺序尾位差约1e-17仅用于double派生COM，不涉及原公开38float位流。通过仅为局部诊断完整性，未证明唯一根因或稳定。1048旧保护＋3306既有parallel证据＋11native源码、原dirty／删除和正式DLL全部不变；保护复核首版仅SHA大小写误报，统一hex大小写后通过，未改任何被保护文件。
