@@ -384,3 +384,6 @@ worker最小修正仅start文件读取：共享冲突Windows32／33在原60秒ti
 
 
 恢复v2终态零world独审通过：review/resume-v2/terminal-review.json SHA9F19D029CF986ED646F0E26DB14B26FB42EF552EB5FE79CB20D0C8F656AAEB8B，独立恢复double位旁路重算30保存gate／bounds、4实际报告与8258健康绘制帧、3peer失败native为空、共享stop index9及所有258快照文件。执行中changedInputs={}；当前唯一live差异是运行结束后本计划文档追加结果，源码／runtime／旧证据保持不变。实际worker均已退出，index8不重跑；审计通过不表示index9物理通过或用户接受，矩阵仍停止。源码最小修正本地提交04a1df0；原dirty／删除保留，正式DLL SHA仍6712D66ECEF9588123CAFCD868455080598B5B58711A698FB8AF022A0CDA191A，不合main／push／install/deploy或替换DLL。审查模型一次capacity中断不算通过，改由有限零world复算完成闭合，未因此重复物理运行。
+
+
+用户随后明确接受index9（80／0／50 Idle）的有限静置宽度漂移，并要求在新的对话继续。原2341帧LongDrift及.003失败保留，已观测绘制宽／高变化约.2472／.1053，不称完整36000帧通过或长期稳定。下一对话可继续剩余组合：重建peer-stop中断的5／6／7，首次执行10～134，跳过已接受有限缺陷8／9，复用0～4原前缀。新缺陷说明实际影响并询问接受；不要求旧版对照，不自动降低门槛，不合main／push／install/deploy／替换正式DLL。保持四路并行上限和新失败共享stop，旧部分结果／工具失败记录保留。
