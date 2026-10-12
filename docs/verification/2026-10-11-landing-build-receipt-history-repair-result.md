@@ -200,3 +200,71 @@ source-equivalent observer公开流与实际singleton DLL全字节相同；失�
 根计划新增“第四失败的触地记录导入方案（待用户批准）”，审核原raw SHA`11dcaaa80544ba71b2832979b429c15c8ae41a0c03851aa961a14853ae235726`，已保全为contract-draft-preserved.md。独立审查仅确认证据与最小合同足以呈审：gap严格0、整次最多一条单point、fresh完整来源、raw留current及active接触行、该例外slack0、原全部终态门槛和共享补救预算不扩大。新私有目录／运行时入口尚未批准或实施；S2仍失败，candidate及S3均未准入，真实窗口／人工验收／main合并／推送／安装／正式DLL替换未开展。
 
 第四失败及呈审证据另存工作区外`singleton-fourth-223254`，834文件源／目标SHA全部一致，backup manifest SHA`696a5c55ef6cd2540a34b629c1c0ae39b9a7b3b2b73f00bc2e5f6cc86863a0c9`；同时复核前序`singleton-motion-215710`的754份封存文件未变。新副本明确包含实际DLL／observer冻结世界旁路，唯一固定参考则为零world／1次执行；记录physicalMatrixPassed=false、candidateImplemented=false、S3未开始及仍需用户批准，不把审查或保全成功描述为物理验收。
+
+## 第四失败触地入口实施准备（已批准，进行中）
+
+2026-10-12用户明确“批准”本轮有限触地记录合同。新的`touching-receipt/`候选和`LandingBuildTouchingReceiptVerification.cs`协调器分别实施；所有旧native源码、DLL、失败现场和封闭清单保留。新协调器严格导入四份实际旧失败报告，绑定第四失败的原有序163项prefix、前162项通过、4446／4445计数、swing／DragActive／Moved null及准确double目标；原物性、门槛、首失败停止和前序工具／依赖指纹保持。
+
+实际`app-preparation`构建0警告／0错误，未创建物理world。新审计v6的41个案例通过，包含实际四former失败尾部和5个有序prefix反例；`audit-negative-result-v6-final.json`记录worldSteps0。审计脚本SHA`deab236194576408aa288935bbf4841212e2c5223cf805426f4154528f2d9491`。这证明审计能识别伪造统计、错误计数和错误首失败顺序，不证明新候选或四former物理通过。
+
+Candidate及former／S1的全部7个新准入常量仍PENDING。native有限验证和独立复核尚待封闭；没有新完整6660、S1或S2结果，S3没有实施／运行，真实窗口和人工验收尚未开展。原四项dirty、cache和正式DLL继续保留；未合并main、推送或更新安装。
+
+managed准备独立审查随后通过，`touching-receipt/matrix/preparation-review/review-final.json` SHA`3928456b59457006938ef22818cb44c6f61ea368f125e465ec146226efa2be19`。实际app四个Import函数及四个ExpectedStop正例通过；历史第二／第三／第四报告的原108／144／163项有序prefix、前序实际报告／工具／依赖／DLL均核验。第四终态29个有意义反例、28项真实CLI及严格旧错误6子例通过，54份源／app／报告逐项保全，旧协调器与index未改。审查零world；PENDING拒绝不计作未来真实native准入后的来源／CreateNew输出碰撞验证，该后续验证仍必需。
+
+## 新touching native v2有限门禁（封闭，待独立准入）
+
+候选DLL SHA`4388f63610c01fa5413eda20829ea9e6f33ac93ec36a6793dce4dcb0e4eaf757`；`touching-receipt/native-final-manifest-v2.json` SHA`0b12bf4518ad0f8b350a743f6c618d178b6ad0203844f3ead75c9c139c90325a`。新13467断言／81负例及原23914断言／270负例全部通过，ordinary20完整位比较保持。四个实际有限前缀、ABI、reset／新world及四组实测1048576字节reserve线程通过。第四实际DLL前4445帧186690个float字段与旧singleton无位差，4446帧正常完成；该有限结果不等于完整6660或矩阵通过。
+
+当前固定小步完整block65904字节、uncapped／final各372字节及cap336字节与唯一reference相同，17节点double／float／cap账本及160行独立复算通过；原raw保留current、normal／tangent两行active及例外slack0。进程指针、测试双接触fixture导致的world代次0／1和原报告计时按准确offset单独登记，各自source与runtime ID关系独立核验；不泛化忽略证书字段。capScale1限制保持，主动缩放重新超锥拒绝已验证，正向capScale<1未验证。
+
+generated-v2的251文件完整map、11替换逆还原、Box2D233原文件、4项来源反例和1048受保护文件均核验。v1仅新增测试float字面量触发/WX失败，runtime DLL已构建；v2修测试并补双例外证书fixture，物理实现未改。endpoint首跑driver将262144缓冲传入只读138720 loader而失败，正确原artifact复验124断言／43负例通过。两类失败日志和前版产物保留，不作为物理失败或删去冒充一次全过。全部新源LF，局部`* -text`保持封闭字节。
+
+已交现有独立审查，Candidate和前序六常量仍PENDING；四former完整复验未开始，S1／S2／S3和人工验收未开展，无提交／合并／推送／安装或正式DLL替换。
+
+本轮finite native另存工作区外`2026-10-12/touching-native-v2-101308`，753文件源／目标SHA全部一致，backup manifest SHA`67d70d0d7bd2c35d4b2cc81990cb262f8f9a021c68d8ccc782ef447812e28e0c`。副本明确包含有限native世界轨迹，独立审查仍待封闭，完整6660和managed矩阵未开始；不将保全成功当作物理验收。
+
+随后独立终审封闭，`touching-receipt/matrix/native-review-v2/review-final.json` SHA`5bbafd0df946a01aa82750f38c8f43f88ee67514279d7ca8ea46035a8b9ee249`，nativeGateApproved和mayEnterFourFormerGate为true。复核自己的四EXE／351负例／ordinary20、四组实测1MiB actual DLL前缀与生命周期、全部来源逆还原、第三／第四完整账本及逐位比较通过；另一次同DLL、串行创建两个world后，两条1MiB线程各并发执行同一4446冻控，公开流逐位一致、各events1且reset清零。审查比对脚本首轮漏复制的原null-report timing导致失败，按精确timing offset补列后所有其它字段一致，失败日志保留；实现未改。正向capScale<1仍未验证。
+
+根协调器仅固定已审DLL指纹，前序六常量继续PENDING；新建`app-former`用于四个历史失败的全新完整复验，不复用finite trial。S1／S2／S3仍未准入，尚无人工验收或main合并／推送／安装／正式DLL替换。
+
+新app-former构建0警告／0错误；真实准入后9项CLI／四来源篡改／CreateNew输出保全及严格旧错误6子例通过。native源码仅本地提交`9eb55b907f942ca820c44de0b90a69ed42be94aa`，恰11个封闭源，暂存与提交blob均逐字节匹配，1048保护不变。Git helper首轮错误读取审查根层flag而非`admission.nativeGateApproved`，在碰index前停止；脚本和失败记录保全，修正读取位置后完成上述核验和提交，native实现及门槛未改。
+
+## 四处touching former完整复测（通过，待独立准入S1）
+
+四条原有序轨迹各完成6660健康／绘制帧，退出0、耗时81.159915秒；全部原释放恢复及重新操控门槛通过。报告`touching-receipt/matrix/former-failures.json` SHA`642B7FC2D951DE37FEE8A34C9B9BB0B5861B91EDF15E0D6D9D4A3B643B68D218`；实际工具SHA`54061CA8C0824AE24D7D832E620FFCAC9E53F7A06A2AB081A16301F10A38D3E6`、依赖集合SHA`5EC433EC6876B239D90D3A69B1472D112663FC6F5A88DA389F18C0935D7058C8`。v6审计绑定真实日志／退出／报告／工具／依赖，并独立复算保存float32形状、计数、配置、恢复和控制位移；auditPassed与physicalPassed均true。四个再次操控位移为`1.6681843996047974`、`1.4335687160491943`、`.9116765856742859`和`.767914891242981`，均超过原≥.04门槛。
+
+完整former已交现有独立零world审查。三个former指纹继续PENDING，S1未开始；S2／S3／真实窗口及人工验收尚未开展。本轮完整trial不继承finite prefix的通过，既有物性和全部门槛不变。
+
+随后独立零world终审封闭通过，`touching-receipt/matrix/former-review/review-final.json` SHA`7B36B6E5C19BCA770E60AB3F9D83E262861ADA14AF78EC5A0128D26D1E4788D1`，fourFormerGatePassed与mayEnterS1均true。实际app离线复算16样本的全部ShapeMetrics／WPF Bounds／IsRound／Configure、四个控制位移与计数完全一致；前3整个trial除耗时外与旧singleton former一致。24计数反例、41审计案例、9准入后CLI及6严格错误子例通过；92份当前源／应用／报告保全，11个native提交blob及1048旧保护文件不变。仅4个保存样本不能重新计算全部轨迹PeakSpeed／MaximumCanonicalRadius；终报明确该边界，不把样本复算写成全帧复算。
+
+审查自身两次路径／缺少原源快照问题保留失败证据，使用独占新路径及原0a56提交的未改源后复验通过，无实现、物性或门槛变更。外部HEAD`60bcd90`的父提交为本轮`9eb55b9`，仅更新AGENTS.md，已保留。S1准入按已批准顺序执行；S2／S3仍未准入。
+
+former封闭证据另存工作区外`touching-former-104344`，2229文件源／目标SHA全部一致；backup manifest SHA`2078f446d5461ae262650b420051a3a4c2886cffa105bd62e99606a8c8743491`。副本保留former实际app对应的未固定三常量源码，备份后仅固定已审former报告／工具／依赖指纹并构建新的app-landing。该备份物理通过仅指四former，不表示S1／S2／S3或人工验收通过。
+
+## 新touching fresh45组S1（通过，待独立准入S2）
+
+新app-landing构建0警告／0错误，七项真实来源／CLI／CreateNew保全及严格旧错误6子例通过。fresh45下落各完成3600健康／绘制帧，共162000帧；原120／100／胖0恢复角点通过。全部胖瘦及柔软度效果判据通过，默认胖端实际WPF绘制宽／高delta0／0。实际退出0、耗时450.7207615秒。
+
+报告`touching-receipt/matrix/landing.json` SHA`260E3350F4386019D7A2A502E5B448433C3D4375CAE0B448201ECF1F809C1DA2`；实际工具SHA`AB9CF51957907B61B28AC2673DB8E0E9FEB16B65B30EAE66A4620962F303653F`、依赖集合SHA`BD1B03183480914BC8589EA4B55ACA3305679EB1E08E780C79B2FF9BF9B132D5`。v6审计绑定实际日志／退出／工具／依赖与已审former／old-baseline，配置／保存形状／计数及效果核验通过。现有审查代理正在独立零world复核；三个Landing指纹继续PENDING，S2／S3未准入。
+
+随后独立零world终审封闭，`touching-receipt/matrix/landing-review/review-final.json` SHA`FC2279987D2D2993A4FAA35A97BA0A75E492DE8A1FD71543718431EBE0DACAA3`，S1Passed与mayEnterS2为true，S2Passed及S3EntryApproved为false。135下落检查点＋109恢复样本共244轮廓的实际app Shape／WPF和独立Python复算通过；45整个trial及recovery除耗时外与old-baseline及singleton S1相同。3档效果通过，真实程序集拒绝4种有意义效果反例，全部计数、88／1.4666667秒释放恢复时间及默认胖端190scale delta0／0核验通过。600均值／120短窗的逐帧数据未持久化，审查明确仅保存形状复算、完整聚合与两份已封闭报告一致，不声称全部中间帧离线重算。
+
+96份当前源／应用／报告保全，1048旧保护及11native提交blob不变。Python首次将ReleaseSpread要求跨语言exact equality而出现1ULP差异，失败记录保留；改用已有2e-12离线跨语言容差后复算通过，真实app相同字段仍exact equality，原物理门槛未改。S1封存后再固定三个Landing指纹并新建app-motion，不复用旧物理trial。
+
+root首个S1备份命令误将review SHA参数分成两段，精确指纹预检在创建目标／复制前拒绝；调用失败记录保留。修正完整实测参数后重试，不修改审查结论、物理门槛或源码指纹。
+
+随后S1证据另存工作区外`touching-landing-110517`，2413文件源／目标SHA全部一致；backup manifest SHA`01101745b1cb0dc1893da68606ecc9d7679bdf8d39ee4b5d6b56424feb563c7c`。副本保留app-landing实际对应的Landing三常量PENDING源码；完成备份后才固定已审S1报告／工具／依赖指纹并新构建app-motion。封存范围为S1及其前序，不表示S2／S3或人工验收通过。
+
+## 新touching fresh171项S2（通过，待独立准入S3）
+
+新app-motion构建0警告／0错误，七项真实CLI／来源／CreateNew输出保全及严格旧错误6子例通过；实际工具SHA`11798494610FE1241B6C5F644DDBD027E15F5F3F9A6192B0FA085BC1150C3777`，候选native指纹4388…保持。fresh171项S2已从头启动，原45飞行＋45恢复＋81拖甩有序执行，不复用旧trial。三个阶段的实际工具各自冻结，不要求前后重新构建的程序集指纹相同。完整运动物理通过及独立终审前，S3未实施／运行，真实窗口和人工验收未开展。
+
+随后171项全部通过，原有序45飞行＋45恢复＋81拖甩均fresh，reusedTrials0；实际退出0、耗时1598.7705993652344秒。报告`touching-receipt/matrix/motion.json` SHA`7819655A0EB60267798C1F80176C72A637447992ACEA0A1EC384A79E51922843`，日志SHA`E133237B1B75E35EF7CF3C4FD71104C4611AD851DA44CE212D79C99342F7AAFB`；实际工具117984…及依赖集合BD1B…核验通过。v6完整有序矩阵／保存形状／配置／计数与实际退出／报告／日志／来源绑定审计通过，auditPassed及physicalPassed均true。此前第163项120／100／胖0 changing完成6660帧，最后8项亦从头通过；未把旧未执行项补写为复用。现有代理正在独立零world终审，S3仍未实施／运行。
+
+实际171项共552465健康／绘制帧及7929保存样本，恢复时间最大1.4666666666666666秒；这些计数来自最终实际报告，不把保存样本数描述为完整每帧轮廓记录。
+
+随后独立零world终审封闭通过，`touching-receipt/matrix/motion-review/review-final.json` SHA`6B816C09E2B33342D892BD994017C1EBB5BA24CC98EDDD77659B5AC8EA7AD35B`，S2Passed及mayEnterS3Implementation为true。171项actual MotionComplete／Configure及7929保存ShapeMetrics／WPF／IsRound完全相等；独立Python全有序矩阵、计数、配置、来源、实际exit／log、全部保存轮廓／健康、flight与recovery完整保存圆窗、81个float再次操控位移通过。前162整个trial除耗时与singleton旧S2相同；第163整个trial除耗时与本轮former[3]相同，后8项明确为fresh首验。最小再次操控位移`.6186034679412842`，原≥.04门槛保持。
+
+1048保护项及11个native提交raw blob不变，原dirty4／cache／正式DLL保全。reviewer首个close helper误用singleton native指纹代替singleton报告指纹，精确断言拒绝；已改为原FourthFailureSha2564401…，失败helper／日志及定位记录保留，不改物理／源码／门槛。正向capScale<1仍未验证，7929保存样本不能离线复算未保存全部拖甩中间帧的全程PeakSpeed／MaximumCanonicalRadius，终报如实限定。S3可开始实施，尚未运行或通过，人工验收仍未开展。
+
+S2封闭证据另存工作区外`touching-motion-114315`，2631文件源／目标SHA全部一致，backup manifest SHA`6284892e80a3623e1b0db96df35feb59dc77acf181d0d7d409b91ed4e47d8fbb`。副本保留app-motion实际对应的源码和完整stage证据，不包含尚未实施的S3；先保全再进入后级，不回写旧清单。

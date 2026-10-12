@@ -11,6 +11,17 @@ internal static class Program
     {
         try
         {
+            if (args.Contains("--verify-landing-build-touching-receipt-old-error-gate"))
+                return args.Length == 1 ? LandingBuildTouchingReceiptVerification.VerifyOldErrorGate() : 2;
+            if (args.Contains("--verify-landing-build-touching-receipt-former"))
+                return args.Length == 7 && args[1] == "--verify-landing-build-touching-receipt-former"
+                    ? LandingBuildTouchingReceiptVerification.RunFormerFailures(args[0], args[2], args[3], args[4], args[5], args[6]) : 2;
+            if (args.Contains("--verify-landing-build-touching-receipt-landing"))
+                return args.Length == 5 && args[1] == "--verify-landing-build-touching-receipt-landing"
+                    ? LandingBuildTouchingReceiptVerification.RunLanding(args[0], args[2], args[3], args[4]) : 2;
+            if (args.Contains("--verify-landing-build-touching-receipt-motion"))
+                return args.Length == 5 && args[1] == "--verify-landing-build-touching-receipt-motion"
+                    ? LandingBuildTouchingReceiptVerification.RunMotion(args[0], args[2], args[3], args[4]) : 2;
             if (args.Contains("--verify-landing-build-singleton-mode-old-error-gate"))
                 return args.Length == 1 ? LandingBuildSingletonModeVerification.VerifyOldErrorGate() : 2;
             if (args.Contains("--verify-landing-build-singleton-mode-former"))
