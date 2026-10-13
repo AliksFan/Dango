@@ -86,7 +86,7 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
     public void SetBodyPreviewColor(Color color)
     {
         VerifyAccess();
-        SetAppearance(new(new(color.R, color.G, color.B), EffectiveAppearance.EyeColor, EffectiveAppearance.EyeLayout));
+        SetAppearance(EffectiveAppearance.WithBodyColor(new(color.R, color.G, color.B)));
     }
     public string? AttachmentError => attachments?.LastError;
     public event Action? HatPresetChanged;

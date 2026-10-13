@@ -114,7 +114,7 @@ public partial class ProductHomeView
     {
         if (updatingAppearance || EyeSpacingSlider is null || !IsEditing || SelectedEditor != HomeEditor.Face) return;
         var eyes = new EyeLayoutParameters(EyeSizeSlider.Value, EyeOvalSlider.Value, EyeHeightSlider.Value, EyeSpacingSlider.Value);
-        StageAppearance(new(DraftAppearance.BodyColor, DraftAppearance.EyeColor, eyes));
+        StageAppearance(DraftAppearance.WithEyeLayout(eyes));
     }
 
     private void OnBodyColorPickerClick(object sender, RoutedEventArgs e) => PickAppearanceColor(false);
@@ -126,7 +126,7 @@ public partial class ProductHomeView
         var generation = appearanceGeneration;
         var selected = AppearanceColorPicker(eye ? DraftAppearance.EyeColor : DraftAppearance.BodyColor);
         if (generation != appearanceGeneration || !IsEditing || SelectedEditor != HomeEditor.Face || selected is not { } color) return;
-        StageAppearance(new(eye ? DraftAppearance.BodyColor : color, eye ? color : DraftAppearance.EyeColor, DraftAppearance.EyeLayout));
+        StageAppearance(eye ? DraftAppearance.WithEyeColor(color) : DraftAppearance.WithBodyColor(color));
     }
 
     private OpaqueSrgbColor? ShowAppearanceColorPicker(OpaqueSrgbColor current)

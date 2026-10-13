@@ -90,7 +90,7 @@ public sealed class AppearanceSettingsSessionTests
         Assert.IsFalse(session.HasPendingSave);
         Assert.AreEqual("#000000", new AppearanceSettingsStore().Load(path).BodyColor.ToHex());
         Assert.AreEqual(expectedEyes, new AppearanceSettingsStore().Load(path).EyeColor.ToHex());
-        StringAssert.Contains(File.ReadAllText(path), "\"appearanceSchemaVersion\": 3");
+        StringAssert.Contains(File.ReadAllText(path), "\"appearanceSchemaVersion\": 4");
         var reopened = new AppearanceSettingsSession(path);
         Assert.AreEqual(session.SavedAppearance, reopened.SavedAppearance);
         Assert.IsFalse(reopened.HasPendingSave);
@@ -145,6 +145,45 @@ public sealed class AppearanceSettingsSessionTests
         session.RestoreDefaultEye();
         Assert.AreEqual(AppearanceSettings.DefaultEyeColor, session.PreviewEyeColor);
         Assert.AreEqual(eyes, session.DraftAppearance.EyeLayout);
+    }
+
+    [TestMethod]
+    public void ColorAndEyeEditsKeepTheDraftBody()
+    {
+        var session = new AppearanceSettingsSession(NewPath());
+        var body = new Dango.Desktop.Physics.Tuning.DangoBodyControls(120, 0, 10);
+        session.StageBody(body);
+        session.StageBodyPreview(OpaqueSrgbColor.Parse("#000000"));
+        session.StageEyePreview(OpaqueSrgbColor.Parse("#010101"));
+        session.StageEyes(new EyeLayoutParameters(140, 100, 66, 34));
+        session.RestoreDefaultBody();
+        session.RestoreDefaultEye();
+        Assert.AreEqual(body, session.DraftAppearance.Body);
+    }
+
+    [TestMethod]
+    public void UnpreviewedBodyCannotBeSavedAndAPreviewBindsTheExactControls()
+    {
+        var path = NewPath();
+        var session = new AppearanceSettingsSession(path);
+        var body = new Dango.Desktop.Physics.Tuning.DangoBodyControls(110, 30, 70);
+        session.StageBody(body);
+        Assert.IsTrue(session.RequiresBodyPreview);
+        Assert.IsFalse(session.TrySave());
+        Assert.IsFalse(File.Exists(path));
+
+        session.MarkBodyPreviewed(new(110, 30, 71), Dango.Desktop.Physics.Tuning.DangoBodyMaterial.ModelVersion);
+        Assert.IsTrue(session.RequiresBodyPreview);
+        session.MarkBodyPreviewed(body, "older-model");
+        Assert.IsTrue(session.RequiresBodyPreview);
+        session.MarkBodyPreviewed(body, Dango.Desktop.Physics.Tuning.DangoBodyMaterial.ModelVersion);
+        Assert.IsFalse(session.RequiresBodyPreview);
+        Assert.IsTrue(session.TrySave());
+        Assert.AreEqual(body, new AppearanceSettingsStore().Load(path).Configuration.Body);
+
+        // Colour-only edits never need a body preview.
+        session.StageBodyPreview(OpaqueSrgbColor.Parse("#000000"));
+        Assert.IsFalse(session.RequiresBodyPreview);
     }
 
     [TestMethod]

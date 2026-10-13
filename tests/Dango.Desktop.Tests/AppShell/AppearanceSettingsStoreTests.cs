@@ -1,5 +1,6 @@
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.Physics.Presentation.Attachments;
+using Dango.Desktop.Physics.Tuning;
 using Dango.Desktop.Rendering.Visuals;
 using Dango.Desktop.Verification;
 using System.Text.Json.Nodes;
@@ -30,21 +31,25 @@ public sealed class AppearanceSettingsStoreTests
         var color = OpaqueSrgbColor.Parse("#000000");
 
         var eyes = new EyeLayoutParameters(139.75, -67.125, 40.25, 33.875);
-        store.Save(path, new AppearanceSettings(color, color, eyes));
+        var body = new DangoBodyControls(80.5, 0, 100);
+        store.Save(path, new AppearanceSettings(new DangoAppearanceConfiguration(color, color, eyes, body)));
 
         Assert.AreEqual("#000000", store.Load(path).BodyColor.ToHex());
         Assert.AreEqual("#000000", store.Load(path).EyeColor.ToHex());
         Assert.AreEqual(eyes, store.Load(path).EyeLayout);
-        Assert.AreEqual(new DangoAppearanceConfiguration(color, color, eyes), store.Load(path).Configuration);
+        Assert.AreEqual(new DangoAppearanceConfiguration(color, color, eyes, body), store.Load(path).Configuration);
         Assert.AreEqual(string.Join(Environment.NewLine,
             "{",
-            "  \"appearanceSchemaVersion\": 3,",
+            "  \"appearanceSchemaVersion\": 4,",
             "  \"bodyColorHex\": \"#000000\",",
             "  \"eyeColorHex\": \"#000000\",",
             "  \"eyeSizePercent\": 139.75,",
             "  \"eyeOvalityPercent\": -67.125,",
             "  \"eyeHeightControlPercent\": 40.25,",
-            "  \"eyeSpacingControlPercent\": 33.875",
+            "  \"eyeSpacingControlPercent\": 33.875,",
+            "  \"bodySizePercent\": 80.5,",
+            "  \"bodySoftness\": 0,",
+            "  \"bodyLandingBuild\": 100",
             "}"), File.ReadAllText(path));
     }
 
@@ -178,6 +183,39 @@ public sealed class AppearanceSettingsStoreTests
         yield return [valid[..^1] + ",\"hatPresetId\":\"sprout\"}"];
         yield return ["{\"appearanceSchemaVersion\":2,\"bodyColorHex\":\"#010203\",\"eyeColorHex\":\"#040506\",\"eyeSizePercent\":100}"];
         yield return ["{\"appearanceSchemaVersion\":1,\"bodyColorHex\":\"#010203\",\"eyeHeightControlPercent\":51}"];
+        // Schema 3 must not carry body fields; Schema 4 must carry all three within range.
+        yield return [valid[..^1] + ",\"bodySizePercent\":100}"];
+        const string four = "{\"appearanceSchemaVersion\":4,\"bodyColorHex\":\"#010203\",\"eyeColorHex\":\"#040506\",\"eyeSizePercent\":100,\"eyeOvalityPercent\":0,\"eyeHeightControlPercent\":51,\"eyeSpacingControlPercent\":24.5,\"bodySizePercent\":100,\"bodySoftness\":50,\"bodyLandingBuild\":50}";
+        yield return [four.Replace("\"appearanceSchemaVersion\":4", "\"appearanceSchemaVersion\":5", StringComparison.Ordinal)];
+        foreach (var (field, min, max) in new[] { ("bodySizePercent", 80d, 120d), ("bodySoftness", 0d, 100d), ("bodyLandingBuild", 0d, 100d) })
+        {
+            var missing = JsonNode.Parse(four)!.AsObject();
+            missing.Remove(field);
+            yield return [missing.ToJsonString()];
+            foreach (var invalid in new JsonNode?[] { null, JsonValue.Create("50"), JsonValue.Create(true), JsonValue.Create(min - .001), JsonValue.Create(max + .001) })
+            {
+                var changed = JsonNode.Parse(four)!.AsObject();
+                changed[field] = invalid;
+                yield return [changed.ToJsonString()];
+            }
+            yield return [four[..^1] + $",\"{field}\":50}}"];
+        }
+    }
+
+    [TestMethod]
+    public void SchemaThreeKeepsItsEyesAndGainsDefaultBodyUntilExplicitSave()
+    {
+        var path = NewPath();
+        const string original = "{\"appearanceSchemaVersion\":3,\"bodyColorHex\":\"#010203\",\"eyeColorHex\":\"#040506\",\"eyeSizePercent\":120,\"eyeOvalityPercent\":-10,\"eyeHeightControlPercent\":40,\"eyeSpacingControlPercent\":30}";
+        Write(path, original);
+
+        var result = new AppearanceSettingsStore().LoadOrDefault(path);
+
+        Assert.AreEqual(new EyeLayoutParameters(120, -10, 40, 30), result.Settings.EyeLayout);
+        Assert.AreEqual(DangoBodyControls.Default, result.Settings.Configuration.Body);
+        Assert.IsTrue(result.RequiresMigration);
+        Assert.IsFalse(result.PreserveOriginal);
+        Assert.AreEqual(original, File.ReadAllText(path));
     }
 
     [TestMethod]

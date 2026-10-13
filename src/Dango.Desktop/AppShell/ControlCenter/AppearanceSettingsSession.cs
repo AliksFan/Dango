@@ -1,5 +1,6 @@
 using System.IO;
 using Dango.Desktop.Physics.Presentation.Attachments;
+using Dango.Desktop.Physics.Tuning;
 using Dango.Desktop.Rendering.Visuals;
 
 namespace Dango.Desktop.AppShell.ControlCenter;
@@ -43,10 +44,10 @@ public sealed class AppearanceSettingsSession
     public string StatusMessage { get; private set; }
 
     public void StageBodyPreview(OpaqueSrgbColor color) =>
-        DraftAppearance = new(color, DraftAppearance.EyeColor, DraftAppearance.EyeLayout);
+        DraftAppearance = DraftAppearance.WithBodyColor(color);
 
     public void StageEyePreview(OpaqueSrgbColor color) =>
-        DraftAppearance = new(DraftAppearance.BodyColor, color, DraftAppearance.EyeLayout);
+        DraftAppearance = DraftAppearance.WithEyeColor(color);
 
     public void StagePreview(OpaqueSrgbColor color) => StageBodyPreview(color);
 
@@ -57,7 +58,28 @@ public sealed class AppearanceSettingsSession
     }
 
     public void StageEyes(EyeLayoutParameters eyes) =>
-        DraftAppearance = new(DraftAppearance.BodyColor, DraftAppearance.EyeColor, eyes);
+        DraftAppearance = DraftAppearance.WithEyeLayout(eyes);
+
+    public void StageBody(DangoBodyControls body)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+        DraftAppearance = DraftAppearance.WithBody(body);
+    }
+
+    /// <summary>Body controls whose physics the running world last built successfully, with the model version.</summary>
+    public (DangoBodyControls Body, string ModelVersion)? PreviewedBody { get; private set; }
+
+    /// <summary>The host calls this only after a new world with exactly these controls passed its first frame.</summary>
+    public void MarkBodyPreviewed(DangoBodyControls body, string modelVersion)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelVersion);
+        PreviewedBody = (body, modelVersion);
+    }
+
+    /// <summary>The draft body differs from the saved one and exactly this body has not been previewed.</summary>
+    public bool RequiresBodyPreview => DraftAppearance.Body != SavedAppearance.Body &&
+        PreviewedBody != (DraftAppearance.Body, DangoBodyMaterial.ModelVersion);
 
     public void CancelPreview()
     {
@@ -91,6 +113,11 @@ public sealed class AppearanceSettingsSession
             return false;
         }
         if (!HasPendingSave) return true;
+        if (RequiresBodyPreview)
+        {
+            StatusMessage = "身体参数还没有预览，请先点“预览身体并下落”再保存。";
+            return false;
+        }
 
         try
         {

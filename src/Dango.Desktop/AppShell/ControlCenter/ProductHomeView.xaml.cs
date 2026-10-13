@@ -489,7 +489,7 @@ public partial class ProductHomeView : UserControl
     {
         if (!IsEditing || SelectedEditor != HomeEditor.Face || sender is not Button { Tag: string color }) return;
         var value = Dango.Desktop.Rendering.Visuals.OpaqueSrgbColor.Parse(color);
-        StageAppearance(new(value, DraftAppearance.EyeColor, DraftAppearance.EyeLayout));
+        StageAppearance(DraftAppearance.WithBodyColor(value));
         Stage.Focus();
     }
 
