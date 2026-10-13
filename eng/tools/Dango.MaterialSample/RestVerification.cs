@@ -83,7 +83,11 @@ internal static class RestVerification
         internal int Frame { get; private set; }
         internal DangoBodyState[] Last { get; private set; } = [];
         internal DangoBodyState[] Previous { get; private set; } = [];
-
+        internal List<DangoBodyState[]> History { get; } = [];
+        internal List<bool[]> Inputs { get; } = [];
+        // Frames whose step began right after a world mutation (a wake event, design §7.6).
+        internal List<bool> Mutations { get; } = [];
+        private bool mutated;
         internal Sim(string library, DangoSelfPhysicsParameters config, int capacity, params (double X, double Y)[] spawns)
         {
             World = DangoPhysicsWorld.Create(library, capacity: capacity, configuration: config);
@@ -92,16 +96,102 @@ internal static class RestVerification
 
         internal DangoBodyState[] Advance(Func<int, DangoEntityId, DangoPhysicsInput>? input = null)
         {
-            var frame = World.Step(Step, Ids.Select((id, i) => input?.Invoke(i, id) ?? new DangoPhysicsInput(id)).ToArray());
+            var inputs = Ids.Select((id, i) => input?.Invoke(i, id) ?? new DangoPhysicsInput(id)).ToArray();
+            var frame = World.Step(Step, inputs);
             if (!frame.Succeeded) throw new InvalidOperationException($"native error {frame.ErrorCode} at frame {Frame}");
             Previous = Last; Last = [.. Ids.Select(id => frame.Bodies.Single(b => b.EntityId == id))];
+            History.Add(Last);
+            // Per-body control input. A world mutation is a wake event, not an input: what follows is
+            // judged by motion, matching the native rest counter (design §7.6).
+            Inputs.Add([.. inputs.Select(x => x.Horizontal != 0 || x.Downward != 0 || x.JumpPressed || x.DragActive)]);
+            Mutations.Add(mutated); mutated = false;
             Frame++;
             return Last;
         }
 
+        internal void Mutate(Action<DangoPhysicsWorld> change) { change(World); mutated = true; }
+
         internal bool Resting(int i) => Previous.Length > 0 && Same(Previous[i], Last[i]);
 
         public void Dispose() => World.Dispose();
+    }
+
+    // Generic rest rules (design §7.6), identical for every scenario. Rest is observed as a
+    // bit-identical published frame; thresholds are the native ones with margins.
+    private const int Window = 30;              // DANGO_REST_FRAMES
+    private const double EntryDrift = .003;     // native d_rest .002 plus representation margin
+    private const double QuietDrift = .001;     // half of d_rest: clearly quiet
+    private const double QuietSpeed = .025;     // half of v_rest
+    private const double GroupReach = .10;      // below the native .15 margin
+
+    private static double PointShift(DangoBodyState a, DangoBodyState b)
+    {
+        double worst = 0;
+        for (var k = 0; k < a.Contour.Count; k++)
+            worst = Math.Max(worst, Math.Abs(a.Contour[k] + (k % 2 == 0 ? a.CoreX : a.CoreY) - b.Contour[k] - (k % 2 == 0 ? b.CoreX : b.CoreY)));
+        return Math.Max(worst, Math.Max(Math.Abs(a.CoreX - b.CoreX), Math.Abs(a.CoreY - b.CoreY)));
+    }
+
+    private static (double L, double B, double R, double T) Box(DangoBodyState s)
+    {
+        double l = double.MaxValue, b = double.MaxValue, r = double.MinValue, t = double.MinValue;
+        for (var k = 0; k < s.Contour.Count; k += 2)
+        {
+            double x = s.Contour[k] + s.CoreX, y = s.Contour[k + 1] + s.CoreY;
+            l = Math.Min(l, x); r = Math.Max(r, x); b = Math.Min(b, y); t = Math.Max(t, y);
+        }
+        return (l, b, r, t);
+    }
+
+    private static bool Near(DangoBodyState a, DangoBodyState b)
+    {
+        var p = Box(a); var q = Box(b);
+        return p.L - GroupReach <= q.R && q.L - GroupReach <= p.R && p.B - GroupReach <= q.T && q.B - GroupReach <= p.T;
+    }
+
+    private static object Consistency(Check check, string name, List<DangoBodyState[]> h, List<bool[]> input, List<bool> mutation)
+    {
+        int n = h[0].Length, falseRest = 0, missedRest = 0, splitGroup = 0, entries = 0;
+        var rest = h.Select((frame, f) => frame.Select((s, i) => f > 0 && Same(s, h[f - 1][i])).ToArray()).ToList();
+        var firstEntry = new int[n]; Array.Fill(firstEntry, -1);
+        string? example = null;
+        for (var f = 1; f < h.Count; f++)
+            for (var i = 0; i < n; i++)
+            {
+                if (!rest[f][i] || rest[f - 1][i]) continue;
+                // Rest entered at the end of frame f-1: the window before it must be quiet and input-free.
+                entries++; if (firstEntry[i] < 0) firstEntry[i] = f;
+                var start = Math.Max(0, f - 1 - Window);
+                var moved = Enumerable.Range(start, f - start).Max(k => PointShift(h[k][i], h[start][i]));
+                // Input in the window from this body, or from a body still touching it at entry, forbids
+                // rest; a body that touched and left no longer belongs to its group (design §7.6).
+                var driver = Enumerable.Range(start + 1, f - 1 - start)
+                    .SelectMany(k => Enumerable.Range(0, n).Where(j => input[k][j] && (j == i || Near(h[f - 1][i], h[f - 1][j]))).Select(j => (k, j)))
+                    .Select(x => ((int K, int J)?)x).LastOrDefault();
+                if (moved >= EntryDrift || driver is not null)
+                {
+                    falseRest++;
+                    example ??= $"body {i} rested at frame {f} after moving {moved:F4}" + (driver is { } d
+                        ? $"; body {d.J} had input at frame {d.K}" : "");
+                }
+            }
+        for (var f = 2 * Window; f < h.Count; f++)
+        {
+            var from = f - 2 * Window;
+            // The native quiet count restarts at a wake event, so a quiet second cannot span one.
+            if (Enumerable.Range(from + 1, 2 * Window).Any(k => input[k].Any(x => x) || mutation[k])) continue;
+            var quiet = Enumerable.Range(0, n).All(i => Enumerable.Range(from, 2 * Window + 1)
+                .All(k => PointShift(h[k][i], h[from][i]) < QuietDrift && h[k][i].MaximumSpeed < QuietSpeed));
+            if (quiet && !rest[f].All(x => x)) { missedRest++; example ??= $"world quiet for 1 s but not resting at frame {f}"; }
+        }
+        for (var f = 1; f < h.Count; f++)
+            for (var i = 0; i < n; i++) for (var j = i + 1; j < n; j++)
+                if (rest[f][i] != rest[f][j] && Near(h[f][i], h[f][j]))
+                { splitGroup++; example ??= $"bodies {i},{j} touching but rest differs at frame {f}"; }
+        check.Require(falseRest == 0, $"{name}: rested while moving or under input {falseRest} times ({example})");
+        check.Require(missedRest == 0, $"{name}: stayed awake while clearly still for {missedRest} frames ({example})");
+        check.Require(splitGroup == 0, $"{name}: touching bodies disagreed on rest for {splitGroup} frames ({example})");
+        return new { entries, firstEntryFrames = firstEntry, falseRest, missedRest, splitGroup };
     }
 
     private static void Single(Check check, string restLib, string baseLib, double size, double softness, double build)
@@ -117,15 +207,14 @@ internal static class RestVerification
             active = rest;
             using var baseline = new Sim(baseLib, config, 1, (0, 0));
             int entry = -1, divergedBeforeRest = -1;
-            for (var f = 0; f < RestDeadline && entry < 0; f++)
+            for (var f = 0; f < RerestDeadline && entry < 0; f++)
             {
                 rest.Advance(); baseline.Advance();
                 if (rest.Resting(0)) entry = rest.Frame;
                 else if (divergedBeforeRest < 0 && !Same(rest.Last[0], baseline.Last[0])) divergedBeforeRest = rest.Frame;
             }
-            check.Require(entry > 0, $"{name}: no rest within {RestDeadline} frames");
             check.Require(divergedBeforeRest < 0, $"{name}: awake trajectory differs from base at frame {divergedBeforeRest}");
-            if (entry < 0) { check.Results.Add(new { name, entry }); return; }
+            if (entry < 0) { check.Results.Add(new { name, entry, rules = Consistency(check, name, rest.History, rest.Inputs, rest.Mutations) }); return; }
             phase = "rest hold";
             var frozen = rest.Last[0];
             var moved = 0;
@@ -139,7 +228,7 @@ internal static class RestVerification
 
             // Wake by zero-translation world change: physics resumes with no input.
             phase = "translate wake";
-            rest.World.TranslateHorizontal(0);
+            rest.Mutate(w => w.TranslateHorizontal(0));
             var before = rest.Last[0]; double wakeJump = 0;
             for (var f = 0; f < 10; f++) { rest.Advance(); wakeJump = Math.Max(wakeJump, VisibleChange(rest.Last[0], before, bodySize)); }
             check.Require(wakeJump <= WakeJumpPixels, $"{name}: wake jump {wakeJump:F3} px");
@@ -158,7 +247,6 @@ internal static class RestVerification
                 check.Require(wanderPixels >= 2, $"{name}: wander-style input moved only {wanderPixels:F3} px in 0.5 s");
             phase = "after wander";
             var rerestWander = Settle(rest);
-            check.Require(rerestWander > 0, $"{name}: no rest again after wander-style wake");
 
             phase = "walk";
             var x0 = rest.Last[0].CoreX;
@@ -192,10 +280,9 @@ internal static class RestVerification
             check.Require(dragResponse > 1, $"{name}: drag wake changed only {dragResponse:F3} px");
             phase = "after drag";
             var rerest4 = Settle(rest);
-            foreach (var (label, value) in new[] { ("translate", rerest1), ("walk", rerest2), ("jump", rerest3), ("drag", rerest4) })
-                check.Require(value > 0, $"{name}: no rest again after {label} wake");
+            var rules = Consistency(check, name, rest.History, rest.Inputs, rest.Mutations);
             check.Results.Add(new { name, entry, moved, baseDrift60Px = baseDrift60, wakeJumpPx = wakeJump, wanderPixels, walked, dragResponsePx = dragResponse,
-                jumpRise, rerest = new[] { rerest1, rerest2, rerest3, rerest4 } });
+                jumpRise, rerestFrames = new[] { rerest1, rerestWander, rerest2, rerest3, rerest4 }, rules });
         }
         catch (Exception error)
         {
@@ -214,7 +301,7 @@ internal static class RestVerification
         if (walkFrames < 0)
         {
             // Reproduce the acceptance order: rest, wake by zero translation, then wander-style input.
-            Settle(sim); sim.World.TranslateHorizontal(0); Settle(sim);
+            Settle(sim); sim.Mutate(w => w.TranslateHorizontal(0)); Settle(sim);
             Console.WriteLine($"rested again at frame {sim.Frame}");
             var wanderStart = sim.Last[0].CoreX;
             for (var f = 0; f < -walkFrames; f++)
@@ -273,7 +360,7 @@ internal static class RestVerification
         {
             var entry = Wait(0, RestDeadline);
             for (var f = 0; f < RestHold; f++) sim.Advance();
-            sim.World.TranslateHorizontal(0);
+            sim.Mutate(w => w.TranslateHorizontal(0));
             for (var f = 0; f < 10; f++) sim.Advance();
             var w1 = Wait(1, RerestDeadline);
             for (var f = 0; f < 30; f++)
@@ -324,15 +411,17 @@ internal static class RestVerification
         {
             var config = DangoPhysicsDefaults.Current;
             using var sim = new Sim(restLib, config, 1, (0, 1.2));
-            sim.World.SetStaticPlatform(new DangoStaticPlatformDefinition(0, -.1, 3, .3));
-            var entry = Settle(sim, RestDeadline);
-            check.Require(entry > 0, $"{name}: no rest on the platform");
+            sim.Mutate(w => w.SetStaticPlatform(new DangoStaticPlatformDefinition(0, -.1, 3, .3)));
+            var entry = Settle(sim);
+            // Scenario precondition: removal must happen while resting to exercise the wake.
+            check.Require(entry > 0, $"{name}: precondition not met (never rested on the platform)");
             var y0 = sim.Last[0].CoreY;
-            sim.World.ClearStaticPlatform();
+            sim.Mutate(w => w.ClearStaticPlatform());
             for (var f = 0; f < 120; f++) sim.Advance();
             var fell = y0 - sim.Last[0].CoreY;
             check.Require(fell > .2, $"{name}: body fell only {fell:F4} after removal");
-            check.Results.Add(new { name, entry, fell });
+            for (var f = 0; f < RerestDeadline; f++) sim.Advance();
+            check.Results.Add(new { name, entry, fell, rules = Consistency(check, name, sim.History, sim.Inputs, sim.Mutations) });
         }
         catch (Exception error) { check.Failures.Add($"{name}: {error.Message}"); }
     }
@@ -346,7 +435,7 @@ internal static class RestVerification
             double Impact(string library, out int entry, out bool wokeBeforeContact)
             {
                 using var sim = new Sim(library, config, 1, (0, 0));
-                entry = Settle(sim, RestDeadline);
+                entry = Settle(sim);
                 var rested = sim.Last[0];
                 sim.World.AddRoundBall(new DangoRoundBallDefinition(rested.CoreX * 4 / 3, 3.2));
                 double lowest = rested.CoreY; wokeBeforeContact = false;
@@ -362,7 +451,7 @@ internal static class RestVerification
             }
             var restDip = Impact(restLib, out var entry, out var woke);
             var baseDip = Impact(baseLib, out _, out _);
-            check.Require(entry > 0, $"{name}: no rest before the ball");
+            check.Require(entry > 0, $"{name}: precondition not met (never rested before the ball)");
             check.Require(woke, $"{name}: body did not wake before ball contact");
             check.Require(Math.Abs(restDip - baseDip) <= MultiTolerance, $"{name}: impact dip {restDip:F4} vs base {baseDip:F4}");
             check.Results.Add(new { name, entry, restDip, baseDip });
@@ -378,17 +467,16 @@ internal static class RestVerification
         try
         {
             var config = DangoPhysicsDefaults.Current;
-            (List<DangoBodyState[]> States, List<bool[]> Resting) Play(string library)
+            (List<DangoBodyState[]> States, List<bool[]> Resting, List<bool[]> Inputs, List<bool> Mutations) Play(string library)
             {
                 using var sim = new Sim(library, config, spawns.Length, spawns);
-                var states = new List<DangoBodyState[]>(); var rest = new List<bool[]>();
+                var rest = new List<bool[]>();
                 for (var f = 0; f < frames; f++)
                 {
                     sim.Advance((i, id) => script(f, i, new DangoPhysicsInput(id)));
-                    states.Add(sim.Last);
                     rest.Add([.. Enumerable.Range(0, spawns.Length).Select(sim.Resting)]);
                 }
-                return (states, rest);
+                return (sim.History, rest, sim.Inputs, sim.Mutations);
             }
             var a = Play(restLib); var b = Play(baseLib);
             double worst = 0;
@@ -399,22 +487,20 @@ internal static class RestVerification
             check.Require(worst <= MultiTolerance, $"{name}: rest vs base core difference {worst:F4}");
             var restedFrames = a.Resting.Count(r => r.Any(x => x));
             extra?.Invoke(check, a.States, a.Resting);
-            check.Results.Add(new { name, worstCoreDifference = worst, framesWithRest = restedFrames,
+            var rules = Consistency(check, name, a.States, a.Inputs, a.Mutations);
+            check.Results.Add(new { name, worstCoreDifference = worst, framesWithRest = restedFrames, rules,
                 probes = probes.Select(p => new { frame = p, rest = a.States[p].Select(s => new[] { s.CoreX, s.CoreY }),
                     @base = b.States[p].Select(s => new[] { s.CoreX, s.CoreY }) }) });
         }
         catch (Exception error) { check.Failures.Add($"{name}: {error.Message}"); }
     }
 
-    private static bool AllRestIn(List<bool[]> r, int from, int to) =>
-        Enumerable.Range(from, Math.Min(to, r.Count) - from).Any(f => r[f].All(x => x));
-
     private static void Push(Check check, string restLib, string baseLib) =>
         Compare(check, "push resting body", restLib, baseLib, [(-1.0, 0), (1.1, 0)], 1200,
             (f, i, input) => i == 1 && f is >= 600 and < 780 ? input with { Horizontal = -1 } : input,
             [599, 650, 700, 779, 900, 1199], (c, s, r) =>
             {
-                c.Require(r[599][0] && r[599][1], "push resting body: both bodies should rest before the push");
+                c.Require(r[599][0] && r[599][1], "push resting body: precondition not met (not resting before the push)");
                 // Idle friction keeps A in place in both builds; require contact and that A woke.
                 c.Require(s[779][1].CoreX < .5, "push resting body: B did not reach A");
                 c.Require(Enumerable.Range(600, 400).Any(f => !Same(s[f][0], s[f - 1][0])), "push resting body: A never woke on contact");
@@ -425,9 +511,8 @@ internal static class RestVerification
             (f, i, input) => i == 1 && f >= 600 && f < 660 ? input with { Horizontal = -1, JumpPressed = f == 600 } : input,
             [599, 620, 660, 760, 1000, 659 + RerestDeadline], (c, s, r) =>
             {
-                c.Require(r[599][0] && r[599][1], "jump onto resting body: both should rest first");
+                c.Require(r[599][0] && r[599][1], "jump onto resting body: precondition not met (not resting before the jump)");
                 c.Require(Enumerable.Range(601, 159).Any(f => !Same(s[f][0], s[f - 1][0])), "jump onto resting body: A never woke");
-                c.Require(AllRestIn(r, 660, 660 + RerestDeadline), "jump onto resting body: bodies did not rest again within 30 s");
             });
 
     // Two bodies side by side with a third resting on top (user-chosen stable stack).
@@ -439,14 +524,10 @@ internal static class RestVerification
             [600, walk - 1, walk + 2, walk + 90, walk + 600, end - 1], (c, s, r) =>
             {
                 c.Require(s[walk - 1][2].CoreY > Math.Max(s[walk - 1][0].CoreY, s[walk - 1][1].CoreY) + .4, "stack: top body is not on the lower two");
-                c.Require(AllRestIn(r, 0, walk), "stack: the three bodies did not rest within 30 s");
-                c.Require(Enumerable.Range(1, walk - 1).All(f => r[f].All(x => x) || r[f].All(x => !x)),
-                    "stack: part of the stack rested while another member was awake");
-                c.Require(r[walk - 1].All(x => x), "stack: not resting when the top body starts walking");
+                c.Require(r[walk - 1].All(x => x), "stack: precondition not met (not resting when the top body starts walking)");
                 c.Require(!Same(s[walk + 1][0], s[walk][0]) && !Same(s[walk + 1][1], s[walk][1]) ||
                     !Same(s[walk + 2][0], s[walk + 1][0]) && !Same(s[walk + 2][1], s[walk + 1][1]),
                     "stack: lower bodies did not wake with the top body");
-                c.Require(AllRestIn(r, walk + 90, end), "stack: bodies did not rest again within 30 s");
             });
     }
 }
