@@ -19,6 +19,13 @@ DANGO_API int dango_physics_world_add(
     float anchor_x,
     float anchor_y,
     int* entity_id);
+// Additive: a body with its own shape. Node count, substeps, gravity and ground must match the world.
+DANGO_API int dango_physics_world_add_configured(
+    void* handle,
+    const dango_self_physics_config* config,
+    float anchor_x,
+    float anchor_y,
+    int* entity_id);
 DANGO_API int dango_physics_world_remove(void* handle, int entity_id);
 DANGO_API int dango_physics_world_step(
     void* handle,

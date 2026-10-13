@@ -213,10 +213,65 @@ static int runtime_checks(float inward_force, bool defaults, float anchor_x)
     return 0;
 }
 
+static int material_drag_convergence_fixture(void)
+{
+    // Actual pre-solve state at frame 764 of the material ground-swing regression.
+    // The old 96-sweep solve rejected it at residual 1.1973083e-5.
+    dango_constraint_state s = ring();
+    s.ground = -0.72f;
+    const b2Vec2 positions[17] = {
+        {1.63938594f, -0.167212605f},
+        {1.43453729f, 0.029319521f},
+        {1.1697464f, 0.131729439f},
+        {0.89168936f, 0.189259633f},
+        {0.613773763f, 0.130101979f},
+        {0.37193954f, 0.0680535287f},
+        {0.143069044f, -0.0129827168f},
+        {0.022876488f, -0.22409451f},
+        {0.0518832617f, -0.469970345f},
+        {0.174628794f, -0.672543705f},
+        {0.420204222f, -0.674899817f},
+        {0.693453074f, -0.675055683f},
+        {0.977380276f, -0.674843907f},
+        {1.25009179f, -0.674187303f},
+        {1.51739597f, -0.672710478f},
+        {1.65899992f, -0.443776667f},
+        {0.852042139f, -0.250959545f}
+    };
+    const b2Vec2 velocities[17] = {
+        {-0.485797077f, -3.34102798f},
+        {-1.20711493f, -4.08524609f},
+        {-0.402778924f, -2.00555587f},
+        {-0.215977103f, -0.439290285f},
+        {-0.302019387f, -0.0350740552f},
+        {-0.635758638f, -0.712477744f},
+        {-0.609500647f, -1.85219479f},
+        {-0.213652492f, -1.83757973f},
+        {0.141279295f, -1.3837235f},
+        {0.816277564f, 0.0132856201f},
+        {0.532199979f, -0.0964706764f},
+        {0.74970752f, -0.00206584623f},
+        {0.750761747f, -0.150417626f},
+        {0.704937756f, -0.361570954f},
+        {0.0f, 0.06245327f},
+        {-0.751273453f, -3.07569599f},
+        {-0.167033717f, -0.4069888f}
+    };
+    memcpy(s.positions, positions, sizeof positions);
+    memcpy(s.velocities, velocities, sizeof velocities);
+    float energy_before = energy(&s);
+    CHECK(dango_constraint_solve(&s));
+    CHECK(dango_constraint_sweep(&s, false) <= DANGO_CONSTRAINT_TOLERANCE);
+    CHECK(energy(&s) <= energy_before + 1e-6f);
+    puts("PASS: captured soft-material drag converges without relaxing tolerance or adding energy");
+    return 0;
+}
+
 int main(int argc, char** argv)
 {
     if (argc > 1) return runtime_checks(0.5f, true, (float)atof(argv[1]));
     CHECK(split_row_checks() == 0);
+    CHECK(material_drag_convergence_fixture() == 0);
     b2Vec2 top = dango_self_top_force((b2Vec2){0, 1}, 0.5f);
     b2Vec2 shoulder = dango_self_top_force((b2Vec2){1, 1}, 0.5f);
     CHECK(fabsf(top.y + 0.5f) < 1e-6f && top.x == 0);

@@ -1,0 +1,125 @@
+#ifndef DANGO_MATERIAL_CONTACT_FRAME3368_H
+#define DANGO_MATERIAL_CONTACT_FRAME3368_H
+#include "dango_material_contact_solver.h"
+// Fixed changing material 80/50 frame 3368 speed-cap publication failure.
+// Source: artifacts/round-material/drift-repair-v5-changing-80-50.json
+// SHA256: 09aaac232655f4c1633c003b4fb2c0f2e5c68ff0a5ab800d9bb67a787818a62b
+// Natural solver input and captured output bits; no solution is seeded.
+static const double dango_material_contact_frame3368_step_seconds = 0.001041662530042231;
+static inline dango_constraint_state dango_material_contact_frame3368_state(void)
+{
+    dango_constraint_state state = {0};
+    state.radial_length = 0.54400003f;
+    state.perimeter_length = 0.212258279f;
+    state.radial_min = 0.649999976f;
+    state.radial_max = 1.22000003f;
+    state.perimeter_min = 0.730000019f;
+    state.perimeter_max = 1.07000005f;
+    state.radius = 0.0359999985f;
+    state.ground = -0.720000029f;
+    state.positions[0] = (b2Vec2){-5.34905767f, 1.46722817f};
+    state.velocities[0] = (b2Vec2){8.28463936f, -7.86587477f};
+    state.inverse_mass[0] = 104.166664f;
+    state.positions[1] = (b2Vec2){-5.21613789f, 1.34003699f};
+    state.velocities[1] = (b2Vec2){9.77450752f, -6.25633669f};
+    state.inverse_mass[1] = 104.166664f;
+    state.positions[2] = (b2Vec2){-5.02990198f, 1.33629918f};
+    state.velocities[2] = (b2Vec2){9.92095566f, -4.07033777f};
+    state.inverse_mass[2] = 104.166664f;
+    state.positions[3] = (b2Vec2){-4.85886621f, 1.45726681f};
+    state.velocities[3] = (b2Vec2){8.82036209f, -2.39286256f};
+    state.inverse_mass[3] = 104.166664f;
+    state.positions[4] = (b2Vec2){-4.78505325f, 1.66855454f};
+    state.velocities[4] = (b2Vec2){6.88129091f, -1.66154993f};
+    state.inverse_mass[4] = 104.166664f;
+    state.positions[5] = (b2Vec2){-4.80242825f, 1.89500535f};
+    state.velocities[5] = (b2Vec2){4.77949762f, -1.80280077f};
+    state.inverse_mass[5] = 104.166664f;
+    state.positions[6] = (b2Vec2){-4.87995625f, 2.10848141f};
+    state.velocities[6] = (b2Vec2){2.8760643f, -2.4947772f};
+    state.inverse_mass[6] = 104.166664f;
+    state.positions[7] = (b2Vec2){-5.00523281f, 2.29792452f};
+    state.velocities[7] = (b2Vec2){1.21356952f, -3.55881572f};
+    state.inverse_mass[7] = 104.166664f;
+    state.positions[8] = (b2Vec2){-5.17474031f, 2.44908738f};
+    state.velocities[8] = (b2Vec2){-0.113071837f, -5.04765987f};
+    state.inverse_mass[8] = 104.166664f;
+    state.positions[9] = (b2Vec2){-5.3841095f, 2.53710628f};
+    state.velocities[9] = (b2Vec2){-0.956977785f, -6.97916126f};
+    state.inverse_mass[9] = 104.166664f;
+    state.positions[10] = (b2Vec2){-5.61076832f, 2.52265453f};
+    state.velocities[10] = (b2Vec2){-0.809207022f, -9.28692436f};
+    state.inverse_mass[10] = 104.166664f;
+    state.positions[11] = (b2Vec2){-5.78754663f, 2.38006377f};
+    state.velocities[11] = (b2Vec2){0.666517615f, -11.153966f};
+    state.inverse_mass[11] = 104.166664f;
+    state.positions[12] = (b2Vec2){-5.83906889f, 2.15886664f};
+    state.velocities[12] = (b2Vec2){2.78892326f, -11.6479921f};
+    state.inverse_mass[12] = 104.166664f;
+    state.positions[13] = (b2Vec2){-5.76912355f, 1.94278526f};
+    state.velocities[13] = (b2Vec2){4.66606474f, -11.1604939f};
+    state.inverse_mass[13] = 104.166664f;
+    state.positions[14] = (b2Vec2){-5.63141251f, 1.76217592f};
+    state.velocities[14] = (b2Vec2){6.13431835f, -10.0411129f};
+    state.inverse_mass[14] = 104.166664f;
+    state.positions[15] = (b2Vec2){-5.47450066f, 1.59797454f};
+    state.velocities[15] = (b2Vec2){7.7644124f, -8.59703732f};
+    state.inverse_mass[15] = 104.166664f;
+    state.positions[16] = (b2Vec2){-5.32152367f, 1.93247712f};
+    state.velocities[16] = (b2Vec2){4.35148335f, -6.79370928f};
+    state.inverse_mass[16] = 13.0208311f;
+    return state;
+}
+static const uint32_t dango_material_contact_frame3368_float_bits[93] = {
+    UINT32_C(0x3F0B4396), UINT32_C(0x3E595A3C), UINT32_C(0x3F266666), UINT32_C(0x3F9C28F6), UINT32_C(0x3F3AE148), UINT32_C(0x3F88F5C3), UINT32_C(0x3D1374BC), UINT32_C(0xBF3851EC),
+    UINT32_C(0xC0AB2B7B), UINT32_C(0x3FBBCE22), UINT32_C(0x41048DE2), UINT32_C(0xC0FBB53F), UINT32_C(0x42D05555), UINT32_C(0xC0A6EA9A), UINT32_C(0x3FAB8655), UINT32_C(0x411C6462),
+    UINT32_C(0xC0C833E9), UINT32_C(0x42D05555), UINT32_C(0xC0A0F4F5), UINT32_C(0x3FAB0BDA), UINT32_C(0x411EBC3C), UINT32_C(0xC0824035), UINT32_C(0x42D05555), UINT32_C(0xC09B7BD5),
+    UINT32_C(0x3FBA87B8), UINT32_C(0x410D2034), UINT32_C(0xC01924A9), UINT32_C(0x42D05555), UINT32_C(0xC0991F28), UINT32_C(0x3FD59332), UINT32_C(0x40DC3389), UINT32_C(0xBFD4ADAB),
+    UINT32_C(0x42D05555), UINT32_C(0xC099AD7E), UINT32_C(0x3FF28F89), UINT32_C(0x4098F1A5), UINT32_C(0xBFE6C22D), UINT32_C(0x42D05555), UINT32_C(0xC09C289A), UINT32_C(0x4006F15C),
+    UINT32_C(0x40381170), UINT32_C(0xC01FAA6E), UINT32_C(0x42D05555), UINT32_C(0xC0A02ADE), UINT32_C(0x40131132), UINT32_C(0x3F9B563F), UINT32_C(0xC063C3A3), UINT32_C(0x42D05555),
+    UINT32_C(0xC0A59779), UINT32_C(0x401CBDD9), UINT32_C(0xBDE79235), UINT32_C(0xC0A1866E), UINT32_C(0x42D05555), UINT32_C(0xC0AC4AA0), UINT32_C(0x40225FF3), UINT32_C(0xBF74FC7F),
+    UINT32_C(0xC0DF554A), UINT32_C(0x42D05555), UINT32_C(0xC0B38B6A), UINT32_C(0x4021732C), UINT32_C(0xBF4F2831), UINT32_C(0xC114973E), UINT32_C(0x42D05555), UINT32_C(0xC0B93395),
+    UINT32_C(0x401852F7), UINT32_C(0x3F2AA0E6), UINT32_C(0xC13276A5), UINT32_C(0x42D05555), UINT32_C(0xC0BAD9A7), UINT32_C(0x400A2ADF), UINT32_C(0x40327DB8), UINT32_C(0xC13A5E2D),
+    UINT32_C(0x42D05555), UINT32_C(0xC0B89CA9), UINT32_C(0x3FF8AD30), UINT32_C(0x40955067), UINT32_C(0xC1329162), UINT32_C(0x42D05555), UINT32_C(0xC0B43488), UINT32_C(0x3FE18EFB),
+    UINT32_C(0x40C44C56), UINT32_C(0xC120A866), UINT32_C(0x42D05555), UINT32_C(0xC0AF2F1C), UINT32_C(0x3FCC8A6E), UINT32_C(0x40F87611), UINT32_C(0xC1098D77), UINT32_C(0x42D05555),
+    UINT32_C(0xC0AA49EC), UINT32_C(0x3FF75B69), UINT32_C(0x408B3F5A), UINT32_C(0xC0D96611), UINT32_C(0x41505553),
+};
+static const uint32_t dango_material_contact_frame3368_uncapped_bits[34] = {
+    UINT32_C(0x4106D312), UINT32_C(0xC0F75A05),
+    UINT32_C(0x411C6462), UINT32_C(0xC0C833E9),
+    UINT32_C(0x411EB97E), UINT32_C(0xC08234FF),
+    UINT32_C(0x410D2034), UINT32_C(0xC01924A9),
+    UINT32_C(0x40DC1CB4), UINT32_C(0xBFD00772),
+    UINT32_C(0x40986EE6), UINT32_C(0xBFE4CCE7),
+    UINT32_C(0x403687AA), UINT32_C(0xC01ED43E),
+    UINT32_C(0x3F99ACEE), UINT32_C(0xC064B8DC),
+    UINT32_C(0xBE05C511), UINT32_C(0xC0A22144),
+    UINT32_C(0xBF730CD0), UINT32_C(0xC0E07428),
+    UINT32_C(0xBF4D40EE), UINT32_C(0xC11546C4),
+    UINT32_C(0x3F343752), UINT32_C(0xC1332501),
+    UINT32_C(0x4036B5A9), UINT32_C(0xC13B290F),
+    UINT32_C(0x4095EAC3), UINT32_C(0xC131AE9F),
+    UINT32_C(0x40C44BAB), UINT32_C(0xC1200032),
+    UINT32_C(0x40EDCEFA), UINT32_C(0xC10C2A6F),
+    UINT32_C(0x408BC24B), UINT32_C(0xC0D91FE3),
+};
+static const uint64_t dango_material_contact_frame3368_double_bits[34] = {
+    UINT64_C(0x4020DA6248B54083), UINT64_C(0xC01EEB4091598B8A),
+    UINT64_C(0x40238C8C40000000), UINT64_C(0xC019067D20000000),
+    UINT64_C(0x4023D72FC20D1E31), UINT64_C(0xC010469FDFA766A9),
+    UINT64_C(0x4021A40680000000), UINT64_C(0xC003249520000000),
+    UINT64_C(0x401B83968ADD3FEF), UINT64_C(0xBFFA00EE385CB2B7),
+    UINT64_C(0x40130DDCCF316CDD), UINT64_C(0xBFFC999CE8E3A80D),
+    UINT64_C(0x4006D0F54AA8216F), UINT64_C(0xC003DA87CECA3C40),
+    UINT64_C(0x3FF3359DC9935248), UINT64_C(0xC00C971B8F37AC1F),
+    UINT64_C(0xBFC0B8A224D12C3C), UINT64_C(0xC01444287AD4DF18),
+    UINT64_C(0xBFEE6199F2B2D22E), UINT64_C(0xC01C0E84FDC7944C),
+    UINT64_C(0xBFE9A81DB8B50094), UINT64_C(0xC022A8D87B0EE0A5),
+    UINT64_C(0x3FE686EA315B2C04), UINT64_C(0xC02664A01EAB45B6),
+    UINT64_C(0x4006D6B51E5FCF91), UINT64_C(0xC0276521E8E98C95),
+    UINT64_C(0x4012BD5853CB7AC3), UINT64_C(0xC02635D3EF634B9B),
+    UINT64_C(0x401889756CD723E4), UINT64_C(0xC024000634668491),
+    UINT64_C(0x401DB9DF35EED6E8), UINT64_C(0xC021854DE6D065F5),
+    UINT64_C(0x401178495CF3148D), UINT64_C(0xC01B23FC52A846F6),
+};
+#endif

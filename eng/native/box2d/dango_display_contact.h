@@ -23,7 +23,9 @@ static bool display_build(dango_self_soft_body* body, float radius, display_mesh
             if (value>mesh->maximum) { mesh->maximum=value; mesh->max_node=n; mesh->max_axis=axis; }
         }
     }
-    mesh->scale=fminf(1,.98f/mesh->maximum);
+    // Presentation-box limit in world units. The default rig (rest length .68) keeps .98; a larger
+    // rig scales it so its own outline is never shrunk, a smaller rig keeps the default headroom.
+    mesh->scale=fminf(1,.98f*fmaxf(1.0f,body->radial_rest_length/.68f)/mesh->maximum);
     for (int s=0;s<DISPLAY_SAMPLES;++s)
     {
         int n=s/DISPLAY_SAMPLES_PER_NODE; float t=(float)(s%DISPLAY_SAMPLES_PER_NODE)/DISPLAY_SAMPLES_PER_NODE;
@@ -117,12 +119,12 @@ static float display_contact_margin(const display_mesh* a,const display_mesh* b,
     return -.03f*fminf(display_projected_width(a,normal),display_projected_width(b,normal));
 }
 
-static bool display_contact_solve(dango_self_soft_body** bodies,const dango_self_physics_config* config,const bool* static_x,bool relative_overlap,int* touched)
+static bool display_contact_solve(dango_self_soft_body** bodies,const dango_self_physics_config* const* config,const bool* static_x,bool relative_overlap,int* touched)
 {
     for (int iteration=0;iteration<96;++iteration)
     {
         display_mesh m[2]; b2Vec2 normal; int ia,ib;
-        if (!display_build(bodies[0],config->node_radius,&m[0]) || !display_build(bodies[1],config->node_radius,&m[1])) return false;
+        if (!display_build(bodies[0],config[0]->node_radius,&m[0]) || !display_build(bodies[1],config[1]->node_radius,&m[1])) return false;
         float gap=display_separation(&m[0],&m[1],&normal,&ia,&ib,.001f);
         if (!isfinite(gap)) return false;
         float margin=display_contact_margin(&m[0],&m[1],normal,relative_overlap);
@@ -163,7 +165,7 @@ static bool display_contact_solve(dango_self_soft_body** bodies,const dango_self
             momentum_after=b2MulAdd(momentum_after,1/inv,next);
         }
         if (after-before>1e-6 || b2Distance(momentum_before,momentum_after)>1e-5f) return false;
-        for (int r=0;r<2;++r) if (!dango_self_solve_constraints(bodies[r],config)) return false;
+        for (int r=0;r<2;++r) if (!dango_self_solve_constraints(bodies[r],config[r])) return false;
     }
     return false;
 }

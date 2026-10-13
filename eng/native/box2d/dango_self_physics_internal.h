@@ -105,7 +105,7 @@ void dango_self_initialize_at(
     const dango_self_physics_config* config,
     float anchor_x,
     float anchor_y);
-void dango_self_apply_step_forces(
+int dango_self_apply_step_forces(
     dango_self_soft_body* body,
     const dango_self_physics_config* config,
     float small_time_step,
