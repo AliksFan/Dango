@@ -1,0 +1,579 @@
+<div id="dango-furniture-layout-v1" aria-label="实时家具布置交互预览">
+  <style>
+    #dango-furniture-layout-v1 {
+      --room-paper: light-dark(#faf9f4, #23271f);
+      --room-panel: light-dark(#f1f2e9, #2b3027);
+      --room-ink: light-dark(#303c32, #e7ecdf);
+      --room-muted: light-dark(#65705f, #b6c0ae);
+      --room-line: light-dark(#d6dccd, #4b5545);
+      --room-wall: light-dark(#edf1e3, #343d2f);
+      --room-floor: light-dark(#d8d6be, #4b4937);
+      --room-floor-edge: light-dark(#b9bea4, #69705a);
+      --room-leaf: light-dark(#62844f, #a8c888);
+      --room-action: light-dark(#435c38, #a6c78c);
+      --room-action-ink: light-dark(#fffdf7, #202e18);
+      --room-warm: light-dark(#f4d4a2, #d5b780);
+      --room-warm-shadow: light-dark(#d7b888, #b69666);
+      --room-friend: light-dark(#d3dfa8, #b8c590);
+      --room-friend-shadow: light-dark(#b1c181, #95a16e);
+      --room-face: light-dark(#594933, #3d3426);
+      --room-blush: light-dark(#dda792, #bd826e);
+      --room-ball: light-dark(#b8dce7, #9fc8d3);
+      --room-ball-light: light-dark(#e5f5f7, #d7ebee);
+      --room-ball-dark: light-dark(#7eb7c7, #6d9fae);
+      --room-ball-band: light-dark(#fbfdfb, #e8f1ee);
+      --room-wood: light-dark(#b9aa85, #a09371);
+      --room-wood-light: light-dark(#d5c7a5, #c0b38d);
+      --room-error: light-dark(#a94332, #f0a390);
+      --room-error-fill: light-dark(#fbece7, #483027);
+      --room-shadow: light-dark(#303c3212, #00000035);
+      --room-focus: light-dark(#6d9253, #c0dda2);
+      color: var(--room-ink);
+      color-scheme: light dark;
+      font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      width: 100%;
+    }
+    #dango-furniture-layout-v1 * { box-sizing: border-box; }
+    #dango-furniture-layout-v1 [hidden] { display: none !important; }
+    #dango-furniture-layout-v1 .room-window { width: 100%; background: var(--room-paper); border: 1px solid var(--room-line); border-radius: 16px; box-shadow: 0 8px 28px var(--room-shadow); overflow: clip; }
+    #dango-furniture-layout-v1 button { font: inherit; color: inherit; border: 1px solid var(--room-line); background: var(--room-paper); border-radius: 8px; padding: 8px 12px; min-height: 40px; font-weight: 400; }
+    #dango-furniture-layout-v1 button:disabled { opacity: .48; cursor: default; }
+    #dango-furniture-layout-v1 .room-primary, #dango-furniture-layout-v1 .tool-button[aria-pressed="true"] { background: var(--room-action); border-color: var(--room-action); color: var(--room-action-ink); }
+    #dango-furniture-layout-v1 .room-quiet { border-color: transparent; background: transparent; }
+    #dango-furniture-layout-v1 .room-titlebar { min-height: 64px; display: flex; align-items: center; gap: 12px; padding: 12px 108px 12px 18px; border-bottom: 1px solid var(--room-line); }
+    #dango-furniture-layout-v1 .room-brand { width: 22px; height: 22px; flex: 0 0 auto; border-radius: 50%; background: var(--room-warm); position: relative; }
+    #dango-furniture-layout-v1 .room-brand::after { content: ""; position: absolute; width: 9px; height: 5px; top: -3px; left: 12px; border-radius: 9px 0 9px 0; background: var(--room-leaf); transform: rotate(-20deg); }
+    #dango-furniture-layout-v1 .room-heading, #dango-furniture-layout-v1 .room-section-title { font-weight: 500; }
+    #dango-furniture-layout-v1 .room-caption { color: var(--room-muted); font-size: 12px; }
+    #dango-furniture-layout-v1 .room-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 14px; }
+    #dango-furniture-layout-v1 .room-mode { display: flex; align-items: center; gap: 7px; font-size: 12px; }
+    #dango-furniture-layout-v1 .room-mode-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--room-leaf); }
+    #dango-furniture-layout-v1 .room-actions, #dango-furniture-layout-v1 .room-tools, #dango-furniture-layout-v1 .preview-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+    #dango-furniture-layout-v1 .preview-actions { padding-left: 6px; border-left: 1px solid var(--room-line); }
+    #dango-furniture-layout-v1 .icon-button { display: grid; place-items: center; padding: 8px; width: 40px; }
+    #dango-furniture-layout-v1 .icon-button i, #dango-furniture-layout-v1 .icon-button svg { width: 18px; height: 18px; pointer-events: none; }
+    #dango-furniture-layout-v1 .room-body { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 10px; padding: 0 12px 12px; }
+    #dango-furniture-layout-v1 .room-window[data-editing="false"] .room-body { grid-template-columns: minmax(0, 1fr); }
+    #dango-furniture-layout-v1 .room-catalog { align-self: start; padding: 12px; border-radius: 12px; background: var(--room-panel); }
+    #dango-furniture-layout-v1 .sidebar-section + .sidebar-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--room-line); }
+    #dango-furniture-layout-v1 .room-section-title { margin-bottom: 8px; }
+    #dango-furniture-layout-v1 .catalog-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    #dango-furniture-layout-v1 .catalog-item { display: grid; place-items: center; padding: 6px; min-height: 60px; width: 100%; }
+    #dango-furniture-layout-v1 .catalog-item[aria-pressed="true"] { border-color: var(--room-action); box-shadow: inset 0 0 0 1px var(--room-action); }
+    #dango-furniture-layout-v1 .catalog-thumb { height: 46px; display: grid; place-items: center; }
+    #dango-furniture-layout-v1 .platform-thumb { width: 58px; height: 14px; background: var(--room-wood); border-radius: 5px; border-top: 4px solid var(--room-wood-light); box-shadow: 0 3px 0 var(--room-shadow); }
+    #dango-furniture-layout-v1 .ball-thumb { width: 42px; height: 42px; border-radius: 50%; background: radial-gradient(circle at 32% 27%, var(--room-ball-light), var(--room-ball) 58%, var(--room-ball-dark)); position: relative; overflow: hidden; }
+    #dango-furniture-layout-v1 .ball-thumb::after, #dango-furniture-layout-v1 .piece-ball::after { content: ""; position: absolute; inset: 0; border-left: 13px solid var(--room-ball-band); border-radius: 50%; transform: rotate(-25deg); opacity: .85; pointer-events: none; }
+    #dango-furniture-layout-v1 .room-main { min-width: 0; }
+    #dango-furniture-layout-v1 .scene { height: 340px; min-height: 155px; width: 100%; background: var(--room-wall); border: 1px solid var(--room-line); border-radius: 12px; position: relative; overflow: hidden; isolation: isolate; touch-action: none; }
+    #dango-furniture-layout-v1 .scene-input { position: absolute; inset: 0; border: 0; border-radius: 0; background: transparent; padding: 0; width: 100%; height: 100%; min-height: 0; }
+    #dango-furniture-layout-v1 .scene[data-tool="glove"] .scene-input { cursor: grab; }
+    #dango-furniture-layout-v1 .scene[data-dragging="true"] .scene-input { cursor: grabbing; }
+    #dango-furniture-layout-v1 .world { width: 720px; height: 340px; position: absolute; left: 0; top: 0; transform-origin: top left; pointer-events: none; }
+    #dango-furniture-layout-v1 .scene-floor { height: 40px; width: 720px; position: absolute; left: 0; top: 300px; background: var(--room-floor); border-top: 2px solid var(--room-floor-edge); }
+    #dango-furniture-layout-v1 .scene-label { position: absolute; top: 10px; left: 12px; color: var(--room-muted); font-size: 12px; pointer-events: none; }
+    #dango-furniture-layout-v1 .furniture-piece, #dango-furniture-layout-v1 .placement-ghost { position: absolute; padding: 0; min-height: 0; touch-action: none; pointer-events: auto; }
+    #dango-furniture-layout-v1 .furniture-piece[data-selected="true"] { outline: 2px solid var(--room-focus); outline-offset: 4px; }
+    #dango-furniture-layout-v1 .piece-platform { width: 140px; height: 22px; border: 0; border-top: 6px solid var(--room-wood-light); border-radius: 6px; background: var(--room-wood); box-shadow: 0 4px 0 var(--room-shadow); }
+    #dango-furniture-layout-v1 .piece-ball { width: 132px; height: 132px; border-radius: 50%; border: 0; background: radial-gradient(circle at 32% 27%, var(--room-ball-light), var(--room-ball) 58%, var(--room-ball-dark)); overflow: hidden; }
+    #dango-furniture-layout-v1 .placement-ghost { opacity: .55; outline: 2px dashed var(--room-focus); outline-offset: 4px; z-index: 2; }
+    #dango-furniture-layout-v1 .placement-ghost[data-invalid="true"] { outline-color: var(--room-error); }
+    #dango-furniture-layout-v1 .dango-body { position: absolute; width: 88px; height: 88px; padding: 0; min-height: 0; border: 0; border-radius: 50%; background: var(--room-warm); box-shadow: inset 0 -5px 0 var(--room-warm-shadow); touch-action: none; pointer-events: auto; z-index: 3; }
+    #dango-furniture-layout-v1 .dango-body:disabled { opacity: 1; }
+    #dango-furniture-layout-v1 .dango-body[data-dango="friend"] { background: var(--room-friend); box-shadow: inset 0 -5px 0 var(--room-friend-shadow); }
+    #dango-furniture-layout-v1 .dango-body[data-held="true"] { outline: 2px dashed var(--room-focus); outline-offset: 3px; }
+    #dango-furniture-layout-v1 .dango-sprout { position: absolute; top: -9px; left: 47px; width: 5px; height: 15px; border-radius: 5px; background: var(--room-leaf); transform: rotate(12deg); }
+    #dango-furniture-layout-v1 .dango-sprout::after { content: ""; position: absolute; width: 18px; height: 10px; left: 3px; top: 0; background: var(--room-leaf); border-radius: 16px 0 16px 0; transform: rotate(-18deg); }
+    #dango-furniture-layout-v1 .dango-eye { position: absolute; top: 36px; width: 5px; height: 7px; border-radius: 50%; background: var(--room-face); }
+    #dango-furniture-layout-v1 .dango-eye.left { left: 29px; }
+    #dango-furniture-layout-v1 .dango-eye.right { left: 54px; }
+    #dango-furniture-layout-v1 .dango-mouth { position: absolute; left: 39px; top: 46px; width: 11px; height: 6px; border: 2px solid var(--room-face); border-top: 0; border-radius: 0 0 8px 8px; }
+    #dango-furniture-layout-v1 .dango-cheek { position: absolute; top: 46px; width: 11px; height: 5px; border-radius: 50%; background: var(--room-blush); }
+    #dango-furniture-layout-v1 .dango-cheek.left { left: 16px; }
+    #dango-furniture-layout-v1 .dango-cheek.right { right: 16px; }
+    #dango-furniture-layout-v1 .dango-name { position: absolute; top: 94px; left: 0; width: 100%; font-size: 12px; color: var(--room-muted); white-space: nowrap; pointer-events: none; }
+    #dango-furniture-layout-v1 .nudge-buttons { display: grid; grid-template-columns: repeat(3, 36px); grid-template-rows: repeat(3, 36px); gap: 4px; justify-content: center; }
+    #dango-furniture-layout-v1 .nudge-buttons button { width: 36px; min-height: 36px; padding: 4px; }
+    #dango-furniture-layout-v1 .nudge-up { grid-column: 2; grid-row: 1; }
+    #dango-furniture-layout-v1 .nudge-left { grid-column: 1; grid-row: 2; }
+    #dango-furniture-layout-v1 .nudge-right { grid-column: 3; grid-row: 2; }
+    #dango-furniture-layout-v1 .nudge-down { grid-column: 2; grid-row: 3; }
+    #dango-furniture-layout-v1 .nudge-center { grid-column: 2; grid-row: 2; place-self: center; width: 5px; height: 5px; border-radius: 50%; background: var(--room-line); }
+    #dango-furniture-layout-v1 .parameter-selection { margin-bottom: 8px; font-size: 12px; font-weight: 500; }
+    #dango-furniture-layout-v1 .parameter-controls { min-height: 105px; }
+    #dango-furniture-layout-v1 .parameter-controls[data-empty="true"] .parameter-field { visibility: hidden; }
+    #dango-furniture-layout-v1 .parameter-field + .parameter-field { margin-top: 10px; }
+    #dango-furniture-layout-v1 .parameter-field label { display: block; margin-bottom: 4px; font-size: 12px; }
+    #dango-furniture-layout-v1 .parameter-field input[type="range"] { display: block; width: 100%; margin: 0; accent-color: var(--room-action); opacity: .55; }
+    #dango-furniture-layout-v1 .parameter-directions { display: flex; justify-content: space-between; color: var(--room-muted); font-size: 12px; }
+    #dango-furniture-layout-v1 .parameter-note { margin: 8px 0 0; color: var(--room-muted); font-size: 12px; }
+    #dango-furniture-layout-v1 .room-feedback { margin-top: 8px; padding: 8px 10px; background: var(--room-panel); border-radius: 8px; color: var(--room-muted); font-size: 12px; }
+    #dango-furniture-layout-v1 .room-feedback[data-error="true"] { color: var(--room-error); background: var(--room-error-fill); }
+    #dango-furniture-layout-v1 .room-footer { display: flex; flex-wrap: wrap; gap: 6px 12px; padding: 10px 14px; border-top: 1px solid var(--room-line); color: var(--room-muted); font-size: 12px; }
+    #dango-furniture-layout-v1 .sr-label { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    @media (max-width: 660px) {
+      #dango-furniture-layout-v1 .room-titlebar { padding-left: 12px; }
+      #dango-furniture-layout-v1 .room-controls { padding: 10px; }
+      #dango-furniture-layout-v1 .room-body { grid-template-columns: 1fr; padding: 0 8px 10px; }
+      #dango-furniture-layout-v1 .room-main { grid-row: 1; }
+      #dango-furniture-layout-v1 .room-footer { padding: 10px; }
+    }
+    @media (pointer: coarse) {
+      #dango-furniture-layout-v1 button { min-height: 44px; }
+      #dango-furniture-layout-v1 .icon-button { width: 44px; }
+      #dango-furniture-layout-v1 .nudge-buttons { grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); }
+      #dango-furniture-layout-v1 .nudge-buttons button { width: 44px; min-height: 44px; }
+      #dango-furniture-layout-v1 .furniture-piece, #dango-furniture-layout-v1 .placement-ghost, #dango-furniture-layout-v1 .dango-body { min-height: 0; }
+      #dango-furniture-layout-v1 .piece-platform::after { content: ""; position: absolute; left: 0; right: 0; top: -12px; bottom: -12px; }
+    }
+  </style>
+  <div class="room-window" data-room-ui="side" data-editing="true" aria-label="侧栏家具布置">
+    <header class="room-titlebar"><span class="room-brand" aria-hidden="true"></span><div><div class="room-heading">团子的房间</div><div class="room-caption">实时布置 · 交互预览</div></div></header>
+    <div class="room-controls">
+      <div class="room-mode"><span class="room-mode-dot" aria-hidden="true"></span><span data-mode-label>布置中 · 团子留场</span></div>
+      <div class="room-actions">
+        <div class="room-tools" role="group" aria-label="布置工具">
+          <button class="icon-button tool-button cursor-interaction" type="button" data-tool="furniture" aria-label="家具选择与拖动工具" aria-pressed="true" data-tooltip="选择／拖动家具"><i data-lucide="mouse-pointer-2" aria-hidden="true"></i></button>
+          <button class="icon-button tool-button cursor-interaction" type="button" data-tool="glove" aria-label="手套工具，拖动团子" aria-pressed="false" data-tooltip="手套 · 拖动团子"><i data-lucide="hand" aria-hidden="true"></i></button>
+          <button class="icon-button room-quiet cursor-interaction" type="button" data-action="remove" aria-label="删除选中的家具" data-tooltip="删除已选家具"><i data-lucide="trash-2" aria-hidden="true"></i></button>
+        </div>
+        <div class="preview-actions" data-preview-actions hidden>
+          <button class="icon-button room-primary cursor-interaction" type="button" data-action="confirm" aria-label="确认当前家具预览" data-tooltip="确认家具位置"><i data-lucide="check" aria-hidden="true"></i></button>
+          <button class="icon-button room-quiet cursor-interaction" type="button" data-action="cancel-preview" aria-label="取消当前未确认预览" data-tooltip="取消本次预览"><i data-lucide="x" aria-hidden="true"></i></button>
+        </div>
+        <button class="icon-button room-quiet cursor-interaction" type="button" data-action="exit" aria-label="结束布置，保留已确认操作" data-tooltip="结束布置"><i data-lucide="log-out" aria-hidden="true"></i></button>
+        <button class="icon-button room-primary cursor-interaction" type="button" data-action="edit" aria-label="进入家具布置" data-tooltip="布置家具" hidden><i data-lucide="pencil" aria-hidden="true"></i></button>
+      </div>
+    </div>
+    <div class="room-body">
+      <aside class="room-catalog" aria-label="家具布置侧栏">
+        <section class="sidebar-section" data-sidebar-section="move" aria-label="家具微调">
+          <div class="room-section-title">微调</div>
+          <div class="nudge-buttons" data-nudge>
+            <button class="icon-button nudge-up cursor-interaction" type="button" data-dx="0" data-dy="-1" aria-label="向上微调家具预览"><i data-lucide="arrow-up" aria-hidden="true"></i></button>
+            <button class="icon-button nudge-left cursor-interaction" type="button" data-dx="-1" data-dy="0" aria-label="向左微调家具预览"><i data-lucide="arrow-left" aria-hidden="true"></i></button>
+            <span class="nudge-center" aria-hidden="true"></span>
+            <button class="icon-button nudge-right cursor-interaction" type="button" data-dx="1" data-dy="0" aria-label="向右微调家具预览"><i data-lucide="arrow-right" aria-hidden="true"></i></button>
+            <button class="icon-button nudge-down cursor-interaction" type="button" data-dx="0" data-dy="1" aria-label="向下微调家具预览"><i data-lucide="arrow-down" aria-hidden="true"></i></button>
+          </div>
+        </section>
+        <section class="sidebar-section" data-sidebar-section="parameters" aria-label="家具参数">
+          <div class="room-section-title">家具参数</div>
+          <div class="parameter-selection" data-selection>木平台</div>
+          <div class="parameter-controls" data-parameter-controls>
+            <div class="parameter-field"><label for="dango-furniture-size-preview">大小</label><input id="dango-furniture-size-preview" type="range" value="50" disabled aria-describedby="dango-parameter-placeholder-note" aria-valuetext="示意，参数调节后续接入"><div class="parameter-directions" aria-hidden="true"><span>小</span><span>大</span></div></div>
+            <div class="parameter-field" data-param-elasticity-row hidden><label for="dango-furniture-elasticity-preview">弹性</label><input id="dango-furniture-elasticity-preview" type="range" value="50" disabled aria-describedby="dango-parameter-placeholder-note" aria-valuetext="示意，参数调节后续接入"><div class="parameter-directions" aria-hidden="true"><span>低</span><span>高</span></div></div>
+          </div>
+          <p class="parameter-note" id="dango-parameter-placeholder-note">参数调节后续接入</p>
+        </section>
+        <section class="sidebar-section" data-sidebar-section="warehouse" aria-label="家具仓库">
+          <div class="room-section-title">家具仓库</div>
+          <div class="catalog-list">
+            <button type="button" class="catalog-item cursor-interaction" data-type="platform" aria-pressed="false" aria-label="木平台，选择当前家具" data-tooltip="木平台 · 选择当前家具"><span class="catalog-thumb" aria-hidden="true"><span class="platform-thumb"></span></span></button>
+            <button type="button" class="catalog-item cursor-interaction" data-type="ball" aria-pressed="false" aria-label="圆球，预览替换当前家具" data-tooltip="圆球 · 预览替换当前家具"><span class="catalog-thumb" aria-hidden="true"><span class="ball-thumb"></span></span></button>
+          </div>
+        </section>
+      </aside>
+      <main class="room-main">
+        <div class="scene" data-scene="side" data-tool="furniture" aria-label="家具与团子交互示意场景">
+          <button class="scene-input cursor-interaction" type="button" data-scene-input aria-label="房间场景，A和D移动自己，空格跳跃，右键拖动视角"><span class="sr-label">选择家具后用方向键调整预览，再用勾确认。手套模式可拖动团子。</span></button>
+          <div class="world" data-world>
+            <div class="scene-floor"></div>
+            <button type="button" class="furniture-piece piece-platform cursor-interaction" data-piece aria-label="木平台，选择与拖动"></button>
+            <button type="button" class="placement-ghost piece-platform cursor-interaction" data-ghost hidden aria-label="未确认的木平台预览"></button>
+            <button type="button" class="dango-body cursor-interaction" data-dango="self" aria-label="自己的团子，手套工具可拖动" disabled><span class="dango-sprout" aria-hidden="true"></span><span class="dango-eye left" aria-hidden="true"></span><span class="dango-eye right" aria-hidden="true"></span><span class="dango-mouth" aria-hidden="true"></span><span class="dango-cheek left" aria-hidden="true"></span><span class="dango-cheek right" aria-hidden="true"></span><span class="dango-name">自己</span></button>
+            <button type="button" class="dango-body cursor-interaction" data-dango="friend" aria-label="虚构示意团子，拖动最多5秒，释放后冷却10秒" disabled><span class="dango-sprout" aria-hidden="true"></span><span class="dango-eye left" aria-hidden="true"></span><span class="dango-eye right" aria-hidden="true"></span><span class="dango-mouth" aria-hidden="true"></span><span class="dango-cheek left" aria-hidden="true"></span><span class="dango-cheek right" aria-hidden="true"></span><span class="dango-name" data-friend-label>示意团子</span></button>
+          </div>
+          <span class="scene-label" data-scene-label>A/D/空格操作自己 · 右键拖动视角</span>
+        </div>
+        <div class="room-feedback" data-feedback role="status" aria-live="polite">拖动或微调只产生预览，点击勾后应用。</div>
+      </main>
+    </div>
+    <footer class="room-footer"><span>交互示意 · 简化几何，无真实多人、物理或存档；他人主动保护／挣脱未演示。</span><span data-storage>仅本次预览</span></footer>
+  </div>
+  <script>
+    (() => {
+      const root = document.getElementById('dango-furniture-layout-v1');
+      const surface = root.querySelector('[data-room-ui]');
+      const scene = root.querySelector('[data-scene]');
+      const sceneInput = root.querySelector('[data-scene-input]');
+      const world = root.querySelector('[data-world]');
+      const piece = root.querySelector('[data-piece]');
+      const ghost = root.querySelector('[data-ghost]');
+      const clone = value => JSON.parse(JSON.stringify(value));
+      const nameOf = type => type === 'ball' ? '圆球' : '木平台';
+      const sizeOf = type => type === 'ball' ? { w: 132, h: 132 } : { w: 140, h: 22 };
+      const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+      const WORLD_WIDTH = 720, FLOOR = 300, EPSILON = .000001;
+      const sessionId = 'live-preview-' + Math.random().toString(36).slice(2);
+      const bodies = [
+        { id: 'self', x: 82, y: 256, r: 44, vy: 0, grounded: true },
+        { id: 'friend', x: 245, y: 256, r: 44, vy: 0, grounded: true }
+      ];
+      const bodyElements = new Map(bodies.map(body => [body.id, root.querySelector('[data-dango="' + body.id + '"]')]));
+      const self = bodies[0];
+      let applied = { id: 'official-platform', type: 'platform', x: .62, y: .45 };
+      let selected = applied.id, preview = null, editing = true, tool = 'furniture';
+      let camera = { x: 0, y: 0 }, gesture = null, held = null, friendCooldownUntil = 0;
+      let feedback = '拖动或微调只产生预览，点击勾后应用。', error = false;
+      let localInteracted = false, initializedFromHost = false, storageProblem = false;
+      let revision = 0, writeQueue = Promise.resolve(), timerId = null, frameId = null, previousTime = null;
+      const heldKeys = new Set();
+      const now = () => performance.now();
+      const hostAvailable = () => !!(window.openai && typeof window.openai.setWidgetState === 'function');
+      const metrics = () => {
+        const scale = Math.min(1, Math.max(.1, scene.clientWidth / WORLD_WIDTH));
+        return { scale, x: (scene.clientWidth - WORLD_WIDTH * scale) / 2, y: scene.clientHeight - 340 * scale };
+      };
+      const rectFor = item => {
+        const size = sizeOf(item.type);
+        return { x: 8 + item.x * (WORLD_WIDTH - size.w - 16), y: item.type === 'ball' ? FLOOR - size.h : 8 + item.y * (FLOOR - size.h - 8), w: size.w, h: size.h };
+      };
+      const positionFor = (type, x, y) => {
+        const size = sizeOf(type);
+        return { x: (x - 8) / (WORLD_WIDTH - size.w - 16), y: type === 'ball' ? 1 : (y - 8) / (FLOOR - size.h - 8) };
+      };
+      const pointFor = event => {
+        const bounds = scene.getBoundingClientRect(), m = metrics();
+        return { x: (event.clientX - bounds.left - m.x) / m.scale - camera.x, y: (event.clientY - bounds.top - m.y) / m.scale - camera.y };
+      };
+      function circlePenetratesRect(circle, rect) {
+        const dx = circle.x - clamp(circle.x, rect.x, rect.x + rect.w);
+        const dy = circle.y - clamp(circle.y, rect.y, rect.y + rect.h);
+        return dx * dx + dy * dy < circle.r * circle.r - EPSILON;
+      }
+      function circlesPenetrate(a, b) {
+        const dx = a.x - b.x, dy = a.y - b.y, radius = a.r + b.r;
+        return dx * dx + dy * dy < radius * radius - EPSILON;
+      }
+      function intersectsItem(body, item) {
+        const rect = rectFor(item);
+        return item.type === 'ball' ? circlesPenetrate(body, { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2, r: rect.w / 2 }) : circlePenetratesRect(body, rect);
+      }
+      function withinBounds(item) {
+        return !!item && ['platform', 'ball'].includes(item.type) && item.id === 'official-' + item.type && Number.isFinite(item.x) && Number.isFinite(item.y) && item.x >= 0 && item.x <= 1 && item.y >= 0 && item.y <= 1 && (item.type !== 'ball' || item.y === 1);
+      }
+      function validationReason(item) {
+        if (!withinBounds(item)) return '家具预览超出房间边界。';
+        const touching = bodies.find(body => intersectsItem(body, item));
+        return touching ? '家具碰撞范围与' + (touching.id === 'self' ? '自己的团子' : '示意团子') + '穿入，请调整位置。' : '';
+      }
+      function canPlaceBody(body, x, y) {
+        if (x < body.r || x > WORLD_WIDTH - body.r || y < body.r || y > FLOOR - body.r) return false;
+        const candidate = { x, y, r: body.r };
+        if (applied && intersectsItem(candidate, applied)) return false;
+        return !bodies.some(other => other.id !== body.id && circlesPenetrate(candidate, other));
+      }
+      function moveBody(body, dx, dy) {
+        const steps = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy)) / 6));
+        let blockedY = false;
+        for (let step = 0; step < steps; step++) {
+          const nextX = clamp(body.x + dx / steps, body.r, WORLD_WIDTH - body.r);
+          if (canPlaceBody(body, nextX, body.y)) body.x = nextX;
+          const nextY = clamp(body.y + dy / steps, body.r, FLOOR - body.r);
+          if (canPlaceBody(body, body.x, nextY)) body.y = nextY;
+          else blockedY = true;
+          if (nextY !== body.y + dy / steps && dy > 0 && body.y >= FLOOR - body.r - EPSILON) blockedY = true;
+        }
+        return blockedY;
+      }
+      function snapshot() {
+        return {
+          modelContent: { scene: '家具实时编辑交互示意', appliedFurniture: applied ? clone(applied) : null, pendingPreview: preview ? clone(preview) : null, editing, tool, previewOnly: true },
+          privateContent: { schema: 'dango-live-furniture-preview/2', sessionId, revision: ++revision, applied: applied ? clone(applied) : null, preview: preview ? clone(preview) : null, selected, editing, tool, camera: clone(camera) }
+        };
+      }
+      function remember() {
+        if (!hostAvailable()) return;
+        const value = snapshot();
+        writeQueue = writeQueue.catch(() => {}).then(() => window.openai.setWidgetState(value));
+        writeQueue.catch(() => { storageProblem = true; renderControls(); });
+      }
+      function restore(widgetState) {
+        const value = widgetState && widgetState.privateContent;
+        if (!value || value.schema !== 'dango-live-furniture-preview/2' || value.sessionId === sessionId || localInteracted || initializedFromHost) return false;
+        if ((value.applied !== null && !withinBounds(value.applied)) || (value.preview !== null && !withinBounds(value.preview)) || typeof value.editing !== 'boolean' || !['furniture', 'glove'].includes(value.tool)) return false;
+        applied = value.applied ? clone(value.applied) : null;
+        preview = value.editing && value.preview ? clone(value.preview) : null;
+        editing = value.editing; tool = value.tool;
+        selected = [applied && applied.id, preview && preview.id].includes(value.selected) ? value.selected : null;
+        if (value.camera && Number.isFinite(value.camera.x) && Number.isFinite(value.camera.y)) camera = { x: clamp(value.camera.x, -360, 360), y: clamp(value.camera.y, -140, 140) };
+        initializedFromHost = true;
+        feedback = '已恢复预览布局和编辑界面；团子运行状态与抓取计时不恢复。'; error = false;
+        render();
+        return true;
+      }
+      function say(message, isError = false) { feedback = message; error = isError; renderControls(); }
+      function updatePiece(element, item, isGhost) {
+        element.hidden = !item;
+        if (!item) return;
+        const rect = rectFor(item);
+        element.classList.toggle('piece-platform', item.type === 'platform');
+        element.classList.toggle('piece-ball', item.type === 'ball');
+        element.style.left = rect.x + 'px'; element.style.top = rect.y + 'px';
+        element.style.width = rect.w + 'px'; element.style.height = rect.h + 'px';
+        element.dataset.selected = String(editing && selected === item.id);
+        element.dataset.invalid = String(isGhost && !!validationReason(item));
+        element.disabled = !editing || tool !== 'furniture';
+        element.setAttribute('aria-label', (isGhost ? '未确认的' : '') + nameOf(item.type) + '，可拖动或用方向键微调预览');
+      }
+      function renderBodies() {
+        const time = now(), remaining = Math.max(0, Math.ceil((friendCooldownUntil - time) / 1000));
+        for (const body of bodies) {
+          const element = bodyElements.get(body.id);
+          element.style.left = (body.x - body.r) + 'px'; element.style.top = (body.y - body.r) + 'px';
+          element.dataset.held = String(!!held && held.body.id === body.id);
+          element.disabled = !editing || tool !== 'glove';
+        }
+        root.querySelector('[data-friend-label]').textContent = held && held.body.id === 'friend' ? '抓取 ' + Math.max(0, Math.ceil((held.deadline - time) / 1000)) + 's' : remaining ? '冷却 ' + remaining + 's' : '示意团子';
+      }
+      function renderControls() {
+        surface.dataset.editing = String(editing);
+        root.querySelector('[data-mode-label]').textContent = editing ? '布置中 · 团子留场' : '房间预览 · 团子留场';
+        root.querySelector('.room-tools').hidden = !editing;
+        root.querySelector('.room-catalog').hidden = !editing;
+        root.querySelector('[data-preview-actions]').hidden = !editing || !preview;
+        root.querySelector('[data-action="exit"]').hidden = !editing;
+        root.querySelector('[data-action="edit"]').hidden = editing;
+        root.querySelectorAll('[data-tool]').forEach(button => { if (button.matches('button')) button.setAttribute('aria-pressed', String(tool === button.dataset.tool)); });
+        const active = preview || (applied && applied.id === selected ? applied : null);
+        root.querySelector('[data-selection]').textContent = active ? (preview ? '预览 · ' : '') + nameOf(active.type) : '未选择';
+        root.querySelector('[data-parameter-controls]').dataset.empty = String(!active);
+        root.querySelector('[data-param-elasticity-row]').hidden = !active || active.type !== 'ball';
+        root.querySelector('[data-action="remove"]').disabled = !applied || applied.id !== selected || tool !== 'furniture' || !!gesture;
+        const invalidReason = preview ? validationReason(preview) : '';
+        root.querySelector('[data-action="confirm"]').disabled = !preview || !!gesture || !!invalidReason;
+        root.querySelector('[data-action="confirm"]').setAttribute('data-tooltip', invalidReason || '确认家具位置');
+        root.querySelectorAll('[data-dx]').forEach(button => { button.disabled = !editing || tool !== 'furniture' || !active || !!gesture || (active.type === 'ball' && button.dataset.dy !== '0'); });
+        root.querySelectorAll('.catalog-item').forEach(button => {
+          const type = button.dataset.type, current = applied && applied.type === type;
+          const status = current ? '选择当前家具' : applied ? '预览替换当前家具' : '添加预览';
+          button.disabled = !!gesture;
+          button.setAttribute('aria-pressed', String(!!active && active.type === type));
+          button.setAttribute('aria-label', nameOf(type) + ' · ' + status);
+          button.setAttribute('data-tooltip', nameOf(type) + ' · ' + status);
+        });
+        scene.dataset.tool = editing ? tool : 'play';
+        scene.dataset.dragging = String(!!gesture);
+        root.querySelector('[data-feedback]').textContent = feedback;
+        root.querySelector('[data-feedback]').dataset.error = String(error);
+        root.querySelector('[data-storage]').textContent = storageProblem ? '聊天预览恢复失败' : hostAvailable() ? '聊天预览恢复' : '仅本次预览';
+      }
+      function render() {
+        const m = metrics();
+        scene.style.height = Math.max(155, Math.round(340 * m.scale)) + 'px';
+        const next = metrics();
+        world.style.transform = 'translate(' + (next.x + camera.x * next.scale) + 'px,' + (next.y + camera.y * next.scale) + 'px) scale(' + next.scale + ')';
+        updatePiece(piece, applied, false); updatePiece(ghost, preview, true);
+        renderBodies(); renderControls();
+      }
+      function choose(type) {
+        if (!editing || gesture) return;
+        endGesture(false); tool = 'furniture';
+        if (applied && applied.type === type) {
+          preview = null; selected = applied.id;
+          say(nameOf(type) + '已选中；拖动或微调后确认。');
+        } else {
+          preview = { id: 'official-' + type, type, x: type === 'ball' ? .8 : .62, y: type === 'ball' ? 1 : .45 };
+          selected = preview.id;
+          say((applied ? '原家具保持原位。' : '') + '点击场景调整预览，再点击勾确认。');
+        }
+        render(); remember();
+      }
+      function updatePreviewPosition(x, y) {
+        if (!preview) return;
+        Object.assign(preview, positionFor(preview.type, x, y));
+        const reason = validationReason(preview);
+        feedback = reason || '预览尚未确认 · 原家具保持原位。'; error = !!reason;
+        render();
+      }
+      function nudge(dx, dy, amount = 4) {
+        const active = preview || (applied && applied.id === selected ? applied : null);
+        if (!editing || tool !== 'furniture' || gesture || !active) return;
+        if (active.type === 'ball' && dy) { say('圆球从地面放置，只能左右微调。'); return; }
+        if (!preview) preview = clone(active);
+        const rect = rectFor(preview);
+        updatePreviewPosition(rect.x + dx * amount, rect.y + dy * amount); remember();
+      }
+      function confirmPreview() {
+        if (!preview || gesture) return;
+        const reason = validationReason(preview);
+        if (reason) { say(reason + '原家具未改变。', true); return; }
+        applied = clone(preview); preview = null; selected = applied.id;
+        say(nameOf(applied.type) + '已应用到预览布局 · 团子留在原处继续活动。');
+        render(); remember();
+      }
+      function releaseHeld(announce = false, message = '') {
+        if (!held) return;
+        const current = held; held = null;
+        current.body.vy = 0;
+        if (current.body.id === 'friend') friendCooldownUntil = now() + 10000;
+        if (timerId !== null) { clearTimeout(timerId); timerId = null; }
+        if (announce) say(message || '已松开团子。');
+        renderBodies(); scheduleFrame();
+      }
+      function endGesture(announce = false, message = '') {
+        const current = gesture; gesture = null;
+        releaseHeld(announce, message);
+        if (current) { try { if (scene.hasPointerCapture(current.pointerId)) scene.releasePointerCapture(current.pointerId); } catch (_) {} }
+        renderControls();
+      }
+      function beginGrab(body, event) {
+        const time = now();
+        if (body.id === 'friend' && friendCooldownUntil > time) { say('示意团子冷却中 · ' + Math.ceil((friendCooldownUntil - time) / 1000) + ' 秒后可抓取。', true); return; }
+        const point = pointFor(event);
+        held = { body, deadline: body.id === 'friend' ? time + 5000 : Infinity, target: { x: body.x, y: body.y }, offset: { x: body.x - point.x, y: body.y - point.y } };
+        body.vy = 0;
+        gesture = { kind: 'glove', pointerId: event.pointerId };
+        scene.setPointerCapture(event.pointerId); sceneInput.focus({ preventScroll: true });
+        say(body.id === 'friend' ? '示意团子已抓取 · 最多 5 秒，释放后冷却 10 秒。' : '正在拖动自己的团子 · A/D/空格可结束抓取并操作自己。');
+        if (body.id === 'friend') timerId = setTimeout(() => { if (held && held.body.id === 'friend') endGesture(true, '已到 5 秒，自动松开示意团子 · 冷却 10 秒。'); }, 5000);
+        renderBodies(); scheduleFrame();
+      }
+      function animate(time) {
+        frameId = null;
+        const dt = previousTime === null ? 0 : Math.min(.05, Math.max(0, (time - previousTime) / 1000));
+        previousTime = time;
+        if (held && time >= held.deadline) endGesture(true, '已到 5 秒，自动松开示意团子 · 冷却 10 秒。');
+        if (held) {
+          const dx = held.target.x - held.body.x, dy = held.target.y - held.body.y;
+          const distance = Math.hypot(dx, dy), limit = 220 * dt;
+          const factor = distance ? Math.min(1, limit / distance) : 0;
+          moveBody(held.body, dx * factor, dy * factor);
+        }
+        for (const body of bodies) {
+          if (held && held.body.id === body.id) continue;
+          const direction = body.id === 'self' ? (heldKeys.has('d') ? 1 : 0) - (heldKeys.has('a') ? 1 : 0) : 0;
+          body.vy = Math.min(350, body.vy + 700 * dt);
+          const blockedY = moveBody(body, direction * 115 * dt, body.vy * dt);
+          body.grounded = body.y >= FLOOR - body.r - EPSILON || !canPlaceBody(body, body.x, body.y + .5);
+          if (blockedY || (body.grounded && body.vy > 0)) body.vy = 0;
+        }
+        renderBodies();
+        if (preview) {
+          updatePiece(ghost, preview, true);
+          const invalidReason = validationReason(preview);
+          root.querySelector('[data-action="confirm"]').disabled = !!gesture || !!invalidReason;
+          root.querySelector('[data-action="confirm"]').setAttribute('data-tooltip', invalidReason || '确认家具位置');
+          if (invalidReason && feedback !== invalidReason) say(invalidReason, true);
+        }
+        if (held || heldKeys.size || bodies.some(body => !body.grounded || body.vy) || friendCooldownUntil > time) frameId = requestAnimationFrame(animate);
+        else previousTime = null;
+      }
+      function scheduleFrame() { if (frameId === null) { previousTime = null; frameId = requestAnimationFrame(animate); } }
+      root.addEventListener('click', event => {
+        const button = event.target.closest('button');
+        if (!button || button.disabled) return;
+        if (gesture && !button.matches('[data-tool],[data-action="exit"],[data-action="cancel-preview"]')) return;
+        if (button.matches('[data-scene-input],[data-piece],[data-ghost],[data-dango]')) return;
+        localInteracted = true;
+        if (button.matches('.catalog-item')) { choose(button.dataset.type); return; }
+        if (button.hasAttribute('data-dx')) { nudge(Number(button.dataset.dx), Number(button.dataset.dy)); return; }
+        if (button.hasAttribute('data-tool')) {
+          endGesture(); tool = button.dataset.tool; heldKeys.clear();
+          say(tool === 'glove' ? '手套：拖动团子；他人 5 秒上限／10 秒冷却为本稿演示范围。' : '家具：选择、拖动或微调，勾确认后应用。');
+          render(); remember(); return;
+        }
+        switch (button.dataset.action) {
+          case 'confirm': confirmPreview(); break;
+          case 'cancel-preview': preview = null; selected = applied ? applied.id : null; say('已取消本次预览 · 已确认操作保持不变。'); render(); remember(); break;
+          case 'remove':
+            if (applied && selected === applied.id && tool === 'furniture') { applied = null; preview = null; selected = null; say('已删除选中的家具 · 团子继续活动。'); render(); remember(); scheduleFrame(); }
+            break;
+          case 'exit': endGesture(); preview = null; selected = null; editing = false; heldKeys.clear(); say('已结束布置 · 已确认操作保留，团子留场。'); render(); remember(); scheduleFrame(); break;
+          case 'edit': editing = true; tool = 'furniture'; selected = applied ? applied.id : null; say('已进入布置 · 团子保持原位置和运行状态。'); render(); remember(); break;
+        }
+      });
+      scene.addEventListener('pointerdown', event => {
+        if (gesture || ![0, 2].includes(event.button)) return;
+        localInteracted = true;
+        if (event.button === 2) {
+          event.preventDefault(); heldKeys.clear();
+          gesture = { kind: 'camera', pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, camera: clone(camera) };
+          scene.setPointerCapture(event.pointerId); sceneInput.focus({ preventScroll: true }); renderControls(); return;
+        }
+        const target = event.target.closest('button');
+        if (!target) return;
+        if (editing && tool === 'glove' && target.hasAttribute('data-dango')) { event.preventDefault(); beginGrab(bodies.find(body => body.id === target.dataset.dango), event); return; }
+        if (!editing || tool !== 'furniture') return;
+        const item = target === ghost ? preview : target === piece ? applied : null;
+        if (item) {
+          event.preventDefault(); selected = item.id;
+          const point = pointFor(event), rect = rectFor(item);
+          gesture = { kind: 'furniture', pointerId: event.pointerId, before: clone(item), startX: event.clientX, startY: event.clientY, offsetX: point.x - rect.x, offsetY: point.y - rect.y, moved: false };
+          scene.setPointerCapture(event.pointerId); target.focus({ preventScroll: true }); render();
+        } else if (target === sceneInput && preview) {
+          const point = pointFor(event), size = sizeOf(preview.type);
+          gesture = { kind: 'placement', pointerId: event.pointerId, offsetX: size.w / 2, offsetY: size.h / 2 };
+          scene.setPointerCapture(event.pointerId); sceneInput.focus({ preventScroll: true });
+          updatePreviewPosition(point.x - size.w / 2, point.y - size.h / 2);
+        }
+      });
+      scene.addEventListener('pointermove', event => {
+        if (!gesture || gesture.pointerId !== event.pointerId) return;
+        if (gesture.kind === 'camera') {
+          const scale = metrics().scale;
+          camera.x = clamp(gesture.camera.x + (event.clientX - gesture.startX) / scale, -360, 360);
+          camera.y = clamp(gesture.camera.y + (event.clientY - gesture.startY) / scale, -140, 140);
+          render(); return;
+        }
+        const point = pointFor(event);
+        if (gesture.kind === 'glove') { if (held) held.target = { x: point.x + held.offset.x, y: point.y + held.offset.y }; return; }
+        if (gesture.kind === 'furniture') {
+          if (!gesture.moved && Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) < 3) return;
+          gesture.moved = true;
+          if (!preview || preview.id !== gesture.before.id) preview = clone(gesture.before);
+        }
+        updatePreviewPosition(point.x - gesture.offsetX, point.y - gesture.offsetY);
+      });
+      scene.addEventListener('pointerup', event => {
+        if (!gesture || gesture.pointerId !== event.pointerId) return;
+        const kind = gesture.kind;
+        endGesture(kind === 'glove');
+        render();
+        if (kind !== 'glove') remember();
+      });
+      scene.addEventListener('pointercancel', () => endGesture(true, '输入中断，已松开团子；未确认预览仍保留。'));
+      scene.addEventListener('lostpointercapture', () => { if (gesture) endGesture(true, '捕获丢失，当前手势已结束。'); });
+      scene.addEventListener('contextmenu', event => event.preventDefault());
+      scene.addEventListener('keydown', event => {
+        if (event.altKey || event.ctrlKey || event.metaKey) return;
+        const target = event.target;
+        const directions = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+        if (directions[event.key] && editing && tool === 'furniture') { event.preventDefault(); localInteracted = true; nudge(...directions[event.key], event.shiftKey ? 12 : 4); return; }
+        if (!target.matches('[data-scene-input]')) return;
+        const key = event.key.toLowerCase();
+        if (!['a', 'd', ' '].includes(key)) return;
+        event.preventDefault(); localInteracted = true;
+        if (held && held.body.id === 'self') endGesture();
+        if (key === ' ' && !event.repeat && self.grounded) { self.vy = -270; self.grounded = false; }
+        else if (key === 'a' || key === 'd') heldKeys.add(key);
+        scheduleFrame();
+      });
+      window.addEventListener('keyup', event => heldKeys.delete(event.key.toLowerCase()));
+      root.addEventListener('keydown', event => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault(); localInteracted = true;
+        if (gesture) { endGesture(true, '当前手势已结束。'); render(); return; }
+        if (preview) { preview = null; selected = applied ? applied.id : null; say('已取消本次预览 · 已确认操作保持不变。'); render(); remember(); }
+      });
+      root.addEventListener('focusout', event => { if (!scene.contains(event.relatedTarget)) heldKeys.clear(); });
+      const terminateInput = () => { heldKeys.clear(); endGesture(); scheduleFrame(); render(); };
+      window.addEventListener('blur', terminateInput);
+      document.addEventListener('visibilitychange', () => { if (document.hidden) terminateInput(); });
+      window.addEventListener('openai:set_globals', event => {
+        const globals = event.detail && event.detail.globals;
+        if (globals && Object.prototype.hasOwnProperty.call(globals, 'widgetState')) restore(globals.widgetState);
+        render();
+      });
+      if (typeof ResizeObserver === 'function') {
+        let previousWidth = scene.clientWidth;
+        new ResizeObserver(() => { if (Math.abs(previousWidth - scene.clientWidth) > .5) { previousWidth = scene.clientWidth; terminateInput(); } render(); }).observe(scene);
+      }
+      if (!restore(window.openai && window.openai.widgetState)) render();
+      scheduleFrame();
+    })();
+  </script>
+</div>

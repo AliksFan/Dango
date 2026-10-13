@@ -27,12 +27,15 @@ public sealed class LocalRoomWallpaperMenuWindowTests
         var menu = new LocalRoomMenuView();
         Assert.IsInstanceOfType<UserControl>(menu);
         Assert.IsTrue(menu.Focusable, "The shared menu itself must accept initial focus without focusing an action button.");
-        var buttons = Descendants<Button>(menu).ToArray();
+        var buttons = Descendants<Button>(menu).Where(button => button.Visibility != Visibility.Collapsed).ToArray();
         CollectionAssert.AreEquivalent(new[]
         {
             "RoomReturnButton", "RoomControlCenterButton", "RoomWindowButton",
             "RoomWallpaperButton", "RoomRecoverButton",
         }, buttons.Select(button => button.Name).ToArray());
+        var furniture = Descendants<Button>(menu).Single(button => button.Name == "RoomFurnitureButton");
+        Assert.AreEqual(Visibility.Collapsed, furniture.Visibility, "The wallpaper menu does not gain the ordinary-window furniture capability.");
+        Assert.IsFalse(furniture.IsEnabled);
         foreach (var removed in new[]
         {
             "RoomContinueButton", "RoomStandardViewButton", "RoomNearViewButton", "RoomWholeViewButton",

@@ -183,7 +183,7 @@ internal sealed partial class DangoApplicationHost : IDisposable
         if (attachmentPanel is not null) { attachmentPanel.AllowClose = true; attachmentPanel.Close(); attachmentPanel = null; }
         if (controlCenterWindow is not null)
         {
-            controlCenterWindow.ProductHome.ReleaseLiveScene();
+            controlCenterWindow.ProductHome.UnbindLiveScene();
             controlCenterWindow.PrepareForExit();
             controlCenterWindow.Close();
             controlCenterWindow = null;

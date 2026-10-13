@@ -368,6 +368,12 @@ public partial class ProductHomeView : UserControl
             return;
         }
         if (IsEditing && e.Key is not (Key.S or Key.Space)) return;
+        if (IsInPorch && e.Key == Key.E)
+        {
+            if (!e.IsRepeat) PorchScene.RequestNearbyFurniture();
+            e.Handled = true;
+            return;
+        }
         if (e.Key == Key.W)
         {
             if (!e.IsRepeat)

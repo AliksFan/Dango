@@ -13,7 +13,7 @@ using Pen = System.Windows.Media.Pen;
 
 namespace Dango.Desktop.AppShell.Rooms;
 
-internal sealed class LocalRoomSceneView : Grid
+internal sealed partial class LocalRoomSceneView : Grid
 {
     internal const double WorldWidth = 2160;
     internal const double WorldHeight = 360;
@@ -372,6 +372,9 @@ internal sealed class LocalRoomSceneView : Grid
         if (right > left && floorY < ActualHeight)
             dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(205, 182, 149)), null,
                 new Rect(left, floorY, right - left, ActualHeight - floorY));
+        // Furniture shares the real collision floor. Its lower artwork must
+        // remain in front of the lifted decorative strip, just like the body.
+        DrawFurniture(dc);
         if (!DesktopPetPresentationEnabled)
         {
             if (left > 0) dc.DrawRectangle(ExcludedArea, null, new Rect(0, 0, left, ActualHeight));

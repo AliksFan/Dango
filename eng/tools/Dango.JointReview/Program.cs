@@ -223,6 +223,71 @@ internal static class Program
     {
         try
         {
+            if (args.Length is 4 or 5 && args[0] == "--ordinary-furniture-collection-verify")
+            {
+                var seconds = args.Length == 5 ? double.Parse(args[4], CultureInfo.InvariantCulture) : 600;
+                OrdinaryRoomFurnitureCollectionVerification.Run(args[1], args[2], args[3], seconds); return 0;
+            }
+            if (args.Length == 4 && args[0] == "--ordinary-furniture-collection-verify-short")
+            {
+                OrdinaryRoomFurnitureCollectionVerification.Run(args[1], args[2], args[3], 0); return 0;
+            }
+            if (args.Length == 5 && args[0] == "--ordinary-furniture-collection-restart")
+            {
+                OrdinaryRoomFurnitureCollectionVerification.RunRestart(args[1], args[2], args[3], args[4]); return 0;
+            }
+            if (args.Length is 4 or 5 && args[0] == "--ordinary-furniture-room-verify")
+            {
+                var seconds = args.Length == 5 ? double.Parse(args[4], CultureInfo.InvariantCulture) : 600;
+                OrdinaryRoomFurnitureVerification.Run(args[1], args[2], args[3], seconds); return 0;
+            }
+            if (args.Length == 4 && args[0] == "--ordinary-furniture-room-verify-short")
+            {
+                OrdinaryRoomFurnitureVerification.Run(args[1], args[2], args[3], 0); return 0;
+            }
+            if (args.Length == 5 && args[0] == "--ordinary-furniture-room-restart")
+            {
+                OrdinaryRoomFurnitureVerification.RunRestart(args[1], args[2], args[3], args[4]); return 0;
+            }
+            if (args.Length == 3 && args[0] == "--furniture-layout-verify")
+            {
+                FurnitureLayoutVerification.Run(args[1], args[2]); return 0;
+            }
+            if (args.Length == 4 && args[0] == "--furniture-layout-process-gate")
+            {
+                FurnitureLayoutVerification.RunProcessGate(args[1], args[2], args[3]); return 0;
+            }
+            if (args.Length == 4 && args[0] is "--furniture-layout" or "--furniture-layout-smoke")
+            {
+                var furnitureApp = new Application();
+                var window = new FurnitureLayoutWindow(args[1], args[2], args[3], args[0] == "--furniture-layout-smoke");
+                furnitureApp.Run(window); return window.ExitCode;
+            }
+            if (args.Length == 2 && args[0] == "--round-ball")
+            {
+                var ballApp = new Application(); var window = new RoundBallWindow(args[1]);
+                ballApp.Run(window); return window.ExitCode;
+            }
+            if (args.Length == 3 && args[0] == "--round-ball-smoke")
+            {
+                var ballApp = new Application(); var window = new RoundBallWindow(args[1], args[2]);
+                ballApp.Run(window); return window.ExitCode;
+            }
+            if (args.Length == 3 && args[0] == "--round-ball-window-check")
+            {
+                var ballApp = new Application(); var window = new RoundBallWindow(args[1], args[2], automaticObservation: false);
+                ballApp.Run(window); return window.ExitCode;
+            }
+            if (args.Length == 2 && args[0] == "--static-platform")
+            {
+                var platformApp = new Application(); var window = new StaticPlatformWindow(args[1]);
+                platformApp.Run(window); return window.ExitCode;
+            }
+            if (args.Length == 3 && args[0] == "--static-platform-smoke")
+            {
+                var platformApp = new Application(); var window = new StaticPlatformWindow(args[1], args[2]);
+                platformApp.Run(window); return window.ExitCode;
+            }
             if (args.Length == 2 && args[0] == "--hat-motion-review")
             {
                 var hatApp = new Application(); hatApp.Run(new HatMotionWindow(args[1])); return 0;

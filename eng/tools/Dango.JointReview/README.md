@@ -1,5 +1,30 @@
 # 联合求解隔离预览
 
+## 官方静态平台：独立单人验收
+
+`--static-platform DLL` 打开一只团子和一件固定官方矮台的独立 Windows 窗口；不接入正式房间、设置、账号或多人。使用真实 `Dango.Physics` 世界和现有团子视觉。原始160×120视觉只做两轴相同的缩放，保留原造型比例；世界到屏幕沿用水平80／垂直60的原始标尺，平台、碰撞覆盖层和拖动反变换共用该坐标合同。官方木纹由内置 `DrawingImage` 绘制，透明圆角不定义碰撞；矩形碰撞和图片分别定义。
+
+候选 DLL 由隔离 native 构建提供。启动前明确本次候选的 SHA-256，使用新的 `RunName`；脚本不覆盖已有输出或运行中文件，不停止其他进程，并检查受保护正式 DLL 前后哈希。
+
+```powershell
+$candidate = 'artifacts/furniture/native-candidate/Release/dango_physics_module.dll'
+# 将下面的占位值替换为本次候选构建记录中的 64 位 SHA-256。
+./eng/run-static-platform-review.ps1 -RunName platform-review-new -NativeModule $candidate -ExpectedCandidateSha256 '<candidate-sha256>'
+# 只隔离构建：追加 -NoLaunch；真实窗口十分钟观察：追加 -Observe。
+```
+
+窗口提供无平台对照、顶部落地、左右侧接近、底面顶撞、场景重置、暂停、平台移除、隐藏恢复和碰撞轮廓显示。点击场景后用 A/D 移动、S 下压、Space 跳跃；游戏场景关闭输入法处理，其他控件保留默认输入法行为。拖动只能从真实绘制轮廓内开始。控件焦点、失焦、松键、捕获丢失、暂停、隐藏、缩放、重置和关闭均清除相应输入；恢复不补跑挂起时间。物理故障停止普通输入并保留最后安全画面，显式重置才创建新世界。旧 DLL 仍可运行无平台场景，请求平台能力缺少扩展导出会明确失败。
+
+`-Observe` 在本次新输出的 `observation/` 下记录实际窗口，每秒写 JSONL，包含活动秒数、窗口状态与最小化标记。自动执行 20 次暂停／隐藏恢复；仅在墙钟至少 600 秒且活动时间至少 560 秒后关闭，额外暂停、隐藏或最小化会延长观察。活动时间排除暂停／隐藏／最小化，计入可运行时的调度延迟；丢弃的模拟时间另行记录。JSON 摘要包含新状态绘制频率（`Draw` 更新次数／活动秒数，并非显示合成 FPS）、步进耗时、CPU／内存、native 接触诊断、丢弃时间、本工具世界 owner 数、活动计时器数和退出码；提前关闭或循环／诊断门槛失败返回非零。native 间隙不是独立绘制轮廓测量，后者见本批集成门禁。观察记录不采集按键坐标、桌面内容或其他窗口。自动观察、真实硬件输入核验和用户人工手感验收分别报告，构建或观察退出 0 不代表人工验收通过。
+
+已构建输出可以直接复用，不必覆盖输出重建：
+
+```powershell
+$reviewExe = 'artifacts/furniture/platform-review-new/bin/Dango.JointReview/release/Dango.JointReview.exe'
+$reviewModule = 'artifacts/furniture/platform-review-new/bin/Dango.JointReview/release/dango_physics_module.dll'
+& $reviewExe --static-platform $reviewModule
+```
+
 ## 当前模块化入口
 
 统一入口 `--physics DLL [2|3]` 由 `Dango.Physics` 可复用模块驱动，默认三体；窗口只保留输入映射、UI 和显示。旧 `--collision`/`--three-collision` 是数量快捷方式，使用同一个模块 DLL。旧 `CollisionSession` 仍供历史 DLL 的比例/支撑/负例验证使用。

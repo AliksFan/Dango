@@ -5,6 +5,8 @@ namespace Dango.Desktop.AppShell.Rooms;
 internal enum RoomViewPreset { Standard, Near, Whole, Custom }
 internal enum RoomCameraMode { Follow, EdgeFollow, Manual }
 
+internal readonly record struct RoomCameraSnapshot(RoomCameraMode Mode, RoomViewPreset Preset, double RequestedPercent, double X, double Y);
+
 internal readonly record struct RoomProjection(double Scale, double OffsetX, double OffsetY)
 {
     internal LogicalPoint WorldToScreen(LogicalPoint point)
@@ -54,6 +56,7 @@ internal sealed class RoomViewController
     private double cameraTarget;
     private double cameraVelocityY;
     private double cameraTargetY;
+    private double rightPresentationOcclusion;
 
     internal RoomViewController(double worldWidth = 2160, double worldHeight = 360, double standardScale = 1.4)
     {
@@ -77,7 +80,41 @@ internal sealed class RoomViewController
     internal RoomCameraMode CameraMode { get; private set; } = RoomCameraMode.Follow;
     internal RoomViewPreset Preset { get; private set; } = RoomViewPreset.Standard;
     internal double ZoomPercent => Scale / StandardScale * 100;
+    internal RoomCameraSnapshot CaptureState() => new(CameraMode, Preset, requestedPercent, CameraX, CameraY);
+
+    internal void RestoreState(RoomCameraSnapshot snapshot)
+    {
+        RequireFinite(snapshot.RequestedPercent, nameof(snapshot));
+        RequireFinite(snapshot.X, nameof(snapshot));
+        RequireFinite(snapshot.Y, nameof(snapshot));
+        SelectCameraMode(snapshot.Mode);
+        Preset = snapshot.Preset;
+        requestedPercent = snapshot.RequestedPercent;
+        Recalculate();
+        CameraX = ClampCameraX(snapshot.X);
+        CameraY = ClampCameraY(snapshot.Y);
+        ResetMotion();
+        ApplyProjection();
+    }
+
     internal RoomProjection Projection { get; private set; }
+
+    // An overlay narrows only the unobstructed presentation area. The room,
+    // physics bounds and scale are unchanged, including at the Whole preset.
+    internal bool SetRightPresentationOcclusion(double width)
+    {
+        RequireFinite(width, nameof(width));
+        if (width < 0) throw new ArgumentOutOfRangeException(nameof(width));
+        if (rightPresentationOcclusion == width) return false;
+        rightPresentationOcclusion = width;
+        if (hasViewport)
+        {
+            CameraX = ClampCameraX(CameraX);
+            ResetMotion();
+            ApplyProjection();
+        }
+        return true;
+    }
 
     // Other hosts retain their accepted legacy camera unless explicitly opted in.
     internal void EnableWindowCamera()
@@ -125,7 +162,7 @@ internal sealed class RoomViewController
         RequireFinite(deltaY, nameof(deltaY));
         if (!windowCameraEnabled || CameraMode != RoomCameraMode.Manual || !hasViewport || (deltaX == 0 && deltaY == 0))
             return false;
-        var nextX = WholeWorldVisible ? 0 : Math.Clamp(CameraX - deltaX / Scale, 0, WorldWidth - width / Scale);
+        var nextX = WholeWorldVisible ? 0 : ClampCameraX(CameraX - deltaX / Scale);
         var nextY = ClampCameraY(CameraY - deltaY / Scale);
         if (nextX == CameraX && nextY == CameraY) return false;
         CameraX = nextX;
@@ -227,7 +264,7 @@ internal sealed class RoomViewController
             CenterCamera();
         else
         {
-            var visibleWidth = width / Scale;
+            var visibleWidth = UnobstructedWidth / Scale;
             var maximum = WorldWidth - visibleWidth;
             var previous = Math.Clamp(CameraX, 0, maximum);
             var target = previous;
@@ -266,7 +303,7 @@ internal sealed class RoomViewController
             cameraTargetY = CameraY;
         }
         if (CameraMode == RoomCameraMode.Manual) return;
-        var visibleWidth = width / Scale;
+        var visibleWidth = UnobstructedWidth / Scale;
         var target = cameraTarget;
         if (CameraMode == RoomCameraMode.Follow)
             target = petWorldX - visibleWidth / 2;
@@ -356,16 +393,17 @@ internal sealed class RoomViewController
     private double MaximumScale => Math.Min(StandardScale * 1.3, AvailableHeight / safeWorldHeight);
     private double WholeScale => Math.Min(StandardScale,
         Math.Min(width / WorldWidth, AvailableHeight / Math.Max(WorldHeight, safeWorldHeight)));
-    private bool WholeWorldVisible => !unboundedFollow && width / Scale >= WorldWidth;
+    private double UnobstructedWidth => unboundedFollow ? width : Math.Max(1, width - rightPresentationOcclusion);
+    private bool WholeWorldVisible => !unboundedFollow && UnobstructedWidth / Scale >= WorldWidth;
     private LogicalPoint ViewportCenter => new(
-        (width / 2 - Projection.OffsetX) / Scale, (height / 2 - Projection.OffsetY) / Scale);
+        (UnobstructedWidth / 2 - Projection.OffsetX) / Scale, (height / 2 - Projection.OffsetY) / Scale);
     private double DefaultGroundAnchorTop => groundWorldY - (height - groundInset) / Scale;
     // A finite presentation margin includes the existing wall above/below the
     // ground framing and scales naturally with a future taller room.
     private double ClampCameraY(double top) => unboundedFollow ? top :
         Math.Clamp(top, DefaultGroundAnchorTop - WorldHeight, DefaultGroundAnchorTop + WorldHeight);
     private double ClampCameraX(double left) => unboundedFollow ? left :
-        Math.Clamp(left, 0, Math.Max(0, WorldWidth - width / Scale));
+        Math.Clamp(left, 0, Math.Max(0, WorldWidth - UnobstructedWidth / Scale));
 
     private void Recalculate(LogicalPoint? retainedCenter = null)
     {
@@ -380,7 +418,7 @@ internal sealed class RoomViewController
             Math.Clamp(StandardScale * requestedPercent / 100, WholeScale, MaximumScale);
         if (windowCameraEnabled && hasPet)
         {
-            CameraX = WholeWorldVisible ? 0 : ClampCameraX(center.X - width / Scale / 2);
+            CameraX = WholeWorldVisible ? 0 : ClampCameraX(center.X - UnobstructedWidth / Scale / 2);
             CameraY = ClampCameraY(center.Y - height / Scale / 2);
             ResetMotion();
         }
@@ -390,12 +428,12 @@ internal sealed class RoomViewController
 
     private void CenterCamera()
     {
-        CameraX = WholeWorldVisible ? 0 : ClampCameraX(petWorldX - width / Scale / 2);
+        CameraX = WholeWorldVisible ? 0 : ClampCameraX(petWorldX - UnobstructedWidth / Scale / 2);
         CameraY = DefaultGroundAnchorTop;
     }
 
     private void ApplyProjection() => Projection = new(Scale,
-        WholeWorldVisible ? (width - WorldWidth * Scale) / 2 : -CameraX * Scale,
+        WholeWorldVisible ? (UnobstructedWidth - WorldWidth * Scale) / 2 : -CameraX * Scale,
         windowCameraEnabled ? -CameraY * Scale : height - groundInset - groundWorldY * Scale);
 
     private static void RequirePositive(double value, string name)

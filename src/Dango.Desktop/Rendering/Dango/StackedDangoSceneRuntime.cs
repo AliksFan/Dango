@@ -332,6 +332,8 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
         catch (Exception exception) when (exception is InvalidOperationException or ArgumentException or
             DllNotFoundException or BadImageFormatException or EntryPointNotFoundException)
         {
+            Furniture?.Dispose();
+            Furniture = null;
             scene?.Dispose();
             scene = null;
             attachments?.Dispose();
@@ -460,6 +462,8 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
     {
         VerifyAccess();
         EnsureHealthy();
+        if (enabled && Furniture is { IsAttached: true })
+            throw new InvalidOperationException("请先卸载普通房家具，再启用无边界预览。");
         (scene ?? throw new InvalidOperationException("请等待本地场景首帧后切换编辑预览。")).SetUnboundedHorizontalPreview(enabled);
         unboundedHorizontalPreview = enabled;
         if (enabled) localHorizontalBounds = null;
@@ -481,6 +485,8 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
     {
         VerifyAccess();
         EnsureHealthy();
+        if (Furniture is { IsAttached: true } && localHorizontalBounds != (left, right))
+            throw new InvalidOperationException("普通房家具绑定期间不能改变碰撞边界。");
         (scene ?? throw new InvalidOperationException("请等待本地场景首帧后设置边界。")).SetHorizontalBounds(left, right);
         localHorizontalBounds = (left, right);
     }
@@ -489,6 +495,8 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
     {
         VerifyAccess();
         EnsureHealthy();
+        if (Furniture is { IsAttached: true })
+            throw new InvalidOperationException("请先卸载普通房家具，再清除碰撞边界。");
         (scene ?? throw new InvalidOperationException("本地物理场景尚未创建。")).ClearHorizontalBounds();
         localHorizontalBounds = null;
     }
@@ -497,6 +505,8 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
     {
         VerifyAccess();
         EnsureHealthy();
+        if (Furniture is { IsAttached: true })
+            throw new InvalidOperationException("请先卸载普通房家具运行绑定，再进行换场。");
         if (scene?.LastFrame is null) return false;
         ClearPhysicalInput();
         if (!scene.RehostSelectedEntityAt(actualCenter)) return false;
@@ -614,6 +624,10 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
         VerifyAccess();
         if (RequiresInitialization && InitializationState != SceneInitializationState.Ready)
             throw new InvalidOperationException(LastError ?? "请先重试初始化。");
+        if (!TryDetachOrdinaryFurniture())
+            throw new InvalidOperationException(Furniture?.Status ?? "请先确认家具提交结果，再恢复团子。");
+        Furniture?.Dispose();
+        Furniture = null;
         ClearPhysicalInput();
         scene?.Reset();
         pendingSpawns.Clear();
@@ -627,6 +641,7 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
         LastFrame = null;
         LastError = null;
         layoutPending = true;
+        EnsureOrdinaryFurniture();
     }
 
     public StackedPhysicsPresentationFrame Tick(PhysicsPresentationInput primary, TimeSpan fixedStep)
@@ -642,6 +657,7 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
         {
             EnsureScene(primary.AuthoritativeBounds);
             var center = primary.AuthoritativeBounds.Center;
+            if (!OrdinaryFurnitureAllowsRehost(center)) return LastFrame ?? CreateUnavailable(primary);
             if (hostOrigin != center)
             {
                 ClearPhysicalInput();
@@ -654,7 +670,15 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
             scene!.SetInput(directionalIntent);
             if (!WanderEligible()) Wander.Cancel();
             var autonomousHorizontal = Wander.Input(fixedStep.TotalSeconds);
+            if (!ProcessOrdinaryFurnitureBoundary(fixedStep)) return LastFrame ?? CreateUnavailable(primary);
             var frame = scene.Step(fixedStep, autonomousHorizontal);
+            Furniture?.OnFrame();
+            if (Furniture is { IsAttached: true, CanStep: false })
+            {
+                LastError = Furniture.Status;
+                ClearPhysicalInput();
+                return LastFrame ?? CreateUnavailable(primary);
+            }
             if (frame.Physics.Succeeded) pendingSpawns.Clear();
             if (layoutPending && viewport is { } view && frame.Physics.Succeeded)
             {
@@ -821,6 +845,8 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
         if (disposed) return;
         VerifyAccess();
         Stop();
+        Furniture?.Dispose();
+        Furniture = null;
         scene?.Dispose();
         scene = null;
         attachments?.Dispose();
@@ -842,6 +868,7 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
         hostOrigin = bounds.Center;
         scene.SetPaused(!running);
         SynchronizeAppearance();
+        EnsureOrdinaryFurniture();
     }
 
     private StackedPhysicsPresentationFrame CreateUnavailable(PhysicsPresentationInput primary) => new(
@@ -857,6 +884,7 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
         interactionGeneration = Interlocked.Increment(ref nextInteractionGeneration);
         directionalIntent = DirectionalControlIntent.None;
         IsDragging = false;
+        ordinaryFurnitureGlove = false;
         scene?.CancelInput();
         InputCancelled?.Invoke();
     }
