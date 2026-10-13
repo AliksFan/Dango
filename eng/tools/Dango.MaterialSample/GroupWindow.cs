@@ -9,22 +9,28 @@ using Dango.Physics.Configuration;
 
 namespace Dango.MaterialSample;
 
-// Review-only window: two or three bodies in one shared multi-body world, so contact,
-// stacking and group rest/wake can be watched. Click a body to focus it; only the focused
-// body takes keyboard input. Rest state is read from the native module.
+// Review-only window: two or three bodies in one shared multi-body world, each with its own
+// colour and shape (size, softness, build). Shapes apply on restart, not live. Click a body to
+// focus it; only the focused body takes keyboard input. Rest state is read from the native module.
 internal sealed class GroupWindow : Window
 {
-    private static readonly (string Name, (double X, double Y)[] Spawns)[] Layouts =
+    private const LandingBuildTable Table = LandingBuildTable.SizeDampingPreview;
+    private static readonly string[] Layouts = ["双团子并排", "三团子叠放", "三团子并排"];
+
+    internal static readonly Color[] Colors =
     [
-        ("双团子并排", [(-.75, 0), (.75, 0)]),
-        ("三团子叠放", [(-.7, 0), (.7, 0), (0, 2.0)]),
-        ("三团子并排", [(-1.5, 0), (0, 0), (1.5, 0)]),
+        Color.FromRgb(245, 213, 165), // 米黄
+        Color.FromRgb(184, 214, 160), // 抹茶
+        Color.FromRgb(242, 182, 190), // 樱粉
     ];
 
     private readonly string library;
     private readonly DispatcherTimer timer = new() { Interval = MaterialSession.FixedStep };
     private readonly GroupView view = new();
     private readonly TextBlock status = new() { Margin = new(16, 6, 16, 10), Foreground = Brushes.DimGray };
+    private readonly CheckBox skeleton = new() { Content = "显示骨架（节点、辐条、周边）", IsChecked = true, Focusable = false, Margin = new(0, 0, 0, 6) };
+    private readonly CheckBox outline = new() { Content = "显示碰撞轮廓（原生接触用）", IsChecked = true, Focusable = false, Margin = new(0, 0, 0, 6) };
+    private readonly ShapeEditor[] editors = [new(0, 100, 50, 50), new(1, 100, 50, 50), new(2, 100, 50, 50)];
     private int layout;
     private bool left, right, down, jump;
 
@@ -32,29 +38,47 @@ internal sealed class GroupWindow : Window
     {
         this.library = library;
         Title = "Dango · 多团子互动";
-        Width = 1300; Height = 760; MinWidth = 800; MinHeight = 500;
+        Width = 1440; Height = 820; MinWidth = 1000; MinHeight = 560;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         FontFamily = new("Microsoft YaHei UI"); FontSize = 13;
         Background = new SolidColorBrush(Color.FromRgb(252, 250, 246));
         var root = new DockPanel();
-        var heading = new TextBlock { Text = "多团子互动 · 同一物理世界", FontSize = 18, FontWeight = FontWeights.SemiBold, Margin = new(16, 12, 16, 2) };
+        var heading = new TextBlock { Text = "多团子互动 · 同一物理世界 · 每只独立体型", FontSize = 18, FontWeight = FontWeights.SemiBold, Margin = new(16, 12, 16, 2) };
         var help = new TextBlock
         {
-            Text = "点击团子切换焦点 · 焦点团子：A/D 左右 · W/空格 跳 · S 下压 · 按住拖动 · 1/2/3 切换摆放 · R 重新开始",
+            Text = "点击团子切换焦点 · 焦点团子：A/D 左右 · W/空格 跳 · S 下压 · 按住拖动 · 1/2/3 切换摆放 · R 重新开始 · K 骨架 · C 碰撞轮廓 · 体型在右侧调整后点“应用”",
             Foreground = Brushes.DimGray, Margin = new(16, 0, 16, 6),
         };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(12, 0, 12, 6) };
         for (var i = 0; i < Layouts.Length; i++)
         {
             var index = i;
-            var button = new Button { Content = $"{i + 1} {Layouts[i].Name}", Margin = new(4, 0, 4, 0), Padding = new(10, 3, 10, 3), Focusable = false };
+            var button = new Button { Content = $"{i + 1} {Layouts[i]}", Margin = new(4, 0, 4, 0), Padding = new(10, 3, 10, 3), Focusable = false };
             button.Click += (_, _) => Reset(index);
             buttons.Children.Add(button);
         }
+        var side = new StackPanel { Width = 260, Margin = new(0, 0, 12, 0) };
+        foreach (var editor in editors) side.Children.Add(editor.Panel);
+        skeleton.Checked += (_, _) => view.ShowSkeleton = true;
+        skeleton.Unchecked += (_, _) => view.ShowSkeleton = false;
+        side.Children.Add(skeleton);
+        outline.Checked += (_, _) => view.ShowOutline = true;
+        outline.Unchecked += (_, _) => view.ShowOutline = false;
+        side.Children.Add(outline);
+        var apply = new Button { Content = "应用体型并重新开始", Margin = new(0, 8, 0, 0), Padding = new(10, 5, 10, 5), Focusable = false };
+        apply.Click += (_, _) => Reset(layout);
+        side.Children.Add(apply);
+        side.Children.Add(new TextBlock
+        {
+            Text = "体型参数只在重新开始时生效。焦点团子显示棕色描边。",
+            Foreground = Brushes.DimGray, TextWrapping = TextWrapping.Wrap, Margin = new(0, 8, 0, 0), FontSize = 12,
+        });
         DockPanel.SetDock(heading, Dock.Top); root.Children.Add(heading);
         DockPanel.SetDock(help, Dock.Top); root.Children.Add(help);
         DockPanel.SetDock(buttons, Dock.Top); root.Children.Add(buttons);
         DockPanel.SetDock(status, Dock.Bottom); root.Children.Add(status);
+        var scroller = new ScrollViewer { Content = side, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Focusable = false };
+        DockPanel.SetDock(scroller, Dock.Right); root.Children.Add(scroller);
         root.Children.Add(new Border
         {
             Child = view, Margin = new(12, 0, 12, 0), CornerRadius = new(6), Background = Brushes.White,
@@ -80,35 +104,88 @@ internal sealed class GroupWindow : Window
             case Key.D2 or Key.NumPad2: if (pressed && !repeat) Reset(1); break;
             case Key.D3 or Key.NumPad3: if (pressed && !repeat) Reset(2); break;
             case Key.R: if (pressed && !repeat) Reset(layout); break;
+            case Key.K: if (pressed && !repeat) skeleton.IsChecked = !skeleton.IsChecked; break;
+            case Key.C: if (pressed && !repeat) outline.IsChecked = !outline.IsChecked; break;
         }
     }
 
     private void Reset(int index)
     {
         layout = index;
-        view.Reset(library, Layouts[index].Spawns);
-        Title = $"Dango · 多团子互动 · {Layouts[index].Name}";
+        var count = index == 0 ? 2 : 3;
+        for (var i = 0; i < editors.Length; i++) editors[i].Panel.IsEnabled = i < count;
+        var shapes = editors.Take(count).Select(e => new LandingBuildControls(e.Size, e.Softness, e.Build).Configure(Table)).ToArray();
+        view.Reset(library, shapes, Spawns(index, shapes));
+        Title = $"Dango · 多团子互动 · {Layouts[index]}";
+    }
+
+    // Spawn points spaced by each body's own extent so no two bodies start overlapping.
+    private static (double X, double Y)[] Spawns(int index, DangoSelfPhysicsParameters[] shapes)
+    {
+        var r = shapes.Select(s => s.RadialRestLength + s.NodeRadius).ToArray();
+        const double gap = .12;
+        return index switch
+        {
+            0 => [(-(r[0] + gap / 2), 0), (r[1] + gap / 2, 0)],
+            1 => [(-(r[0] + gap / 2), 0), (r[1] + gap / 2, 0), (0, 2 * Math.Max(r[0], r[1]) + r[2] - .2)],
+            _ => [(-(r[0] + r[1] + gap), 0), (0, 0), (r[1] + r[2] + gap, 0)],
+        };
     }
 
     private void Tick()
     {
         view.Step((right ? 1 : 0) - (left ? 1 : 0), down, jump);
         jump = false;
-        status.Text = $"{Layouts[layout].Name} · 帧 {view.Frames} · {view.Summary} · 原生库：{System.IO.Path.GetFileName(library)}";
+        status.Text = $"{Layouts[layout]} · 帧 {view.Frames} · {view.Summary}{view.Overlap} · 原生库：{System.IO.Path.GetFileName(library)}";
+    }
+
+    private sealed class ShapeEditor
+    {
+        private readonly Slider size, softness, build;
+        internal StackPanel Panel { get; } = new() { Margin = new(0, 0, 0, 10) };
+        internal double Size => size.Value;
+        internal double Softness => softness.Value;
+        internal double Build => build.Value;
+
+        internal ShapeEditor(int index, double size, double softness, double build)
+        {
+            var header = new StackPanel { Orientation = Orientation.Horizontal, Margin = new(0, 0, 0, 4) };
+            header.Children.Add(new Border
+            {
+                Width = 14, Height = 14, CornerRadius = new(7), Background = new SolidColorBrush(Colors[index]),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(190, 172, 150)), BorderThickness = new(1), Margin = new(0, 0, 6, 0),
+            });
+            header.Children.Add(new TextBlock { Text = $"团子 {index + 1}", FontWeight = FontWeights.SemiBold });
+            Panel.Children.Add(header);
+            this.size = Row("大小", 80, 120, size);
+            this.softness = Row("柔软度", 0, 100, softness);
+            this.build = Row("胖瘦（0 胖 · 100 瘦）", 0, 100, build);
+        }
+
+        private Slider Row(string label, double minimum, double maximum, double value)
+        {
+            var text = new TextBlock { Foreground = Brushes.DimGray, FontSize = 12 };
+            var slider = new Slider { Minimum = minimum, Maximum = maximum, Value = value, IsSnapToTickEnabled = true, TickFrequency = 5, Focusable = false };
+            void Show() => text.Text = $"{label}：{slider.Value:0}";
+            slider.ValueChanged += (_, _) => Show();
+            Show();
+            Panel.Children.Add(text); Panel.Children.Add(slider);
+            return slider;
+        }
     }
 }
 
 internal sealed class GroupView : FrameworkElement, IDisposable
 {
     private const double Scale = 100;
-    private static readonly Brush Fill = new SolidColorBrush(Color.FromRgb(245, 213, 165));
     private static readonly Pen FocusPen = new(new SolidColorBrush(Color.FromRgb(140, 96, 60)), 2.5);
     private static readonly Brush Ink = new SolidColorBrush(Color.FromRgb(43, 32, 30));
     private static readonly Brush Muted = new SolidColorBrush(Color.FromRgb(150, 136, 120));
-    private readonly DangoSelfPhysicsParameters configuration = DangoPhysicsDefaults.Current;
+    private readonly DangoSelfPhysicsParameters world0 = DangoPhysicsDefaults.Current;
     private DangoPhysicsWorld? world;
     private NativeRestReader? rest;
     private readonly List<DangoEntityId> ids = [];
+    private double[] bodySizes = [], nodeRadii = [];
     private IReadOnlyList<DangoBodyState> bodies = [];
     private bool[] resting = [];
     private float[][] previous = [];
@@ -121,6 +198,28 @@ internal sealed class GroupView : FrameworkElement, IDisposable
 
     internal int Frames { get; private set; }
 
+    internal bool ShowSkeleton { get; set; } = true;
+
+    internal bool ShowOutline { get; set; } = true;
+
+    // Pairwise overlap: contact outline depth (and % of the smaller width), and node-circle depth.
+    internal string Overlap
+    {
+        get
+        {
+            var parts = new List<string>();
+            for (var a = 0; a < bodies.Count; a++)
+                for (var b = a + 1; b < bodies.Count; b++)
+                {
+                    var (gap, width) = ContactOutline.Separation(ContactOutline.Build(bodies[a]), ContactOutline.Build(bodies[b]));
+                    if (gap > .05) continue;
+                    var skeleton = ContactOutline.SkeletonOverlap(bodies[a], nodeRadii[a], bodies[b], nodeRadii[b]);
+                    parts.Add($"{a + 1}-{b + 1} 轮廓{(gap < 0 ? "重叠" : "间隙")} {Math.Abs(gap):F3}（{Math.Abs(gap) / width:P1}）骨架重叠 {Math.Max(0, skeleton):F3}");
+                }
+            return parts.Count == 0 ? "" : " · " + string.Join("  ", parts);
+        }
+    }
+
     internal string Summary => bodies.Count == 0 ? "" :
         string.Join("  ", Enumerable.Range(0, bodies.Count).Select(i => $"{i + 1}{(i == focus ? "（焦点）" : "")} {(resting[i] ? "睡" : "醒")}"));
 
@@ -130,7 +229,7 @@ internal sealed class GroupView : FrameworkElement, IDisposable
         MouseLeftButtonDown += (_, e) =>
         {
             var p = e.GetPosition(this);
-            var hit = HitBody(ToWorld(p));
+            var hit = HitBody(p);
             if (hit < 0) return;
             focus = hit; press = p; pressed = CaptureMouse(); dragTarget = ToWorld(p);
             InvalidateVisual();
@@ -149,31 +248,31 @@ internal sealed class GroupView : FrameworkElement, IDisposable
 
     private double GroundY => ActualHeight - 40;
 
-    private Point ToWorld(Point p) => new((p.X - ActualWidth / 2) / Scale + cameraX, configuration.GroundHeight + (GroundY - p.Y) / Scale);
+    private Point ToWorld(Point p) => new((p.X - ActualWidth / 2) / Scale + cameraX, world0.GroundHeight + (GroundY - p.Y) / Scale);
 
-    private Point ToScreen(double x, double y) => new(ActualWidth / 2 + (x - cameraX) * Scale, GroundY - (y - configuration.GroundHeight) * Scale);
+    private Point ToScreen(double x, double y) => new(ActualWidth / 2 + (x - cameraX) * Scale, GroundY - (y - world0.GroundHeight) * Scale);
 
-    private int HitBody(Point w)
+    private int HitBody(Point screen)
     {
         for (var i = 0; i < bodies.Count; i++)
         {
             var s = bodies[i];
-            var geometry = SampleGeometry.Create(s, false, Scale);
-            var local = ToScreen(w.X, w.Y) - ToScreen(s.CoreX, s.CoreY);
-            if (geometry.FillContains(new Point(local.X, local.Y))) return i;
+            if (Body(s).FillContains(screen)) return i;
         }
         return -1;
     }
 
-    internal void Reset(string library, (double X, double Y)[] spawns)
+    internal void Reset(string library, DangoSelfPhysicsParameters[] shapes, (double X, double Y)[] spawns)
     {
         Dispose();
         ids.Clear(); bodies = []; error = null; focus = 0; Frames = 0; cameraX = 0; pressed = dragging = false;
         resting = new bool[spawns.Length]; previous = new float[spawns.Length][];
+        bodySizes = [.. shapes.Select(s => s.RadialRestLength / DangoPhysicsDefaults.Current.RadialRestLength)];
+        nodeRadii = [.. shapes.Select(s => s.NodeRadius)];
         try
         {
-            world = DangoPhysicsWorld.Create(library, capacity: spawns.Length, configuration: configuration);
-            foreach (var (x, y) in spawns) ids.Add(world.Add(x, y));
+            world = DangoPhysicsWorld.Create(library, capacity: spawns.Length, configuration: world0);
+            for (var i = 0; i < spawns.Length; i++) ids.Add(world.Add(spawns[i].X, spawns[i].Y, shapes[i]));
             rest = NativeRestReader.TryCreate(library, world);
         }
         catch (Exception e) { error = e.Message; }
@@ -223,20 +322,71 @@ internal sealed class GroupView : FrameworkElement, IDisposable
         for (var i = 0; i < bodies.Count; i++)
         {
             var s = bodies[i];
-            Geometry geometry;
-            try { geometry = SampleGeometry.Create(s, false, Scale); }
-            catch (Exception e) { error ??= $"轮廓绘制停止：{e.Message}"; return; }
-            var center = ToScreen(s.CoreX, s.CoreY);
-            drawing.PushTransform(new TranslateTransform(center.X, center.Y));
-            drawing.DrawGeometry(Fill, i == focus ? FocusPen : null, geometry);
+            // The visible body is the native contact outline: per P2D-007C it uses the product
+            // display mapping (72/80, 58/60), so visible overlap equals the physical 3%.
+            var geometry = Body(s);
+            var fill = GroupWindow.Colors[i];
+            if (ShowSkeleton) fill.A = 150;
+            drawing.DrawGeometry(new SolidColorBrush(fill), i == focus ? FocusPen : null, geometry);
             var b = geometry.Bounds;
+            var eye = 3.2 * bodySizes[i];
             foreach (var side in new[] { -1, 1 })
-                drawing.DrawEllipse(Ink, null, new((b.Left + b.Right) / 2 + side * b.Width * .17, b.Top + b.Height * .5), 3.2, 3.7);
+                drawing.DrawEllipse(Ink, null, new((b.Left + b.Right) / 2 + side * b.Width * .17, b.Top + b.Height * .5), eye, eye * 1.15);
             var label = Text($"{i + 1} {(resting[i] ? "睡" : "醒")}{(i == focus ? " · 焦点" : "")}", 13,
                 i == focus ? FocusPen.Brush : Muted, i == focus ? FontWeights.SemiBold : FontWeights.Normal);
             drawing.DrawText(label, new((b.Left + b.Right) / 2 - label.Width / 2, b.Top - label.Height - 4));
-            drawing.Pop();
+            if (ShowSkeleton) DrawSkeleton(drawing, s, nodeRadii[i]);
+            if (ShowOutline) DrawOutline(drawing, ContactOutline.Build(s));
         }
+    }
+
+    private static readonly Pen Spoke = new(new SolidColorBrush(Color.FromArgb(150, 120, 84, 52)), 1);
+    private static readonly Pen Rim = new(new SolidColorBrush(Color.FromArgb(220, 120, 84, 52)), 1.4);
+    private static readonly Brush Node = new SolidColorBrush(Color.FromArgb(70, 120, 84, 52));
+    private static readonly Brush Core = new SolidColorBrush(Color.FromRgb(140, 96, 60));
+
+    // Physical rig in world coordinates: 16 node bodies (drawn at their collision radius) around
+    // the core, radial spokes core-node and perimeter links node-node. The silhouette above is
+    // the presentation mapping.
+    private void DrawSkeleton(DrawingContext drawing, DangoBodyState s, double nodeRadius)
+    {
+        var count = s.Contour.Count / 2;
+        var core = ToScreen(s.CoreX, s.CoreY);
+        Point P(int n) { var v = ContactOutline.Node(s, n, nodeRadius); return ToScreen(s.CoreX + v.X, s.CoreY + v.Y); }
+        for (var n = 0; n < count; n++)
+        {
+            drawing.DrawLine(Spoke, core, P(n));
+            drawing.DrawLine(Rim, P(n), P((n + 1) % count));
+        }
+        for (var n = 0; n < count; n++) drawing.DrawEllipse(Node, Rim, P(n), nodeRadius * Scale, nodeRadius * Scale);
+        drawing.DrawEllipse(Core, null, core, 3.5, 3.5);
+    }
+
+    private Geometry Body(DangoBodyState s)
+    {
+        var points = ContactOutline.Build(s);
+        var geometry = new StreamGeometry();
+        using (var g = geometry.Open())
+        {
+            g.BeginFigure(ToScreen(points[0].X, points[0].Y), true, true);
+            g.PolyLineTo([.. points.Skip(1).Select(p => ToScreen(p.X, p.Y))], true, true);
+        }
+        geometry.Freeze();
+        return geometry;
+    }
+
+    private static readonly Pen OutlinePen = new(new SolidColorBrush(Color.FromRgb(60, 90, 160)), 1.4) { DashStyle = DashStyles.Dash };
+
+    private void DrawOutline(DrawingContext drawing, Point[] points)
+    {
+        var geometry = new StreamGeometry();
+        using (var g = geometry.Open())
+        {
+            g.BeginFigure(ToScreen(points[0].X, points[0].Y), false, true);
+            g.PolyLineTo([.. points.Skip(1).Select(p => ToScreen(p.X, p.Y))], true, false);
+        }
+        geometry.Freeze();
+        drawing.DrawGeometry(null, OutlinePen, geometry);
     }
 
     private FormattedText Text(string text, double size, Brush brush, FontWeight? weight = null) =>

@@ -133,6 +133,23 @@ public sealed partial class DangoPhysicsWorld : IDisposable
         return id;
     }
 
+    // Adds a body with its own shape parameters. Node count, substeps, gravity and ground height
+    // must equal the world configuration. Requires a module with dango_physics_world_add_configured.
+    public DangoEntityId Add(double anchorX, double anchorY, DangoSelfPhysicsParameters configuration)
+    {
+        VerifyAccess();
+        ArgumentNullException.ThrowIfNull(configuration);
+        if (!double.IsFinite(anchorX) || !double.IsFinite(anchorY)) throw new ArgumentOutOfRangeException(nameof(anchorX));
+        configuration.Validate();
+        var call = api.AddConfigured ?? throw MissingLocalExport("dango_physics_world_add_configured");
+        var native = NativeConfiguration.From(configuration);
+        var error = call(world, in native, (float)anchorX, (float)anchorY, out var value);
+        if (error != 0) throw Map(error, "添加团子失败（世界级参数需与物理世界一致）。");
+        var id = new DangoEntityId(value);
+        entities.Add(id, 0);
+        return id;
+    }
+
     public void Remove(DangoEntityId entityId)
     {
         VerifyAccess();
@@ -332,6 +349,7 @@ public sealed partial class DangoPhysicsWorld : IDisposable
         internal readonly StaticPlatformDelegate? SetStaticPlatform;
         internal readonly ResetDelegate? ClearStaticPlatform;
         internal readonly PlatformContactDelegate? ReadStaticPlatformContact;
+        internal AddConfiguredDelegate? AddConfigured { get; private init; }
 
         private NativeApi(nint library, CreateDelegate create, AddDelegate add, RemoveDelegate remove,
             StepDelegate step, ResetDelegate reset, DestroyDelegate destroy,
@@ -369,7 +387,10 @@ public sealed partial class DangoPhysicsWorld : IDisposable
                     GetOptional<TranslateHorizontalDelegate>(library, "dango_physics_world_set_preview_jump_speed_scale"),
                     GetOptional<StaticPlatformDelegate>(library, "dango_physics_world_set_static_platform"),
                     GetOptional<ResetDelegate>(library, "dango_physics_world_clear_static_platform"),
-                    GetOptional<PlatformContactDelegate>(library, "dango_physics_world_get_static_platform_contact"));
+                    GetOptional<PlatformContactDelegate>(library, "dango_physics_world_get_static_platform_contact"))
+                {
+                    AddConfigured = GetOptional<AddConfiguredDelegate>(library, "dango_physics_world_add_configured"),
+                };
             }
             catch
             {
@@ -397,6 +418,7 @@ public sealed partial class DangoPhysicsWorld : IDisposable
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int GetIntegerDelegate();
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int CreateDelegate(in NativeConfiguration config, int capacity, out nint handle);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int AddDelegate(nint handle, float x, float y, out int id);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int AddConfiguredDelegate(nint handle, in NativeConfiguration config, float x, float y, out int id);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)] internal delegate int RemoveDelegate(nint handle, int id);
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         internal delegate int StepDelegate(nint handle, float dt,

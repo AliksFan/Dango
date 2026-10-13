@@ -15,6 +15,16 @@ internal static class Program
                 return new Application().Run(new CornerWindow(Path.GetFullPath(args[0])));
             if (args.Length == 2 && args[1] == "--group")
                 return new Application().Run(new GroupWindow(Path.GetFullPath(args[0])));
+            if (args.Length == 5 && args[1] == "--diagnose-per-body")
+                return RestVerification.DiagnosePerBody(Path.GetFullPath(args[0]), Path.GetFullPath(args[2]), int.Parse(args[3]), int.Parse(args[4]));
+            if (args.Length == 3 && args[1] == "--per-body-chaos")
+                return RestVerification.PerBodyChaosControl(Path.GetFullPath(args[0]), Path.GetFullPath(args[2]));
+            if (args.Length == 3 && args[1] == "--press-slide")
+                return RestVerification.PressSlide(Path.GetFullPath(args[0]), Path.GetFullPath(args[2]));
+            if (args.Length == 3 && args[1] == "--measure-overlap") return RestVerification.MeasureOverlap(Path.GetFullPath(args[0]), args[2]);
+            if (args.Length == 6 && args[1] == "--verify-per-body")
+                return RestVerification.PerBody(Path.GetFullPath(args[0]), Path.GetFullPath(args[2]), Path.GetFullPath(args[3]),
+                    Path.GetFullPath(args[4]), args[5]);
             if (args.Length == 7 && args[1] == "--diagnose-rest-walk")
                 return RestVerification.DiagnoseAfterWalk(Path.GetFullPath(args[0]), double.Parse(args[2]), double.Parse(args[3]),
                     double.Parse(args[4]), int.Parse(args[5]), int.Parse(args[6]));

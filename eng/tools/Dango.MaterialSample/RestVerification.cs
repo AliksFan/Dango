@@ -8,7 +8,7 @@ namespace Dango.MaterialSample;
 
 // Idle rest sleep acceptance (docs/planning/2026-10-13-idle-rest-sleep-design.md §6).
 // Rest is observed from outside: a resting body publishes bit-identical frames.
-internal static class RestVerification
+internal static partial class RestVerification
 {
     private const double Pixels = 105;
     private static readonly TimeSpan Step = MaterialSession.FixedStep;
@@ -98,9 +98,14 @@ internal static class RestVerification
         private readonly NativeRestReader? restState;
 
         internal Sim(string library, DangoSelfPhysicsParameters config, int capacity, params (double X, double Y)[] spawns)
+            : this(library, config, capacity, null, spawns) { }
+
+        // shapes: optional per-body configuration (dango_physics_world_add_configured).
+        internal Sim(string library, DangoSelfPhysicsParameters config, int capacity, DangoSelfPhysicsParameters[]? shapes, (double X, double Y)[] spawns)
         {
             World = DangoPhysicsWorld.Create(library, capacity: capacity, configuration: config);
-            foreach (var (x, y) in spawns) Ids.Add(World.Add(x, y));
+            for (var i = 0; i < spawns.Length; i++)
+                Ids.Add(shapes is null ? World.Add(spawns[i].X, spawns[i].Y) : World.Add(spawns[i].X, spawns[i].Y, shapes[i]));
             restState = NativeRestReader.TryCreate(library, World);
             if (restState is not null) NativeRest = [];
         }

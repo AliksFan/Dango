@@ -61,7 +61,7 @@ static bool collection_refresh(collision_review* p)
     {
         bool grounded=collision_platform_floor(p,p->bodies[r]);
         p->collection_support_friction[r]=-1;
-        display_mesh mesh; if (!display_build(p->bodies[r],p->config.node_radius,&mesh)) return false;
+        display_mesh mesh; if (!display_build(p->bodies[r],p->body_config[r].node_radius,&mesh)) return false;
         for (int i=0;i<DANGO_FURNITURE_COLLECTION_MAX;++i) if (p->collection[i].instance && p->collection[i].definition.kind==1)
         {
             dango_static_platform* platform=&p->collection[i].definition.platform;
@@ -117,7 +117,7 @@ static double collection_minimum_gap(collision_review* p)
         {
             for (int r=0;r<p->capacity;++r) if (p->active[r])
             {
-                display_mesh mesh; if (!display_build(p->bodies[r],p->config.node_radius,&mesh)) return -INFINITY;
+                display_mesh mesh; if (!display_build(p->bodies[r],p->body_config[r].node_radius,&mesh)) return -INFINITY;
                 minimum=fmin(minimum,platform_separation(&mesh,&a->definition.platform).gap);
             }
             continue;
@@ -228,7 +228,7 @@ static bool collection_substep(collision_review* p,double dt,int* touched)
     {
         for (int i=0;i<DANGO_FURNITURE_COLLECTION_MAX;++i) if (p->collection[i].instance && p->collection[i].definition.kind==1)
             for (int r=0;r<p->capacity;++r) if (p->active[r] && !COLLISION_RESTING(p,r))
-                if (!platform_contact_solve(p->bodies[r],&p->config,&p->collection[i].definition.platform,touched)) goto finish;
+                if (!platform_contact_solve(p->bodies[r],&p->body_config[r],&p->collection[i].definition.platform,touched)) goto finish;
         for (int i=0;i<DANGO_FURNITURE_COLLECTION_MAX;++i) if (p->collection[i].instance && p->collection[i].definition.kind==2)
         {
             dango_collection_item* item=&p->collection[i];
@@ -308,7 +308,7 @@ static void collection_probe(collision_review* p,int kind,uint64_t target,uint64
     {
         double gap;
         if (candidate->kind==1)
-        { display_mesh mesh; if (!display_build(p->bodies[r],p->config.node_radius,&mesh)) { result->rejection=8; return; }
+        { display_mesh mesh; if (!display_build(p->bodies[r],p->body_config[r].node_radius,&mesh)) { result->rejection=8; return; }
           gap=platform_separation(&mesh,&candidate->platform).gap; }
         else
         { dango_ball_geometry geometry; dango_ball_geometry_result contact;
@@ -390,7 +390,7 @@ DANGO_API int dango_physics_world_prepare_furniture_change(void* handle,int kind
     p->collection_prepared_kind=kind; p->collection_prepared_slot=slot;
     for (int r=0;r<p->capacity;++r) if (p->active[r])
     {
-        display_mesh mesh; if (!display_build(p->bodies[r],p->config.node_radius,&mesh)) return -410;
+        display_mesh mesh; if (!display_build(p->bodies[r],p->body_config[r].node_radius,&mesh)) return -410;
         bool grounded=collision_platform_floor(p,p->bodies[r]);
         b2Vec2 core=b2Body_GetPosition(p->bodies[r]->core_body_id),velocity=b2Body_GetLinearVelocity(p->bodies[r]->core_body_id);
         for (int i=0;i<DANGO_FURNITURE_COLLECTION_MAX;++i)
