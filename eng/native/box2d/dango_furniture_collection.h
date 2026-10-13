@@ -227,14 +227,14 @@ static bool collection_substep(collision_review* p,double dt,int* touched)
     for (int scan=0;scan<96;++scan)
     {
         for (int i=0;i<DANGO_FURNITURE_COLLECTION_MAX;++i) if (p->collection[i].instance && p->collection[i].definition.kind==1)
-            for (int r=0;r<p->capacity;++r) if (p->active[r])
+            for (int r=0;r<p->capacity;++r) if (p->active[r] && !COLLISION_RESTING(p,r))
                 if (!platform_contact_solve(p->bodies[r],&p->config,&p->collection[i].definition.platform,touched)) goto finish;
         for (int i=0;i<DANGO_FURNITURE_COLLECTION_MAX;++i) if (p->collection[i].instance && p->collection[i].definition.kind==2)
         {
             dango_collection_item* item=&p->collection[i];
             p->ball=item->ball; p->ball_dango_contact=item->dango_contact; p->ball_floor_contact=item->surface_contact;
             if (!collision_ball_valid(p) || !collision_ball_boundaries(p)) goto finish;
-            for (int r=0;r<p->capacity;++r) if (p->active[r])
+            for (int r=0;r<p->capacity;++r) if (p->active[r] && !COLLISION_RESTING(p,r))
             {
                 b2Vec2 core=b2Body_GetPosition(p->bodies[r]->core_body_id);
                 double distance=hypot(p->ball.state.x-(4.0/3)*core.x,p->ball.state.y-core.y);

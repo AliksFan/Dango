@@ -11,6 +11,15 @@ internal static class Program
     {
         try
         {
+            if (args.Length == 2 && args[1] == "--corners")
+                return new Application().Run(new CornerWindow(Path.GetFullPath(args[0])));
+            if (args.Length == 7 && args[1] == "--diagnose-rest-walk")
+                return RestVerification.DiagnoseAfterWalk(Path.GetFullPath(args[0]), double.Parse(args[2]), double.Parse(args[3]),
+                    double.Parse(args[4]), int.Parse(args[5]), int.Parse(args[6]));
+            if (args.Length == 2 && args[1] == "--scan-stack") return RestVerification.ScanStack(Path.GetFullPath(args[0]));
+            if (args.Length == 6 && args[1] == "--verify-rest")
+                return RestVerification.Run(Path.GetFullPath(args[0]), Path.GetFullPath(args[2]), Path.GetFullPath(args[3]),
+                    Path.GetFullPath(args[4]), args[5]);
             if (args.Contains("--verify-landing-build-parallel-long-trial"))
                 return args.Length == 7 && args[1] == "--verify-landing-build-parallel-long-trial" &&
                     int.TryParse(args[6], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var longIndex)
