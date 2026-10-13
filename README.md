@@ -2,6 +2,8 @@
 
 `Dango` 是一个多人联机桌面宠物项目的开发代号。
 
+2026-10-13 本实验分支已收口冻结：`codex/round-material-sample` 保留圆形材料、v6 体型映射、已认可形态与手感及全部历史失败作为对照，不再推进旧联合速度／u 求根路线。静置休眠在独立 `codex/idle-rest-sleep` 继续实施；旧分支不是生产捏脸或已通过长时稳定性的版本。完整工作区和 Git 历史已外部保全，既有未提交修改／删除保留。交接与验证边界见[分支收口记录](docs/planning/2026-10-13-round-material-branch-closeout.md)。下方带日期说明保留其历史范围。
+
 2026-10-10 圆形材料隔离试验：[算子尺度证书](docs/verification/2026-10-10-round-material-operator-certificate-result.md)跑过原第 147 帧卡点，但默认长期漂移失败。用户随后批准[静置位移被动观测方案](docs/planning/2026-10-10-round-material-idle-displacement-trace.md)，实际 DLL ON/OFF、精确账本、19 个语义反例和独立审查通过，将漂移定位到材料＋Box2D 执行边界，尚未确定边界内部唯一根因；见[观测结果](docs/verification/2026-10-10-round-material-idle-displacement-trace-result.md)。原漂移门槛仍失败，按观测停止点回到设计复核；后续甩动、参数组及新的 WPF 人工验收未执行，生产捏脸、日常安装及正式 DLL 保留原状态。
 
 2026-10-09 DIY 配饰第一版：用户确认当前设计收口、人工验收通过，并授权合并至本地 main。包含透明图创建与编辑、多件图层、柔性／翻折、形变与连接行程上限、旋转／重力及本地保存重载，见[验收记录](docs/verification/2026-10-09-accessory-material-v5.md#2026-10-09-第一版人工通过与本地整合授权)。已完成本地 main 整合，保留现有桌宠房间成果，见[整合记录](docs/verification/2026-10-09-accessory-v1-main-integration.md)；分享和配饰间挂接继续后置，历史自动差异与其它专项边界保留。未授权推送、更新日常安装、部署或替换正式 DLL。

@@ -2,7 +2,7 @@
 
 > 日期：2026-10-13
 >
-> 状态：待用户批准；仅设计，未实现
+> 状态：历史设计副本；用户已确认新计划正在实施。当前实施归属独立 `codex/idle-rest-sleep`，本材料实验分支已[收口冻结](2026-10-13-round-material-branch-closeout.md)。本文保留原提案与验收合同，后文“待批准／暂定”按提案形成时语境读取；实际实施、参数冻结及验收结果以休眠分支记录为准，不据本页推定通过。
 >
 > 基线：`d721634`；替代已放弃的[联合速度候选](2026-10-13-idle-contact-transport-candidate-design.md)及其[修订草案](2026-10-13-idle-contact-transport-candidate-revision.md)
 
