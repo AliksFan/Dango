@@ -36,7 +36,7 @@ internal static class RestVerification
         var only = Environment.GetEnvironmentVariable("DANGO_REST_ONLY");
         void Case(string label, Action run)
         {
-            if (!string.IsNullOrEmpty(only) && !label.Contains(only)) return;
+            if (!string.IsNullOrEmpty(only) && !only.Split('|').Any(label.Contains)) return;
             Console.WriteLine("running " + label); run(); Save();
         }
         foreach (var size in new[] { 80d, 100, 120 })
@@ -48,6 +48,10 @@ internal static class RestVerification
         Case("push", () => Push(check, restModule, baseModule));
         Case("jump onto", () => JumpOnto(check, restModule, baseModule));
         Case("three-body stack", () => Stack(check, restModule, baseModule));
+        foreach (var (label, script) in Interactions)
+            Case("interaction " + label, () => Compare(check, "interaction " + label, restModule, baseModule, [(0.0, 0), (1.5, 0)],
+                InteractionFrames, script, [.. Enumerable.Range(0, InteractionFrames)], (c, s, r) =>
+                    c.Require(r[599][0] && r[599][1], $"interaction {label}: precondition not met (not resting before frame 600)")));
         Console.WriteLine($"rest verification: {check.Results.Count} cases, {check.Failures.Count} failures");
         foreach (var failure in check.Failures) Console.WriteLine("FAIL " + failure);
         return check.Failures.Count == 0 ? 0 : 1;
@@ -514,6 +518,30 @@ internal static class RestVerification
                 c.Require(r[599][0] && r[599][1], "jump onto resting body: precondition not met (not resting before the jump)");
                 c.Require(Enumerable.Range(601, 159).Any(f => !Same(s[f][0], s[f - 1][0])), "jump onto resting body: A never woke");
             });
+
+    // Two-body actions around a resting pair (A at 0, B at 1.5, both resting by frame 599). Every
+    // frame is compared with the base module, so a sleep-induced change in any action shows up.
+    private const int InteractionFrames = 2400;
+    private static readonly (string, Func<int, int, DangoPhysicsInput, DangoPhysicsInput>)[] Interactions =
+    [
+        ("jump away and walk back", (f, i, x) => i != 1 ? x : f switch
+        {
+            >= 600 and < 660 => x with { Horizontal = 1, JumpPressed = f == 600 },
+            >= 900 and < 1020 => x with { Horizontal = -1 },
+            _ => x,
+        }),
+        ("jump over", (f, i, x) => i == 1 && f is >= 600 and < 760 ? x with { Horizontal = -1, JumpPressed = f is 600 or 640 } : x),
+        ("push and retreat", (f, i, x) => i != 1 ? x : f switch
+        {
+            >= 600 and < 700 => x with { Horizontal = -1 },
+            >= 700 and < 760 => x with { Horizontal = 1 },
+            _ => x,
+        }),
+        ("drag onto", (f, i, x) => i == 1 && f is >= 600 and < 720 ? x with { DragActive = true, DragTargetX = 0, DragTargetY = 1.6 } : x),
+        ("hold down beside", (f, i, x) => i == 1 && f is >= 600 and < 1200 ? x with { Downward = 1 } : x),
+        ("wander into neighbour", (f, i, x) => i == 0 && f is >= 600 and < 690 ? x with { Horizontal = .35 * Math.Min(1, (f - 599) / 12d) } : x),
+        ("walk toward each other", (f, i, x) => f is >= 600 and < 660 ? x with { Horizontal = i == 0 ? 1 : -1 } : x),
+    ];
 
     // Two bodies side by side with a third resting on top (user-chosen stable stack).
     private static void Stack(Check check, string restLib, string baseLib)
