@@ -167,6 +167,25 @@ internal sealed class FormalDangoLayer : Canvas
         };
     }
 
+    // Experiment: mirror the face tilt about the ground normal (vertical). The product solves the
+    // face at angle a = -tilt; here the eyes are re-rotated about their midpoint to angle -a.
+    internal bool MirrorEyeTilt { get; set; } = true;
+
+    private static PhysicsPresentationFrame MirrorFace(PhysicsPresentationFrame frame)
+    {
+        if (frame.Attachments is not { Face: var face } attachments) return frame;
+        var angle = face.Left.Angle;
+        if (angle == 0) return frame;
+        var mid = new AttachmentPoint((face.Left.Center.X + face.Right.Center.X) / 2, (face.Left.Center.Y + face.Right.Center.Y) / 2);
+        double c = Math.Cos(-2 * angle), s = Math.Sin(-2 * angle);
+        EyePresentationFrame Mirror(EyePresentationFrame eye)
+        {
+            double x = eye.Center.X - mid.X, y = eye.Center.Y - mid.Y;
+            return eye with { Center = new(mid.X + x * c - y * s, mid.Y + x * s + y * c), Angle = -eye.Angle };
+        }
+        return frame with { Attachments = attachments with { Face = face with { Left = Mirror(face.Left), Right = Mirror(face.Right) } } };
+    }
+
     internal void Apply(DangoPhysicsFrame physics, IReadOnlyList<DangoEntityId> ids, int selected, double horizontal,
         Func<double, double, Point> toScreen, double scale)
     {
@@ -201,7 +220,7 @@ internal sealed class FormalDangoLayer : Canvas
             v.Body.BodyFill = customized ? Brush(Appearance.BodyColor.R, Appearance.BodyColor.G, Appearance.BodyColor.B) : SlotColors[i];
             v.Body.EyeFill = customized ? Brush(Appearance.EyeColor.R, Appearance.EyeColor.G, Appearance.EyeColor.B) : Brush(0x2B, 0x20, 0x1E);
             v.Body.Appearance = hat; v.Body.HatSize = HatSize;
-            v.Body.ApplyFrame(frames[i]);
+            v.Body.ApplyFrame(MirrorEyeTilt ? MirrorFace(frames[i]) : frames[i]);
             var imageHat = customized && accessories.Enabled;
             v.Hat.Visibility = imageHat ? Visibility.Collapsed : Visibility.Visible;
             if (!imageHat) { v.Hat.Appearance = hat; v.Hat.HatSize = HatSize; v.Hat.ApplyFrame(frames[i]); }

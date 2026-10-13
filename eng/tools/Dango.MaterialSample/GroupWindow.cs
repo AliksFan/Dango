@@ -87,6 +87,10 @@ internal sealed class GroupWindow : Window
         side.Children.Add(new TextBlock { Text = "帽型", Foreground = Brushes.DimGray, FontSize = 12 });
         side.Children.Add(hatBox);
         side.Children.Add(imageHatBox);
+        var mirrorBox = new CheckBox { Content = "眼睛角度按地面法向镜像（实验）", IsChecked = formal.MirrorEyeTilt, Focusable = false, Margin = new(0, 0, 0, 6) };
+        mirrorBox.Checked += (_, _) => formal.MirrorEyeTilt = true;
+        mirrorBox.Unchecked += (_, _) => formal.MirrorEyeTilt = false;
+        side.Children.Add(mirrorBox);
         side.Children.Add(settingsText);
         var apply = new Button { Content = "应用体型并重新开始", Margin = new(0, 8, 0, 0), Padding = new(10, 5, 10, 5), Focusable = false };
         apply.Click += (_, _) => Reset(layout);
