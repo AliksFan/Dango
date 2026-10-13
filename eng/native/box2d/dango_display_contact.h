@@ -23,7 +23,9 @@ static bool display_build(dango_self_soft_body* body, float radius, display_mesh
             if (value>mesh->maximum) { mesh->maximum=value; mesh->max_node=n; mesh->max_axis=axis; }
         }
     }
-    mesh->scale=fminf(1,.98f/mesh->maximum);
+    // Presentation-box limit in world units. The default rig (rest length .68) keeps .98; a larger
+    // rig scales it so its own outline is never shrunk, a smaller rig keeps the default headroom.
+    mesh->scale=fminf(1,.98f*fmaxf(1.0f,body->radial_rest_length/.68f)/mesh->maximum);
     for (int s=0;s<DISPLAY_SAMPLES;++s)
     {
         int n=s/DISPLAY_SAMPLES_PER_NODE; float t=(float)(s%DISPLAY_SAMPLES_PER_NODE)/DISPLAY_SAMPLES_PER_NODE;

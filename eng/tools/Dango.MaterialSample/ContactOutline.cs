@@ -18,7 +18,8 @@ internal static class ContactOutline
         return p * (1 - radius / p.Length);
     }
 
-    internal static Point[] Build(DangoBodyState s)
+    // bodySize = radial rest length / 0.68: the presentation-box limit .98 scales up for larger rigs.
+    internal static Point[] Build(DangoBodyState s, double bodySize = 1)
     {
         var expanded = new Vector[16];
         double maximum = 0;
@@ -27,7 +28,7 @@ internal static class ContactOutline
             expanded[n] = new Vector(s.Contour[2 * n], s.Contour[2 * n + 1]);
             maximum = Math.Max(maximum, Math.Max(Math.Abs(expanded[n].X), Math.Abs(expanded[n].Y)));
         }
-        var scale = Math.Min(1, .98 / maximum);
+        var scale = Math.Min(1, .98 * Math.Max(1, bodySize) / maximum);
         var points = new Point[Samples];
         for (var k = 0; k < Samples; k++)
         {

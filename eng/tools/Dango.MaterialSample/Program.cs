@@ -13,6 +13,8 @@ internal static class Program
         {
             if (args.Length == 2 && args[1] == "--corners")
                 return new Application().Run(new CornerWindow(Path.GetFullPath(args[0])));
+            if (args.Length == 6 && args[1] == "--group-snapshot")
+                return GroupWindow.Snapshot(Path.GetFullPath(args[0]), Path.GetFullPath(args[2]), int.Parse(args[3]), int.Parse(args[4]), args[5]);
             if (args.Length == 2 && args[1] == "--group")
                 return new Application().Run(new GroupWindow(Path.GetFullPath(args[0])));
             if (args.Length == 5 && args[1] == "--diagnose-per-body")

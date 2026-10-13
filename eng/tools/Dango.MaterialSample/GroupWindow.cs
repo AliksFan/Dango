@@ -19,14 +19,21 @@ internal sealed class GroupWindow : Window
 
     internal static readonly Color[] Colors =
     [
-        Color.FromRgb(245, 213, 165), // 米黄
-        Color.FromRgb(184, 214, 160), // 抹茶
-        Color.FromRgb(242, 182, 190), // 樱粉
+        // Product slot colours (DangoHostFrameBinding); body 1 shows the saved appearance in formal mode.
+        Color.FromRgb(255, 232, 194),
+        Color.FromRgb(201, 226, 255),
+        Color.FromRgb(221, 204, 248),
     ];
 
     private readonly string library;
     private readonly DispatcherTimer timer = new() { Interval = MaterialSession.FixedStep };
     private readonly GroupView view = new();
+    private readonly FormalDangoLayer formal = new();
+    private readonly CheckBox formalBox = new() { Content = "正式外观（眼睛、帽子、图片配饰）", IsChecked = true, Focusable = false, Margin = new(0, 0, 0, 6) };
+    private readonly ComboBox hatBox = new() { Focusable = false, Margin = new(0, 0, 0, 6), ItemsSource = new[] { "叶芽", "小礼帽", "圆顶帽" } };
+    private readonly CheckBox imageHatBox = new() { Content = "1 号的帽子作为图片配饰（随身体变形）", Focusable = false, Margin = new(0, 0, 0, 6) };
+    private readonly TextBlock settingsText = new() { Foreground = Brushes.DimGray, TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new(0, 0, 0, 10) };
+    private static readonly string[] HatIds = ["sprout", "top-hat", "bowler"];
     private readonly TextBlock status = new() { Margin = new(16, 6, 16, 10), Foreground = Brushes.DimGray };
     private readonly CheckBox skeleton = new() { Content = "显示骨架（节点、辐条、周边）", IsChecked = true, Focusable = false, Margin = new(0, 0, 0, 6) };
     private readonly CheckBox outline = new() { Content = "显示碰撞轮廓（原生接触用）", IsChecked = true, Focusable = false, Margin = new(0, 0, 0, 6) };
@@ -65,6 +72,22 @@ internal sealed class GroupWindow : Window
         outline.Checked += (_, _) => view.ShowOutline = true;
         outline.Unchecked += (_, _) => view.ShowOutline = false;
         side.Children.Add(outline);
+        formal.LoadProductSettings();
+        view.Formal = formal;
+        formalBox.Checked += (_, _) => { view.ShowFormal = true; formal.Visibility = Visibility.Visible; };
+        formalBox.Unchecked += (_, _) => { view.ShowFormal = false; formal.Visibility = Visibility.Collapsed; };
+        hatBox.SelectedIndex = Array.IndexOf(HatIds, formal.HatPresetId);
+        hatBox.SelectionChanged += (_, _) => { formal.HatPresetId = HatIds[hatBox.SelectedIndex]; formal.ApplyAccessoryMode(null); };
+        imageHatBox.IsChecked = formal.ImageAccessories;
+        imageHatBox.IsEnabled = !formal.SavedAccessoriesEnabled;
+        imageHatBox.Checked += (_, _) => { formal.ImageAccessories = true; formal.ApplyAccessoryMode(null); };
+        imageHatBox.Unchecked += (_, _) => { formal.ImageAccessories = false; formal.ApplyAccessoryMode(null); };
+        settingsText.Text = formal.SettingsSource;
+        side.Children.Add(formalBox);
+        side.Children.Add(new TextBlock { Text = "帽型", Foreground = Brushes.DimGray, FontSize = 12 });
+        side.Children.Add(hatBox);
+        side.Children.Add(imageHatBox);
+        side.Children.Add(settingsText);
         var apply = new Button { Content = "应用体型并重新开始", Margin = new(0, 8, 0, 0), Padding = new(10, 5, 10, 5), Focusable = false };
         apply.Click += (_, _) => Reset(layout);
         side.Children.Add(apply);
@@ -81,7 +104,7 @@ internal sealed class GroupWindow : Window
         DockPanel.SetDock(scroller, Dock.Right); root.Children.Add(scroller);
         root.Children.Add(new Border
         {
-            Child = view, Margin = new(12, 0, 12, 0), CornerRadius = new(6), Background = Brushes.White,
+            Child = new Grid { Children = { formal, view } }, Margin = new(12, 0, 12, 0), CornerRadius = new(6), Background = Brushes.White,
             BorderBrush = new SolidColorBrush(Color.FromRgb(225, 214, 200)), BorderThickness = new(1),
         });
         Content = root;
@@ -132,11 +155,51 @@ internal sealed class GroupWindow : Window
         };
     }
 
+    // Review-only offscreen capture: scripted input, then the window content rendered to a PNG.
+    internal static int Snapshot(string library, string path, int layout, int frames, string mode)
+    {
+        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        var window = new GroupWindow(library) { WindowStartupLocation = WindowStartupLocation.Manual, Left = -20000, Top = 0, ShowActivated = false, ShowInTaskbar = false };
+        window.snapshot = (path, frames);
+        window.Loaded += (_, _) =>
+        {
+            window.imageHatBox.IsChecked = mode.StartsWith("image", StringComparison.Ordinal);
+            if (mode.EndsWith("mixed", StringComparison.Ordinal))
+            { window.editors[0].Set(80, 0, 0); window.editors[1].Set(120, 100, 100); window.editors[2].Set(100, 50, 50); }
+            window.Reset(layout);
+        };
+        window.Show();
+        return app.Run();
+    }
+
+    private (string Path, int Frames)? snapshot;
+
     private void Tick()
     {
+        if (snapshot is { } shot)
+        {
+            // Walk the focused body right for 0.5 s, then let it settle.
+            right = view.Frames is >= 120 and < 150;
+            if (view.Frames >= shot.Frames)
+            {
+                timer.Stop();
+                var root = (FrameworkElement)Content;
+                var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)root.ActualWidth, (int)root.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+                var background = new DrawingVisual();
+                using (var dc = background.RenderOpen()) dc.DrawRectangle(Background, null, new Rect(0, 0, root.ActualWidth, root.ActualHeight));
+                bitmap.Render(background); bitmap.Render(root);
+                var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+                using (var file = System.IO.File.Create(shot.Path)) encoder.Save(file);
+                Console.WriteLine(status.Text + " · 轮廓校验 " + formal.ContourFailures);
+                Console.WriteLine(formal.Debug(view.Bodies, 100));
+                Close(); Application.Current.Shutdown();
+                return;
+            }
+        }
         view.Step((right ? 1 : 0) - (left ? 1 : 0), down, jump);
         jump = false;
-        status.Text = $"{Layouts[layout]} · 帧 {view.Frames} · {view.Summary}{view.Overlap} · 原生库：{System.IO.Path.GetFileName(library)}";
+        status.Text = $"{Layouts[layout]} · 帧 {view.Frames} · {view.Summary}{view.Overlap}{(formal.Error is { } e ? " · 外观：" + e : "")} · 原生库：{System.IO.Path.GetFileName(library)}";
     }
 
     private sealed class ShapeEditor
@@ -146,6 +209,7 @@ internal sealed class GroupWindow : Window
         internal double Size => size.Value;
         internal double Softness => softness.Value;
         internal double Build => build.Value;
+        internal void Set(double s, double f, double b) { size.Value = s; softness.Value = f; build.Value = b; }
 
         internal ShapeEditor(int index, double size, double softness, double build)
         {
@@ -198,7 +262,13 @@ internal sealed class GroupView : FrameworkElement, IDisposable
 
     internal int Frames { get; private set; }
 
+    internal IReadOnlyList<DangoBodyState> Bodies => bodies;
+
     internal bool ShowSkeleton { get; set; } = true;
+
+    internal FormalDangoLayer? Formal { get; set; }
+
+    internal bool ShowFormal { get; set; } = true;
 
     internal bool ShowOutline { get; set; } = true;
 
@@ -211,7 +281,7 @@ internal sealed class GroupView : FrameworkElement, IDisposable
             for (var a = 0; a < bodies.Count; a++)
                 for (var b = a + 1; b < bodies.Count; b++)
                 {
-                    var (gap, width) = ContactOutline.Separation(ContactOutline.Build(bodies[a]), ContactOutline.Build(bodies[b]));
+                    var (gap, width) = ContactOutline.Separation(ContactOutline.Build(bodies[a], bodySizes[a]), ContactOutline.Build(bodies[b], bodySizes[b]));
                     if (gap > .05) continue;
                     var skeleton = ContactOutline.SkeletonOverlap(bodies[a], nodeRadii[a], bodies[b], nodeRadii[b]);
                     parts.Add($"{a + 1}-{b + 1} 轮廓{(gap < 0 ? "重叠" : "间隙")} {Math.Abs(gap):F3}（{Math.Abs(gap) / width:P1}）骨架重叠 {Math.Max(0, skeleton):F3}");
@@ -257,7 +327,7 @@ internal sealed class GroupView : FrameworkElement, IDisposable
         for (var i = 0; i < bodies.Count; i++)
         {
             var s = bodies[i];
-            if (Body(s).FillContains(screen)) return i;
+            if (Body(s, bodySizes[i]).FillContains(screen)) return i;
         }
         return -1;
     }
@@ -274,6 +344,7 @@ internal sealed class GroupView : FrameworkElement, IDisposable
             world = DangoPhysicsWorld.Create(library, capacity: spawns.Length, configuration: world0);
             for (var i = 0; i < spawns.Length; i++) ids.Add(world.Add(spawns[i].X, spawns[i].Y, shapes[i]));
             rest = NativeRestReader.TryCreate(library, world);
+            Formal?.Reset(library, ids, bodySizes);
         }
         catch (Exception e) { error = e.Message; }
         InvalidateVisual();
@@ -290,6 +361,7 @@ internal sealed class GroupView : FrameworkElement, IDisposable
             var frame = world.Step(MaterialSession.FixedStep, inputs);
             if (!frame.Succeeded) { error = $"原生错误 {frame.ErrorCode}（按 R 重新开始）"; return; }
             bodies = [.. ids.Select(id => frame.Bodies.Single(b => b.EntityId == id))];
+            Formal?.Apply(frame, ids, focus, horizontal, (x, y) => ToScreen(x, y), Scale);
             Frames++;
             if (rest is not null) resting = rest.Read(ids);
             else
@@ -324,19 +396,24 @@ internal sealed class GroupView : FrameworkElement, IDisposable
             var s = bodies[i];
             // The visible body is the native contact outline: per P2D-007C it uses the product
             // display mapping (72/80, 58/60), so visible overlap equals the physical 3%.
-            var geometry = Body(s);
-            var fill = GroupWindow.Colors[i];
-            if (ShowSkeleton) fill.A = 150;
-            drawing.DrawGeometry(new SolidColorBrush(fill), i == focus ? FocusPen : null, geometry);
+            var geometry = Body(s, bodySizes[i]);
             var b = geometry.Bounds;
-            var eye = 3.2 * bodySizes[i];
-            foreach (var side in new[] { -1, 1 })
-                drawing.DrawEllipse(Ink, null, new((b.Left + b.Right) / 2 + side * b.Width * .17, b.Top + b.Height * .5), eye, eye * 1.15);
+            if (!ShowFormal)
+            {
+                var fill = GroupWindow.Colors[i];
+                if (ShowSkeleton) fill.A = 150;
+                drawing.DrawGeometry(new SolidColorBrush(fill), i == focus ? FocusPen : null, geometry);
+                var eye = 3.2 * bodySizes[i];
+                foreach (var side in new[] { -1, 1 })
+                    drawing.DrawEllipse(Ink, null, new((b.Left + b.Right) / 2 + side * b.Width * .17, b.Top + b.Height * .5), eye, eye * 1.15);
+            }
+            // Leave room for the hat above a formally drawn body.
+            if (ShowFormal) b.Offset(0, -34 * bodySizes[i]);
             var label = Text($"{i + 1} {(resting[i] ? "睡" : "醒")}{(i == focus ? " · 焦点" : "")}", 13,
                 i == focus ? FocusPen.Brush : Muted, i == focus ? FontWeights.SemiBold : FontWeights.Normal);
             drawing.DrawText(label, new((b.Left + b.Right) / 2 - label.Width / 2, b.Top - label.Height - 4));
             if (ShowSkeleton) DrawSkeleton(drawing, s, nodeRadii[i]);
-            if (ShowOutline) DrawOutline(drawing, ContactOutline.Build(s));
+            if (ShowOutline) DrawOutline(drawing, ContactOutline.Build(s, bodySizes[i]));
         }
     }
 
@@ -362,9 +439,9 @@ internal sealed class GroupView : FrameworkElement, IDisposable
         drawing.DrawEllipse(Core, null, core, 3.5, 3.5);
     }
 
-    private Geometry Body(DangoBodyState s)
+    private Geometry Body(DangoBodyState s, double size)
     {
-        var points = ContactOutline.Build(s);
+        var points = ContactOutline.Build(s, size);
         var geometry = new StreamGeometry();
         using (var g = geometry.Open())
         {

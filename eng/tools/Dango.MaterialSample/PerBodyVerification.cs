@@ -152,7 +152,7 @@ internal static partial class RestVerification
                 for (var a = 0; a < states.Length; a++)
                     for (var b = a + 1; b < states.Length; b++)
                     {
-                        Point[] oa = ContactOutline.Build(states[a]), ob = ContactOutline.Build(states[b]);
+                        Point[] oa = ContactOutline.Build(states[a], shapes[a].RadialRestLength / .68), ob = ContactOutline.Build(states[b], shapes[b].RadialRestLength / .68);
                         var (gap, width) = ContactOutline.Separation(oa, ob);
                         if (gap > .05) continue;
                         var skeleton = ContactOutline.SkeletonOverlap(states[a], shapes[a].NodeRadius, states[b], shapes[b].NodeRadius);
@@ -191,8 +191,8 @@ internal static partial class RestVerification
             baseline.Advance((i, id) => script(f, i, new DangoPhysicsInput(id)));
             if (f < from || f % 5 != 0) continue;
             var r = rest.Last; var b = baseline.Last; var n = rest.NativeRest![f];
-            var (gap, _) = ContactOutline.Separation(ContactOutline.Build(r[0]), ContactOutline.Build(r[1]));
-            var (bgap, _) = ContactOutline.Separation(ContactOutline.Build(b[0]), ContactOutline.Build(b[1]));
+            var (gap, _) = ContactOutline.Separation(ContactOutline.Build(r[0], .8), ContactOutline.Build(r[1], 1.2));
+            var (bgap, _) = ContactOutline.Separation(ContactOutline.Build(b[0], .8), ContactOutline.Build(b[1], 1.2));
             Console.WriteLine($"f{f} rest A({r[0].CoreX:F4},{r[0].CoreY:F4}) B({r[1].CoreX:F4},{r[1].CoreY:F4}) sleep {(n[0] ? 1 : 0)}{(n[1] ? 1 : 0)} gap {gap:F4} | base A({b[0].CoreX:F4},{b[0].CoreY:F4}) B({b[1].CoreX:F4},{b[1].CoreY:F4}) gap {bgap:F4}");
         }
         return 0;
