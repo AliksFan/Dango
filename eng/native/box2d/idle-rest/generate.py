@@ -28,7 +28,9 @@ def replace(old, new):
 
 
 replace('#include "dango_display_contact.h"\n',
-        '#include "dango_display_contact.h"\n#define DANGO_REST_SLEEP 1\n#include "dango_rest_sleep.h"\n')
+        '#include "dango_display_contact.h"\n#define DANGO_REST_SLEEP 1\n'
+        '// Single body: every rest frame is skipped, so pause without Box2D sleep.\n'
+        '#define DANGO_REST_FREEZE_ONLY 1\n#include "dango_rest_sleep.h"\n')
 replace('} collision_review;\n', '    dango_rest_state rest;\n} collision_review;\n')
 
 # Frame start: wake checks, then an exact no-op frame while the single body rests.

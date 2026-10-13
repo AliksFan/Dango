@@ -17,6 +17,10 @@ internal static class Program
                 return RestVerification.DiagnoseAfterWalk(Path.GetFullPath(args[0]), double.Parse(args[2]), double.Parse(args[3]),
                     double.Parse(args[4]), int.Parse(args[5]), int.Parse(args[6]));
             if (args.Length == 2 && args[1] == "--scan-stack") return RestVerification.ScanStack(Path.GetFullPath(args[0]));
+            if (args.Length == 6 && args[1] == "--diagnose-rest-replay")
+                return RestVerification.DiagnoseReplay(Path.GetFullPath(args[0]), double.Parse(args[2]), double.Parse(args[3]),
+                    double.Parse(args[4]), args[5]);
+            if (args.Length == 2 && args[1] == "--diagnose-rest-stack") return RestVerification.DiagnoseStack(Path.GetFullPath(args[0]));
             if (args.Length == 6 && args[1] == "--verify-rest")
                 return RestVerification.Run(Path.GetFullPath(args[0]), Path.GetFullPath(args[2]), Path.GetFullPath(args[3]),
                     Path.GetFullPath(args[4]), args[5]);

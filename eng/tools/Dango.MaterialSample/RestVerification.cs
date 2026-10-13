@@ -14,6 +14,7 @@ internal static class RestVerification
     private static readonly TimeSpan Step = MaterialSession.FixedStep;
     private const int RestDeadline = 720;      // frames from spawn (12 s)
     private const int RestHold = 3600;         // 60 s bit-identical
+    private const int RerestDeadline = 1800;   // 30 s after the last input (user-approved, design §7)
     private const double WakeJumpPixels = .5;
     private const double MultiTolerance = .05; // world units, about 5 px
 
@@ -32,7 +33,12 @@ internal static class RestVerification
             var report = new { passed = check.Failures.Count == 0, failures = check.Failures, results = check.Results };
             File.WriteAllText(output, JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
         }
-        void Case(string label, Action run) { Console.WriteLine("running " + label); run(); Save(); }
+        var only = Environment.GetEnvironmentVariable("DANGO_REST_ONLY");
+        void Case(string label, Action run)
+        {
+            if (!string.IsNullOrEmpty(only) && !label.Contains(only)) return;
+            Console.WriteLine("running " + label); run(); Save();
+        }
         foreach (var size in new[] { 80d, 100, 120 })
             foreach (var softness in new[] { 0d, 50, 100 })
                 foreach (var build in new[] { 0d, 50, 100 })
@@ -41,8 +47,7 @@ internal static class RestVerification
         Case("ball", () => Ball(check, restModule, baseModule));
         Case("push", () => Push(check, restModule, baseModule));
         Case("jump onto", () => JumpOnto(check, restModule, baseModule));
-        Case("drop beside", () => Stack(check, restModule, baseModule));
-        check.Results.Add(new { name = "stacked group rest", status = "unverified: a stable stack cannot be built with the current physics" });
+        Case("three-body stack", () => Stack(check, restModule, baseModule));
         Console.WriteLine($"rest verification: {check.Results.Count} cases, {check.Failures.Count} failures");
         foreach (var failure in check.Failures) Console.WriteLine("FAIL " + failure);
         return check.Failures.Count == 0 ? 0 : 1;
@@ -102,11 +107,14 @@ internal static class RestVerification
     private static void Single(Check check, string restLib, string baseLib, double size, double softness, double build)
     {
         var name = $"single {size}/{softness}/{build}";
+        var phase = "landing";
+        Sim? active = null;
         try
         {
             var config = new LandingBuildControls(size, softness, build).Configure(LandingBuildTable.SizeDampingPreview);
             var bodySize = config.RadialRestLength / DangoPhysicsDefaults.Current.RadialRestLength;
             using var rest = new Sim(restLib, config, 1, (0, 0));
+            active = rest;
             using var baseline = new Sim(baseLib, config, 1, (0, 0));
             int entry = -1, divergedBeforeRest = -1;
             for (var f = 0; f < RestDeadline && entry < 0; f++)
@@ -118,6 +126,7 @@ internal static class RestVerification
             check.Require(entry > 0, $"{name}: no rest within {RestDeadline} frames");
             check.Require(divergedBeforeRest < 0, $"{name}: awake trajectory differs from base at frame {divergedBeforeRest}");
             if (entry < 0) { check.Results.Add(new { name, entry }); return; }
+            phase = "rest hold";
             var frozen = rest.Last[0];
             var moved = 0;
             for (var f = 0; f < RestHold; f++)
@@ -129,28 +138,37 @@ internal static class RestVerification
             var baseDrift60 = VisibleChange(baseline.Last[0], frozen, bodySize);
 
             // Wake by zero-translation world change: physics resumes with no input.
+            phase = "translate wake";
             rest.World.TranslateHorizontal(0);
             var before = rest.Last[0]; double wakeJump = 0;
             for (var f = 0; f < 10; f++) { rest.Advance(); wakeJump = Math.Max(wakeJump, VisibleChange(rest.Last[0], before, bodySize)); }
             check.Require(wakeJump <= WakeJumpPixels, $"{name}: wake jump {wakeJump:F3} px");
+            phase = "after translate";
             var rerest1 = Settle(rest);
 
             // Autonomous wander from rest: ShortWanderController ramps ±0.35 over 0.2 s and
             // abandons a drive that covers under 2 px (80 px/unit) within 0.5 s.
+            phase = "wander";
             var wanderStart = rest.Last[0].CoreX;
             for (var f = 0; f < 30; f++)
                 rest.Advance((_, id) => new DangoPhysicsInput(id, Horizontal: .35 * Math.Min(1, (f + 1) / 60d / .2)));
             var wanderPixels = (rest.Last[0].CoreX - wanderStart) * 80;
-            check.Require(wanderPixels >= 2, $"{name}: wander-style input moved only {wanderPixels:F3} px in 0.5 s");
+            // 120/100/0 is a user-accepted known impact (design §7.4): record, do not gate.
+            if (!(size == 120 && softness == 100 && build == 0))
+                check.Require(wanderPixels >= 2, $"{name}: wander-style input moved only {wanderPixels:F3} px in 0.5 s");
+            phase = "after wander";
             var rerestWander = Settle(rest);
             check.Require(rerestWander > 0, $"{name}: no rest again after wander-style wake");
 
+            phase = "walk";
             var x0 = rest.Last[0].CoreX;
             for (var f = 0; f < 60; f++) rest.Advance((_, id) => new DangoPhysicsInput(id, Horizontal: 1));
             var walked = rest.Last[0].CoreX - x0;
             check.Require(walked > .05, $"{name}: horizontal wake moved only {walked:F4}");
+            phase = "after walk";
             var rerest2 = Settle(rest);
 
+            phase = "jump";
             var y0 = rest.Last[0].CoreY; double peak = y0;
             for (var f = 0; f < 45; f++)
             {
@@ -159,10 +177,12 @@ internal static class RestVerification
             }
             var jumpRise = peak - y0;
             check.Require(jumpRise > .1, $"{name}: jump wake rose only {jumpRise:F4}");
+            phase = "after jump";
             var rerest3 = Settle(rest);
 
             // The base build lifts the core only ~0.01 in 0.5 s with this drag, so require a
             // visible response rather than an absolute rise.
+            phase = "drag";
             var start = rest.Last[0]; double dragResponse = 0;
             for (var f = 0; f < 30; f++)
             {
@@ -170,13 +190,18 @@ internal static class RestVerification
                 dragResponse = Math.Max(dragResponse, VisibleChange(rest.Last[0], start, bodySize));
             }
             check.Require(dragResponse > 1, $"{name}: drag wake changed only {dragResponse:F3} px");
+            phase = "after drag";
             var rerest4 = Settle(rest);
             foreach (var (label, value) in new[] { ("translate", rerest1), ("walk", rerest2), ("jump", rerest3), ("drag", rerest4) })
                 check.Require(value > 0, $"{name}: no rest again after {label} wake");
             check.Results.Add(new { name, entry, moved, baseDrift60Px = baseDrift60, wakeJumpPx = wakeJump, wanderPixels, walked, dragResponsePx = dragResponse,
                 jumpRise, rerest = new[] { rerest1, rerest2, rerest3, rerest4 } });
         }
-        catch (Exception error) { check.Failures.Add($"{name}: {error.Message}"); }
+        catch (Exception error)
+        {
+            var resting = active is { } a && a.Previous.Length > 0 ? a.Resting(0).ToString() : "?";
+            check.Failures.Add($"{name}: {error.Message} (phase {phase}, previous frame resting {resting})");
+        }
     }
 
     // Diagnostic: after a walk, report per-0.5 s motion of the published frame.
@@ -217,22 +242,76 @@ internal static class RestVerification
     // Diagnostic: which spawn heights/offsets produce a stable two-body stack.
     internal static int ScanStack(string library)
     {
-        foreach (var y in new[] { 1.2, 1.4, 1.6, 2.0 })
-            foreach (var x in new[] { 0.0, .05, .15 })
+        foreach (var half in new[] { .6, .65, .7, .75, .8 })
+            foreach (var y in new[] { 1.4, 2.0 })
             {
                 try
                 {
-                    using var sim = new Sim(library, DangoPhysicsDefaults.Current, 2, (0, 0), (x, y));
-                    for (var f = 0; f < 600; f++) sim.Advance();
-                    var a = sim.Last[0]; var b = sim.Last[1];
-                    Console.WriteLine($"spawn ({x},{y}) -> A=({a.CoreX:F3},{a.CoreY:F3}) B=({b.CoreX:F3},{b.CoreY:F3}) stacked={b.CoreY > a.CoreY + .5}");
+                    using var sim = new Sim(library, DangoPhysicsDefaults.Current, 3, (-half, 0), (half, 0), (0, y));
+                    for (var f = 0; f < 900; f++) sim.Advance();
+                    var a = sim.Last[0]; var b = sim.Last[1]; var c = sim.Last[2];
+                    Console.WriteLine($"half {half} top y {y} -> A=({a.CoreX:F3},{a.CoreY:F3}) B=({b.CoreX:F3},{b.CoreY:F3}) C=({c.CoreX:F3},{c.CoreY:F3}) stacked={c.CoreY > Math.Max(a.CoreY, b.CoreY) + .4}");
                 }
-                catch (Exception e) { Console.WriteLine($"spawn ({x},{y}) error {e.Message}"); }
+                catch (Exception e) { Console.WriteLine($"half {half} y {y} error {e.Message}"); }
             }
         return 0;
     }
 
-    private static int Settle(Sim sim, int limit = RestDeadline)
+    // Diagnostic: replay the Single timeline. waits = "auto" settles with rest detection and
+    // prints the waits; otherwise "entry,afterTranslate,afterWander" replays fixed idle counts.
+    internal static int DiagnoseReplay(string library, double size, double softness, double build, string waits)
+    {
+        var config = new LandingBuildControls(size, softness, build).Configure(LandingBuildTable.SizeDampingPreview);
+        using var sim = new Sim(library, config, 1, (0, 0));
+        var fixedWaits = waits == "auto" ? null : waits.Split(',').Select(int.Parse).ToArray();
+        int Wait(int index, int limit)
+        {
+            if (fixedWaits is not null) { for (var f = 0; f < fixedWaits[index]; f++) sim.Advance(); return fixedWaits[index]; }
+            var w = Settle(sim, limit); return w;
+        }
+        try
+        {
+            var entry = Wait(0, RestDeadline);
+            for (var f = 0; f < RestHold; f++) sim.Advance();
+            sim.World.TranslateHorizontal(0);
+            for (var f = 0; f < 10; f++) sim.Advance();
+            var w1 = Wait(1, RerestDeadline);
+            for (var f = 0; f < 30; f++)
+                sim.Advance((_, id) => new DangoPhysicsInput(id, Horizontal: .35 * Math.Min(1, (f + 1) / 60d / .2)));
+            var w2 = Wait(2, RerestDeadline);
+            for (var f = 0; f < 60; f++) sim.Advance((_, id) => new DangoPhysicsInput(id, Horizontal: 1));
+            Console.WriteLine($"waits {entry},{w1},{w2}; walk ended at frame {sim.Frame}");
+            for (var f = 0; f < RerestDeadline; f++) sim.Advance();
+            Console.WriteLine($"no error through frame {sim.Frame}");
+        }
+        catch (Exception e) { Console.WriteLine($"error: {e.Message}"); }
+        return 0;
+    }
+
+    // Diagnostic: three-body stack after the top body walks; per-body motion per 0.5 s.
+    internal static int DiagnoseStack(string library)
+    {
+        using var sim = new Sim(library, DangoPhysicsDefaults.Current, 3, (-.7, 0), (.7, 0), (0, 2.0));
+        for (var f = 0; f < 1890; f++) sim.Advance((i, id) => i == 2 && f >= 1800 ? new DangoPhysicsInput(id, Horizontal: 1) : new DangoPhysicsInput(id));
+        var window = sim.Last;
+        for (var f = 1; f <= 1800; f++)
+        {
+            sim.Advance();
+            if (f % 30 != 0) continue;
+            var line = $"t={f / 60.0,5:F1}s";
+            for (var i = 0; i < 3; i++)
+            {
+                var s = sim.Last[i]; var w = window[i]; double node = 0;
+                for (var k = 0; k < s.Contour.Count; k++) node = Math.Max(node, Math.Abs(s.Contour[k] + (k % 2 == 0 ? s.CoreX : s.CoreY) - w.Contour[k] - (k % 2 == 0 ? w.CoreX : w.CoreY)));
+                line += $" | {"ABC"[i]} move={node * Pixels,6:F3}px v={s.MaximumSpeed:F4} rest={(sim.Resting(i) ? 1 : 0)}";
+            }
+            Console.WriteLine(line);
+            window = sim.Last;
+        }
+        return 0;
+    }
+
+    private static int Settle(Sim sim, int limit = RerestDeadline)
     {
         for (var f = 1; f <= limit; f++) { sim.Advance(); if (sim.Resting(0)) return f; }
         return -1;
@@ -246,7 +325,7 @@ internal static class RestVerification
             var config = DangoPhysicsDefaults.Current;
             using var sim = new Sim(restLib, config, 1, (0, 1.2));
             sim.World.SetStaticPlatform(new DangoStaticPlatformDefinition(0, -.1, 3, .3));
-            var entry = Settle(sim, 900);
+            var entry = Settle(sim, RestDeadline);
             check.Require(entry > 0, $"{name}: no rest on the platform");
             var y0 = sim.Last[0].CoreY;
             sim.World.ClearStaticPlatform();
@@ -267,7 +346,7 @@ internal static class RestVerification
             double Impact(string library, out int entry, out bool wokeBeforeContact)
             {
                 using var sim = new Sim(library, config, 1, (0, 0));
-                entry = Settle(sim, 900);
+                entry = Settle(sim, RestDeadline);
                 var rested = sim.Last[0];
                 sim.World.AddRoundBall(new DangoRoundBallDefinition(rested.CoreX * 4 / 3, 3.2));
                 double lowest = rested.CoreY; wokeBeforeContact = false;
@@ -327,6 +406,9 @@ internal static class RestVerification
         catch (Exception error) { check.Failures.Add($"{name}: {error.Message}"); }
     }
 
+    private static bool AllRestIn(List<bool[]> r, int from, int to) =>
+        Enumerable.Range(from, Math.Min(to, r.Count) - from).Any(f => r[f].All(x => x));
+
     private static void Push(Check check, string restLib, string baseLib) =>
         Compare(check, "push resting body", restLib, baseLib, [(-1.0, 0), (1.1, 0)], 1200,
             (f, i, input) => i == 1 && f is >= 600 and < 780 ? input with { Horizontal = -1 } : input,
@@ -339,23 +421,32 @@ internal static class RestVerification
             });
 
     private static void JumpOnto(Check check, string restLib, string baseLib) =>
-        Compare(check, "jump onto resting body", restLib, baseLib, [(0.0, 0), (1.5, 0)], 1300,
+        Compare(check, "jump onto resting body", restLib, baseLib, [(0.0, 0), (1.5, 0)], 660 + RerestDeadline,
             (f, i, input) => i == 1 && f >= 600 && f < 660 ? input with { Horizontal = -1, JumpPressed = f == 600 } : input,
-            [599, 620, 660, 760, 1000, 1299], (c, s, r) =>
+            [599, 620, 660, 760, 1000, 659 + RerestDeadline], (c, s, r) =>
             {
                 c.Require(r[599][0] && r[599][1], "jump onto resting body: both should rest first");
                 c.Require(Enumerable.Range(601, 159).Any(f => !Same(s[f][0], s[f - 1][0])), "jump onto resting body: A never woke");
-                c.Require(r[1299][0] && r[1299][1], "jump onto resting body: bodies did not rest again");
+                c.Require(AllRestIn(r, 660, 660 + RerestDeadline), "jump onto resting body: bodies did not rest again within 30 s");
             });
 
-    // A body dropped onto another always slides off the round top in both builds, so a
-    // resting stack cannot be built; stacked rest stays unverified. This only compares a drop.
-    private static void Stack(Check check, string restLib, string baseLib) =>
-        Compare(check, "drop beside and walk away", restLib, baseLib, [(0.0, 0), (0.0, 2.0)], 2100,
-            (f, i, input) => i == 1 && f is >= 1200 and < 1320 ? input with { Horizontal = 1 } : input,
-            [300, 1199, 1230, 1320, 1600, 2099], (c, s, r) =>
+    // Two bodies side by side with a third resting on top (user-chosen stable stack).
+    private static void Stack(Check check, string restLib, string baseLib)
+    {
+        const int walk = 1800, end = walk + 90 + RerestDeadline;
+        Compare(check, "three-body stack", restLib, baseLib, [(-.7, 0), (.7, 0), (0.0, 2.0)], end,
+            (f, i, input) => i == 2 && f is >= walk and < walk + 90 ? input with { Horizontal = 1 } : input,
+            [600, walk - 1, walk + 2, walk + 90, walk + 600, end - 1], (c, s, r) =>
             {
-                c.Require(r[1199][0] && r[1199][1], "drop beside: both bodies should rest");
-                c.Require(r[2099][0] && r[2099][1], "drop beside: bodies did not rest again after walking away");
+                c.Require(s[walk - 1][2].CoreY > Math.Max(s[walk - 1][0].CoreY, s[walk - 1][1].CoreY) + .4, "stack: top body is not on the lower two");
+                c.Require(AllRestIn(r, 0, walk), "stack: the three bodies did not rest within 30 s");
+                c.Require(Enumerable.Range(1, walk - 1).All(f => r[f].All(x => x) || r[f].All(x => !x)),
+                    "stack: part of the stack rested while another member was awake");
+                c.Require(r[walk - 1].All(x => x), "stack: not resting when the top body starts walking");
+                c.Require(!Same(s[walk + 1][0], s[walk][0]) && !Same(s[walk + 1][1], s[walk][1]) ||
+                    !Same(s[walk + 2][0], s[walk + 1][0]) && !Same(s[walk + 2][1], s[walk + 1][1]),
+                    "stack: lower bodies did not wake with the top body");
+                c.Require(AllRestIn(r, walk + 90, end), "stack: bodies did not rest again within 30 s");
             });
+    }
 }

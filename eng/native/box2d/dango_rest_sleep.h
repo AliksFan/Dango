@@ -25,6 +25,10 @@
 #define DANGO_REST_MARGIN 0.15f       /* world; far above one substep of travel at maximum speed */
 #define DANGO_REST_POINTS 17
 
+// DANGO_REST_FREEZE_ONLY: for worlds where a rest frame is skipped entirely (one body,
+// nothing else moving), pause without touching Box2D sleep or velocities, so waking
+// resumes the exact paused state.
+
 typedef struct dango_rest_slot
 {
     bool resting;
@@ -74,7 +78,9 @@ static inline void dango_rest_wake(dango_rest_state* s, dango_self_soft_body* bo
     dango_rest_slot* slot = &s->slot[r];
     if (slot->resting)
     {
+#if !defined(DANGO_REST_FREEZE_ONLY)
         b2Body_SetAwake(body->core_body_id, true);
+#endif
         // Rest freezes the body clock; credit it so wake never delays a jump.
         body->seconds_since_jump += (float)slot->rest_seconds;
         ++s->wakes;
@@ -111,7 +117,11 @@ static inline void dango_rest_check_wake(dango_rest_state* s, dango_self_soft_bo
         if (!active[r] || !s->slot[r].resting) continue;
         const float* c = controls ? controls + 6 * r : NULL;
         bool input = c && (c[0] != 0 || c[1] != 0 || c[2] != 0 || c[3] != 0);
+#if defined(DANGO_REST_FREEZE_ONLY)
+        bool box2d_woke = false;
+#else
         bool box2d_woke = b2Body_IsAwake(bodies[r]->core_body_id);
+#endif
         if (s->wake_all || input || (near_obstacle && near_obstacle[r]) || box2d_woke) dango_rest_wake(s, bodies[r], r);
     }
     s->wake_all = false;
@@ -179,6 +189,7 @@ static inline void dango_rest_frame_end(dango_rest_state* s, dango_self_soft_bod
         for (int r = 0; r < capacity; ++r)
         {
             if (!active[r] || group[r] != g || s->slot[r].resting) continue;
+#if !defined(DANGO_REST_FREEZE_ONLY)
             for (int n = 0; n < DANGO_REST_POINTS; ++n)
             {
                 b2Body_SetLinearVelocity(dango_rest_point(bodies[r], n), (b2Vec2){0.0f, 0.0f});
@@ -188,6 +199,7 @@ static inline void dango_rest_frame_end(dango_rest_state* s, dango_self_soft_bod
             bool asleep = !b2Body_IsAwake(bodies[r]->core_body_id);
             for (int n = 0; asleep && n < 16; ++n) if (b2Body_IsAwake(bodies[r]->node_body_ids[n])) asleep = false;
             if (!asleep) { dango_rest_wake(s, bodies[r], r); continue; }
+#endif
             s->slot[r].resting = true; s->slot[r].rest_seconds = 0; ++s->entries;
         }
     }
