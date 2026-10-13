@@ -1,6 +1,4 @@
 using System.IO;
-using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using Dango.Desktop.Physics.Tuning;
 using Dango.Physics;
@@ -97,23 +95,14 @@ internal static class RestVerification
         // Native rest state after each frame (null when the module has no rest export). Read
         // directly so a rest that is woken before the next frame is still seen.
         internal List<bool[]>? NativeRest { get; }
-        private readonly RestStateDelegate? restState;
-        private readonly nint handle;
-
-        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        private delegate int RestStateDelegate(nint handle, int[] entityIds, int[] resting, int capacity, out int count);
+        private readonly NativeRestReader? restState;
 
         internal Sim(string library, DangoSelfPhysicsParameters config, int capacity, params (double X, double Y)[] spawns)
         {
             World = DangoPhysicsWorld.Create(library, capacity: capacity, configuration: config);
             foreach (var (x, y) in spawns) Ids.Add(World.Add(x, y));
-            // Test-only: the same loaded module; the world handle is not public API.
-            if (NativeLibrary.TryGetExport(NativeLibrary.Load(library), "dango_physics_world_get_rest_state", out var address))
-            {
-                restState = Marshal.GetDelegateForFunctionPointer<RestStateDelegate>(address);
-                handle = (nint)typeof(DangoPhysicsWorld).GetField("world", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(World)!;
-                NativeRest = [];
-            }
+            restState = NativeRestReader.TryCreate(library, World);
+            if (restState is not null) NativeRest = [];
         }
 
         internal DangoBodyState[] Advance(Func<int, DangoEntityId, DangoPhysicsInput>? input = null)
@@ -127,13 +116,7 @@ internal static class RestVerification
             // judged by motion, matching the native rest counter (design §7.6).
             Inputs.Add([.. inputs.Select(x => x.Horizontal != 0 || x.Downward != 0 || x.JumpPressed || x.DragActive)]);
             Mutations.Add(mutated); mutated = false;
-            if (restState is not null)
-            {
-                int[] ids = new int[World.Capacity], resting = new int[World.Capacity];
-                var error = restState(handle, ids, resting, World.Capacity, out var count);
-                if (error != 0) throw new InvalidOperationException($"rest state error {error} at frame {Frame}");
-                NativeRest!.Add([.. Ids.Select(id => resting[Array.IndexOf(ids, id.Value, 0, count)] != 0)]);
-            }
+            if (restState is not null) NativeRest!.Add(restState.Read(Ids));
             Frame++;
             return Last;
         }

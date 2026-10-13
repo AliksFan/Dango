@@ -13,6 +13,8 @@ internal static class Program
         {
             if (args.Length == 2 && args[1] == "--corners")
                 return new Application().Run(new CornerWindow(Path.GetFullPath(args[0])));
+            if (args.Length == 2 && args[1] == "--group")
+                return new Application().Run(new GroupWindow(Path.GetFullPath(args[0])));
             if (args.Length == 7 && args[1] == "--diagnose-rest-walk")
                 return RestVerification.DiagnoseAfterWalk(Path.GetFullPath(args[0]), double.Parse(args[2]), double.Parse(args[3]),
                     double.Parse(args[4]), int.Parse(args[5]), int.Parse(args[6]));
