@@ -1,4 +1,6 @@
 using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Dango.Desktop.Physics.Tuning;
 using Dango.Physics;
@@ -92,10 +94,26 @@ internal static class RestVerification
         // Frames whose step began right after a world mutation (a wake event, design §7.6).
         internal List<bool> Mutations { get; } = [];
         private bool mutated;
+        // Native rest state after each frame (null when the module has no rest export). Read
+        // directly so a rest that is woken before the next frame is still seen.
+        internal List<bool[]>? NativeRest { get; }
+        private readonly RestStateDelegate? restState;
+        private readonly nint handle;
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate int RestStateDelegate(nint handle, int[] entityIds, int[] resting, int capacity, out int count);
+
         internal Sim(string library, DangoSelfPhysicsParameters config, int capacity, params (double X, double Y)[] spawns)
         {
             World = DangoPhysicsWorld.Create(library, capacity: capacity, configuration: config);
             foreach (var (x, y) in spawns) Ids.Add(World.Add(x, y));
+            // Test-only: the same loaded module; the world handle is not public API.
+            if (NativeLibrary.TryGetExport(NativeLibrary.Load(library), "dango_physics_world_get_rest_state", out var address))
+            {
+                restState = Marshal.GetDelegateForFunctionPointer<RestStateDelegate>(address);
+                handle = (nint)typeof(DangoPhysicsWorld).GetField("world", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(World)!;
+                NativeRest = [];
+            }
         }
 
         internal DangoBodyState[] Advance(Func<int, DangoEntityId, DangoPhysicsInput>? input = null)
@@ -109,6 +127,13 @@ internal static class RestVerification
             // judged by motion, matching the native rest counter (design §7.6).
             Inputs.Add([.. inputs.Select(x => x.Horizontal != 0 || x.Downward != 0 || x.JumpPressed || x.DragActive)]);
             Mutations.Add(mutated); mutated = false;
+            if (restState is not null)
+            {
+                int[] ids = new int[World.Capacity], resting = new int[World.Capacity];
+                var error = restState(handle, ids, resting, World.Capacity, out var count);
+                if (error != 0) throw new InvalidOperationException($"rest state error {error} at frame {Frame}");
+                NativeRest!.Add([.. Ids.Select(id => resting[Array.IndexOf(ids, id.Value, 0, count)] != 0)]);
+            }
             Frame++;
             return Last;
         }
@@ -153,12 +178,20 @@ internal static class RestVerification
         return p.L - GroupReach <= q.R && q.L - GroupReach <= p.R && p.B - GroupReach <= q.T && q.B - GroupReach <= p.T;
     }
 
-    private static object Consistency(Check check, string name, List<DangoBodyState[]> h, List<bool[]> input, List<bool> mutation)
+    private static object Consistency(Check check, string name, List<DangoBodyState[]> h, List<bool[]> input, List<bool> mutation, List<bool[]>? native)
     {
-        int n = h[0].Length, falseRest = 0, missedRest = 0, splitGroup = 0, entries = 0;
-        var rest = h.Select((frame, f) => frame.Select((s, i) => f > 0 && Same(s, h[f - 1][i])).ToArray()).ToList();
-        var firstEntry = new int[n]; Array.Fill(firstEntry, -1);
+        int n = h[0].Length, falseRest = 0, missedRest = 0, splitGroup = 0, entries = 0, frozenMoved = 0;
         string? example = null;
+        // rest[f]: resting at the end of frame f-1, so frame f is a frozen copy. With the native state
+        // this is native[f-1]; without it, it is inferred from bit-identical frames.
+        var rest = h.Select((frame, f) => frame.Select((s, i) => f > 0 && (native is null ? Same(s, h[f - 1][i]) : native[f - 1][i])).ToArray()).ToList();
+        // A rest that holds into the next frame must publish that frame bit-identical.
+        if (native is not null)
+            for (var f = 1; f < h.Count; f++)
+                for (var i = 0; i < n; i++)
+                    if (native[f - 1][i] && native[f][i] && !Same(h[f][i], h[f - 1][i]))
+                    { frozenMoved++; example ??= $"body {i} resting but frame {f} changed"; }
+        var firstEntry = new int[n]; Array.Fill(firstEntry, -1);
         for (var f = 1; f < h.Count; f++)
             for (var i = 0; i < n; i++)
             {
@@ -194,8 +227,9 @@ internal static class RestVerification
                 { splitGroup++; example ??= $"bodies {i},{j} touching but rest differs at frame {f}"; }
         check.Require(falseRest == 0, $"{name}: rested while moving or under input {falseRest} times ({example})");
         check.Require(missedRest == 0, $"{name}: stayed awake while clearly still for {missedRest} frames ({example})");
+        check.Require(frozenMoved == 0, $"{name}: resting body changed on {frozenMoved} frames ({example})");
         check.Require(splitGroup == 0, $"{name}: touching bodies disagreed on rest for {splitGroup} frames ({example})");
-        return new { entries, firstEntryFrames = firstEntry, falseRest, missedRest, splitGroup };
+        return new { nativeState = native is not null, entries, firstEntryFrames = firstEntry, falseRest, missedRest, splitGroup, frozenMoved };
     }
 
     private static void Single(Check check, string restLib, string baseLib, double size, double softness, double build)
@@ -218,7 +252,7 @@ internal static class RestVerification
                 else if (divergedBeforeRest < 0 && !Same(rest.Last[0], baseline.Last[0])) divergedBeforeRest = rest.Frame;
             }
             check.Require(divergedBeforeRest < 0, $"{name}: awake trajectory differs from base at frame {divergedBeforeRest}");
-            if (entry < 0) { check.Results.Add(new { name, entry, rules = Consistency(check, name, rest.History, rest.Inputs, rest.Mutations) }); return; }
+            if (entry < 0) { check.Results.Add(new { name, entry, rules = Consistency(check, name, rest.History, rest.Inputs, rest.Mutations, rest.NativeRest) }); return; }
             phase = "rest hold";
             var frozen = rest.Last[0];
             var moved = 0;
@@ -284,7 +318,7 @@ internal static class RestVerification
             check.Require(dragResponse > 1, $"{name}: drag wake changed only {dragResponse:F3} px");
             phase = "after drag";
             var rerest4 = Settle(rest);
-            var rules = Consistency(check, name, rest.History, rest.Inputs, rest.Mutations);
+            var rules = Consistency(check, name, rest.History, rest.Inputs, rest.Mutations, rest.NativeRest);
             check.Results.Add(new { name, entry, moved, baseDrift60Px = baseDrift60, wakeJumpPx = wakeJump, wanderPixels, walked, dragResponsePx = dragResponse,
                 jumpRise, rerestFrames = new[] { rerest1, rerestWander, rerest2, rerest3, rerest4 }, rules });
         }
@@ -425,7 +459,7 @@ internal static class RestVerification
             var fell = y0 - sim.Last[0].CoreY;
             check.Require(fell > .2, $"{name}: body fell only {fell:F4} after removal");
             for (var f = 0; f < RerestDeadline; f++) sim.Advance();
-            check.Results.Add(new { name, entry, fell, rules = Consistency(check, name, sim.History, sim.Inputs, sim.Mutations) });
+            check.Results.Add(new { name, entry, fell, rules = Consistency(check, name, sim.History, sim.Inputs, sim.Mutations, sim.NativeRest) });
         }
         catch (Exception error) { check.Failures.Add($"{name}: {error.Message}"); }
     }
@@ -471,7 +505,7 @@ internal static class RestVerification
         try
         {
             var config = DangoPhysicsDefaults.Current;
-            (List<DangoBodyState[]> States, List<bool[]> Resting, List<bool[]> Inputs, List<bool> Mutations) Play(string library)
+            (List<DangoBodyState[]> States, List<bool[]> Resting, List<bool[]> Inputs, List<bool> Mutations, List<bool[]>? Native) Play(string library)
             {
                 using var sim = new Sim(library, config, spawns.Length, spawns);
                 var rest = new List<bool[]>();
@@ -480,7 +514,7 @@ internal static class RestVerification
                     sim.Advance((i, id) => script(f, i, new DangoPhysicsInput(id)));
                     rest.Add([.. Enumerable.Range(0, spawns.Length).Select(sim.Resting)]);
                 }
-                return (sim.History, rest, sim.Inputs, sim.Mutations);
+                return (sim.History, rest, sim.Inputs, sim.Mutations, sim.NativeRest);
             }
             var a = Play(restLib); var b = Play(baseLib);
             double worst = 0;
@@ -491,7 +525,7 @@ internal static class RestVerification
             check.Require(worst <= MultiTolerance, $"{name}: rest vs base core difference {worst:F4}");
             var restedFrames = a.Resting.Count(r => r.Any(x => x));
             extra?.Invoke(check, a.States, a.Resting);
-            var rules = Consistency(check, name, a.States, a.Inputs, a.Mutations);
+            var rules = Consistency(check, name, a.States, a.Inputs, a.Mutations, a.Native);
             check.Results.Add(new { name, worstCoreDifference = worst, framesWithRest = restedFrames, rules,
                 probes = probes.Select(p => new { frame = p, rest = a.States[p].Select(s => new[] { s.CoreX, s.CoreY }),
                     @base = b.States[p].Select(s => new[] { s.CoreX, s.CoreY }) }) });
