@@ -234,7 +234,8 @@ internal sealed class LocalRoomSceneDriver : IDisposable
         var x = (double)physical.Contour[node * 2];
         var y = (double)physical.Contour[node * 2 + 1];
         var length = Math.Sqrt(x * x + y * y);
-        var contraction = length > DangoPhysicsDefaults.Current.NodeRadius ? 1 - DangoPhysicsDefaults.Current.NodeRadius / length : 1;
+        var nodeRadius = runtime.NodeRadiusOf(physical.EntityId);
+        var contraction = length > nodeRadius ? 1 - nodeRadius / length : 1;
         // Native drag pulls the highest node toward the pointer; it does not retain the initial click offset.
         return new(x * contraction * 80, -y * contraction * 60);
     }

@@ -65,6 +65,9 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
         VerifyAccess();
         ArgumentNullException.ThrowIfNull(configuration);
         EffectiveAppearance = configuration;
+        // Before the first world exists the saved body is adopted directly; afterwards body
+        // physics changes only through TryApplyBody (explicit preview, cancel or default).
+        if (scene is null && InitializationState != SceneInitializationState.Ready) physicsBody = configuration.Body;
         BodyPreviewFill = AppearanceBrush(configuration.BodyColor);
         EyePreviewFill = AppearanceBrush(configuration.EyeColor);
         SynchronizeAppearance();
@@ -299,27 +302,10 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
         {
             if (requiresAttachments && attachments is null)
             {
-                CalibrationStepCount = 0;
-                PhysicsPresentationFrame baseline;
-                using (var calibration = new DesktopPhysicsScene(nativeLibraryPath, new(0, 0, 160, 120)))
-                {
-                    for (var i = 0; i < 240; i++)
-                    {
-                        var frame = calibration.Step(TimeSpan.FromSeconds(1d / 60));
-                        CalibrationStepCount++;
-                        if (!frame.Physics.Succeeded)
-                            throw new DangoPhysicsException(DangoPhysicsFailureKind.NativeFailure,
-                                "眼帽标定失败。", frame.Physics.ErrorCode);
-                    }
-                    baseline = calibration.LastFrame!.Bodies.Single().Presentation;
-                    var geometry = DangoStreamGeometryFactory.TryCreate(baseline.Contour, 160, 120);
-                    if (!geometry.Succeeded) throw new InvalidOperationException("中性身体轮廓不可用。");
-                    NeutralBodyVisibleWidth = geometry.Geometry!.Bounds.Width;
-                    NeutralBodyGroundOffset = calibration.GroundY -
-                        (calibration.LastFrame.Bodies.Single().Bounds.Y + geometry.Geometry.Bounds.Bottom);
-                }
+                var calibration = Calibrate(DangoBodyMaterial.Configure(physicsBody));
+                (NeutralBodyVisibleWidth, NeutralBodyGroundOffset) = (calibration.Width, calibration.GroundOffset);
                 // The calibration world has been released before the live world is created.
-                attachments = new(baseline);
+                attachments = new(calibration.Baseline);
                 attachments.SetPaused(!running);
                 SynchronizeAppearance();
             }
@@ -861,7 +847,7 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
     private void EnsureScene(LogicalRect bounds)
     {
         if (scene is not null) return;
-        scene = new DesktopPhysicsScene(nativeLibraryPath, bounds);
+        scene = new DesktopPhysicsScene(nativeLibraryPath, bounds, DangoBodyMaterial.Configure(physicsBody));
         if (previewJumpSpeedScale != 1) scene.SetPreviewJumpSpeedScale(previewJumpSpeedScale);
         if (unboundedHorizontalPreview) scene.SetUnboundedHorizontalPreview(true);
         colorSlots.Add(scene.SelectedEntity, 0);

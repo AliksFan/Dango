@@ -2,6 +2,7 @@ using Dango.Core.Animation;
 using Dango.Core.Coordinates;
 using Dango.Physics;
 using Dango.Physics.Configuration;
+using Dango.Desktop.Physics.Tuning;
 
 namespace Dango.Desktop.Physics.Presentation;
 
@@ -24,6 +25,8 @@ public sealed partial class DesktopPhysicsScene : IDisposable
     private readonly DangoPhysicsWorld world;
     private readonly Dictionary<DangoEntityId, DangoPhysicsPresentationAdapter> presenters = [];
     private readonly Dictionary<DangoEntityId, DangoFacingDirection> facing = [];
+    private readonly Dictionary<DangoEntityId, DangoSelfPhysicsParameters> configurations = [];
+    private readonly DangoSelfPhysicsParameters worldConfiguration;
     private readonly int ownerThreadId = Environment.CurrentManagedThreadId;
     private readonly double width;
     private readonly double height;
@@ -38,15 +41,21 @@ public sealed partial class DesktopPhysicsScene : IDisposable
     private double horizontalCoreOffset;
     private const double HorizontalRebaseThreshold = 4;
 
-    public DesktopPhysicsScene(string nativeLibraryPath, LogicalRect referenceBounds)
+    /// <summary>
+    /// Creates the world with the default body material; the first (local) Dango uses
+    /// <paramref name="selfConfiguration"/> when given. Other Dangos use the world default.
+    /// </summary>
+    public DesktopPhysicsScene(string nativeLibraryPath, LogicalRect referenceBounds,
+        DangoSelfPhysicsParameters? selfConfiguration = null)
     {
         width = referenceBounds.Width;
         height = referenceBounds.Height;
         origin = referenceBounds.Center;
-        world = DangoPhysicsWorld.Create(nativeLibraryPath);
+        worldConfiguration = DangoBodyMaterial.Configure(DangoBodyControls.Default);
+        world = DangoPhysicsWorld.Create(nativeLibraryPath, configuration: worldConfiguration);
         try
         {
-            SelectedEntity = Add(0, 0);
+            SelectedEntity = Add(0, 0, selfConfiguration ?? worldConfiguration);
         }
         catch
         {
@@ -150,15 +159,16 @@ public sealed partial class DesktopPhysicsScene : IDisposable
             throw new ArgumentOutOfRangeException(nameof(hostRight));
         safeCenter = default;
         if (LastFrame is not { Physics.Succeeded: true } frame) return false;
-        var defaults = DangoPhysicsDefaults.Current;
         var scale = width / 2;
-        if (hostRight - hostLeft < 2 * (defaults.RadialRestLength + defaults.NodeRadius) * scale) return false;
+        var self = configurations[SelectedEntity];
+        if (hostRight - hostLeft < 2 * (self.RadialRestLength + self.NodeRadius) * scale) return false;
         var selected = frame.Physics.Bodies.Single(body => body.EntityId == SelectedEntity);
         var minimum = double.PositiveInfinity;
         var maximum = double.NegativeInfinity;
         foreach (var body in frame.Physics.Bodies)
         {
             var relativeCoreX = (double)body.CoreX - selected.CoreX;
+            var nodeRadius = configurations[body.EntityId].NodeRadius;
             for (var n = 0; n < body.PointCount; n++)
             {
                 var x = (double)body.Contour[2 * n];
@@ -168,10 +178,10 @@ public sealed partial class DesktopPhysicsScene : IDisposable
                 // by node_radius when their native length exceeds .0001.
                 // Invert that expansion, then use circle X extents instead of
                 // treating the rendered radial contour as collision geometry.
-                var nodeX = length > defaults.NodeRadius
-                    ? x * (1 - defaults.NodeRadius / length) : x;
-                minimum = Math.Min(minimum, relativeCoreX + nodeX - defaults.NodeRadius);
-                maximum = Math.Max(maximum, relativeCoreX + nodeX + defaults.NodeRadius);
+                var nodeX = length > nodeRadius
+                    ? x * (1 - nodeRadius / length) : x;
+                minimum = Math.Min(minimum, relativeCoreX + nodeX - nodeRadius);
+                maximum = Math.Max(maximum, relativeCoreX + nodeX + nodeRadius);
             }
         }
         var minimumCenter = hostLeft - minimum * scale;
@@ -213,14 +223,26 @@ public sealed partial class DesktopPhysicsScene : IDisposable
         return true;
     }
 
-    public DangoEntityId Add(double x, double y)
+    public DangoEntityId Add(double x, double y) => Add(x, y, worldConfiguration);
+
+    public DangoEntityId Add(double x, double y, DangoSelfPhysicsParameters configuration)
     {
         VerifyAccess();
         EnsureHealthy();
-        var id = world.Add(x, y);
-        presenters.Add(id, new(DangoPhysicsDefaults.Current));
+        ArgumentNullException.ThrowIfNull(configuration);
+        // The configured export is required even for the default material, so an old module is refused.
+        var id = world.Add(x, y, configuration);
+        presenters.Add(id, new(configuration));
         facing.Add(id, DangoFacingDirection.Center);
+        configurations.Add(id, configuration);
         return id;
+    }
+
+    /// <summary>The physics configuration each Dango was added with.</summary>
+    public DangoSelfPhysicsParameters ConfigurationOf(DangoEntityId id)
+    {
+        VerifyEntity(id);
+        return configurations[id];
     }
 
     public bool Remove(DangoEntityId id)
@@ -231,6 +253,7 @@ public sealed partial class DesktopPhysicsScene : IDisposable
         world.Remove(id);
         presenters.Remove(id);
         facing.Remove(id);
+        configurations.Remove(id);
         if (SelectedEntity == id)
         {
             SelectedEntity = presenters.Keys.First();
@@ -392,6 +415,7 @@ public sealed partial class DesktopPhysicsScene : IDisposable
         world.Dispose();
         presenters.Clear();
         facing.Clear();
+        configurations.Clear();
         LastFrame = null;
     }
 

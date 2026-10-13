@@ -66,7 +66,8 @@ public sealed partial class StackedDangoSceneRuntime
         var x = (double)body.Contour[node * 2];
         var y = (double)body.Contour[node * 2 + 1];
         var length = Math.Sqrt(x * x + y * y);
-        var ratio = length > DangoPhysicsDefaults.Current.NodeRadius ? 1 - DangoPhysicsDefaults.Current.NodeRadius / length : 1;
+        var nodeRadius = scene.ConfigurationOf(body.EntityId).NodeRadius;
+        var ratio = length > nodeRadius ? 1 - nodeRadius / length : 1;
         gloveTargetNative = new(body.CoreX + x * ratio, body.CoreY + y * ratio);
         BeginPhysicalDrag(scene.SelectedEntity, scene.ToHost(gloveTargetNative));
         ordinaryFurnitureGlove = true;
