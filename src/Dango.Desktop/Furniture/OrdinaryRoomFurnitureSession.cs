@@ -34,6 +34,7 @@ internal sealed class OrdinaryRoomFurnitureSession : IDisposable
     private string? previewRejection;
 
     private readonly Func<bool> ownsActiveRoom;
+    private readonly bool editable;
     private readonly bool capability;
     private Dango.Core.Coordinates.LogicalPoint attachedOrigin;
     private double attachedGround;
@@ -41,20 +42,22 @@ internal sealed class OrdinaryRoomFurnitureSession : IDisposable
     internal bool IsAttached { get; private set; }
 
     internal OrdinaryRoomFurnitureSession(DesktopPhysicsScene scene, string dataRoot,
-        FurnitureLayoutStore? store = null, Func<bool>? ownsActiveRoom = null)
+        FurnitureLayoutStore? store = null, Func<bool>? ownsActiveRoom = null, string? layoutPath = null, bool editable = true)
     {
         this.scene = scene;
         this.store = store ?? new(contract: FurnitureLayoutContract.OrdinaryRoom);
         if (this.store.Contract != FurnitureLayoutContract.OrdinaryRoom)
             throw new ArgumentException("普通房必须使用专用家具存档合同。", nameof(store));
         this.ownsActiveRoom = ownsActiveRoom ?? (() => true);
-        path = FurnitureLayoutStore.GetLayoutPath(dataRoot, FurnitureLayoutContract.OrdinaryRoom);
+        this.editable = editable;
+        path = layoutPath ?? FurnitureLayoutStore.GetLayoutPath(dataRoot, FurnitureLayoutContract.OrdinaryRoom);
         var loaded = this.store.Load(path);
         Layout = PersistedLayout = loaded.Layout ?? FurnitureLayout.Empty;
         State = loaded.IsWritable ? OrdinaryFurnitureSceneState.Synced : OrdinaryFurnitureSceneState.Protected;
         if (!loaded.IsWritable) status = loaded.Warning ?? "原布局受保护，暂不能布置。";
         capability = scene.SupportsFurnitureCollection;
         if (!capability && loaded.IsWritable) status = "当前物理模块不支持家具编辑。";
+        if (!editable && loaded.IsWritable) status = "离线缓存布局只读，可单人游玩。";
     }
     internal FurnitureLayout Layout { get; private set; }
     internal FurnitureLayout PersistedLayout { get; private set; }
@@ -62,7 +65,7 @@ internal sealed class OrdinaryRoomFurnitureSession : IDisposable
     internal Guid? SelectedInstanceId { get; private set; }
     internal bool HasPreview => Preview is not null;
     internal bool Busy => completion is not null;
-    internal bool CanEdit => !disposed && IsAttached && capability && ownsActiveRoom() && !Busy && State == OrdinaryFurnitureSceneState.Synced;
+    internal bool CanEdit => !disposed && editable && IsAttached && capability && ownsActiveRoom() && !Busy && State == OrdinaryFurnitureSceneState.Synced;
     internal bool CanStep => !disposed && State != OrdinaryFurnitureSceneState.RuntimeUnknown;
     internal bool CanRecover => !disposed && IsAttached && capability && ownsActiveRoom() && !Busy && State is OrdinaryFurnitureSceneState.PersistedNotApplied or OrdinaryFurnitureSceneState.CommitUnknown;
     internal OrdinaryFurnitureSceneState State { get; private set; }
@@ -431,7 +434,7 @@ internal sealed class OrdinaryRoomFurnitureSession : IDisposable
                 var loaded = store.Load(path);
                 var bytes = loaded.CopyRawBytes();
                 if (loaded.State == FurnitureLayoutLoadState.Valid && bytes is not null &&
-                    bytes.AsSpan().SequenceEqual(FurnitureLayoutSerializer.Serialize(pendingLayout!, FurnitureLayoutContract.OrdinaryRoom)))
+                    bytes.AsSpan().SequenceEqual(FurnitureLayoutSerializer.Serialize(pendingLayout!, FurnitureLayoutContract.OrdinaryRoom, store.RoomId)))
                 { saved = true; PersistedLayout = pendingLayout!; recoveryOperation = pendingOperation; }
                 else if (!((loaded.State == FurnitureLayoutLoadState.Missing && baselineBytes is null) ||
                     (loaded.State == FurnitureLayoutLoadState.Valid && bytes is not null && baselineBytes is not null && bytes.AsSpan().SequenceEqual(baselineBytes))))
@@ -473,13 +476,13 @@ internal sealed class OrdinaryRoomFurnitureSession : IDisposable
                 if ((loaded.State == FurnitureLayoutLoadState.Missing && baselineBytes is null) ||
                     (loaded.State == FurnitureLayoutLoadState.Valid && bytes is not null && baselineBytes is not null && bytes.AsSpan().SequenceEqual(baselineBytes)))
                 { PersistedLayout = Layout; State = OrdinaryFurnitureSceneState.Synced; status = "已确认未保存，原布局保留。"; pendingLayout = null; recoveryOperation = null; return; }
-                if (pendingLayout is null || bytes is null || !bytes.AsSpan().SequenceEqual(FurnitureLayoutSerializer.Serialize(pendingLayout, FurnitureLayoutContract.OrdinaryRoom)))
+                if (pendingLayout is null || bytes is null || !bytes.AsSpan().SequenceEqual(FurnitureLayoutSerializer.Serialize(pendingLayout, FurnitureLayoutContract.OrdinaryRoom, store.RoomId)))
                 { status = "文件仍不可确认或已被外部修改，继续保护原件。"; return; }
                 PersistedLayout = pendingLayout;
                 State = OrdinaryFurnitureSceneState.PersistedNotApplied;
             }
             if (loaded.State != FurnitureLayoutLoadState.Valid || loaded.Layout != PersistedLayout ||
-                bytes is null || !bytes.AsSpan().SequenceEqual(FurnitureLayoutSerializer.Serialize(PersistedLayout, FurnitureLayoutContract.OrdinaryRoom)))
+                bytes is null || !bytes.AsSpan().SequenceEqual(FurnitureLayoutSerializer.Serialize(PersistedLayout, FurnitureLayoutContract.OrdinaryRoom, store.RoomId)))
             { State = OrdinaryFurnitureSceneState.CommitUnknown; status = "保存文件已变化，暂不能应用。"; return; }
             var prepared = Prepare(recoveryOperation!, PersistedLayout, old);
             if (!prepared.Probe.Allowed || prepared.Token is null)

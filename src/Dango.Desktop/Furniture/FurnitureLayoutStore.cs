@@ -63,7 +63,8 @@ public sealed class FurnitureLayoutStore
     public FurnitureLayoutContract Contract { get; }
     public Guid? RoomId { get; }
 
-    public FurnitureLayoutLoadResult Load(string path)
+    public FurnitureLayoutLoadResult Load(string path) => LoadCore(path, allowMissing: false);
+    internal FurnitureLayoutLoadResult LoadCore(string path, bool allowMissing)
     {
         path = NormalizePath(path);
         try
@@ -79,8 +80,10 @@ public sealed class FurnitureLayoutStore
             return new(FurnitureLayoutLoadState.Valid, layout, bytes);
         }
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
-        { return RoomId is null ? new(FurnitureLayoutLoadState.Missing, FurnitureLayout.Empty) :
-                new(FurnitureLayoutLoadState.Protected, null, warning: "房间布局缺失；目录和原件已保护。"); }
+        {
+            return RoomId is null || allowMissing ? new(FurnitureLayoutLoadState.Missing, FurnitureLayout.Empty) :
+                new(FurnitureLayoutLoadState.Protected, null, warning: "房间布局缺失；目录和原件已保护。");
+        }
         catch (Exception error) when (error is InvalidDataException or JsonException or ArgumentException or InvalidOperationException)
         { return new(FurnitureLayoutLoadState.Protected, null, warning: $"布局无法识别；原件已保护（{error.GetType().Name}）。"); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
@@ -172,10 +175,36 @@ public sealed class FurnitureLayoutLease : IDisposable
             var staged = store.Load(temporary);
             if (staged.State != FurnitureLayoutLoadState.Valid || !bytes.AsSpan().SequenceEqual(staged.Bytes) || staged.Layout != candidate)
                 throw new InvalidDataException("临时布局重读校验失败。");
+            if (store.RoomId is not null) PreserveRoomBaseline();
             pending = new(this, candidate, temporary, bytes);
             return pending;
         }
         catch { RemoveOwnTemporary(temporary); throw; }
+    }
+
+    private void PreserveRoomBaseline()
+    {
+        if (Baseline.State != FurnitureLayoutLoadState.Valid) return;
+        var path = Path + ".previous";
+        var previous = store.LoadCore(path, allowMissing: true);
+        if (!previous.IsWritable) throw new InvalidDataException("布局保护副本受保护，未覆盖原件。");
+        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        var atomic = new FurnitureAtomicFileWriter();
+        try
+        {
+            atomic.WriteStaged(temporary, Baseline.Bytes!);
+            var staged = store.Load(temporary);
+            if (staged.State != FurnitureLayoutLoadState.Valid || !Baseline.Bytes!.AsSpan().SequenceEqual(staged.Bytes))
+                throw new InvalidDataException("布局保护副本暂存校验失败。");
+            if (!SameSnapshot(store.LoadCore(path, allowMissing: true), previous))
+                throw new InvalidDataException("布局保护副本已变化，停止覆盖。");
+            try { atomic.Commit(temporary, path, previous.State == FurnitureLayoutLoadState.Valid); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+            var observed = store.Load(path);
+            if (observed.State != FurnitureLayoutLoadState.Valid || !Baseline.Bytes.AsSpan().SequenceEqual(observed.Bytes))
+                throw new InvalidDataException("布局保护副本结果待核对，原件未提交。");
+        }
+        finally { RemoveOwnTemporary(temporary); }
     }
 
     internal FurnitureCommitResult Commit(FurnitureLayoutStage stage, string temporary, byte[] candidateBytes)

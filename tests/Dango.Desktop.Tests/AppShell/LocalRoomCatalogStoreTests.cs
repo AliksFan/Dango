@@ -79,8 +79,8 @@ public sealed class LocalRoomCatalogStoreTests
     public void CatalogUnknownFormatDuplicateIdAndDuplicateJsonFieldAreProtected()
     {
         foreach (var corrupt in new Action<JsonObject>[] {
-            json => json["SchemaVersion"] = 999,
-            json => json["Rooms"]!.AsArray().Add(json["Rooms"]!.AsArray()[0]!.DeepClone()),
+            json => json["schemaVersion"] = 999,
+            json => json["rooms"]!.AsArray().Add(json["rooms"]!.AsArray()[0]!.DeepClone()),
             json => json["unexpected"] = true })
         {
             var root = NewRoot(); var store = new LocalRoomCatalogStore(root); store.Refresh();
@@ -130,10 +130,13 @@ public sealed class LocalRoomCatalogStoreTests
     public void CatalogUnknownResultBlocksMutationsUntilExplicitRecheck()
     {
         var root = NewRoot(); var writer = new FaultWriter(); var store = new LocalRoomCatalogStore(root, writer); store.Refresh();
+        var original = File.ReadAllBytes(Path.Combine(root, LocalRoomCatalogStore.CatalogPath));
         writer.CorruptCatalog = true;
         var result = Create(store); Assert.AreEqual(FurnitureCommitState.Unknown, result.State);
         writer.CorruptCatalog = false; Assert.IsFalse(Create(store).Success);
         Assert.AreEqual("unknown", File.ReadAllText(Path.Combine(root, LocalRoomCatalogStore.CatalogPath)));
+        CollectionAssert.AreEqual(original, File.ReadAllBytes(Path.Combine(root, LocalRoomCatalogStore.CatalogPath + ".previous")),
+            "The last known good directory must survive a corrupt/unknown replacement on disk.");
     }
     [TestMethod]
     public void CatalogLeaseSerializesWritersAndDissolvedRoomCannotAcquireLayoutWriteGuard()
@@ -167,6 +170,41 @@ public sealed class LocalRoomCatalogStoreTests
         Assert.IsFalse((evidence with { OpeningKnown = false, OnlyOwnerCanEnter = false }).CanEditOffline(6));
         Assert.IsTrue((evidence with { HasEverOpened = true }).CanEditOffline(1));
     }
+    [TestMethod]
+    public void MissingPreviouslyPublishedCatalogDoesNotResurrectDissolvedRooms()
+    {
+        var root = NewRoot(); var store = new LocalRoomCatalogStore(root); var id = store.Refresh().Catalog!.Rooms.Single().RoomId;
+        store.Dissolve(Guid.NewGuid(), id);
+        var originalPath = Path.Combine(root, LocalRoomCatalogStore.CatalogPath);
+        var preserved = originalPath + ".simulated-loss"; File.Move(originalPath, preserved);
+        var bytes = File.ReadAllBytes(preserved);
+        Assert.IsFalse(new LocalRoomCatalogStore(root).Refresh().Success);
+        Assert.IsFalse(File.Exists(originalPath)); CollectionAssert.AreEqual(bytes, File.ReadAllBytes(preserved));
+        Assert.IsTrue(File.Exists(store.LayoutPath(id)));
+    }
+    [TestMethod]
+    public void RelativePathEscapeAndCatalogDirectoryCannotInitializeData()
+    {
+        var root = NewRoot(); var files = new RoomFileStore(root);
+        Assert.ThrowsExactly<InvalidDataException>(() => files.PathFor("../outside.json"));
+        var path = Path.Combine(root, LocalRoomCatalogStore.CatalogPath); Directory.CreateDirectory(path);
+        Assert.IsFalse(new LocalRoomCatalogStore(root).Refresh().Success);
+        Assert.IsTrue(Directory.Exists(path));
+    }
+    [TestMethod]
+    public void IdentityBoundUnknownLayoutCommitRetainsLastGoodBytesInDurableProtectionCopy()
+    {
+        var catalog = new LocalRoomCatalogStore(NewRoot()); var id = catalog.Refresh().Catalog!.Rooms.Single().RoomId;
+        var path = catalog.LayoutPath(id); var original = File.ReadAllBytes(path);
+        var store = new FurnitureLayoutStore(new FaultWriter { CorruptLayout = true }, FurnitureLayoutContract.OrdinaryRoom, id,
+            () => catalog.AcquireLayoutGuard(id));
+        using (var lease = store.AcquireLease(path))
+        using (var stage = lease.Stage(new FurnitureLayout(1, Guid.NewGuid(), new(Guid.NewGuid(), new(1440, 120))), 0))
+            Assert.AreEqual(FurnitureCommitState.Unknown, stage.Commit().State);
+        CollectionAssert.AreEqual(original, File.ReadAllBytes(path + ".previous"));
+        Assert.AreEqual(FurnitureLayout.Empty, FurnitureLayoutSerializer.Deserialize(File.ReadAllBytes(path + ".previous"), FurnitureLayoutContract.OrdinaryRoom, id));
+        Assert.AreEqual(FurnitureLayoutLoadState.Protected, store.Load(path).State);
+    }
     private sealed class TestClock : TimeProvider
     {
         private DateTimeOffset now = new(2026, 10, 15, 0, 0, 0, TimeSpan.Zero);
@@ -180,7 +218,7 @@ public sealed class LocalRoomCatalogStoreTests
     private sealed class FaultWriter : IFurnitureFileWriter
     {
         private readonly FurnitureAtomicFileWriter atomic = new();
-        internal bool FailCatalog, CorruptCatalog, ThrowAfterReplace;
+        internal bool FailCatalog, CorruptCatalog, CorruptLayout, ThrowAfterReplace;
         public void WriteStaged(string path, byte[] bytes) => atomic.WriteStaged(path, bytes);
         public void Commit(string staged, string target, bool existed)
         {
@@ -188,6 +226,7 @@ public sealed class LocalRoomCatalogStoreTests
             if (catalog && FailCatalog) throw new IOException("injected before catalog replacement");
             atomic.Commit(staged, target, existed);
             if (catalog && CorruptCatalog) File.WriteAllText(target, "unknown");
+            if (Path.GetFileName(target) == "furniture-layout.json" && CorruptLayout) File.WriteAllText(target, "unknown");
             if (ThrowAfterReplace) throw new IOException("injected after replacement");
         }
     }

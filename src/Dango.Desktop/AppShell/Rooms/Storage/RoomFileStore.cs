@@ -16,7 +16,9 @@ internal static class RoomJson
 {
     private static readonly JsonSerializerOptions Options = new()
     {
-        WriteIndented = true, UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         RespectRequiredConstructorParameters = true,
         Converters = { new JsonStringEnumConverter(allowIntegerValues: false) },
     };
@@ -49,7 +51,7 @@ internal sealed class RoomFileStore
     private readonly IFurnitureFileWriter writer;
     internal RoomFileStore(string root, IFurnitureFileWriter? writer = null)
     {
-        Root = Path.GetFullPath(root);
+        Root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
         this.writer = writer ?? new FurnitureAtomicFileWriter();
     }
     internal string Root { get; }
@@ -109,7 +111,7 @@ internal sealed class RoomFileStore
         Guard(path);
         return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
     }
-    internal FurnitureCommitResult Write(string relative, RoomFileSnapshot baseline, byte[] candidate, Action<byte[]> validate)
+    internal FurnitureCommitResult Write(string relative, RoomFileSnapshot baseline, byte[] candidate, Action<byte[]> validate, bool preserveBaseline = true)
     {
         if (baseline.State == RoomFileState.Protected) return new(FurnitureCommitState.NotCommitted, "原件受保护，禁止覆盖。");
         var path = PathFor(relative);
@@ -125,6 +127,15 @@ internal sealed class RoomFileStore
             if (staged.State != RoomFileState.Present || !candidate.AsSpan().SequenceEqual(staged.Bytes))
                 return new(FurnitureCommitState.NotCommitted, "暂存校验失败；原件保留。");
             validate(staged.Bytes!);
+            if (preserveBaseline && baseline.State == RoomFileState.Present)
+            {
+                var previous = Read(relative + ".previous");
+                if (previous.State == RoomFileState.Protected) return new(FurnitureCommitState.NotCommitted, "保护副本不可读，未覆盖原件。");
+                if (previous.State == RoomFileState.Present) validate(previous.Bytes!);
+                var protectedCopy = Write(relative + ".previous", previous, baseline.Bytes!, validate, preserveBaseline: false);
+                if (protectedCopy.State != FurnitureCommitState.Committed)
+                    return new(FurnitureCommitState.NotCommitted, "保护副本未能确认，原件未提交。");
+            }
             if (!Same(Read(relative), baseline)) return new(FurnitureCommitState.Unknown, "存档已被外部修改或不可读，禁止继续覆盖。");
             try { writer.Commit(temporary, path, baseline.State == RoomFileState.Present); }
             catch (Exception error) when (IsStorageError(error)) { /* Always observe the target, even when replacement reported failure. */ }
@@ -146,5 +157,5 @@ internal sealed class RoomFileStore
     internal static bool Same(RoomFileSnapshot first, RoomFileSnapshot second) => first.State == second.State &&
         (first.State == RoomFileState.Missing || (first.State == RoomFileState.Present && first.Bytes!.AsSpan().SequenceEqual(second.Bytes)));
     internal static bool IsStorageError(Exception error) => error is IOException or InvalidDataException or UnauthorizedAccessException or
-        JsonException or ArgumentException or InvalidOperationException or NotSupportedException or OverflowException;
+        JsonException or ArgumentException or InvalidOperationException or NotSupportedException or OverflowException or System.Security.SecurityException;
 }

@@ -8,6 +8,7 @@ using Dango.Core.Furniture;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.AppShell.Rooms;
+using Dango.Desktop.AppShell.Rooms.Storage;
 using Dango.Desktop.Furniture;
 using Dango.Desktop.Rendering.Visuals;
 using Button = System.Windows.Controls.Button;
@@ -42,7 +43,9 @@ public sealed class FurnitureEditingEscapeTests
         var generation = furniture.WorldGeneration;
         var originalCamera = window.Scene.CaptureFurnitureCamera();
         var originalLayout = furniture.Layout;
-        var path = FurnitureLayoutStore.GetLayoutPath(root, FurnitureLayoutContract.OrdinaryRoom);
+        var catalog = new LocalRoomCatalogStore(root);
+        var path = catalog.LayoutPath(catalog.ReadCurrent().Rooms.Single().RoomId);
+        var originalBytes = File.ReadAllBytes(path);
         Assert.IsTrue(window.BeginFurnitureEditing(), furniture.Status);
         if (withPreview)
             furniture.PreviewNewFurniture(FurnitureItemKind.RoundBall, new(1440, 132));
@@ -59,7 +62,7 @@ public sealed class FurnitureEditingEscapeTests
         var target = Find<Button>(window, "RoomFurnitureBall");
         Assert.IsTrue(target.Focus(), "Exercise Esc while a warehouse entry owns keyboard focus.");
         var args = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(window)!, Environment.TickCount, Key.Escape)
-            { RoutedEvent = Keyboard.PreviewKeyDownEvent };
+        { RoutedEvent = Keyboard.PreviewKeyDownEvent };
         target.RaiseEvent(args);
         Assert.IsTrue(args.Handled);
         Assert.IsFalse(window.IsFurnitureEditing, "A fresh Esc must leave the editor, including its pending preview.");
@@ -67,7 +70,7 @@ public sealed class FurnitureEditingEscapeTests
         Assert.IsFalse(furniture.HasPreview);
         Assert.IsNull(furniture.SelectedInstanceId);
         Assert.AreEqual(originalLayout, furniture.Layout);
-        Assert.IsFalse(File.Exists(path), "Esc cannot commit an unconfirmed preview or write an empty layout.");
+        CollectionAssert.AreEqual(originalBytes, File.ReadAllBytes(path), "Esc cannot commit a preview or rewrite the initialized layout.");
         Assert.AreEqual(originalCamera, window.Scene.CaptureFurnitureCamera());
         Assert.AreEqual(generation, furniture.WorldGeneration);
         Assert.AreEqual(entity, runtime.EntityIds.Single());

@@ -14,6 +14,7 @@ internal sealed class LocalRoomCatalogStore
 {
     internal const string CatalogPath = "rooms/catalog.json";
     private const string ImportPath = "rooms/legacy-import.json";
+    private const string PublishedPath = "rooms/catalog-published.json";
     private readonly RoomFileStore files;
     private readonly TimeProvider clock;
     private readonly DateTimeOffset initialUtc;
@@ -44,10 +45,12 @@ internal sealed class LocalRoomCatalogStore
             if (read.Valid)
             {
                 uncertain = false;
-                var warning = LegacyChanged(read.Value!);
+                var warning = EnsurePublicationMarker(read.Value!) ?? LegacyChanged(read.Value!);
                 return new(read.Value, FurnitureCommitState.Committed, warning);
             }
             if (read.Snapshot.State != RoomFileState.Missing) return Failure(read.Snapshot.Warning);
+            if (files.Read(PublishedPath).State != RoomFileState.Missing)
+                return Failure("此前已建立的房间目录缺失；保留所有存档，请核对恢复，不重新初始化。");
             if (uncertain) return Failure("目录保存结果待核对；不能按首次使用重新初始化。");
             return Initialize(read.Snapshot);
         }
@@ -62,8 +65,11 @@ internal sealed class LocalRoomCatalogStore
         var old = files.Read(LegacyRoomImport.LegacyPath);
         if (old.State == RoomFileState.Protected) return Failure(old.Warning);
         FurnitureLayout layout;
-        try { layout = old.State == RoomFileState.Missing ? FurnitureLayout.Empty :
-                FurnitureLayoutSerializer.Deserialize(old.Bytes!, FurnitureLayoutContract.OrdinaryRoom); }
+        try
+        {
+            layout = old.State == RoomFileState.Missing ? FurnitureLayout.Empty :
+                FurnitureLayoutSerializer.Deserialize(old.Bytes!, FurnitureLayoutContract.OrdinaryRoom);
+        }
         catch (Exception error) when (RoomFileStore.IsStorageError(error)) { return Failure("旧布局无法识别；原件已保护。"); }
         var hash = old.Bytes is null ? null : Convert.ToHexString(SHA256.HashData(old.Bytes));
         var prepare = files.Read<LegacyRoomImport>(ImportPath, value => value.Validate());
@@ -165,14 +171,21 @@ internal sealed class LocalRoomCatalogStore
         if (read.State != RoomFileState.Present) throw new InvalidDataException("房间布局缺失或受保护。");
         return FurnitureLayoutSerializer.Deserialize(read.Bytes!, FurnitureLayoutContract.OrdinaryRoom, id);
     }
-    internal IDisposable AcquireLayoutGuard(Guid id)
+    internal LocalRoomCatalog ReadCurrent()
+    {
+        var read = ReadCatalog();
+        return read.Valid ? read.Value! : throw new InvalidDataException("房间目录受保护，不能继续写入。");
+    }
+    internal IDisposable AcquireLayoutGuard(Guid id) => AcquireRoomGuard(id, requireEditing: true);
+    internal IDisposable AcquireRoomGuard(Guid id, bool requireEditing = false)
     {
         if (uncertain) throw new InvalidOperationException("目录结果待核对，暂不可编辑。");
         var held = files.Acquire(CatalogPath);
         try
         {
             var read = ReadCatalog();
-            if (!read.Valid || read.Value!.Find(id) is not { CanEditOffline: true })
+            if (!read.Valid || read.Value!.Find(id) is not { Life: LocalRoomLife.Active } room ||
+                (requireEditing && !room.CanEditOffline))
                 throw new InvalidOperationException("房间已解散、资格未知或离线布局只读。");
             _ = files.PathFor(LayoutRelativePath(id));
             return held;
@@ -207,7 +220,7 @@ internal sealed class LocalRoomCatalogStore
         catalog.Validate();
         var result = files.Write(CatalogPath, baseline, RoomJson.Write(catalog), bytes => RoomJson.Read<LocalRoomCatalog>(bytes).Validate());
         if (result.State != FurnitureCommitState.Committed) return ObserveFailure(result);
-        return new(catalog, result.State, result.Warning);
+        return new(catalog, result.State, EnsurePublicationMarker(catalog) ?? result.Warning);
     }
     private RoomCatalogResult ObserveFailure(FurnitureCommitResult result)
     {
@@ -215,6 +228,14 @@ internal sealed class LocalRoomCatalogStore
         return new(null, result.State, result.Warning);
     }
     private RoomDocument<LocalRoomCatalog> ReadCatalog() => files.Read<LocalRoomCatalog>(CatalogPath, value => value.Validate());
+    private string? EnsurePublicationMarker(LocalRoomCatalog catalog)
+    {
+        var marker = files.Read(PublishedPath);
+        if (marker.State != RoomFileState.Missing) return null;
+        var bytes = RoomJson.Write(new { SchemaVersion = 1, catalog.ProfileId });
+        var result = files.Write(PublishedPath, marker, bytes, value => { using var parsed = System.Text.Json.JsonDocument.Parse(value); });
+        return result.State == FurnitureCommitState.Committed ? null : "目录已保存，目录保护记录尚未保存；请重新读取核对。";
+    }
     private string? LegacyChanged(LocalRoomCatalog catalog)
     {
         if (catalog.LegacyImport is not { } import) return null;

@@ -301,6 +301,7 @@ public partial class ProductHomeView
 
     private bool SetLiveDirectionalKey(Key key, bool down, bool repeat)
     {
+        if (IsRoomDialogOpen) { ClearLiveDirectionalInput(); return false; }
         if (liveScheduler?.OwnsRuntime != true) return false;
         if (!IsInPorch && !IsAccessoryPreview && key is (Key.A or Key.D)) return false;
         // W is reserved inside the accessory preview; it must not navigate or
@@ -341,6 +342,7 @@ public partial class ProductHomeView
 
     private void OnStageMouseDown(object sender, MouseButtonEventArgs e)
     {
+        if (IsRoomDialogOpen) return;
         if (!IsSettingsOpen && (ReferenceEquals(e.OriginalSource, Stage) || IsInPorch ||
             IsAccessoryPreview && e.OriginalSource is DependencyObject source && Presence.IsAncestorOf(source))) Stage.Focus();
     }

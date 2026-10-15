@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/eng/">
+    <Project Path="eng/tools/Dango.LocalRoomProbe/Dango.LocalRoomProbe.csproj" />
     <Project Path="eng/tools/Dango.MultiplayerSample/Dango.MultiplayerSample.csproj" />
     <Project Path="eng/tools/Dango.GaitSample/Dango.GaitSample.csproj" />
     <Project Path="eng/tools/Dango.SettingsRollbackProbe/Dango.SettingsRollbackProbe.csproj" />
@@ -13,6 +14,7 @@
     <Project Path="src/Dango.Desktop/Dango.Desktop.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Dango.LocalRooms.Tests/Dango.LocalRooms.Tests.csproj" />
     <Project Path="tests/Dango.Server.Tests/Dango.Server.Tests.csproj" />
     <Project Path="tests/Dango.Client.Sync.Tests/Dango.Client.Sync.Tests.csproj" />
     <Project Path="tests/Dango.Protocol.Tests/Dango.Protocol.Tests.csproj" />

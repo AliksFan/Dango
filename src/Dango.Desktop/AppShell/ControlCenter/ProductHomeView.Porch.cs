@@ -38,6 +38,7 @@ public partial class ProductHomeView
         PorchScene.LocalRoomRequested += () => LocalRoomRequested?.Invoke();
         PorchScene.LocalFurnitureRequested += () => LocalFurnitureRequested?.Invoke();
         PorchScene.DesktopPetRoomRequested += () => DesktopPetRoomRequested?.Invoke();
+        InitializeRoomCatalogUi();
     }
 
     private void ChangeLiveSurface()

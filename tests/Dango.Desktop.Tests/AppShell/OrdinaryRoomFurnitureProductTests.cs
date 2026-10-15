@@ -7,6 +7,7 @@ using Dango.Desktop.Accessories;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.AppShell.Rooms;
+using Dango.Desktop.AppShell.Rooms.Storage;
 using Dango.Desktop.Furniture;
 using Dango.Desktop.Rendering.Visuals;
 
@@ -113,9 +114,11 @@ public sealed class OrdinaryRoomFurnitureProductTests
         Assert.AreEqual(Dango.Physics.DangoFurnitureKind.StaticPlatform, furniture.NativeFrame.Items.Single().Definition.Kind);
         Assert.AreEqual(generation, furniture.WorldGeneration);
         Assert.IsTrue(furniture.SceneRevision > revision);
-        var path = FurnitureLayoutStore.GetLayoutPath(root, FurnitureLayoutContract.OrdinaryRoom);
+        var catalog = new LocalRoomCatalogStore(root);
+        var roomId = catalog.ReadCurrent().Rooms.Single().RoomId;
+        var path = catalog.LayoutPath(roomId);
         var bytes = File.ReadAllBytes(path);
-        Assert.AreEqual(new FurnitureAnchor(1440, 120), new FurnitureLayoutStore(contract: FurnitureLayoutContract.OrdinaryRoom).Load(path).Layout!.Platform!.Anchor);
+        Assert.AreEqual(new FurnitureAnchor(1440, 120), catalog.CreateLayoutStore(roomId).Load(path).Layout!.Platform!.Anchor);
         Assert.IsFalse(File.Exists(FurnitureLayoutStore.GetLayoutPath(root)), "Trial layout must remain separate.");
 
         var anchor = furniture.Layout.Platform!.Anchor;
@@ -198,8 +201,12 @@ public sealed class OrdinaryRoomFurnitureProductTests
         var furniture = runtime.Furniture!;
         var generation = furniture.WorldGeneration;
         var frame = runtime.LastPhysicsFrame;
-        var store = new FurnitureLayoutStore(contract: FurnitureLayoutContract.OrdinaryRoom);
-        var path = FurnitureLayoutStore.GetLayoutPath(root, store.Contract);
+        var catalog = new LocalRoomCatalogStore(root);
+        var roomId = catalog.ReadCurrent().Rooms.Single().RoomId;
+        // Hold the content lease directly: the editor must also acquire this exact room's lease.
+        var store = new FurnitureLayoutStore(contract: FurnitureLayoutContract.OrdinaryRoom, roomId: roomId);
+        var path = catalog.LayoutPath(roomId);
+        var original = File.ReadAllBytes(path);
         using (store.AcquireLease(path))
         {
             Assert.IsFalse(host.LocalWindow!.BeginFurnitureEditing(), "Another process lease must block admission before a preview is created.");
@@ -207,7 +214,7 @@ public sealed class OrdinaryRoomFurnitureProductTests
             Assert.IsFalse(furniture.HasPreview);
             Assert.AreSame(frame, runtime.LastPhysicsFrame);
             Assert.AreEqual(generation, furniture.WorldGeneration);
-            Assert.IsFalse(File.Exists(path));
+            CollectionAssert.AreEqual(original, File.ReadAllBytes(path));
         }
         Assert.IsTrue(host.LocalWindow!.BeginFurnitureEditing(), furniture.Status);
         host.ReturnToPorch(); Until(() => !host.LocalHandoffPending, 4500);
