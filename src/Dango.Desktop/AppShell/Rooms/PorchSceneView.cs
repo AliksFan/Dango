@@ -17,7 +17,7 @@ using Size = System.Windows.Size;
 namespace Dango.Desktop.AppShell.Rooms;
 
 /// <summary>Local world projection only. Preview doors never perform room admission.</summary>
-public sealed class PorchSceneView : Grid
+public sealed partial class PorchSceneView : Grid
 {
     internal const double WorldWidth = 2160;
     internal const double WorldHeight = 360;
@@ -35,7 +35,7 @@ public sealed class PorchSceneView : Grid
     private static readonly PreviewDoor[] LocalDoors = [.. OrdinaryDoors, .. DesktopPetDoors];
     private bool localRoomEnabled;
     private bool desktopPetRoomEnabled;
-    private PreviewDoor[] VisibleDoors => IsReviewMode ? ReviewDoors : localRoomEnabled && desktopPetRoomEnabled ? LocalDoors
+    private PreviewDoor[] VisibleDoors => IsReviewMode ? ReviewDoors : catalogProvided ? catalogDoors : localRoomEnabled && desktopPetRoomEnabled ? LocalDoors
         : localRoomEnabled ? OrdinaryDoors : desktopPetRoomEnabled ? DesktopPetDoors : [];
     private readonly PorchCameraController camera = new();
     private readonly Canvas liveLayer = new() { IsHitTestVisible = false };
@@ -54,6 +54,9 @@ public sealed class PorchSceneView : Grid
         liveLayer.Children.Add(body);
         liveLayer.Children.Add(hat);
         Children.Add(liveLayer);
+        Children.Add(catalogControls);
+        Children.Add(catalogActions);
+        Children.Add(catalogFeedback);
         SizeChanged += (_, _) => { camera.Resize(PetWorldX, ViewportWorldWidth); UpdateProjection(); InvalidateVisual(); };
         AutomationProperties.SetName(this, "二维门廊，尚未接入房间业务");
     }
@@ -107,6 +110,7 @@ public sealed class PorchSceneView : Grid
         selectedDoor = status = null;
         body.Visibility = hat.Visibility = Visibility.Collapsed;
         Dango.Desktop.Accessories.AccessoryHostBinding.Hide(body);
+        UpdateProjection();
         InvalidateVisual();
     }
 
@@ -133,11 +137,15 @@ public sealed class PorchSceneView : Grid
         InvalidateVisual();
     }
 
-    private void UpdateProjection() => liveLayer.RenderTransform = new MatrixTransform(
-        SceneScale, 0, 0, SceneScale, -CameraX * SceneScale, FrontGroundY - liveGroundY * SceneScale);
+    private void UpdateProjection()
+    {
+        liveLayer.RenderTransform = new MatrixTransform(SceneScale, 0, 0, SceneScale, -CameraX * SceneScale, FrontGroundY - liveGroundY * SceneScale);
+        UpdateCatalogControls();
+    }
 
     internal bool RequestNearbyFurniture()
     {
+        if (catalogProvided) return RequestCatalogFurniture();
         if (!localRoomEnabled || unavailable || NearbyDoorId != "local-single") return false;
         selectedDoor = "local-single";
         LocalFurnitureRequested?.Invoke();
@@ -152,9 +160,11 @@ public sealed class PorchSceneView : Grid
 
     private bool SelectPreviewDoor(PreviewDoor door)
     {
+        if (catalogInputBlocked) return false;
         if (Math.Abs(door.X - PetWorldX) > InteractionDistance)
         { status = "走近房门，再按 W"; InvalidateVisual(); return false; }
         selectedDoor = door.Id;
+        if (catalogProvided) return ActivateCatalogDoor(door);
         if (door.Id == "local-single")
         {
             status = "准备进入普通房 · 本地单人";
@@ -177,6 +187,7 @@ public sealed class PorchSceneView : Grid
 
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
+        if (catalogInputBlocked || e.Handled) return;
         GameplayFocusRequested?.Invoke();
         base.OnMouseLeftButtonDown(e);
         var pointer = e.GetPosition(this);
@@ -184,8 +195,15 @@ public sealed class PorchSceneView : Grid
             if (DoorRect(door).Contains(pointer)) { SelectPreviewDoor(door); e.Handled = true; break; }
     }
 
-    private Rect DoorRect(PreviewDoor door) => new((door.X - CameraX - 62) * SceneScale,
-        BackWallGroundY - 194 * SceneScale, 124 * SceneScale, 194 * SceneScale);
+    private Rect DoorRect(PreviewDoor door)
+    {
+        if (door.Id is "room-archive" or "room-retry")
+            return new((door.X - CameraX - 72) * SceneScale, BackWallGroundY - 178 * SceneScale, 144 * SceneScale, 80 * SceneScale);
+        var top = BackWallGroundY - 194 * SceneScale;
+        // Reserve the action row and the two captions above the door in short windows.
+        if (catalogProvided) top = Math.Max(top, 56 + 42 * SceneScale);
+        return new((door.X - CameraX - 62) * SceneScale, top, 124 * SceneScale, Math.Max(0, BackWallGroundY - top));
+    }
 
     protected override void OnRender(DrawingContext dc)
     {
@@ -207,6 +225,13 @@ public sealed class PorchSceneView : Grid
             {
                 var rect = DoorRect(door);
                 if (rect.Right < 0 || rect.Left > ActualWidth) continue;
+                if (door.Id is "room-archive" or "room-retry")
+                {
+                    dc.DrawRoundedRectangle(soft, new Pen(line, 1), rect, 5, 5);
+                    Text(dc, "↶ " + door.Name, new(rect.Left + rect.Width / 2, rect.Top + 16 * SceneScale), 13, ink, centered: true);
+                    Text(dc, "查看与恢复", new(rect.Left + rect.Width / 2, rect.Top + 43 * SceneScale), 11, muted, centered: true);
+                    continue;
+                }
                 var geometry = new StreamGeometry();
                 using (var g = geometry.Open())
                 {
@@ -227,9 +252,11 @@ public sealed class PorchSceneView : Grid
                     dc.DrawLine(new Pen(muted, 1), new Point(iconAt.X, iconAt.Y + 6), new Point(iconAt.X, iconAt.Y + 9));
                     dc.DrawLine(new Pen(muted, 1), new Point(iconAt.X - 4, iconAt.Y + 9), new Point(iconAt.X + 4, iconAt.Y + 9));
                 }
+                else if (door.Kind == "空门位") Text(dc, "+", iconAt, 22, muted, centered: true);
                 else dc.DrawRoundedRectangle(null, new Pen(muted, 1), new Rect(iconAt.X - 5, iconAt.Y - 4, 10, 14), 2, 2);
                 dc.DrawEllipse(accent, null, new Point(rect.Right - 22 * SceneScale, rect.Top + rect.Height * .66), 3 * SceneScale, 3 * SceneScale);
-                Text(dc, door.Name, new Point(rect.Left + rect.Width / 2, rect.Top - 42 * SceneScale), 14, ink, centered: true);
+                Text(dc, door.Name, new Point(rect.Left + rect.Width / 2, rect.Top - 42 * SceneScale), 14, ink, centered: true,
+                    maxWidth: Math.Max(80, rect.Width + 32));
                 Text(dc, door.Kind, new Point(rect.Left + rect.Width / 2, rect.Top - 21 * SceneScale), 11, muted, centered: true);
                 if (near) Text(dc, "W", new Point(rect.Left + rect.Width / 2, rect.Top + rect.Height * .58), 13, accent, centered: true);
             }
@@ -237,14 +264,17 @@ public sealed class PorchSceneView : Grid
                 dc.DrawEllipse(line, null, new Point((PetWorldX - CameraX) * SceneScale, FrontGroundY + 3 * SceneScale), 38 * SceneScale, 4 * SceneScale);
         }
         else Text(dc, "房间目录尚未接入", new Point(ActualWidth / 2, Math.Max(72, BackWallGroundY - 100)), 13, muted, centered: true);
-        Text(dc, status ?? "A / D 移动    S 轻压    空格跳跃    W 选门", new Point(ActualWidth / 2, ActualHeight - 22), 11, muted, centered: true);
+        if (catalogProvided) Text(dc, catalogHealthy ? $"普通房 {catalogRooms.Count}/3" : "普通房 · 目录待核对", new(ActualWidth - 92, 32), 12, muted, centered: true);
+        if (!catalogProvided || status is null)
+            Text(dc, status ?? "A / D 移动    S 轻压    空格跳跃    W 选门", new Point(ActualWidth / 2, ActualHeight - 22), 11, muted, centered: true);
     }
 
     private Brush ResourceBrush(string key, Brush fallback) => TryFindResource(key) as Brush ?? fallback;
-    private void Text(DrawingContext dc, string value, Point at, double size, Brush brush, bool centered = false)
+    private void Text(DrawingContext dc, string value, Point at, double size, Brush brush, bool centered = false, double? maxWidth = null)
     {
         var text = new FormattedText(value, CultureInfo.CurrentUICulture, System.Windows.FlowDirection.LeftToRight,
             new Typeface("Segoe UI, Microsoft YaHei"), size, brush, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+        if (maxWidth is { } limit) { text.MaxTextWidth = limit; text.MaxLineCount = 1; text.Trimming = TextTrimming.CharacterEllipsis; }
         dc.DrawText(text, centered ? new Point(at.X - text.Width / 2, at.Y) : at);
     }
 }

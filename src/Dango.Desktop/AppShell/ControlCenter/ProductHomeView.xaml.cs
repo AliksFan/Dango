@@ -297,14 +297,35 @@ public partial class ProductHomeView : UserControl
         if (!IsSettingsOpen) ShowSettingsPage();
     }
     private void OnNoticeClick(object sender, RoutedEventArgs e) => NoticeRequested?.Invoke();
+    private string? noticeText, noticeDetail;
+    private readonly Dictionary<Guid, string> roomCheckpointWarnings = [];
     public void SetNotice(string? text, string? detail)
     {
+        noticeText = text; noticeDetail = detail;
+        UpdateNotice();
+    }
+    internal void SetRoomCheckpointSaveStatus(Guid roomId, string? warning)
+    {
+        if (warning is null) roomCheckpointWarnings.Remove(roomId);
+        else roomCheckpointWarnings[roomId] = warning;
+        UpdateNotice();
+    }
+    private void UpdateNotice()
+    {
+        var checkpointDetail = roomCheckpointWarnings.Count == 0 ? null : string.Join("\n", roomCheckpointWarnings.Values);
+        var text = string.IsNullOrEmpty(noticeText) && checkpointDetail is not null ? "位置／视角未保存 · 查看" : noticeText;
         NoticeButton.Content = text;
-        NoticeButton.ToolTip = detail;
+        NoticeButton.ToolTip = checkpointDetail is null ? noticeDetail : string.Join("\n", new[] { noticeDetail, checkpointDetail }.Where(value => !string.IsNullOrEmpty(value)));
         NoticeButton.Visibility = string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
     }
     private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        if (IsRoomDialogOpen)
+        {
+            ClearLiveDirectionalInput();
+            if (e.Key == Key.Escape) { if (!e.IsRepeat) CloseRoomDialog(); e.Handled = true; }
+            return;
+        }
         if (IsAccessoryPreview && IsKeyboardFocusWithin && Keyboard.Modifiers == ModifierKeys.None && e.Key == Key.Escape)
         {
             if (!e.IsRepeat) CloseEditor();
@@ -314,6 +335,7 @@ public partial class ProductHomeView : UserControl
         if (!IsKeyboardFocusWithin || Keyboard.Modifiers != ModifierKeys.None ||
             Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.ComboBox or PasswordBox)
             return;
+        if (IsInPorch && PorchScene.IsCatalogEntryFocused && e.Key is (Key.A or Key.D or Key.S or Key.W or Key.E)) Stage.Focus();
         if (IsInPorch && IsAppearanceInputFocused())
             return;
         if (e.Key == Key.Escape)
@@ -365,6 +387,7 @@ public partial class ProductHomeView : UserControl
 
     private void OnPreviewKeyUp(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        if (IsRoomDialogOpen) { ClearLiveDirectionalInput(); return; }
         if (IsAccessoryPreview)
         {
             e.Handled = SetLiveDirectionalKey(e.Key, false, false);
@@ -720,7 +743,7 @@ public partial class ProductHomeView : UserControl
         Launchers.Visibility = IsEditing ? Visibility.Collapsed : Visibility.Visible;
         EnterRoomButton.Visibility = IsEditing ? Visibility.Collapsed : Visibility.Visible;
         EnterRoomButton.IsEnabled = !IsEditing && !IsInPorch;
-        Brand.Visibility = IsEditing ? Visibility.Collapsed : Visibility.Visible;
+        Brand.Visibility = IsEditing || IsInPorch ? Visibility.Collapsed : Visibility.Visible;
         FaceBrandIcon.Visibility = faceEditing ? Visibility.Visible : Visibility.Collapsed;
         AccessoryBrandIcon.Visibility = accessoryEditing ? Visibility.Visible : Visibility.Collapsed;
         if (BoundRuntime is null) PetShadow.Visibility = IsInPorch ? Visibility.Collapsed : Visibility.Visible;

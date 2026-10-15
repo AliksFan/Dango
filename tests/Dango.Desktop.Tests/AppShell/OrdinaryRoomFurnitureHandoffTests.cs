@@ -7,6 +7,7 @@ using Dango.Core.Furniture;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.AppShell.Rooms;
+using Dango.Desktop.AppShell.Rooms.Storage;
 using Dango.Desktop.Furniture;
 using Dango.Desktop.Physics.Presentation;
 using Dango.Desktop.Rendering.Visuals;
@@ -17,6 +18,92 @@ namespace Dango.Desktop.Tests.AppShell;
 [TestClass]
 public sealed class OrdinaryRoomFurnitureHandoffTests
 {
+    [STATestMethod]
+    [TestCategory("NativeIntegration")]
+    public void GroundedSupportWithoutFloorContactPreservesThePreviousGroundCheckpoint()
+    {
+        using var rig = new ProductRig(); rig.EnterRoom();
+        var driver = Field<LocalRoomSceneDriver>(rig.Host, "localRoomDriver");
+        typeof(LocalRoomSceneDriver).GetField("safeCheckpoint", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(driver, new RoomSafePosition(500, 0));
+        var original = rig.Scene.LastFrame!;
+        // The native adapter marks platform support grounded while floor contacts remain zero.
+        // Feed that adapter snapshot to the real checkpoint path without changing native state.
+        var supported = original.Physics.Bodies.Single() with { IsGrounded = true, GroundContactCount = 0 };
+        typeof(DesktopPhysicsScene).GetProperty(nameof(DesktopPhysicsScene.LastFrame))!
+            .SetValue(rig.Scene, original with { Physics = original.Physics with { Bodies = [supported] } });
+        try { Assert.AreEqual(500, driver.CaptureCheckpoint()!.Value.Position!.X); }
+        finally { typeof(DesktopPhysicsScene).GetProperty(nameof(DesktopPhysicsScene.LastFrame))!.SetValue(rig.Scene, original); }
+    }
+
+    [STATestMethod]
+    [TestCategory("NativeIntegration")]
+    public void DissolutionBeforeHealthyFrameConfirmationClearsThePendingRoom()
+    {
+        using var rig = new ProductRig();
+        var dissolved = false;
+        var window = rig.Host.LocalWindow!;
+        Action? dissolve = null;
+        dissolve = () =>
+        {
+            if (dissolved || !rig.Host.LocalHandoffPending || rig.Furniture.NativeFrame?.Items.Count != 1) return;
+            window.Scene.FrameApplied -= dissolve;
+            Assert.IsTrue(new LocalRoomCatalogStore(rig.Root).Dissolve(Guid.NewGuid(), rig.RoomId).Success);
+            dissolved = true;
+        };
+        window.Scene.FrameApplied += dissolve;
+        try
+        {
+            rig.Host.EnterCatalogRoom(rig.RoomId, false);
+            Until(() => dissolved && !rig.Host.LocalHandoffPending && rig.Home.OwnsLiveFrameDriver,
+                "A target dissolved after attach must return ownership to the porch.");
+            Pump(150);
+            Assert.AreEqual(LocalRoomPresentation.Porch, rig.Host.LocalPresentation);
+            Assert.IsFalse(window.IsVisible);
+            Assert.IsFalse(rig.Home.IsDangoAway);
+            Assert.HasCount(0, rig.Scene.ReadFurnitureCollectionFrame().Items);
+        }
+        finally { window.Scene.FrameApplied -= dissolve; }
+    }
+
+    [STATestMethod]
+    [TestCategory("NativeIntegration")]
+    public void UnknownCheckpointResultRemainsVisibleAfterReturningToPorch()
+    {
+        using var rig = new ProductRig();
+        typeof(DangoApplicationHost).GetField("roomResumeStore", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(rig.Host, new RoomResumeStore(rig.Catalog, new UnknownCommitWriter()));
+        rig.EnterRoom();
+        rig.Host.ReturnToPorch();
+        Until(() => !rig.Host.LocalHandoffPending && rig.Home.OwnsLiveFrameDriver, "Return must retain the porch.");
+        var notice = (System.Windows.Controls.Button)rig.Home.FindName("NoticeButton");
+        Until(() => Equals(notice.Content, "位置／视角未保存 · 查看"), "The failed source-room checkpoint must remain visible outside the hidden room window.");
+        rig.Home.SetNotice(null, null); // The normal home status refresh cannot erase a room failure.
+        Assert.AreEqual("位置／视角未保存 · 查看", notice.Content);
+        Assert.AreEqual(Visibility.Visible, notice.Visibility);
+        StringAssert.Contains((string)notice.ToolTip, "普通房");
+        Assert.IsFalse(new RoomResumeStore(rig.Catalog).Load(rig.RoomId).Valid);
+    }
+
+    [STATestMethod]
+    [TestCategory("NativeIntegration")]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void DissolvedTargetCannotEnterFromAnAlreadyPreparedCallback(bool furniture)
+    {
+        using var rig = new ProductRig();
+        rig.Host.EnterCatalogRoom(rig.RoomId, furniture);
+        // Keep this Dispatcher paused after IO prepares the target, before its callback binds it.
+        var preparation = Field<Task>(rig.Host, "roomPreparationTask");
+        Assert.IsTrue(preparation.Wait(TimeSpan.FromSeconds(10)), "Target preparation did not finish.");
+        Assert.IsTrue(new LocalRoomCatalogStore(rig.Root).Dissolve(Guid.NewGuid(), rig.RoomId).Success);
+        Until(() => !rig.Host.LocalHandoffPending, "The stale prepared callback must resolve.");
+        Assert.AreEqual(LocalRoomPresentation.Porch, rig.Host.LocalPresentation);
+        Assert.IsFalse(rig.Host.LocalWindow!.IsVisible);
+        Assert.IsFalse(rig.Home.IsDangoAway);
+        Assert.HasCount(0, rig.Scene.ReadFurnitureCollectionFrame().Items);
+    }
+
     [STATestMethod]
     [TestCategory("NativeIntegration")]
     [DataRow(false)]
@@ -137,7 +224,7 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
         using var rig = new ProductRig();
         rig.EnterRoom();
         var writer = new BlockingWriter();
-        rig.ReplaceCoordinator(new FurnitureLayoutStore(writer, FurnitureLayoutContract.OrdinaryRoom));
+        rig.ReplaceCoordinator(new FurnitureLayoutStore(writer, FurnitureLayoutContract.OrdinaryRoom, rig.RoomId, () => rig.Catalog.AcquireLayoutGuard(rig.RoomId)));
         var old = rig.Scene.ReadFurnitureCollectionFrame();
         var bytes = File.ReadAllBytes(rig.Path);
         var owner = rig.Runtime.FrameDriver;
@@ -194,7 +281,7 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
             window.FocusScene();
             var args = new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice,
                 PresentationSource.FromVisual(window)!, Environment.TickCount, System.Windows.Input.Key.Escape)
-                { RoutedEvent = System.Windows.Input.Keyboard.PreviewKeyDownEvent };
+            { RoutedEvent = System.Windows.Input.Keyboard.PreviewKeyDownEvent };
             window.Scene.RaiseEvent(args);
             Assert.IsTrue(args.Handled);
         }
@@ -249,7 +336,7 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
         rig.EnterRoom();
         var original = File.ReadAllBytes(rig.Path);
         var writer = new UnknownCommitWriter();
-        rig.ReplaceCoordinator(new FurnitureLayoutStore(writer, FurnitureLayoutContract.OrdinaryRoom));
+        rig.ReplaceCoordinator(new FurnitureLayoutStore(writer, FurnitureLayoutContract.OrdinaryRoom, rig.RoomId, () => rig.Catalog.AcquireLayoutGuard(rig.RoomId)));
         var old = rig.Scene.ReadFurnitureCollectionFrame();
         var owner = rig.Runtime.FrameDriver;
         rig.Furniture.PreviewPlatform(1600, 120);
@@ -291,6 +378,8 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
     {
         internal string Root { get; }
         internal string Path { get; }
+        internal LocalRoomCatalogStore Catalog { get; }
+        internal Guid RoomId { get; }
         internal DangoApplicationHost Host { get; }
         internal StackedDangoSceneRuntime Runtime { get; }
         internal ControlCenterWindow HomeWindow { get; }
@@ -301,10 +390,12 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
         internal ProductRig()
         {
             Root = System.IO.Path.Combine(TestRepository.Root, "artifacts", "furniture-room", "handoff-tests", Guid.NewGuid().ToString("N"));
-            Path = FurnitureLayoutStore.GetLayoutPath(Root, FurnitureLayoutContract.OrdinaryRoom);
-            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path)!);
+            var legacyPath = FurnitureLayoutStore.GetLayoutPath(Root, FurnitureLayoutContract.OrdinaryRoom);
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(legacyPath)!);
             var initial = new FurnitureLayout(1, Guid.NewGuid(), new(Guid.NewGuid(), FurnitureLayoutContract.OrdinaryRoom.DefaultAnchor));
-            File.WriteAllBytes(Path, FurnitureLayoutSerializer.Serialize(initial, FurnitureLayoutContract.OrdinaryRoom));
+            File.WriteAllBytes(legacyPath, FurnitureLayoutSerializer.Serialize(initial, FurnitureLayoutContract.OrdinaryRoom));
+            Catalog = new(Root); var imported = Catalog.Refresh(); Assert.IsTrue(imported.Success, imported.Warning);
+            RoomId = imported.Catalog!.Rooms.Single().RoomId; Path = Catalog.LayoutPath(RoomId);
             Host = new(settingsFile: System.IO.Path.Combine(Root, "settings.json"),
                 nativeLibraryPath: Environment.GetEnvironmentVariable("DANGO_ORDINARY_FURNITURE_TEST_MODULE") ??
                     throw new InvalidOperationException("Use the explicit isolated furniture candidate for these product handoff gates."),
@@ -330,7 +421,7 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
             Furniture.Dispose();
             var driver = Field<LocalRoomSceneDriver>(Host, "localRoomDriver");
             var replacement = new OrdinaryRoomFurnitureSession(Scene, Root, store,
-                ownsActiveRoom: () => driver.OwnsRuntime && Runtime.IsRunning && Runtime.LastError is null);
+                ownsActiveRoom: () => driver.OwnsRuntime && Runtime.IsRunning && Runtime.LastError is null, layoutPath: Path);
             typeof(StackedDangoSceneRuntime).GetProperty("Furniture", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(Runtime, replacement);
             Assert.IsTrue(Runtime.AttachOrdinaryFurniture(), replacement.Status);
         }

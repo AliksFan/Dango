@@ -36,8 +36,10 @@ internal sealed class LocalRoomWindow : Window
     private readonly ResourceDictionary? homeResources;
     private readonly Border furnitureLayer = new()
     {
-        Name = "RoomFurnitureLayer", Visibility = Visibility.Collapsed,
-        HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 52, 16, 16),
+        Name = "RoomFurnitureLayer",
+        Visibility = Visibility.Collapsed,
+        HorizontalAlignment = HorizontalAlignment.Right,
+        Margin = new Thickness(0, 52, 16, 16),
     };
     private OrdinaryRoomFurnitureEditorPanel? furnitureEditor;
     private OrdinaryRoomFurnitureTool furnitureTool;
@@ -50,7 +52,19 @@ internal sealed class LocalRoomWindow : Window
     private long nextFurniturePreview;
     private bool furniturePreviewCanConfirm;
     private RoomCameraSnapshot? previousFurnitureCamera;
+    internal RoomCameraSnapshot? ResumeCameraOverride => IsFurnitureEditing ? previousFurnitureCamera : null;
     private string? furnitureCommandError;
+    private readonly TextBlock resumeSaveStatus = new()
+    {
+        Visibility = Visibility.Collapsed,
+        Margin = new(16, 0, 16, 16),
+        VerticalAlignment = VerticalAlignment.Bottom,
+        HorizontalAlignment = HorizontalAlignment.Left,
+        TextWrapping = TextWrapping.Wrap,
+        IsHitTestVisible = false
+    };
+    internal void SetResumeSaveStatus(string? message)
+    { resumeSaveStatus.Text = message; resumeSaveStatus.Visibility = string.IsNullOrEmpty(message) ? Visibility.Collapsed : Visibility.Visible; }
     internal LocalRoomSceneView Scene { get; } = new();
     internal bool IsMenuOpen => menu.Visibility == Visibility.Visible;
     internal bool IsCameraPanActive => cameraPanActive;
@@ -93,6 +107,8 @@ internal sealed class LocalRoomWindow : Window
         menu.AddHandler(Mouse.PreviewMouseWheelEvent, new MouseWheelEventHandler((_, e) =>
         { Scene.ClearWheel(); if (!menu.IsCameraDropDownOpen) e.Handled = true; }), true);
         root.Children.Add(menu);
+        resumeSaveStatus.SetResourceReference(TextBlock.ForegroundProperty, "HomeInk");
+        root.Children.Add(resumeSaveStatus);
         Content = root;
         Scene.ViewChanged += RefreshLabel;
         Scene.SizeChanged += (_, _) => { RefreshFurnitureEditorOcclusion(); RefreshLabel(); };
@@ -590,9 +606,15 @@ internal sealed class LocalRoomWindow : Window
     {
         var button = new Button
         {
-            Name = name, Content = label, ToolTip = hint, Width = 36, Height = 30,
-            Margin = new Thickness(2, 3, 2, 3), Background = Brushes.Transparent,
-            BorderThickness = new Thickness(0), FontSize = 16,
+            Name = name,
+            Content = label,
+            ToolTip = hint,
+            Width = 36,
+            Height = 30,
+            Margin = new Thickness(2, 3, 2, 3),
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            FontSize = 16,
         };
         WindowChrome.SetIsHitTestVisibleInChrome(button, true);
         button.Click += (_, _) => { CancelFurnitureGesture(); driver.ClearInput(); ReleaseScenePointerCapture(); HideRequested?.Invoke(); };

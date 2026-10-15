@@ -9,6 +9,7 @@ using Dango.Desktop.DesktopHost.Interaction;
 using Dango.Desktop.Physics.Presentation;
 using Dango.Desktop.Rendering.Visuals;
 using Dango.Physics.Configuration;
+using Dango.Desktop.AppShell.Rooms.Storage;
 using Point = System.Windows.Point;
 
 namespace Dango.Desktop.AppShell.Rooms;
@@ -31,7 +32,10 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     private bool hasPositionSample;
     private LocalRoomSceneView? view;
     private DirectionalControlIntent intent;
-    private readonly bool furnitureEnabled;
+    private bool furnitureEnabled;
+    private RoomSafePosition? safeCheckpoint;
+    private RoomCameraSnapshot? pendingRoomCamera;
+    internal string? ResumeWarning { get; private set; }
     private bool furnitureGloveActive;
     internal OrdinaryRoomFurnitureSession? Furniture => runtime.Furniture;
     private bool alignmentPending;
@@ -55,6 +59,32 @@ internal sealed class LocalRoomSceneDriver : IDisposable
         $"SafeBounds={(view?.DesktopPetPresentationEnabled == true ? view.DesktopPetSafeWorldBounds : activeSurface)}; " +
         $"NativeBody={runtime.LastPhysicsFrame?.Bodies.FirstOrDefault()}; Cancel={lastPointerCancellation}";
     internal void ResetEntryPosition() => resumeX = LocalRoomSceneView.WorldWidth / 2;
+    internal void BindRoom(LocalRoomCatalogStore catalog, LocalRoomRecord room, RoomResumeDocument? resume)
+    {
+        if (OwnsRuntime) throw new InvalidOperationException("请先回到门廊再切换房间。");
+        var layout = catalog.ReadLayout(room.RoomId);
+        runtime.ConfigureOrdinaryRoom(catalog, room);
+        furnitureEnabled = true;
+        safeCheckpoint = resume?.Position is { SupportHeight: 0 } point && RoomResumeSafety.CanRestore(point, layout) ? point : null;
+        resumeX = safeCheckpoint?.X ?? LocalRoomSceneView.WorldWidth / 2;
+        ResumeWarning = resume?.Position is not null && safeCheckpoint is null ? "位置已回安全出生点，原落点无法安全恢复。" : null;
+        pendingRoomCamera = resume?.Camera ?? new(RoomCameraMode.Follow, RoomViewPreset.Standard, 100, 0, 0);
+    }
+    internal (RoomSafePosition? Position, RoomCameraSnapshot Camera, long LayoutVersion)? CaptureCheckpoint()
+    {
+        if (!IsReady || view is not { WindowCameraEnabled: true, DesktopPetPresentationEnabled: false, HasHealthyFrame: true } ||
+            Furniture is not { State: OrdinaryFurnitureSceneState.Synced, Busy: false } furniture || pointer.IsActive || furnitureGloveActive)
+            return null;
+        // The accepted handoff API relocates horizontally without injecting a vertical pose or velocity.
+        // Keep the last verified ground checkpoint while jumping or standing on a dynamic support.
+        if (runtime.LastPhysicsFrame?.Bodies.SingleOrDefault() is { IsGrounded: true, GroundContactCount: > 0 } &&
+            runtime.CurrentSelectedCenter is { } center)
+        {
+            var point = new RoomSafePosition(center.X, 0);
+            if (RoomResumeSafety.CanRestore(point, furniture.PersistedLayout)) safeCheckpoint = point;
+        }
+        return (safeCheckpoint, view.Camera.CaptureState(), furniture.PersistedLayout.LayoutVersion);
+    }
     internal LocalRoomSceneDriver(DesktopSceneSession session, StackedDangoSceneRuntime runtime,
         IHostFrameSource? frameSource = null, Func<long>? timestamp = null, long frequency = 0, string? furnitureDataRoot = null)
     {
@@ -328,6 +358,11 @@ internal sealed class LocalRoomSceneDriver : IDisposable
             view.SetFurnitureFrame(Furniture?.RenderItems ?? [], Furniture?.Preview, false);
         if (view is null || alignmentPending || !view.ApplyFrame(frame, runtime))
         { if (runtime.LastError is not null) ReportFailure("房间首帧不可用，请返回门廊重试。"); return; }
+        if (view.WindowCameraEnabled && !view.DesktopPetPresentationEnabled && pendingRoomCamera is { } camera)
+        {
+            view.Camera.RestoreRoomState(camera);
+            pendingRoomCamera = null;
+        }
         if (readySent || confirmation is not null) return;
         var attempt = generation;
         var target = view;

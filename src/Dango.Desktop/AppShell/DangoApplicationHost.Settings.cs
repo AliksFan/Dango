@@ -8,9 +8,10 @@ internal sealed partial class DangoApplicationHost
 {
     internal ProductSettingsSceneSnapshot ReadProductSettingsScene()
     {
-        var pending = roomHandoff.Pending;
+        var pending = LocalHandoffPending;
         var room = localRoomSelected;
-        var presentation = pending ? roomHandoff.Target : preferredRoomPresentation;
+        var presentation = roomHandoff.Pending ? roomHandoff.Target
+            : catalogEntryLoading ? LocalRoomPresentation.Window : preferredRoomPresentation;
         var name = room || pending ? presentation switch
         {
             LocalRoomPresentation.DesktopPet => "桌宠房 · 本地单人",

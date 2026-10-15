@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageReference Include="MSTest.TestAdapter" Version="4.3.3" />
+    <PackageReference Include="MSTest.TestFramework" Version="4.3.3" />
+    <ProjectReference Include="../../src/Dango.Desktop/Dango.Desktop.csproj" />
+    <Compile Include="../Dango.Desktop.Tests/AppShell/LocalRoomCatalogStoreTests.cs" Link="LocalRoomCatalogStoreTests.cs" />
+    <Compile Include="../Dango.Desktop.Tests/Furniture/FurnitureLayoutStore*.cs" Link="Furniture/%(Filename)%(Extension)" />
+    <Compile Include="../Dango.Desktop.Tests/TestRepository.cs" Link="TestRepository.cs" />
+    <Compile Include="../Dango.Desktop.Tests/AppShell/RoomViewControllerTests.cs" Link="Camera/RoomViewControllerTests.cs" />
+    <Compile Include="../Dango.Desktop.Tests/AppShell/RoomCameraVerticalFramingTests.cs" Link="Camera/RoomCameraVerticalFramingTests.cs" />
+    <Compile Include="../Dango.Desktop.Tests/Furniture/OrdinaryRoomFurnitureCollectionSessionTests.cs" Link="Native/OrdinaryRoomFurnitureCollectionSessionTests.cs" />
+    <Compile Include="../Dango.Desktop.Tests/AppShell/OrdinaryRoomFurnitureProductTests.cs" Link="Native/OrdinaryRoomFurnitureProductTests.cs" />
+    <Compile Include="../Dango.Desktop.Tests/AppShell/OrdinaryRoomFurnitureHandoffTests.cs" Link="Native/OrdinaryRoomFurnitureHandoffTests.cs" />
+    <Compile Include="../Dango.Desktop.Tests/AppShell/FurnitureEditingEscapeTests.cs" Link="Native/FurnitureEditingEscapeTests.cs" />
+    <Compile Include="../Dango.Desktop.Tests/AppShell/LocalRoomAppearanceIntegrationTests.cs" Link="LocalRoomAppearanceIntegrationTests.cs" />
+    <Compile Include="../Dango.Desktop.Tests/AppShell/OrdinaryRoomFurnitureRejectedEntryTests.cs" Link="Native/OrdinaryRoomFurnitureRejectedEntryTests.cs" />
+  </ItemGroup>
+</Project>

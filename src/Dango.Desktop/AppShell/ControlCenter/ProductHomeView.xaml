@@ -266,7 +266,7 @@
                         shell:WindowChrome.IsHitTestVisibleInChrome="True" />
             </StackPanel>
         </Grid>
-        <TextBlock x:Name="PorchBrand" Text="Dango" FontSize="18" Margin="22,8"
+        <TextBlock x:Name="PorchBrand" Text="门廊" FontSize="18" Margin="22,8"
                    VerticalAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False" />
         <Border x:Name="SettingsFeedbackBar" Grid.Row="1" Visibility="Collapsed" Margin="38,0,38,0" Padding="12,8"
                 Background="{DynamicResource HomeSoft}" BorderBrush="{DynamicResource HomeLine}" BorderThickness="1" CornerRadius="7">
@@ -541,11 +541,9 @@
                       AutomationProperties.Name="门廊，房间入口尚未接入">
                     <Grid.RenderTransform><TranslateTransform x:Name="PorchTranslation" X="46" /></Grid.RenderTransform>
                     <rooms:PorchSceneView x:Name="PorchScene" />
-                    <StackPanel HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12,4">
-                        <TextBlock Text="门廊" FontSize="16" />
-                        <TextBlock x:Name="PorchReviewNotice" Text="场景预览 · 未接房间业务" FontSize="10"
-                                   Foreground="{DynamicResource HomeMuted}" Visibility="Collapsed" Margin="0,4,0,0" />
-                    </StackPanel>
+                    <TextBlock x:Name="PorchReviewNotice" Text="场景预览 · 未接房间业务" FontSize="10"
+                               HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12,8"
+                               Foreground="{DynamicResource HomeMuted}" Visibility="Collapsed" />
                     <Button x:Name="BackFromPorchButton" Content="首页 ↗" HorizontalAlignment="Right" VerticalAlignment="Top" BorderBrush="Transparent"
                             Padding="8,4" MinHeight="30" Click="OnBackFromPorchClick" AutomationProperties.Name="返回我的团子" ToolTip="Esc · 返回首页" />
                 </Grid>

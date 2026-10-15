@@ -37,8 +37,9 @@ public sealed class LocalRoomAppearanceIntegrationTests
         host.ShowControlCenter();
         var home = Field<ControlCenterWindow>(host, "controlCenterWindow").ProductHome;
         var porch = E<PorchSceneView>(home, "PorchScene");
-        Assert.AreEqual(faceReview ? 0 : 2, porch.DoorCount,
-            "Room review exposes the ordinary room and the independent single-player desktop-pet room; face review exposes neither.");
+        Assert.AreEqual(faceReview ? 0 : 5, porch.DoorCount,
+            "Room review exposes three ordinary door slots, the desktop-pet door and recovery sign; face review exposes none.");
+        if (!faceReview) { WaitUntil(() => home.CatalogSnapshot is not null, 3000); Assert.AreEqual(1, home.CatalogSnapshot!.ActiveCount); }
         Assert.AreEqual(faceReview, host.LocalWindow is null);
         Assert.IsFalse(porch.CanEnterRoom, "Neither isolated review can fabricate formal admission.");
     }

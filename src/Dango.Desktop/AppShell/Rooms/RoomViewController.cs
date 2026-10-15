@@ -82,6 +82,14 @@ internal sealed class RoomViewController
     internal double ZoomPercent => Scale / StandardScale * 100;
     internal RoomCameraSnapshot CaptureState() => new(CameraMode, Preset, requestedPercent, CameraX, CameraY);
 
+    internal void RestoreRoomState(RoomCameraSnapshot snapshot)
+    {
+        RestoreState(snapshot);
+        // Follow modes derive their framing from this room's next healthy body publication.
+        hasPet = snapshot.Mode == RoomCameraMode.Manual;
+        ResetMotion();
+    }
+
     internal void RestoreState(RoomCameraSnapshot snapshot)
     {
         RequireFinite(snapshot.RequestedPercent, nameof(snapshot));

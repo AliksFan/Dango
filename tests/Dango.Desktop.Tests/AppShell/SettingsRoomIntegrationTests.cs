@@ -5,6 +5,7 @@ using System.Windows.Threading;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.AppShell.Rooms;
+using Dango.Desktop.AppShell.Rooms.Storage;
 using Dango.Desktop.Rendering.Visuals;
 
 namespace Dango.Desktop.Tests.AppShell;
@@ -12,6 +13,34 @@ namespace Dango.Desktop.Tests.AppShell;
 [TestClass]
 public sealed class SettingsRoomIntegrationTests
 {
+    [STATestMethod]
+    public void CatalogPreparationBlocksRecoveryAndDoesNotReportThePreviousTarget()
+    {
+        var root = Path.Combine(TestRepository.Root, "artifacts", "settings-refresh", "catalog-loading", Guid.NewGuid().ToString("N"));
+        using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"), nativeLibraryPath: Path.Combine(root, "missing.dll"));
+        host.ShowDiagnostics();
+        var gate = Field<LocalRoomHandoffGate>(host, "roomHandoff");
+        var attempt = gate.Begin(LocalRoomPresentation.DesktopPet);
+        Assert.IsTrue(gate.Fail(attempt));
+        var loading = typeof(DangoApplicationHost).GetField("catalogEntryLoading", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        loading.SetValue(host, true);
+        try
+        {
+            var window = Field<ControlCenterWindow>(host, "controlCenterWindow");
+            window.ShowDiagnostics();
+            var snapshot = host.ReadProductSettingsScene();
+            StringAssert.Contains(snapshot.Name, "普通房");
+            StringAssert.Contains(snapshot.Status, "切换");
+            Assert.IsFalse(snapshot.CanRestoreDisplay);
+            Assert.IsFalse(snapshot.CanReinitialize);
+            window.ConfirmSceneReinitialization = () => throw new AssertFailedException("目录准备期间不应请求重建确认。");
+            Click(window, "RestoreRoomDisplayButton");
+            Click(window, "ReinitializeSceneButton");
+            Assert.IsFalse(gate.Pending);
+        }
+        finally { loading.SetValue(host, false); }
+    }
+
     [STATestMethod]
     [TestCategory("NativeIntegration")]
     public void InteractionFaultAloneIsVisibleAndCanBeReinitialized()
@@ -62,9 +91,9 @@ public sealed class SettingsRoomIntegrationTests
         using var host = CreateHost();
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
         Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
-        host.ShowControlCenter(); Pump(350);
+        host.ShowControlCenter(); WaitForCatalog(host);
         if (desktopPet) host.EnterDesktopPetRoom(); else host.EnterLocalRoom();
-        Pump(desktopPet ? 900 : 450);
+        WaitForRoom(host, desktopPet);
         var id = runtime.EntityIds.Single();
         Assert.AreEqual(desktopPet ? LocalRoomPresentation.DesktopPet : LocalRoomPresentation.Window, host.LocalPresentation, host.LocalRoomFailure);
         host.HideLocalRoom();
@@ -78,7 +107,7 @@ public sealed class SettingsRoomIntegrationTests
         Click(window, "RestoreRoomDisplayButton");
         Assert.IsTrue(host.LocalHandoffPending);
         Assert.IsFalse(host.ReadProductSettingsScene().CanRestoreDisplay);
-        Pump(desktopPet ? 900 : 450);
+        WaitForRoom(host, desktopPet);
         Assert.AreEqual(desktopPet ? LocalRoomPresentation.DesktopPet : LocalRoomPresentation.Window, host.LocalPresentation, host.LocalRoomFailure);
         Assert.AreEqual(id, runtime.EntityIds.Single());
         Assert.IsTrue(desktopPet ? host.DesktopPetHost!.IsReady : host.LocalWindow!.Scene.HasHealthyFrame);
@@ -95,8 +124,8 @@ public sealed class SettingsRoomIntegrationTests
         using var host = CreateHost();
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
         Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
-        host.ShowControlCenter(); Pump(350);
-        host.EnterLocalRoom(); Pump(450);
+        host.ShowControlCenter(); WaitForCatalog(host);
+        host.EnterLocalRoom(); WaitForRoom(host);
         var id = runtime.EntityIds.Single();
         typeof(StackedDangoSceneRuntime).GetProperty(nameof(StackedDangoSceneRuntime.LastError))!.SetValue(runtime, "fictional settings room fault");
         Pump(150);
@@ -104,7 +133,7 @@ public sealed class SettingsRoomIntegrationTests
         var window = Field<ControlCenterWindow>(host, "controlCenterWindow");
         Assert.IsTrue(host.ReadProductSettingsScene().CanReinitialize);
         window.ConfirmSceneReinitialization = () => true;
-        Click(window, "ReinitializeSceneButton"); Pump(450);
+        Click(window, "ReinitializeSceneButton"); WaitForRoom(host);
         Assert.IsNull(runtime.LastError);
         Assert.IsNull(host.LocalRoomFailure);
         Assert.AreEqual(id, runtime.EntityIds.Single());
@@ -151,6 +180,62 @@ public sealed class SettingsRoomIntegrationTests
         Assert.IsFalse(host.LocalWindow!.IsVisible);
     }
 
+    [STATestMethod]
+    [TestCategory("NativeIntegration")]
+    public void SettingsRecoveryKeepsTheSecondCatalogRoomAndItsCheckpointIdentity()
+    {
+        using var host = CreateHost();
+        var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
+        Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
+        host.ShowControlCenter(); WaitForCatalog(host);
+        var store = Field<LocalRoomCatalogStore>(host, "roomCatalogStore");
+        var first = store.ReadCurrent().Rooms.First();
+        var firstLayout = File.ReadAllBytes(store.LayoutPath(first.RoomId));
+        var resumeStore = Field<RoomResumeStore>(host, "roomResumeStore");
+        var firstResume = resumeStore.Load(first.RoomId).Snapshot;
+        var secondId = Guid.NewGuid();
+        var created = store.Create(Guid.NewGuid(), secondId, "虚构设置验收房", LocalRoomKind.Private, 1);
+        Assert.IsTrue(created.Success, created.Warning);
+        var window = Field<ControlCenterWindow>(host, "controlCenterWindow");
+        var refresh = window.ProductHome.BindRoomCatalogAsync(store);
+        Until(() => refresh.IsCompleted, "目录刷新没有完成。"); refresh.GetAwaiter().GetResult();
+        host.EnterCatalogRoom(secondId, false); WaitForRoom(host);
+        var entity = runtime.EntityIds.Single();
+        typeof(StackedDangoSceneRuntime).GetProperty(nameof(StackedDangoSceneRuntime.LastError))!.SetValue(runtime, "fictional second room fault");
+        Until(() => host.LocalRoomFailure is not null, "运行故障没有被报告。");
+        host.ShowDiagnostics();
+        window.ConfirmSceneReinitialization = () => true;
+        Click(window, "ReinitializeSceneButton"); WaitForRoom(host);
+        Assert.AreEqual(secondId, Field<Guid?>(host, "selectedCatalogRoomId"));
+        Assert.AreEqual(entity, runtime.EntityIds.Single());
+        Assert.AreEqual(store.LayoutPath(secondId), Field<string>(runtime.Furniture!, "path"));
+        var driver = Field<LocalRoomSceneDriver>(host, "localRoomDriver");
+        Until(() => driver.CaptureCheckpoint() is not null, "恢复后没有安全地面检查点。");
+        var beforeVersion = resumeStore.Load(secondId).Value?.ResumeVersion ?? 0;
+        typeof(DangoApplicationHost).GetMethod("SaveRoomCheckpoint", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(host, [true]);
+        var saved = resumeStore.Load(secondId);
+        Assert.IsNotNull(saved.Value);
+        Assert.AreEqual(secondId, saved.Value.RoomId);
+        Assert.IsTrue(saved.Value.ResumeVersion > beforeVersion, "本次显式保存应真正推进第二房检查点版本。");
+        var afterFirstResume = resumeStore.Load(first.RoomId).Snapshot;
+        Assert.AreEqual(firstResume.State, afterFirstResume.State);
+        CollectionAssert.AreEqual(firstResume.Bytes ?? [], afterFirstResume.Bytes ?? []);
+        CollectionAssert.AreEqual(firstLayout, File.ReadAllBytes(store.LayoutPath(first.RoomId)));
+    }
+
+    private static void WaitForCatalog(DangoApplicationHost host) => Until(
+        () => Field<ControlCenterWindow>(host, "controlCenterWindow").ProductHome.CatalogSnapshot is not null,
+        "本地目录没有完成加载。");
+    private static void WaitForRoom(DangoApplicationHost host, bool desktopPet = false) => Until(
+        () => !host.LocalHandoffPending && host.LocalPresentation == (desktopPet ? LocalRoomPresentation.DesktopPet : LocalRoomPresentation.Window) &&
+            (desktopPet ? host.DesktopPetHost?.IsReady == true : host.LocalWindow?.Scene.HasHealthyFrame == true),
+        "目标房间没有完成健康首帧：" + host.LocalRoomFailure);
+    private static void Until(Func<bool> done, string message)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(8);
+        while (!done() && DateTime.UtcNow < deadline) Pump(25);
+        Assert.IsTrue(done(), message);
+    }
     private static DangoApplicationHost CreateHost() => new(settingsFile: Path.Combine(TestRepository.Root, "artifacts", "settings-refresh", "rooms", Guid.NewGuid().ToString("N"), "settings.json"), isolatedLocalRoomReview: true);
     private static T Field<T>(object instance, string name) => (T)instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(instance)!;
     private static void Click(ControlCenterWindow window, string name) => ((Button)window.ProductHome.FindName(name)).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

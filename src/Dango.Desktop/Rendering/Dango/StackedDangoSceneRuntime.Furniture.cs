@@ -3,12 +3,16 @@ using Dango.Core.Coordinates;
 using Dango.Core.Furniture;
 using Dango.Desktop.Furniture;
 using Dango.Physics.Configuration;
+using Dango.Desktop.AppShell.Rooms.Storage;
 
 namespace Dango.Desktop.Rendering.Visuals;
 
 public sealed partial class StackedDangoSceneRuntime
 {
     private string? ordinaryFurnitureDataRoot;
+    private LocalRoomCatalogStore? ordinaryRoomCatalog;
+    private Guid? ordinaryRoomId;
+    private bool ordinaryRoomEditable = true;
     private bool ordinaryFurnitureGlove;
     private LogicalPoint gloveTargetNative, gloveRequestedNative;
     internal OrdinaryRoomFurnitureSession? Furniture { get; private set; }
@@ -26,8 +30,22 @@ public sealed partial class StackedDangoSceneRuntime
     private void EnsureOrdinaryFurniture()
     {
         if (Furniture is not null || ordinaryFurnitureDataRoot is null || scene is null) return;
-        Furniture = new(scene, ordinaryFurnitureDataRoot, ownsActiveRoom: () =>
-            FrameDriver is not null && running && LastError is null && !unboundedHorizontalPreview && scene.Count == 1);
+        Furniture = new(scene, ordinaryFurnitureDataRoot,
+            store: ordinaryRoomId is { } id ? ordinaryRoomCatalog!.CreateLayoutStore(id) : null,
+            ownsActiveRoom: () => FrameDriver is not null && running && LastError is null && !unboundedHorizontalPreview && scene.Count == 1,
+            layoutPath: ordinaryRoomId is { } identity ? ordinaryRoomCatalog!.LayoutPath(identity) : null, editable: ordinaryRoomEditable);
+    }
+
+    internal void ConfigureOrdinaryRoom(LocalRoomCatalogStore catalog, LocalRoomRecord room)
+    {
+        VerifyAccess();
+        if (!TryDetachOrdinaryFurniture()) throw new InvalidOperationException("家具保存状态尚未核清，不能切换房间。");
+        if (Furniture is not null && ordinaryRoomId == room.RoomId && ordinaryRoomEditable == room.CanEditOffline &&
+            string.Equals(ordinaryFurnitureDataRoot, catalog.DataRoot, StringComparison.OrdinalIgnoreCase)) return;
+        Furniture?.Dispose(); Furniture = null;
+        ordinaryFurnitureDataRoot = catalog.DataRoot; ordinaryRoomCatalog = catalog;
+        ordinaryRoomId = room.RoomId; ordinaryRoomEditable = room.CanEditOffline;
+        EnsureOrdinaryFurniture();
     }
 
     internal bool AttachOrdinaryFurniture()
