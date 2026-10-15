@@ -3,7 +3,16 @@ using System.Runtime.InteropServices;
 namespace Dango.Physics;
 
 public enum DangoLabDrive { Core, Mass, HeightBias, PointHeight, DirectionRegion, DirectionPoint }
-public enum DangoLabGroundModel { DiscreteNodes = 0, ContinuousEnvelope = 1 }
+public enum DangoLabGroundModel { DiscreteNodes = 0, ContinuousEnvelope = 1, ElasticArcs = 2 }
+public sealed record DangoLabArcStats(float StretchEnergy, float BendingEnergy, float DampingPower,
+    float InternalForceX, float InternalForceY, float InternalTorque, float MinimumCurveSpeed,
+    int ActiveContacts, float MaximumPenetration, float NormalImpulse, float AbsoluteTangentImpulse,
+    float ContactKineticEnergyChange, float MaximumContactCorrection, float MaximumRadialCorrection,
+    float NaturalCircleRelativeError, bool Fault, float PositionRepairArcPotentialEnergyChange,
+    float ContactKineticEnergyBefore, float ContactKineticEnergyAfter, float RadialKineticEnergyChange,
+    float MaximumPreSolvePenetration, float MaximumContactBlockEnergyIncrease, float MaximumFrictionConeViolation);
+/// <summary>Schema 1 separates normal/friction KE. Schema 2 uses the normal KE pair
+/// for the atomic coupled contact block; its separate friction KE pair is zero.</summary>
 public sealed record DangoLabGroundStats(float FootX, float FootY, float Gap,
     float NormalImpulse, float AbsoluteTangentImpulse, float FrictionCoefficient,
     float SummedPositionCorrectionL2, float MaximumPositionCorrection, float ConstraintSweeps,
@@ -36,6 +45,24 @@ public sealed record DangoLabStats(DangoLabDrive Mode, float Bias, float Stretch
 
 public sealed partial class DangoPhysicsWorld
 {
+    public int LabRegionDenominator { get { VerifyAccess(); return api.GetLabRegionDenominator(); } }
+
+    public DangoLabArcStats? ReadLabArcStats(DangoEntityId id)
+    {
+        VerifyLabEntity(id);
+        if (api.GetLabArcVersion() == 0) return null;
+        if (api.GetLabArcVersion() != 1)
+            throw new DangoPhysicsException(DangoPhysicsFailureKind.AbiMismatch, "Unknown elastic arc experiment version.");
+        var call = api.GetLabArcStats() ?? throw new DangoPhysicsException(DangoPhysicsFailureKind.MissingExport,
+            "Elastic arc experiment statistics are missing.");
+        var v = new float[32];
+        var error = call(world, id.Value, v, v.Length);
+        if (error != 0) throw Map(error, "读取弹性弧段统计失败。");
+        CheckLabValues(v);
+        return new(v[0],v[1],v[2],v[3],v[4],v[5],v[6],(int)v[7],v[8],v[9],v[10],v[11],
+            v[12],v[13],v[14],v[15]!=0,v[16],v[17],v[18],v[19],v[23],v[24],v[25]);
+    }
+
     /// <summary>Optional lab capability. Legacy modules without the export use discrete node contacts.</summary>
     public DangoLabGroundModel LabGroundModel
     {
@@ -77,6 +104,8 @@ public sealed partial class DangoPhysicsWorld
         if (mode >= DangoLabDrive.DirectionRegion && api.GetLabRegionVersion() != 1)
             throw new DangoPhysicsException(DangoPhysicsFailureKind.AbiMismatch,
                 "当前实验 DLL 不支持方向区域施力；请加载独立 regions 实验模块。");
+        if (mode == DangoLabDrive.DirectionPoint && api.GetLabRegionDenominator() == 2)
+            throw new ArgumentOutOfRangeException(nameof(mode), "本轮仅支持半侧区域共同受力，单节点实验已取消。");
         var ids = inputs.Select(v => v.EntityId.Value).ToArray();
         var controls = inputs.SelectMany(v => new[] {
             (float)v.Horizontal, (float)v.Downward, v.JumpPressed ? 1f : 0f,
@@ -148,8 +177,9 @@ public sealed partial class DangoPhysicsWorld
         var error = call(world, id.Value, v, v.Length);
         if (error != 0) throw Map(error, "读取实验地面统计失败。");
         CheckLabValues(v);
-        if (v[31] != 1) throw new DangoPhysicsException(DangoPhysicsFailureKind.AbiMismatch,
-            $"Laboratory ground statistics schema must be 1; got {v[31]}.");
+        var expectedSchema = LabGroundModel == DangoLabGroundModel.ElasticArcs ? 2 : 1;
+        if (v[31] != expectedSchema) throw new DangoPhysicsException(DangoPhysicsFailureKind.AbiMismatch,
+            $"Laboratory ground statistics schema must be {expectedSchema}; got {v[31]}.");
         return new(v[0],v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8],v[9]!=0,(int)v[10],
             v[11],v[12],v[13],v[14],v[15],v[16],v[17],v[18],v[19],v[20],v[21],v[22],
             v[23],v[24],(int)v[25],v[26],(int)v[27],v[28],v[29],v[30]!=0,(int)v[31]);
@@ -170,6 +200,10 @@ public sealed partial class DangoPhysicsWorld
 
     private sealed partial class NativeApi
     {
+        internal int GetLabArcVersion() => GetOptional<GetIntegerDelegate>(library, "dango_physics_lab_arc_model")?.Invoke() ?? 0;
+        internal int GetLabRegionDenominator() => GetOptional<GetIntegerDelegate>(library, "dango_physics_lab_region_fraction")?.Invoke() ?? 3;
+        internal PlatformContactDelegate? GetLabArcStats() => GetOptional<PlatformContactDelegate>(library,
+            "dango_physics_world_get_lab_arc_stats");
         internal int GetLabRegionVersion() => GetOptional<GetIntegerDelegate>(library, "dango_physics_lab_region_version")?.Invoke() ?? 0;
         internal PlatformContactDelegate? GetLabRegionStats() => GetOptional<PlatformContactDelegate>(library,
             "dango_physics_world_get_lab_region_stats");

@@ -48,6 +48,9 @@ static void dango_envelope_impulse(dango_constraint_state* s,const b2Vec2* g,flo
     if(stats) { stats[15]+=momentum.x-(tangent ? j : 0); stats[16]+=momentum.y-(tangent ? 0 : j);
         stats[17]+=torque-(tangent ? -point.y*j : point.x*j); }
 }
+#if defined(DANGO_LAB_ARCS)
+#include "dango_arc_contact.h"
+#else
 static float dango_envelope_contact(dango_constraint_state* s,bool correct,dango_constraint_correction_mode mode)
 {
     dango_envelope_point p; if(!dango_envelope_geometry(s->positions,s->radius,&p)) return INFINITY;
@@ -76,4 +79,5 @@ static float dango_envelope_contact(dango_constraint_state* s,bool correct,dango
     }
     return penetration/s->radial_length;
 }
+#endif
 #endif

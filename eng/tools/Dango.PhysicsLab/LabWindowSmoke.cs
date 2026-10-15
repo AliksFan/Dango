@@ -13,6 +13,8 @@ internal static class LabWindowSmoke
     internal static async Task Run(LabWindow window, string session)
     {
         var checks = new List<string>();
+        var startedWithArcs = window.IsElasticArcs;
+        var startedWithSmoothing = window.DisplaySmoothingEnabled;
         try
         {
             await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle);
@@ -90,15 +92,18 @@ internal static class LabWindowSmoke
                 window.InjectKey(Key.D,true,window.ApplyButton); window.StepOnce();
                 Check(window.CurrentRegionStats is { ActualForceX: >0, HorizontalMask: >0 }, "方向区域模式产生右侧真实施力诊断");
                 window.InjectKey(Key.D,false,window.ApplyButton);
-                window.SelectDriveForSmoke(Dango.Physics.DangoLabDrive.DirectionPoint);
+                window.SelectDriveForSmoke(Dango.Physics.DangoLabDrive.DirectionRegion);
                 for (var i=0;i<300;i++) window.StepOnce();
                 window.InjectKey(Key.W,true,window.ApplyButton); window.StepOnce();
-                Check(window.CurrentRegionStats is { ActualForceY: >0 } selected && System.Numerics.BitOperations.PopCount((uint)selected.VerticalMask)==1,
-                    "最近单节点模式从上部向上施力");
+                Check(window.CurrentRegionStats is { ActualForceY: >0 } selected && System.Numerics.BitOperations.PopCount((uint)selected.VerticalMask)>1,
+                    "上半侧多个节点共同向上施力");
                 window.InjectKey(Key.W,false,window.ApplyButton);
                 window.SelectDriveForSmoke(Dango.Physics.DangoLabDrive.DirectionRegion);
             }
+            if (startedWithArcs) window.SelectArcsForSmoke();
+            window.SetDisplaySmoothing(startedWithSmoothing);
             window.ResetWorld(); for (var i = 0; i < 300; i++) window.StepOnce();
+            Check(!window.HasFault && (!startedWithArcs || window.IsElasticArcs), "最终观察模型恢复且物理健康");
             window.ShowControlsForSmoke();
             await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle);
             window.Paint(forceInformation: true); window.UpdateLayout();

@@ -40,4 +40,25 @@ DANGO_API int dango_physics_world_get_drive_review(void* handle,int entity_id,fl
    actual COM, reserved[2], schema=1. Last physical small step only. */
 DANGO_API int dango_physics_lab_region_version(void);
 DANGO_API int dango_physics_world_get_lab_region_stats(void* handle,int entity_id,float* stats,int capacity);
+/* Optional half-region modules: fraction()=2, mode 4 only, mode 5 rejected. */
+DANGO_API int dango_physics_lab_region_fraction(void);
+/* Optional elastic-arc module: ground_model()=2 and arc_model()=1.
+   Stats32: axial/bending energy, damping power, material net Fx/Fy/torque,
+   minimum |curve derivative|, active contact rows, peak pre-repair penetration,
+   accumulated normal/tangent impulse, contact kinetic-energy delta,
+   peak contact/radial position repair, natural relative circularity error,
+   fault; 16 material potential-energy repair delta,17/18 contact KE before/after,
+   19 radial KE delta,20 reserved,21 area energy,22 area,23 peak pre-repair
+   penetration,24 maximum atomic contact-block KE increase,25 maximum friction
+   cone violation,26 solver-failure stage,27/28 atomic failure kind/delta,
+   29..31 reserved. Slot 8 is final post-repair penetration. Slots 0..7,9/10,
+   14,21/22 describe the last small step; other maxima/sums span the fixed frame.
+   Ground schema 2: 3/4 sum each small step's final normal/absolute tangent
+   multipliers,5 actual mu,11/12 sum actual coupled-contact-block KE before/after,
+   13/14 zero (no independent friction energy step),15..17 impulse/moment errors.
+   Slot16 is the whole position-repair material-potential change, including
+   radial position repair. Energy is quadrature-based; it does not include Box2D radial
+   spring potential or externally imposed top pressure. */
+DANGO_API int dango_physics_lab_arc_model(void);
+DANGO_API int dango_physics_world_get_lab_arc_stats(void*,int,float*,int);
 #endif

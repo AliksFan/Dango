@@ -86,6 +86,9 @@ typedef struct dango_self_soft_body
 #if defined(DANGO_LAB_ENVELOPE)
     float envelope_stats[32];
 #endif
+#if defined(DANGO_LAB_ARCS)
+    float arc_stats[32];
+#endif
 } dango_self_soft_body;
 
 bool dango_self_config_valid(const dango_self_physics_config* config);

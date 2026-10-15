@@ -99,6 +99,7 @@ Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](d
 - [DIY 配饰第五轮材料与行程验证](docs/verification/2026-10-09-accessory-material-v5.md)：扩大柔软度及弱连接端点，新增可选翻折、图片形变上限和连接径向行程上限；失败反例、保存重载及候选验收状态分别记录。
 - [可复用团子物理模块](docs/phase-1-physics-module.md)：项目内 native/.NET 模块、固定配置、API、构建、显示适配与当前验收边界。
 - [显示平滑与方向区域实验](docs/verification/2026-10-15-display-region-lab.md)：独立物理实验室的显示滤波、方向外侧1/3共同施力／单节点对照；原始物理与显示指标分开，待人工观察，不作为产品采纳。
+- [弹性弧段外围实验](docs/verification/2026-10-15-elastic-arc-lab.md)：弧段参与真实弯曲与接地，半侧区域共同施力；安全合同通过，当前抖动未改善，保留观察。
 - [Phase 1 桌面生命感原型详细设计](docs/phase-1-desktop-life-prototype-design.md)：已批准的桌面宿主对比、场景与资产边界、性能门槛和分层验收。
 - [Phase 1 实施计划](docs/phase-1-implementation-plan.md)：已批准的 P0-000 环境准备、P0-001 工作区脚手架与 P1 系列顺序任务；P1-002A 在 P1-003 前实现控制中心和图形化验收入口。
 - [Dango 控制中心 UI 设计](docs/phase-1-control-center-ui-design.md)：已批准、完成实现并通过人工验收的正式控制中心、Phase 1 图形化验收入口和未来扩展边界。

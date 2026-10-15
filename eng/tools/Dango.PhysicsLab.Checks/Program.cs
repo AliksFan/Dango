@@ -2,6 +2,20 @@ using Dango.Physics;
 using Dango.PhysicsLab;
 using Dango.PhysicsLab.Checks;
 
+if (args.Length == 3 && args[0] == "--arc-contracts")
+{
+    try { LabArcExperiments.RunContracts(args[1], args[2]); }
+    catch(Exception error) { Console.Error.WriteLine(error); Environment.ExitCode=1; }
+    return;
+}
+
+if (args.Length == 5 && args[0] == "--arc-experiments")
+{
+    try { LabArcExperiments.Run(args[1], args[2], args[3], args[4]); }
+    catch(Exception error) { Console.Error.WriteLine(error); Environment.ExitCode=1; }
+    return;
+}
+
 if (args.Length == 4 && args[0] == "--region-experiments")
 {
     LabRegionExperiments.Run(args[1], args[2], args[3]);
@@ -160,6 +174,8 @@ if (args.Length > 0)
     Check(world.LabGroundModel == DangoLabGroundModel.DiscreteNodes && world.ReadLabGroundStats(id) is null,
         "old lab DLL lacks optional ground exports and explicitly remains discrete");
     Check(world.ReadLabRegionStats(id) is null, "old lab module has no directional region diagnostics");
+    Check(world.ReadLabArcStats(id) is null && world.LabRegionDenominator == 3,
+        "old lab module has no arc capability and is not mislabelled as half-region");
     var regionRejected = false;
     try { world.StepLab(1d/60,[new(id)],DangoLabDrive.DirectionRegion); }
     catch (DangoPhysicsException error) when (error.Kind == DangoPhysicsFailureKind.AbiMismatch) { regionRejected=true; }

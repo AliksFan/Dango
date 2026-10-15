@@ -688,6 +688,15 @@ static bool collision_material_idle_friction_override_enabled(void)
 }
 #endif
 
+#if defined(DANGO_LAB_ARCS)
+static float collision_arc_floor_gap(dango_self_soft_body* body,const dango_self_physics_config* cfg)
+{
+    b2Vec2 positions[17];positions[0]=b2Body_GetPosition(body->core_body_id);
+    for(int i=0;i<16;++i)positions[i+1]=b2Body_GetPosition(body->node_body_ids[i]);
+    float bounds[4];if(!dango_region_bounds(positions,cfg->node_radius,bounds))return INFINITY;
+    return bounds[1]-cfg->ground_height;
+}
+#endif
 static void collision_damp(collision_review* p,int r,float dt,const float* control)
 {
     if (p->disable_damping_for_test) return;
@@ -698,7 +707,9 @@ static void collision_damp(collision_review* p,int r,float dt,const float* contr
         positions[n]=b2Body_GetPosition(id); velocities[n]=b2Body_GetLinearVelocity(id); masses[n]=b2Body_GetMass(id);
         if (n<16 && positions[n].y-p->body_config[r].node_radius<=p->config.ground_height+.001f) ground=true;
     }
-#if defined(DANGO_LAB_ENVELOPE)
+#if defined(DANGO_LAB_ARCS)
+    ground=collision_arc_floor_gap(p->bodies[r],&p->body_config[r])<=.001f;
+#elif defined(DANGO_LAB_ENVELOPE)
     ground=p->bodies[r]->envelope_stats[2]<=.001f;
 #endif
     bool active=control[0]!=0 || control[1]!=0 || control[2]!=0 || control[3]!=0;
@@ -781,7 +792,13 @@ static int collision_local_floor_contacts(collision_review* p,dango_self_soft_bo
     }
 #if defined(DANGO_LAB_ENVELOPE)
     body->envelope_stats[27]=(float)count;
+#if defined(DANGO_LAB_ARCS)
+    float actual_gap=collision_arc_floor_gap(body,collision_body_config(p,body));
+    count=actual_gap<=DANGO_CONSTRAINT_TOLERANCE*body->radial_rest_length ? (int)body->arc_stats[7] : 0;
+    near_floor=actual_gap<=.035f;
+#else
     count=(int)body->envelope_stats[10];near_floor=body->envelope_stats[2]<=.035f;
+#endif
 #endif
     body->grounded=count>0 || near_floor;
     *grounded=body->grounded ? 1 : 0;
@@ -1440,7 +1457,22 @@ DANGO_API int dango_physics_world_step(void* handle,float dt,const int* ids,cons
 }
 #if defined(DANGO_PHYSICS_LAB)
 #if defined(DANGO_LAB_ENVELOPE)
-DANGO_API int dango_physics_lab_ground_model(void) { return 1; }
+DANGO_API int dango_physics_lab_ground_model(void) {
+#if defined(DANGO_LAB_ARCS)
+    return 2;
+#else
+    return 1;
+#endif
+}
+#if defined(DANGO_LAB_ARCS)
+DANGO_API int dango_physics_lab_arc_model(void) {return 1;}
+DANGO_API int dango_physics_world_get_lab_arc_stats(void* handle,int id,float* values,int capacity)
+{
+    collision_review* p=handle;if(!p || !values || capacity<32)return -410;
+    for(int i=0;i<p->capacity;++i)if(p->active[i] && p->entity_ids[i]==id){memcpy(values,p->bodies[i]->arc_stats,32*sizeof(float));return 0;}
+    return -412;
+}
+#endif
 #if defined(DANGO_LAB_ENVELOPE_CONTRACT_TESTS)
 DANGO_API int dango_physics_lab_test_collapse(void* handle)
 {
@@ -1470,6 +1502,9 @@ DANGO_API int dango_physics_world_get_lab_stats(void* handle,int id,float* value
 }
 #if defined(DANGO_LAB_REGIONS)
 DANGO_API int dango_physics_lab_region_version(void) { return 1; }
+#if defined(DANGO_LAB_HALF)
+DANGO_API int dango_physics_lab_region_fraction(void) {return 2;}
+#endif
 DANGO_API int dango_physics_world_get_lab_region_stats(void* handle,int id,float* values,int capacity)
 {
     collision_review* p=handle;if(!p || !values || capacity<16)return -410;
@@ -1487,7 +1522,9 @@ DANGO_API int dango_physics_world_step_lab(void* handle,float dt,const int* ids,
     if(!p || count!=p->count || (count && (!ids || !controls)) || !state_ids || !states ||
        capacity<p->count*42 || !out_count || !contacts || !error || !isfinite(dt) || dt<=0 || dt>.1f ||
        mode<0 || mode>
-#if defined(DANGO_LAB_REGIONS)
+#if defined(DANGO_LAB_HALF)
+       4
+#elif defined(DANGO_LAB_REGIONS)
        5
 #else
        3
@@ -1510,7 +1547,11 @@ DANGO_API int dango_physics_world_step_lab(void* handle,float dt,const int* ids,
         s->mode=mode; s->bias=bias; s->stretch=c[6]; s->active=c[7]; s->cancel=c[8];
     }
 #if defined(DANGO_LAB_ENVELOPE)
-    for(int i=0;i<count;++i) {memset(p->bodies[slots[i]]->envelope_stats,0,32*sizeof(float));p->bodies[slots[i]]->envelope_stats[19]=INFINITY;}
+    for(int i=0;i<count;++i) {memset(p->bodies[slots[i]]->envelope_stats,0,32*sizeof(float));p->bodies[slots[i]]->envelope_stats[19]=INFINITY;
+#if defined(DANGO_LAB_ARCS)
+        memset(p->bodies[slots[i]]->arc_stats,0,32*sizeof(float));
+#endif
+    }
 #endif
     p->lab_call=true;
     int result=collision_world_step_impl(handle,dt,ids,old,count,state_ids,states,capacity,out_count,contacts,error);

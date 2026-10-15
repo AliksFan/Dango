@@ -13,5 +13,6 @@
     <Compile Include="../Dango.PhysicsLab/LabDisplayMotionGate.cs" Link="LabDisplayMotionGate.cs" />
     <Compile Include="../Dango.PhysicsLab/LabDisplayGeometry.cs" Link="LabDisplayGeometry.cs" />
     <Compile Include="../Dango.PhysicsLab/LabRegionExperiments.cs" Link="LabRegionExperiments.cs" />
+    <Compile Include="../Dango.PhysicsLab/LabArcExperiments.cs" Link="LabArcExperiments.cs" />
   </ItemGroup>
 </Project>

@@ -2,6 +2,9 @@
 #include <math.h>
 #include <stdlib.h>
 #include "dango_self_constraints.h"
+#if defined(DANGO_LAB_ARCS)
+#include "dango_arc_math.h"
+#endif
 #if defined(DANGO_MATERIAL_EXPERIMENT_MODE)
 #include "dango_material_forces.h"
 #endif
@@ -2046,8 +2049,10 @@ static void dango_self_update_joint_parameters(
 #endif
         b2DistanceJoint_SetSpringHertz(body->radial_joint_ids[index], config->radial_hertz);
         b2DistanceJoint_SetSpringDampingRatio(body->radial_joint_ids[index], config->radial_damping);
+#if !defined(DANGO_LAB_ARCS)
         b2DistanceJoint_SetSpringHertz(body->perimeter_joint_ids[index], config->perimeter_hertz);
         b2DistanceJoint_SetSpringDampingRatio(body->perimeter_joint_ids[index], config->perimeter_damping);
+#endif
     }
 }
 
@@ -2502,6 +2507,22 @@ bool dango_self_limit_speed(dango_self_soft_body* body, float limit)
     return true;
 }
 
+#if defined(DANGO_LAB_ARCS)
+static double dango_arc_repair_energy(const b2Vec2* positions,const dango_self_physics_config* config)
+{
+    dango_arc_v p[17],v[17]={{0}},f[17],rest[17];double stats[7],ignored,target,energy,area;
+    for(int i=0;i<17;++i)p[i]=(dango_arc_v){positions[i].x,positions[i].y};
+    for(int i=0;i<16;++i){double a=6.283185307179586*i/16;rest[i]=(dango_arc_v){config->radial_rest_length*cos(a),config->radial_rest_length*sin(a)};}rest[16]=(dango_arc_v){0};
+    double omega=6.283185307179586*config->perimeter_hertz;
+    double axial=.5*config->node_mass*omega*omega*2*config->radial_rest_length*sin(3.141592653589793/16);
+    double bend=config->local_angle_balance_strength*config->node_mass*config->radial_rest_length*config->radial_rest_length;
+    if(!dango_arc_material(p,v,config->node_radius,config->radial_rest_length,axial,bend,0,0,f,stats))return NAN;
+    if(!dango_arc_area(rest,config->node_radius,1,0,f,&ignored,&target))return NAN;
+    double coefficient=config->area_strength/(target*config->radial_rest_length*sin(6.283185307179586/16));
+    if(!dango_arc_area(p,config->node_radius,target,coefficient,f,&energy,&area))return NAN;
+    return stats[0]+stats[1]+energy;
+}
+#endif
 bool dango_self_solve_constraints(dango_self_soft_body* body,
     const dango_self_physics_config* config)
 {
@@ -2517,6 +2538,9 @@ bool dango_self_solve_constraints(dango_self_soft_body* body,
 #if defined(DANGO_LAB_ENVELOPE)
     state.envelope_friction=config->friction; state.envelope_stats=body->envelope_stats;
 #endif
+#if defined(DANGO_LAB_ARCS)
+    state.arc_stats=body->arc_stats;
+#endif
     for (int i = 0; i <= body->node_count; ++i)
     {
         b2BodyId id = i == body->node_count ? body->core_body_id : body->node_body_ids[i];
@@ -2524,13 +2548,24 @@ bool dango_self_solve_constraints(dango_self_soft_body* body,
         state.velocities[i] = b2Body_GetLinearVelocity(id);
         state.inverse_mass[i] = 1.0f / b2Body_GetMass(id);
     }
+#if defined(DANGO_LAB_ARCS)
+    double repair_before=dango_arc_repair_energy(state.positions,config);
+#endif
     if (!dango_constraint_solve(&state))
     {
 #if defined(DANGO_LAB_ENVELOPE)
         body->envelope_stats[30]=1;
+#if defined(DANGO_LAB_ARCS)
+        body->arc_stats[15]=1;
+#endif
 #endif
         return false;
     }
+#if defined(DANGO_LAB_ARCS)
+    double repair_after=dango_arc_repair_energy(state.positions,config);
+    if(!isfinite(repair_before+repair_after))return false;
+    body->arc_stats[16]+=(float)(repair_after-repair_before);
+#endif
     body->grounded = false;
     for (int i = 0; i <= body->node_count; ++i)
     {
@@ -2636,6 +2671,7 @@ void dango_self_create_rig(dango_self_soft_body* body,
             body->radial_rest_length * config->radial_minimum_ratio,
             body->radial_rest_length * config->radial_maximum_ratio);
     }
+#if !defined(DANGO_LAB_ARCS)
     for (int index = 0; index < body->node_count; ++index)
     {
         int next = (index + 1) % body->node_count;
@@ -2652,6 +2688,7 @@ void dango_self_create_rig(dango_self_soft_body* body,
             body->perimeter_rest_length * config->perimeter_minimum_ratio,
             body->perimeter_rest_length * config->perimeter_maximum_ratio);
     }
+#endif
 }
 
 void dango_self_destroy_rig(dango_self_soft_body* body)
@@ -2687,6 +2724,41 @@ void dango_self_destroy_rig(dango_self_soft_body* body)
 static int dango_self_apply_internal_forces(dango_self_soft_body* body,
     const dango_self_physics_config* config)
 {
+#if defined(DANGO_LAB_ARCS)
+    (void)dango_self_apply_area_force;(void)dango_self_apply_angle_barrier;
+    (void)dango_self_apply_convexity_barrier;(void)dango_self_apply_local_angle_balance_force;
+    dango_arc_v p[17],v[17],forces[17],area_forces[17];double stats[7];
+    for(int i=0;i<17;++i) {
+        b2BodyId id=i==16 ? body->core_body_id : body->node_body_ids[i];
+        b2Vec2 point=b2Body_GetPosition(id),velocity=b2Body_GetLinearVelocity(id);
+        p[i]=(dango_arc_v){point.x,point.y};v[i]=(dango_arc_v){velocity.x,velocity.y};
+    }
+    double omega=6.283185307179586*config->perimeter_hertz;
+    double axial=.5*config->node_mass*omega*omega*body->perimeter_rest_length;
+    double bend=config->local_angle_balance_strength*config->node_mass*body->radial_rest_length*body->radial_rest_length;
+    /* Damping time constants inherit the material controls, while the actual
+       damping is objective strain-rate damping rather than node drag. */
+    double damping_time=omega>0 ? 2*config->perimeter_damping/omega : 0;
+    if(!dango_arc_material(p,v,config->node_radius,body->radial_rest_length,axial,bend,
+        axial*damping_time,bend*damping_time,forces,stats))return -498;
+    dango_arc_v rest[17];for(int i=0;i<16;++i){double a=6.283185307179586*i/16;rest[i]=(dango_arc_v){body->radial_rest_length*cos(a),body->radial_rest_length*sin(a)};}rest[16]=(dango_arc_v){0};
+    double ignored,target,area_energy,actual;
+    if(!dango_arc_area(rest,config->node_radius,1,0,area_forces,&ignored,&target))return -498;
+    double coefficient=config->area_strength/(target*body->radial_rest_length*sin(6.283185307179586/16));
+    if(!dango_arc_area(p,config->node_radius,target,coefficient,area_forces,&area_energy,&actual))return -498;
+    for(int i=0;i<7;++i)body->arc_stats[i]=(float)stats[i];
+    body->arc_stats[21]=(float)area_energy;body->arc_stats[22]=(float)actual;
+    double delta=6.283185307179586/16;
+    double min_r=cos(delta*.5),max_r=.75+.25*cos(delta);
+    body->arc_stats[14]=(float)(fabs(max_r-min_r)/(.5*(max_r+min_r)));
+    for(int i=0;i<17;++i) {
+        b2BodyId id=i==16 ? body->core_body_id : body->node_body_ids[i];
+        b2Body_ApplyForceToCenter(id,(b2Vec2){(float)(forces[i].x+area_forces[i].x),(float)(forces[i].y+area_forces[i].y)},true);
+    }
+    dango_self_apply_top_pressure(body,config);
+    dango_self_apply_radial_repulsion(body,config);
+    return 0;
+#else
     int error = dango_self_apply_area_force(body, config);
     if (error) return error;
     dango_self_apply_top_pressure(body, config);
@@ -2695,6 +2767,7 @@ static int dango_self_apply_internal_forces(dango_self_soft_body* body,
     dango_self_apply_angle_barrier(body, config);
     dango_self_apply_convexity_barrier(body, config);
     return dango_self_apply_local_angle_balance_force(body, config);
+#endif
 }
 
 int dango_self_world_create(const dango_self_physics_config* config,dango_self_soft_body** self_handle)
@@ -2946,9 +3019,17 @@ int dango_self_read_frame(dango_self_soft_body* body, const dango_self_physics_c
 #if defined(DANGO_LAB_ENVELOPE)
     b2Vec2 envelope_positions[17]; for(int n=0;n<16;++n)envelope_positions[n]=b2Body_GetPosition(body->node_body_ids[n]); envelope_positions[16]=core;
     dango_envelope_point foot; if(!dango_envelope_geometry(envelope_positions,config->node_radius,&foot))return -87;
-    float gap=foot.point.y-config->ground_height; *ground_contact_count=gap<=DANGO_CONSTRAINT_TOLERANCE*body->radial_rest_length ? 1 : 0;
+    float gap=foot.point.y-config->ground_height;
+#if defined(DANGO_LAB_ARCS)
+    *ground_contact_count=(int)body->arc_stats[7];
+#else
+    *ground_contact_count=gap<=DANGO_CONSTRAINT_TOLERANCE*body->radial_rest_length ? 1 : 0;
+#endif
     body->grounded=gap<=.035f; body->envelope_stats[0]=foot.point.x;body->envelope_stats[1]=foot.point.y;body->envelope_stats[2]=gap;
     body->envelope_stats[9]=body->grounded ? 1.0f : 0.0f;body->envelope_stats[10]=(float)*ground_contact_count;body->envelope_stats[28]=foot.maximum_y;body->envelope_stats[31]=1;
+#if defined(DANGO_LAB_ARCS)
+    body->envelope_stats[31]=2;
+#endif
 #endif
     if (!isfinite(*signed_area) || *signed_area < config->minimum_area)
     {

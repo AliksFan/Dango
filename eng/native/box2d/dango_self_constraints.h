@@ -33,6 +33,10 @@ typedef struct dango_constraint_state
     float envelope_friction, envelope_normal, envelope_tangent_used;
     float* envelope_stats;
 #endif
+#if defined(DANGO_LAB_ARCS)
+    float arc_normal[32],arc_tangent[32];
+    float* arc_stats;
+#endif
 } dango_constraint_state;
 
 typedef enum dango_constraint_correction_mode
@@ -356,15 +360,25 @@ static float dango_constraint_sweep_order_mode(dango_constraint_state* s, bool c
         }
         residual = fmaxf(residual, dango_constraint_distance_mode(s, 16, i,
             s->radial_length * s->radial_min, s->radial_length * s->radial_max, correct, mode));
+#if !defined(DANGO_LAB_ARCS)
         residual = fmaxf(residual, dango_constraint_distance_mode(s, i, (i + 1) % 16,
             s->perimeter_length * s->perimeter_min, s->perimeter_length * s->perimeter_max, correct, mode));
         residual = fmaxf(residual, dango_constraint_angle_mode(s, i, false, correct, mode));
         residual = fmaxf(residual, dango_constraint_angle_mode(s, i, true, correct, mode));
+#endif
     }
     #if defined(DANGO_LAB_ENVELOPE)
     if(correct && s->envelope_stats) {s->envelope_stats[29]+=dango_envelope_energy(s)-before_energy;
         for(int n=0;n<17;++n)s->envelope_stats[18]=fmaxf(s->envelope_stats[18],b2Distance(before_shape[n],s->positions[n])); }
+#if defined(DANGO_LAB_ARCS)
+    if(correct && s->arc_stats) {
+        s->arc_stats[19]+=dango_envelope_energy(s)-before_energy;
+        for(int n=0;n<17;++n)s->arc_stats[13]=fmaxf(s->arc_stats[13],b2Distance(before_shape[n],s->positions[n]));
+    }
+    residual = fmaxf(residual, dango_arc_contact(s, correct, mode));
+#else
     residual = fmaxf(residual, dango_envelope_contact(s, correct, mode));
+#endif
     #else
     for (int i = 0; i < 16; ++i)
     {
@@ -439,6 +453,27 @@ static float dango_constraint_sweep(dango_constraint_state* s, bool correct)
 
 static bool dango_constraint_solve(dango_constraint_state* s)
 {
+#if defined(DANGO_LAB_ARCS)
+    (void)dango_constraint_sweep;(void)dango_constraint_angle;(void)dango_constraint_distance;
+    /* Position repair never becomes velocity. Freeze final geometry before
+       the accumulated unilateral velocity/contact solve. */
+    bool converged=false;
+    for(int iteration=0;iteration<384;++iteration) {
+        float r=dango_constraint_sweep_order_mode(s,true,iteration%2!=0,DANGO_CONSTRAINT_CORRECT_POSITION);
+        if(s->envelope_stats)++s->envelope_stats[8];
+        if(!isfinite(r)){if(s->arc_stats)s->arc_stats[26]=1;return false;}
+        if(dango_constraint_sweep_order_mode(s,false,false,DANGO_CONSTRAINT_CORRECT_POSITION)<=DANGO_CONSTRAINT_TOLERANCE){converged=true;break;}
+    }
+    if(!converged){if(s->arc_stats)s->arc_stats[26]=2;return false;}
+    float before=dango_envelope_energy(s);
+    for(int iteration=0;iteration<32;++iteration)
+        if(!isfinite(dango_constraint_sweep_order_mode(s,true,iteration%2!=0,DANGO_CONSTRAINT_CORRECT_VELOCITY))){if(s->arc_stats)s->arc_stats[26]=3;return false;}
+    float normal=0,tangent=0;for(int row=0;row<32;++row){normal+=s->arc_normal[row];tangent+=fabsf(s->arc_tangent[row]);}
+    if(s->envelope_stats){s->envelope_stats[3]+=normal;s->envelope_stats[4]+=tangent;}
+    dango_envelope_point final_foot;if(!dango_envelope_geometry(s->positions,s->radius,&final_foot))return false;
+    if(s->arc_stats)s->arc_stats[8]=fmaxf(0,s->ground-final_foot.point.y);
+    return dango_envelope_energy(s)<=before+fmaxf(1e-7f,1e-5f*before);
+#else
 #if defined(DANGO_CONSTRAINT_TEST_DIAGNOSTICS)
     dango_constraint_state before = *s;
 #endif
@@ -479,6 +514,7 @@ static bool dango_constraint_solve(dango_constraint_state* s)
     }
 #endif
     return false;
+#endif
 }
 
 #endif
