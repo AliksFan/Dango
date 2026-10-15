@@ -1,5 +1,7 @@
 # Dango 分阶段开发计划 v0.1
 
+> 2026-10-15 本地目录main整合：用户在当前候选人工确认后明确要求“合到main吧”，已将 `codex/local-room-catalog-save@0342b8f` 从 `main@eed9ec0` 无冲突快进合入本地main，见[整合记录](verification/2026-10-15-local-room-catalog-save.md#本地main整合2026-10-15)。main源码逐文件匹配r8验收候选，原有AGENTS未提交修改和生产DLL保留；本次未重跑既有门禁，完整Desktop的NU1903及Windows／性能专项继续开放。未推送、安装或部署，下列实施条目保留各轮历史状态。
+
 > 2026-10-15 本地目录实施：用户已通过[门廊场景入口设计](planning/2026-10-15-local-room-catalog-save-design.md)，在 `codex/local-room-catalog-save` 按[实施计划](planning/2026-10-15-local-room-catalog-save-plan.md)形成本地候选。三个普通房门位、桌宠门及恢复标牌承接创建／进入／布置／二次确认解散／7天恢复；每房独立布局、最近安全地面检查点和本机镜头，保持首页启动且不自动入房。自动、跨进程与真实宿主结果见[实施验证](verification/2026-10-15-local-room-catalog-save.md)，当前候选已获用户人工确认；完整Desktop门禁受既有NU1903阻断，不改变整体Windows、性能和联网阶段状态。未合main、推送、安装、部署或替换生产DLL。
 
 > 2026-10-15 本地收口状态澄清：配饰Windows本地第一版已人工验收通过并合入本地main，按[第一版整合记录](verification/2026-10-09-accessory-v1-main-integration.md)作为已完成基线；不因纳入本地整体闭环而重新列为待开发或重开整模块验收。仅对新房间、新物理或存储改动实际影响的路径做回归。配饰云同步、分享及整体Windows／性能门禁分别记录，不改变本地第一版完成状态。
