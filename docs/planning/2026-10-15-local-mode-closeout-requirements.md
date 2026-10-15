@@ -1,6 +1,6 @@
 # 本地模式收口需求草案
 
-日期：2026-10-15。状态：首批范围与[产品决策](2026-10-15-local-online-product-decisions.md)已确认；本地目录、门廊入口、安全位置／本机镜头及纯本地解散恢复子集的[具体设计](2026-10-15-local-room-catalog-save-design.md)已通过，并按[实施计划](2026-10-15-local-room-catalog-save-plan.md)形成候选，见[验证记录](../verification/2026-10-15-local-room-catalog-save.md)。该子集待人工验收；其余细化需求和整体收口批次仍供审阅，不据此扩大产品实施范围。
+日期：2026-10-15。状态：首批范围与[产品决策](2026-10-15-local-online-product-decisions.md)已确认；本地目录、门廊入口、安全位置／本机镜头及纯本地解散恢复子集的[具体设计](2026-10-15-local-room-catalog-save-design.md)已通过，并按[实施计划](2026-10-15-local-room-catalog-save-plan.md)形成候选，见[验证记录](../verification/2026-10-15-local-room-catalog-save.md)。该子集当前候选已获用户人工确认；其余细化需求和整体收口批次仍供审阅，不据此扩大产品实施范围。
 
 ## 1. 目标与范围
 

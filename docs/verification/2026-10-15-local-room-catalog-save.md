@@ -1,6 +1,6 @@
 # 本地房间目录与每房存档实施记录
 
-日期：2026-10-15。分支 `codex/local-room-catalog-save`，按[已批准设计](../planning/2026-10-15-local-room-catalog-save-design.md)和[实施计划](../planning/2026-10-15-local-room-catalog-save-plan.md)形成本地实现候选。下列定向自动和实际宿主验证通过，**人工验收待用户确认，完整Desktop门禁仍有既有阻断**。未合main、推送、安装或部署。
+日期：2026-10-15。分支 `codex/local-room-catalog-save`，按[已批准设计](../planning/2026-10-15-local-room-catalog-save-design.md)和[实施计划](../planning/2026-10-15-local-room-catalog-save-plan.md)形成本地实现候选。下列定向自动和实际宿主验证通过，**用户已确认当前候选人工通过，完整Desktop门禁仍有既有阻断**。未合main、推送、安装或部署。
 
 ## A 目录与真实文件存储
 
@@ -34,7 +34,7 @@
 | 实际Windows宿主 | `runs/r4-ui/ui-check-result.json`：首页启动无自动入房、取消准备、独立进程在最终绑定前解散目标、A→B→A布局／镜头／实体／唯一owner、家具临时镜头保护及桌宠双层交接通过；使用实际 `DangoApplicationHost` 和准入native候选 |
 | 完整Desktop门禁 | **未通过**：预存 `Microsoft.AspNetCore.SignalR.Common 10.0.11` 的NU1903，公告 `GHSA-334f-vvp4-7g6p`；没有升级依赖、关闭审计或降低严重级别。定向工程避开无关多人样本依赖，不能替代完整门禁 |
 | 延后壁纸项 | 定向运行明确排除既有 `SavedAppearanceFollowsTheSameEntityAcrossRoomWindowWallpaperAndReturn`；普通房壁纸仍按既定范围搁置，未声称通过 |
-| 人工／系统矩阵 | 门廊观感、连续真实键鼠、最小／纵向窗口、OS DPI、高对比、减少动画及辅助输入专项**未验证**；真实控件自动测试不替代人工操作 |
+| 人工／系统矩阵 | 门廊及创建浮层整体观感已获用户确认；连续真实键鼠、最小／纵向窗口、OS DPI、高对比、减少动画及辅助输入专项**未验证**；真实控件自动测试不替代人工操作 |
 
 r4构建前后源码清单摘要一致：`88015D72741B7E34A51BD5DDD41EE95F972F48F67DB99ECC2F87AE1611DFE979`，完整路径及逐文件摘要见 `review-r4/source-snapshot.json`。该清单记录src／eng／tests与构建配置，构建起点为A批 `b03a061` 加本任务后续实现；文档收尾不属于该源码摘要。
 
@@ -79,3 +79,9 @@ r6新人工窗口已打开并检查存活，PID见该次报告的 `manualProcess
 - 源码清单摘要 `216C1C40ED7AD2B36AABD2CB8672B43D99881F582CED9425A10153DF35ECC79F`，逐文件摘要在 `review-r8/source-snapshot.json`，基点为 `41d2575` 加本次修改；生产DLL仍与上文哈希一致。
 
 r8人工窗口已打开并检查存活，PID见该次报告；r6／r7旧人工进程经身份核对后结束，数据及证据均保留。r8其他probe子进程已退出，无新增端口、账号或数据库操作。本次只复测受影响界面与实际宿主路径，未重跑132项定向全量和Core；人工观感、DPI等专项及完整Desktop的既有阻断仍保留。仅本地提交，未合main、推送、安装、部署或替换生产DLL。
+
+## 用户人工确认（2026-10-15）
+
+用户在r8候选及上述界面反馈修订完成后明确回复“通过”。确认对象为 `2e8a1b7` 对应的隔离候选，记录本批候选整体人工确认通过，包括门廊场景入口、顶部标题及创建浮层的图标／滚动覆盖调整。上文各轮“待人工”保留为当轮历史状态，以本节为最新人工结论。
+
+此次整体确认不补造逐项操作、DPI、高对比、减少动画、长期性能或双机结果；完整Desktop的既有NU1903阻断和整体Windows／59 FPS／联网阶段门禁继续保留，不能将这些阶段标为已验收。本次仅更新验收事实及文档导航并本地提交，未改产品代码、重跑测试、重启或结束验收进程、删除存档，也未合main、推送、更新日常安装、部署或替换生产DLL。

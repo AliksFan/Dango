@@ -88,7 +88,7 @@
 
 后续入口为[本地模式收口需求草案](2026-10-15-local-mode-closeout-requirements.md)。首批不自动包含穿搭方案管理、配饰分享包、手机、好友系统、新物理功能、服务部署或数据库操作。新物理接入与其准入验证继续由原任务负责。
 
-“本地房间目录＋每房存档”的[具体设计](2026-10-15-local-room-catalog-save-design.md)及门廊场景入口已获用户通过，在独立任务分支按[实施计划](2026-10-15-local-room-catalog-save-plan.md)修改、验证和本地提交，当前候选待人工验收，见[实施记录](../verification/2026-10-15-local-room-catalog-save.md)。不据此授权真实账号同步、日常存档操作、持久资源删除、合入main、推送、安装、部署或替换生产DLL。
+“本地房间目录＋每房存档”的[具体设计](2026-10-15-local-room-catalog-save-design.md)及门廊场景入口已获用户通过，在独立任务分支按[实施计划](2026-10-15-local-room-catalog-save-plan.md)修改、验证和本地提交，当前候选已获用户人工确认，见[实施记录](../verification/2026-10-15-local-room-catalog-save.md)。不据此授权真实账号同步、日常存档操作、持久资源删除、合入main、推送、安装、部署或替换生产DLL。
 
 ## 8. 本地目录任务的恢复选择
 
