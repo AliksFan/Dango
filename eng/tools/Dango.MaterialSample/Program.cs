@@ -11,6 +11,8 @@ internal static class Program
     {
         try
         {
+            if (args.Length == 2 && args[1] == "--corners")
+                return new Application().Run(new CornerWindow(Path.GetFullPath(args[0])));
             if (args.Contains("--verify-landing-build-parallel-long-trial"))
                 return args.Length == 7 && args[1] == "--verify-landing-build-parallel-long-trial" &&
                     int.TryParse(args[6], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var longIndex)

@@ -2,8 +2,6 @@
 
 日期：2026-10-11。用户在[有限预览交付](../verification/2026-10-11-landing-build-stretch-preview-result.md)后要求“下一步”，并回复“幅度合适，保持当前参数”，确认静态对比中的胖瘦幅度并继续验证。该确认不代替真实拖甩、滑块或完整稳定性验收。本轮只按固定 `landing-build-v3-stretch-preview` 执行原隔离小样的自动验证合同，不再校准比例，不修改 native 或正式 DLL，不进行生产接入。
 
-实际状态：S1 下落 45/45 和原效果判据通过；S2 在大小 120／柔软度 100／体型 0 的恢复门禁失败，按本计划停止，定点复现一致。S3 协调器未实现、长时及 L4 未执行。详见[本轮结果](../verification/2026-10-11-landing-build-stretch-matrix-result.md)，不把预设幅度确认当作这项新失败的豁免。
-
 ## 固定基线与执行顺序
 
 沿用[原计划](2026-10-10-landing-build-material-sample-plan.md#3-验收合同)的帧数、采样窗口、轨迹、门槛与失败分类。新预设中仅胖侧径向最大比例增加，详见[已批准增量](2026-10-11-landing-build-stronger-endpoint-preview.md#已批准的伸展范围增量)。执行前复核候选 native SHA256 `055BE2B5E6CD3816EB4D59F616577B653C00512B4750299A013D2CEBF676E2C5`，保护正式 DLL SHA256 `6712D66ECEF9588123CAFCD868455080598B5B58711A698FB8AF022A0CDA191A`。固定步长仍为 166666 ticks。

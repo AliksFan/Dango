@@ -45,7 +45,7 @@ library --preview-landing-build-stretch landingReport cPreviewReport oldMotionSt
 
 ## 3. 复用来源与失败保留
 
-仅当配置精确相等时复用默认 B50 和新瘦 C100 的完整下落证据；报告保留它们各自的旧 `MappingVersion`，不把旧帧标成新模拟。来源均使用同一认可 native SHA256。C 原报告记录的工具程序集 SHA256 与现有 `landing-build/app-l3/Dango.MaterialSample.dll` 一致；C 原报告没有独立步长字段，不伪补该字段。B 来源和本轮报告的实际步长均为 `166666 ticks`。
+仅当配置精确相等时复用默认 B50 和新瘦 C100 的完整下落证据；报告保留它们各自的旧 `MappingVersion`，不把旧帧标成新模拟。来源均使用同一认可 native SHA256。C 原报告记录的工具程序集 SHA256与现有 `landing-build/app-l3/Dango.MaterialSample.dll` 一致；C 原报告没有独立步长字段，不伪补该字段。B 来源和本轮报告的实际步长均为 `166666 ticks`。
 
 | 来源文件（相对 `artifacts/round-material/`） | SHA256 |
 |---|---|
