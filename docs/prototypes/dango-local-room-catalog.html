@@ -1,61 +1,194 @@
 <!doctype html>
 <html lang="zh-CN">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dango · 本地房间目录设计小样</title>
+<title>Dango · 门廊场景入口小样</title>
 <style>
 :root{color-scheme:light;--bg:#fdfcf9;--ink:#443d34;--muted:#807568;--line:#e9e4da;--soft:#f3efe8;--accent:#885e3e;--selected:#efe3d4}
 *{box-sizing:border-box}body{margin:0;background:var(--soft);color:var(--ink);font:14px "Segoe UI","Microsoft YaHei",sans-serif}
 button,input,select{font:inherit;color:inherit}button,input,select{border:1px solid var(--line);border-radius:7px;padding:8px 14px;min-height:40px;background:var(--bg)}
-button{cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}button:hover{background:var(--soft)}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-button:disabled{opacity:.5;cursor:default}.primary{background:var(--selected);border-color:var(--accent)}.icon{width:32px;min-height:32px;padding:5px}.symbol{font-size:18px;line-height:1}.note{font-size:12px;color:var(--muted);line-height:1.7}.muted{color:var(--muted)}
-.sample{max-width:1080px;margin:20px auto;padding:0 20px}.sample-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px}.sample-bar select{max-width:225px}
-.window{min-height:600px;background:var(--bg);border:1px solid var(--line);border-radius:14px;overflow:hidden}.top{height:64px;display:flex;align-items:center;justify-content:space-between;padding:12px 22px;border-bottom:1px solid var(--line)}
-.content{display:grid;grid-template-columns:minmax(180px,1fr) minmax(340px,400px);min-height:535px}.porch{padding:36px 24px;position:relative;display:flex;flex-direction:column;justify-content:center;gap:38px;background:linear-gradient(var(--bg) 79%,var(--soft) 79%)}
-.scene-label{position:absolute;top:24px;left:24px}.doors{display:flex;align-items:flex-end;gap:18px;overflow:auto;padding:6px 4px 20px}.door{min-width:94px;height:170px;border:1px solid #b7a28e;border-radius:42px 42px 5px 5px;display:flex;flex-direction:column;justify-content:flex-end;padding:12px 8px;gap:5px;background:var(--bg)}.door[aria-pressed=true]{background:var(--selected);border-color:var(--accent)}.door small{font-size:11px;color:var(--muted)}
-.scene-help{max-width:340px;line-height:1.9}.panel{border-left:1px solid var(--line);display:flex;flex-direction:column;max-height:535px}.panel-top{padding:20px;display:flex;align-items:center;justify-content:space-between;gap:8px}h1,h2,h3,p{margin:0}h1{font-size:16px;font-weight:600}h2{font-size:15px;font-weight:600}h3{font-size:13px;font-weight:500;color:var(--muted)}
-.scroll{overflow:auto;scrollbar-width:thin;scrollbar-color:#b7a28e var(--soft);padding:0 20px;flex:1;min-height:180px}.scroll::-webkit-scrollbar{width:6px}.scroll::-webkit-scrollbar-track{background:var(--soft)}.scroll::-webkit-scrollbar-thumb{background:#b7a28e;border-radius:5px}.scroll::-webkit-scrollbar-thumb:hover{background:var(--accent)}
-.row{padding:14px 0;border-bottom:1px solid var(--line)}.row-head,.row-actions{display:flex;justify-content:space-between;align-items:center;gap:8px}.row-actions{justify-content:flex-end;margin-top:10px}.row .note{margin-top:5px}.row.selected .room-name{color:var(--accent)}.badge{font-size:11px;color:var(--muted)}.group{margin:24px 0 4px}.feedback{padding:14px 20px;min-height:64px;line-height:1.7;border-top:1px solid var(--line)}.feedback[data-error=true]{color:#86452c}.empty{padding:28px 0;line-height:1.8}
-.footer{padding:14px 22px;border-top:1px solid var(--line)}dialog{width:min(430px,calc(100vw - 32px));padding:26px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink)}dialog::backdrop{background:#443d3430}dialog p{line-height:1.9;margin:14px 0}dialog label{display:flex;flex-direction:column;gap:7px;margin:16px 0}.form-inline{display:grid;grid-template-columns:1fr 1fr;gap:14px}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}.dialog-error{color:#86452c;line-height:1.7;min-height:24px}
-@media(max-width:750px){.sample{padding:0 12px;margin:12px auto}.sample-bar{align-items:flex-start;flex-direction:column;gap:6px}.content{grid-template-columns:1fr}.porch{min-height:290px;padding:58px 20px 24px;gap:14px}.door{height:130px}.scene-help{display:none}.panel{border-left:0;border-top:1px solid var(--line);max-height:490px}.window{min-height:0}.top{padding:12px 16px}.scroll{min-height:140px}.panel-top{padding:16px 20px}}
+button{cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}button:hover{background:var(--soft)}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+button:disabled{opacity:.5;cursor:default}.primary{background:var(--selected);border-color:var(--accent)}.note{font-size:12px;color:var(--muted);line-height:1.8}.muted{color:var(--muted)}
+.sample{max-width:1140px;margin:20px auto;padding:0 20px}.sample-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px}.sample-bar select{max-width:225px}
+.window{background:var(--bg);border:1px solid var(--line);border-radius:14px;overflow:hidden}.top{height:64px;display:flex;align-items:center;justify-content:space-between;padding:12px 22px;border-bottom:1px solid var(--line)}
+h1,h2,p{margin:0}h1{font-size:15px;font-weight:500}h2{font-size:16px;font-weight:600}.viewport{overflow-x:auto;scrollbar-width:thin;scrollbar-color:#b7a28e var(--soft)}
+.porch{position:relative;min-width:1000px;min-height:540px;padding:42px 32px 38px;background:linear-gradient(var(--bg) 63%,#f3efe8 63%,#f7f4ee)}
+.wall-note{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:52px}.quota{border:1px solid var(--line);border-radius:5px;padding:7px 12px;font-size:12px;color:var(--muted)}
+.scene-objects{display:flex;align-items:flex-start;gap:24px}.door-place{position:relative;width:170px;flex-shrink:0;text-align:center}.door{width:138px;height:208px;padding:18px 12px;border:1px solid #b7a28e;border-radius:48px 48px 5px 5px;display:flex;flex-direction:column;justify-content:flex-end;gap:12px;margin:0 auto;position:relative;background:linear-gradient(90deg,#f9f6f0,var(--bg) 18%,var(--bg) 82%,#f9f6f0)}
+.door::after{content:"";position:absolute;right:15px;bottom:77px;width:7px;height:7px;border:1px solid var(--accent);border-radius:50%}.door[aria-pressed=true]{border-color:var(--accent);box-shadow:0 0 0 3px var(--selected)}.door .room-name{font-size:15px}.door small{font-size:11px;color:var(--muted);line-height:1.6}.door.empty{border-style:dashed;background:transparent;color:var(--muted)}.door.empty::after{display:none}.plus{font-size:26px;font-weight:300}.empty:disabled{opacity:.65}
+.door-detail{height:30px;padding-top:8px;font-size:11px;color:var(--muted)}.door-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;padding-top:8px;min-height:48px}.door-actions button{font-size:14px;padding:8px 9px;gap:4px;min-height:40px}.door-actions:empty{visibility:hidden}.read-reason{font-size:11px;line-height:1.6;color:var(--muted);margin-top:6px;min-height:18px}
+.archive-place{align-self:flex-start;width:150px;flex-shrink:0;padding-top:40px}.archive-sign{min-height:100px;width:150px;flex-direction:column;gap:10px;border-color:#c7b8a6;background:var(--soft);box-shadow:0 6px 0 -3px #e9e2d6}.archive-icon{width:24px;height:18px;border:1px solid currentColor;border-radius:3px;position:relative}.archive-icon::before{content:"";position:absolute;left:5px;right:5px;top:4px;border-top:1px solid currentColor}.archive-place .note{text-align:center;margin-top:12px}
+.scene-hint{position:absolute;bottom:14px;left:32px;font-size:12px;color:var(--muted)}.feedback{padding:14px 22px;min-height:60px;line-height:1.8;border-top:1px solid var(--line)}[data-error=true]{color:#86452c}.footer{padding:10px 22px;border-top:1px solid var(--line)}
+dialog{width:min(440px,calc(100vw - 32px));max-height:calc(100dvh - 48px);padding:24px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--ink)}dialog::backdrop{background:#443d3430}dialog p{line-height:1.9;margin:14px 0}dialog label{display:flex;flex-direction:column;gap:7px;margin:16px 0}.form-inline{display:grid;grid-template-columns:1fr 1fr;gap:14px}.actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}.dialog-error{color:#86452c;line-height:1.7;min-height:24px}
+#recovery-dialog[open]{display:flex;flex-direction:column;overflow:hidden;max-height:min(600px,calc(100dvh - 48px))}.recovery-scroll{overflow-y:auto;scrollbar-width:thin;scrollbar-color:#b7a28e var(--soft);min-height:80px}.restore-row{padding:14px 0;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:16px}.restore-row p{margin:5px 0 0}.restore-row button{flex-shrink:0}.recovery-feedback{font-size:12px;min-height:44px;line-height:1.8;padding-top:12px}
+::-webkit-scrollbar{height:6px;width:6px}::-webkit-scrollbar-track{background:var(--soft)}::-webkit-scrollbar-thumb{background:#b7a28e;border-radius:5px}::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+@media(max-width:700px){.sample{padding:0 12px;margin:12px auto}.sample-bar{align-items:flex-start;flex-direction:column;gap:6px}.top{padding:12px 16px}.porch{padding-left:24px;min-height:520px}.wall-note{margin-bottom:44px}.scene-hint{left:24px}.note{font-size:12px}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
-@media(forced-colors:active){button,.window,.panel,.row,dialog,.door{border-color:ButtonText}.primary,.door[aria-pressed=true]{outline:2px solid Highlight}.feedback[data-error=true]{color:CanvasText}}
+@media(forced-colors:active){button,.window,dialog,.door,.quota,.restore-row{border-color:ButtonText}.door[aria-pressed=true],.primary{outline:2px solid Highlight}.porch,.door,.archive-sign{background:Canvas;box-shadow:none}[data-error=true]{color:CanvasText}}
 </style>
+</head>
+<body>
 <div class="sample">
- <div class="sample-bar"><p class="note">设计小样 · 全部为虚构数据，仅当前页面内演示。未接文件、物理或服务。</p>
+ <div class="sample-bar"><p class="note">门廊入口设计小样 · 虚构数据，仅演示页面交互，未接真实团子、文件或服务。</p>
  <label class="note">查看状态 <select id="scenario" aria-label="查看设计状态"><option value="normal">常用 · 2/3</option><option value="full">已满 · 3/3</option><option value="empty">已解散全部 · 0/3</option><option value="readonly">缓存布局只读</option><option value="failure">模拟写入失败</option><option value="protected">目录受保护</option><option value="clock">本机时间异常</option><option value="archive">多条已解散内容</option></select></label></div>
- <main class="window"><header class="top"><span>Dango · 门廊</span><button id="home"><span aria-hidden="true">↗</span>首页</button></header>
- <div class="content"><section class="porch" aria-label="房门排列示意"><span class="scene-label note">此区域保留现有真实门廊与团子</span><div id="doors" class="doors"></div><p class="scene-help note">本小样只核对房间管理。正式产品继续走近房门后按 W 进入，按 E 布置；窗口与桌宠保持原有玩法。</p></section>
- <aside class="panel" aria-label="房间管理"><div class="panel-top"><h1>普通房 <span id="quota" class="muted"></span></h1><button id="create" class="primary"><span class="symbol" aria-hidden="true">＋</span>新建</button></div><div id="rooms" class="scroll"></div><div id="feedback" class="feedback" role="status" aria-live="polite"></div></aside></div>
- <footer class="footer note">首页启动，记住选择。恢复房间不会自动入房；安全位置与镜头在你主动进入后恢复。</footer></main>
+ <main class="window">
+  <header class="top"><h1>Dango · 门廊</h1><button id="home"><span aria-hidden="true">↗</span>首页</button></header>
+  <section class="viewport" aria-label="门廊场景，窄窗口可横向查看房门" tabindex="0">
+   <div class="porch">
+    <div class="wall-note"><span class="note">场景示意 · 正式产品保留现有团子与跟随视角</span><span id="quota" class="quota"></span></div>
+    <div id="scene-objects" class="scene-objects"></div>
+    <p class="scene-hint">选择房门查看动作　·　空门位新建　·　标牌中恢复</p>
+   </div>
+  </section>
+  <div id="feedback" class="feedback" role="status" aria-live="polite"></div>
+  <footer class="footer note">首页启动并记住选择。创建与恢复完成后，仍由你主动进入房间。</footer>
+ </main>
 </div>
-<dialog id="create-dialog" aria-labelledby="create-title"><form id="create-form"><h2 id="create-title">新建普通房</h2><label>名称<input id="room-name" maxlength="24" required autocomplete="off"></label><div class="form-inline"><label>类型<select id="room-kind"><option>私密</option><option>公共</option></select></label><label>容量<input id="room-capacity" type="number" min="1" max="12" value="6" required></label></div><p class="note">仅创建到本地，尚未开放他人进入。桌宠房不占普通房额度。</p><div id="create-error" class="dialog-error" role="alert"></div><div class="actions"><button type="button" data-close="create-dialog">取消</button><button type="submit" class="primary"><span aria-hidden="true">＋</span>创建</button></div></form></dialog>
-<dialog id="dissolve-dialog" aria-labelledby="dissolve-title"><h2 id="dissolve-title"></h2><p id="dissolve-copy"></p><p class="note">7天内可恢复，恢复需有空余名额且不会自动入房。到期关闭常规恢复入口，本机存档保留。</p><div id="dissolve-error" class="dialog-error" role="alert"></div><div class="actions"><button data-close="dissolve-dialog">取消</button><button id="dissolve-confirm" class="primary"></button></div></dialog>
+<dialog id="create-dialog" aria-labelledby="create-title">
+ <form id="create-form"><h2 id="create-title">新建普通房</h2>
+  <label>名称<input id="room-name" maxlength="24" required autocomplete="off" autofocus></label>
+  <div class="form-inline"><label>类型<select id="room-kind"><option>私密</option><option>公共</option></select></label><label>容量<input id="room-capacity" type="number" min="1" max="12" value="6" required></label></div>
+  <p class="note">仅创建到本地，尚未开放他人进入。成功保存后，这个空门位成为有效房门。</p>
+  <div id="create-error" class="dialog-error" role="alert"></div>
+  <div class="actions"><button type="button" data-close="create-dialog">取消</button><button type="submit" class="primary"><span aria-hidden="true">＋</span>创建</button></div>
+ </form>
+</dialog>
+<dialog id="dissolve-dialog" aria-labelledby="dissolve-title">
+ <h2 id="dissolve-title"></h2><p id="dissolve-copy"></p>
+ <p class="note">7天内可恢复，恢复需有空余名额且不会自动入房。到期关闭常规恢复入口，本机存档保留。</p>
+ <div id="dissolve-error" class="dialog-error" role="alert"></div>
+ <div class="actions"><button data-close="dissolve-dialog">取消</button><button id="dissolve-confirm" class="primary"></button></div>
+</dialog>
+<dialog id="recovery-dialog" aria-labelledby="recovery-title">
+ <h2 id="recovery-title">已解散房间</h2><p class="note">此处只查看与恢复存档，不是一间可进入的房间。</p>
+ <div id="recovery-list" class="recovery-scroll" tabindex="0"></div>
+ <div id="recovery-feedback" class="recovery-feedback" role="status" aria-live="polite"></div>
+ <div class="actions"><button data-close="recovery-dialog">回到门廊</button></div>
+</dialog>
 <script>
-const el=id=>document.getElementById(id);let rooms=[],selected=null,mode='normal',target=null,confirmStep=0,serial=3;
-const fictional=(id,name,extra={})=>({id,name,kind:'私密',capacity:6,active:true,...extra});
-function reset(){mode=el('scenario').value;rooms=[fictional('a','小晴间'),fictional('b','茶歇室')];if(mode==='full')rooms.push(fictional('c','云朵间'));
- if(mode==='empty')rooms=[];if(mode==='readonly')rooms[1].readonly=true;
- rooms.push(fictional('past','晚风间',{active:false,days:5}),fictional('expired','旧画室',{active:false,days:0}));
- if(mode==='archive')for(let i=0;i<8;i++)rooms.push(fictional('archive-'+i,'旧房间 '+(i+1),{active:false,days:i%3}));
- selected=rooms.find(r=>r.active)?.id??null;render();say(mode==='protected'?'目录无法识别，原件已保护。普通房操作暂停，桌宠仍可使用。':mode==='failure'?'已启用设计用写入失败状态。尝试创建、解散或恢复可查看反馈。':'本小样未执行任何文件保存。',mode==='protected');}
-function say(message,error=false){el('feedback').textContent=message;el('feedback').dataset.error=String(error)}
-function btn(text,action,{disabled=false,icon=null,name=null}={}){let b=document.createElement('button');b.type='button';b.disabled=disabled;if(icon){let s=document.createElement('span');s.textContent=icon;s.setAttribute('aria-hidden','true');b.append(s)}b.append(document.createTextNode(text));if(name)b.setAttribute('aria-label',name);b.addEventListener('click',action);return b}
-function render(){let active=rooms.filter(r=>r.active),protectedMode=mode==='protected';el('quota').textContent=protectedMode?'—':`${active.length}/3`;el('create').disabled=protectedMode||active.length>=3;el('create').title=active.length>=3?'已满3间，请先解散一间':'';
- el('doors').replaceChildren();for(let r of active){let b=btn('',()=>{selected=r.id;render();say(`已选择「${r.name}」。正式产品仍需主动入房。`)});b.className='door';b.disabled=protectedMode;b.setAttribute('aria-pressed',String(selected===r.id));let n=document.createElement('span');n.textContent=r.name;let s=document.createElement('small');s.textContent=r.readonly?'缓存 · 只读':'本地单人';b.append(n,s);el('doors').append(b)}
- let pet=btn('',()=>say('桌宠入口保持原合同，不计普通房额度。'));pet.className='door';let petName=document.createElement('span');petName.textContent='桌宠房';let petHint=document.createElement('small');petHint.textContent='不占额度';pet.append(petName,petHint);el('doors').append(pet);
- el('rooms').replaceChildren();if(!active.length){let p=document.createElement('p');p.className='empty muted';p.textContent='还没有有效普通房，可新建或恢复一间。';el('rooms').append(p)}
- for(let r of active)row(r,false,protectedMode);let title=document.createElement('h3');title.textContent='已解散';title.className='group';el('rooms').append(title);for(let r of rooms.filter(r=>!r.active))row(r,true,protectedMode);
+const el = id => document.getElementById(id);
+let rooms = [], selected = null, mode = 'normal', target = null, confirmStep = 0, serial = 3;
+const fictional = (id, name, extra = {}) => ({id, name, kind:'私密', capacity:6, active:true, ...extra});
+function reset() {
+ mode = el('scenario').value;
+ rooms = [fictional('a','小晴间'), fictional('b','茶歇室')];
+ if (mode === 'full') rooms.push(fictional('c','云朵间'));
+ if (mode === 'empty' || mode === 'protected') rooms = [];
+ if (mode === 'readonly') Object.assign(rooms[1], {readonly:true, linked:true});
+ if (mode !== 'protected') rooms.push(fictional('past','晚风间',{active:false,days:5}), fictional('expired','旧画室',{active:false,days:0}));
+ if (mode === 'archive') for (let i=0;i<8;i++) rooms.push(fictional('archive-'+i,'旧房间 '+(i+1),{active:false,days:i%3}));
+ selected = rooms.find(r=>r.active)?.id ?? null;
+ render();
+ say(mode==='protected' ? '目录无法识别，原件已保护。普通房操作暂停，桌宠仍可使用。' : mode==='failure' ? '已启用设计用写入失败状态，可从场景入口查看失败反馈。' : '所有本批操作从门廊场景发起。本小样未执行文件保存。', mode==='protected');
 }
-function row(r,archived,protectedMode){let box=document.createElement('div');box.className='row'+(r.id===selected?' selected':'');let head=document.createElement('div');head.className='row-head';let name=document.createElement('span');name.className='room-name';name.textContent=r.name;let badge=document.createElement('span');badge.className='badge';badge.textContent=archived?(mode==='clock'?'时间待核对':r.days>0?`剩余 ${r.days} 天`:'已到期 · 存档保留'):r.readonly?'缓存 · 家具只读':'仅本地';head.append(name,badge);let note=document.createElement('p');note.className='note';note.textContent=archived?'恢复后保持原房间身份与内容':`${r.kind} · ${r.capacity}席 · ${r.readonly?'断网可单人游玩，家具暂不可编辑':'尚未开放他人入场'}`;let actions=document.createElement('div');actions.className='row-actions';
- if(archived){actions.append(btn('恢复',()=>recover(r),{disabled:protectedMode||r.days<=0||mode==='clock',icon:'↶',name:`恢复${r.name}`}))}
- else{actions.append(btn('进入',()=>{selected=r.id;render();say(`小样：主动进入「${r.name}」。真实场景尚未在本小样实现。`)},{disabled:protectedMode,icon:'↗',name:`进入${r.name}`}));actions.append(btn('解散',()=>beginDissolve(r),{disabled:protectedMode,icon:'×',name:`解散${r.name}`}))}box.append(head,note,actions);el('rooms').append(box)}
-function recover(r){if(rooms.filter(x=>x.active).length>=3)return say('普通房已满3间，请先解散一间再恢复。存档已保留。',true);if(mode==='failure')return say('恢复未保存，原解散状态及内容已保留。请重试。',true);r.active=true;render();say(`「${r.name}」已恢复（小样状态）。未自动入房。`)}
-function beginDissolve(r){target=r;confirmStep=0;el('dissolve-error').textContent='';paintDissolve();el('dissolve-dialog').showModal()}
-function paintDissolve(){el('dissolve-title').textContent=confirmStep?'再次确认解散':'解散普通房';el('dissolve-copy').textContent=confirmStep?`确定解散「${target.name}」？确认后该房立即停止使用并释放1个名额。`:`「${target.name}」解散后将停止进入和互动，并立即释放1个普通房名额。`;el('dissolve-confirm').textContent=confirmStep?'确认解散':'继续确认'}
-el('dissolve-confirm').onclick=()=>{if(!confirmStep){confirmStep=1;paintDissolve();return}if(mode==='failure'){el('dissolve-error').textContent='解散未保存，房间仍然有效，额度未变化。';return}target.active=false;target.days=7;if(selected===target.id)selected=null;el('dissolve-dialog').close();render();say(`「${target.name}」已解散（小样状态），7天内可恢复。`)};
-el('create').onclick=()=>{el('room-name').value='普通房 '+serial;el('room-kind').value='私密';el('room-capacity').value=6;el('create-error').textContent='';el('create-dialog').showModal()};
-el('create-form').onsubmit=e=>{e.preventDefault();if(mode==='failure'){el('create-error').textContent='创建未保存，未增加房间或占用名额。请重试。';return}if(rooms.filter(r=>r.active).length>=3){el('create-error').textContent='已满3间，请先解散一间。';return}let name=el('room-name').value.trim();if(!name){el('create-error').textContent='请输入名称。';return}let r=fictional('new-'+serial++,name,{kind:el('room-kind').value,capacity:Number(el('room-capacity').value)});rooms.push(r);selected=r.id;el('create-dialog').close();render();say(`「${r.name}」已创建（小样状态），已选中但未入房。`)};
-document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>el(b.dataset.close).close());el('scenario').onchange=reset;el('home').onclick=()=>say('启动保持首页；上次选择仅用于门廊提示，不自动入房。');reset();
+function say(message, error=false) {
+ el('feedback').textContent = message; el('feedback').dataset.error = String(error);
+ if (el('recovery-dialog').open) {el('recovery-feedback').textContent=message;el('recovery-feedback').dataset.error=String(error);}
+}
+function btn(text, action, {disabled=false, icon=null, name=null}={}) {
+ const b = document.createElement('button'); b.type='button'; b.disabled=disabled;
+ if (icon) {const s=document.createElement('span');s.textContent=icon;s.setAttribute('aria-hidden','true');b.append(s);}
+ b.append(document.createTextNode(text)); if(name)b.setAttribute('aria-label',name);b.addEventListener('click',action);return b;
+}
+function doorFace(name, hint, action, {disabled=false, chosen=false, empty=false, id=null}={}) {
+ const b=btn('',action,{disabled,name});b.className='door'+(empty?' empty':'');
+ if(id)b.id=id;if(!empty)b.setAttribute('aria-pressed',String(chosen));
+ if(empty){const plus=document.createElement('span');plus.className='plus';plus.textContent='＋';plus.setAttribute('aria-hidden','true');b.append(plus);}
+ const title=document.createElement('span');title.className='room-name';title.textContent=name;
+ const small=document.createElement('small');small.textContent=hint;b.append(title,small);return b;
+}
+function render() {
+ const active=rooms.filter(r=>r.active), protectedMode=mode==='protected', world=el('scene-objects');
+ el('quota').textContent=protectedMode?'普通房 · 目录待核对':`普通房 ${active.length}/3${active.length===3?' · 已满，先解散再新建':''}`;
+ world.replaceChildren();
+ const pet=document.createElement('div');pet.className='door-place';
+ pet.append(doorFace('桌宠房','不占普通房额度',()=>say('小样：桌宠入口沿用现有合同，不接家具或解散。')));world.append(pet);
+ for(let i=0;i<3;i++) {
+  const r=active[i], place=document.createElement('div');place.className='door-place';
+  if(!r) {
+   place.append(doorFace(protectedMode?'待核对':'新建普通房',protectedMode?'原目录已保护':'空门位 · 尚有名额',openCreate,{disabled:protectedMode,empty:true,id:'vacant-door-'+i}));
+  } else {
+   place.append(doorFace(r.name,r.readonly?'缓存 · 家具只读':'本地单人',()=>selectRoom(r.id),{disabled:protectedMode,chosen:selected===r.id,id:'room-door-'+r.id}));
+   const detail=document.createElement('p');detail.className='door-detail';detail.textContent=`${r.kind} · ${r.capacity}席`;place.append(detail);
+   const actions=document.createElement('div');actions.className='door-actions';
+   if(selected===r.id) {
+    actions.append(btn('进入',()=>say(`小样：主动进入「${r.name}」。正式实现须等待健康首帧。`),{icon:'↗',name:`进入${r.name}`}));
+    const edit=btn('布置',()=>say(`小样：从「${r.name}」房门进入家具编辑，仍沿用单次操作确认与取消。`),{disabled:r.readonly,icon:'◇',name:`布置${r.name}`});
+    edit.title=r.readonly?'已开放房的离线家具只读':'E · 布置';actions.append(edit);
+    const dissolve=btn('解散',()=>beginDissolve(r),{disabled:r.linked,icon:'×',name:`解散${r.name}`});
+    if(r.linked)dissolve.title='关联房间需联网确认解散';actions.append(dissolve);
+   }
+   place.append(actions);
+   const reason=document.createElement('p');reason.className='read-reason';reason.textContent=selected===r.id&&r.readonly?'离线可游玩，布置与解散需联网':'';place.append(reason);
+  }
+  world.append(place);
+ }
+ const archive=document.createElement('div');archive.className='archive-place';
+ const sign=btn('已解散房间',openRecovery,{disabled:protectedMode,name:'查看已解散房间并恢复'});sign.id='archive-sign';sign.className='archive-sign';
+ const icon=document.createElement('span');icon.className='archive-icon';icon.setAttribute('aria-hidden','true');sign.prepend(icon);archive.append(sign);
+ const hint=document.createElement('p');hint.className='note';hint.textContent=protectedMode?'目录待核对':`${rooms.filter(r=>!r.active).length} 份存档 · 不占额度`;archive.append(hint);world.append(archive);
+ if(el('recovery-dialog').open)renderRecovery();
+}
+function selectRoom(id) {
+ selected=id;render();document.getElementById('room-door-'+id)?.focus({preventScroll:true});
+ say(`已选择「${rooms.find(r=>r.id===id).name}」，在房门旁进入、布置或解散。`);
+}
+function openCreate() {
+ if(mode==='protected'||rooms.filter(r=>r.active).length>=3)return;
+ el('room-name').value='普通房 '+serial;el('room-kind').value='私密';el('room-capacity').value=6;el('create-error').textContent='';el('create-dialog').showModal();
+}
+function beginDissolve(r) {
+ if(r.linked||mode==='protected')return;
+ target=r;confirmStep=0;el('dissolve-error').textContent='';paintDissolve();el('dissolve-dialog').showModal();
+}
+function paintDissolve() {
+ el('dissolve-title').textContent=confirmStep?'再次确认解散':'解散普通房';
+ el('dissolve-copy').textContent=confirmStep?`确定解散「${target.name}」？确认后房门腾出，释放1个普通房名额。`:`「${target.name}」解散后停止进入和互动，并立即释放1个名额。`;
+ el('dissolve-confirm').textContent=confirmStep?'确认解散':'继续确认';
+}
+function openRecovery() {
+ if(mode==='protected')return;
+ el('recovery-feedback').textContent='';el('recovery-feedback').dataset.error='false';renderRecovery();el('recovery-dialog').showModal();
+}
+function renderRecovery() {
+ const list=el('recovery-list');list.replaceChildren();
+ const archived=rooms.filter(r=>!r.active);
+ if(!archived.length){const p=document.createElement('p');p.className='note';p.textContent='没有已解散房间。';list.append(p);}
+ for(const r of archived) {
+  const row=document.createElement('div');row.className='restore-row';const content=document.createElement('div');
+  const title=document.createElement('span');title.textContent=r.name;const hint=document.createElement('p');hint.className='note';
+  hint.textContent=mode==='clock'?'本机时间异常，请校准后重试':r.days>0?`剩余 ${r.days} 天可恢复`:'已到期 · 本机存档保留';content.append(title,hint);
+  row.append(content,btn('恢复',()=>recover(r),{disabled:r.days<=0||mode==='clock',icon:'↶',name:`恢复${r.name}`}));list.append(row);
+ }
+}
+function recover(r) {
+ if(mode==='protected'||mode==='clock'||r.active||r.days<=0)return;
+ if(rooms.filter(x=>x.active).length>=3)return say('普通房已满3间，请先回门廊解散一间。存档已保留。',true);
+ if(mode==='failure')return say('恢复未保存，原解散状态及内容已保留。请重试。',true);
+ r.active=true;render();say(`「${r.name}」已恢复（小样状态），房门重新出现，未自动入房。`);
+ (el('recovery-list').querySelector('button:not(:disabled)')??el('recovery-dialog').querySelector('[data-close]')).focus();
+}
+function focusSceneOrigin() {
+ const current=selected?document.getElementById('room-door-'+selected):null;
+ (current??document.querySelector('.door.empty:not(:disabled)')??el('archive-sign')).focus({preventScroll:true});
+}
+el('dissolve-confirm').onclick=()=> {
+ if(!confirmStep){confirmStep=1;paintDissolve();return;}
+ if(mode==='failure'){el('dissolve-error').textContent='解散未保存，房间仍有效，额度未变化。';return;}
+ target.active=false;target.days=7;if(selected===target.id)selected=null;el('dissolve-dialog').close();render();focusSceneOrigin();say(`「${target.name}」已解散（小样状态），房门腾出，7天内可从标牌恢复。`);
+};
+el('create-form').onsubmit=e=> {
+ e.preventDefault();
+ if(mode==='failure'){el('create-error').textContent='创建未保存，空门位与额度保持原状。请重试。';return;}
+ if(rooms.filter(r=>r.active).length>=3){el('create-error').textContent='已满3间，请先解散一间。';return;}
+ const name=el('room-name').value.trim(),capacity=Number(el('room-capacity').value);
+ if(!name||!Number.isInteger(capacity)||capacity<1||capacity>12){el('create-error').textContent='请填写名称及1–12之间的整数容量。';return;}
+ const r=fictional('new-'+serial++,name,{kind:el('room-kind').value,capacity});rooms.push(r);selected=r.id;el('create-dialog').close();render();focusSceneOrigin();say(`「${r.name}」已创建（小样状态），空门位成为房门，已选择但未入房。`);
+};
+document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>el(b.dataset.close).close());
+el('recovery-dialog').addEventListener('close',()=>el('archive-sign').focus({preventScroll:true}));
+el('scenario').onchange=reset;el('home').onclick=()=>say('启动保持首页；记住的房门选择不代表自动入房。');reset();
 </script>
+</body>
 </html>
