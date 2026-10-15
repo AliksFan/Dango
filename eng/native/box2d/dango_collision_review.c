@@ -1,4 +1,4 @@
-// Isolated shared-world experiment. Does not replace dango_box2d.dll.
+﻿// Isolated shared-world experiment. Does not replace dango_box2d.dll.
 #include <math.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -63,6 +63,10 @@ typedef struct dango_collection_item
     bool platform_touch[DANGO_FURNITURE_COLLECTION_MAX];
 } dango_collection_item;
 
+#if defined(DANGO_PHYSICS_LAB)
+#include "dango_physics_lab.h"
+#endif
+
 typedef struct collision_review
 {
     dango_self_soft_body* bodies[DANGO_PHYSICS_MAX_BODIES];
@@ -117,6 +121,10 @@ typedef struct collision_review
 #endif
 #ifdef DANGO_STATIC_PLATFORM_CONTRACT_TESTS
     int test_platform_collapse_substep;
+#endif
+#if defined(DANGO_PHYSICS_LAB)
+    bool lab_call;
+    dango_lab_state lab[DANGO_PHYSICS_MAX_BODIES];
 #endif
     dango_self_physics_config body_config[DANGO_PHYSICS_MAX_BODIES];
 } collision_review;
@@ -982,7 +990,19 @@ DANGO_API int dango_collision_step(void* handle, float dt, const float* controls
                 if (!collision_material_idle_friction_override_enabled()) friction=p->body_config[r].friction;
 #endif
                 for (int n=0;n<16;++n) b2Shape_SetFriction(body->node_shape_ids[n],friction);
-                p->error=dango_self_apply_step_forces(body,&p->body_config[r],small_dt,sub,c[0],c[1],
+                float horizontal=c[0],downward=c[1];
+#if defined(DANGO_PHYSICS_LAB)
+                if(p->lab_call) {
+                    if(sub==0) p->lab[r].jump_accepted=c[2]!=0 &&
+                        (body->grounded || (!(p->legacy_interaction_flags&1) && supported[r]>=0)) &&
+                        body->seconds_since_jump+small_dt>=p->body_config[r].jump_cooldown_seconds;
+                    if(p->lab[r].jump_accepted) downward=0;
+                    p->error=dango_lab_forces(body,&p->body_config[r],&p->lab[r],small_dt,c);
+                    if(p->error) break;
+                    if(p->lab[r].mode!=0 && !(p->lab[r].mode==3 && p->lab[r].bias==0)) horizontal=0;
+                }
+#endif
+                p->error=dango_self_apply_step_forces(body,&p->body_config[r],small_dt,sub,horizontal,downward,
                     (p->legacy_interaction_flags&1) ? (int)c[2] : 0,(int)c[3],c[4],c[5]);
                 if (p->error) break;
                 // Borrow only the accepted ground spreading force; do not change
@@ -1309,6 +1329,9 @@ DANGO_API int dango_physics_world_remove(void* handle,int entity_id)
     for (int i=0;i<p->capacity;++i) if (p->active[i] && p->entity_ids[i]==entity_id) { slot=i; break; }
     if (slot<0) return -412;
     dango_self_destroy_rig(p->bodies[slot]);
+#if defined(DANGO_PHYSICS_LAB)
+    memset(&p->lab[slot],0,sizeof p->lab[slot]);
+#endif
     p->active[slot]=0; p->entity_ids[slot]=0; --p->count;
 #if defined(DANGO_REST_SLEEP)
     dango_rest_clear(&p->rest,slot);
@@ -1325,7 +1348,34 @@ DANGO_API int dango_physics_world_remove(void* handle,int entity_id)
     return 0;
 }
 
-DANGO_API int dango_physics_world_step(void* handle,float time_step,const int* entity_ids,const float* controls,
+#if defined(DANGO_BODY_DRIVE_REVIEW)
+// Read-only D1 diagnostics, absent from normal product modules. Each point is
+// x/y, vx/vy, actual mass, Box2D contact-data count; core precedes ring nodes.
+DANGO_API int dango_physics_world_get_drive_review(void* handle, int entity_id, float* samples, int capacity)
+{
+    collision_review* p = handle;
+    if (!p || !samples) return -410;
+    int slot = -1;
+    for (int i = 0; i < p->capacity; ++i)
+        if (p->active[i] && p->entity_ids[i] == entity_id) { slot = i; break; }
+    if (slot < 0) return -412;
+    const dango_self_soft_body* body = p->bodies[slot];
+    if (capacity < (body->node_count + 1) * 6) return -410;
+    for (int i = 0; i <= body->node_count; ++i)
+    {
+        b2BodyId id = i == 0 ? body->core_body_id : body->node_body_ids[i - 1];
+        b2Vec2 position = b2Body_GetPosition(id), velocity = b2Body_GetLinearVelocity(id);
+        b2ContactData data[16];
+        int contacts = b2Body_GetContactData(id, data, 16);
+        samples[6 * i] = position.x; samples[6 * i + 1] = position.y;
+        samples[6 * i + 2] = velocity.x; samples[6 * i + 3] = velocity.y;
+        samples[6 * i + 4] = b2Body_GetMass(id); samples[6 * i + 5] = (float)contacts;
+    }
+    return 0;
+}
+#endif
+
+static int collision_world_step_impl(void* handle,float time_step,const int* entity_ids,const float* controls,
     int control_count,int* state_ids,float* states,int state_capacity,int* state_count,int* contact_steps,int* latched_error)
 {
     collision_review* p=handle;
@@ -1364,9 +1414,65 @@ DANGO_API int dango_physics_world_step(void* handle,float time_step,const int* e
     return 0;
 }
 
+DANGO_API int dango_physics_world_step(void* handle,float dt,const int* ids,const float* controls,
+    int count,int* state_ids,float* states,int capacity,int* out_count,int* contacts,int* error)
+{
+#if defined(DANGO_PHYSICS_LAB)
+    collision_review* p=handle;
+    if(p) { p->lab_call=false; memset(p->lab,0,sizeof p->lab); }
+#endif
+    return collision_world_step_impl(handle,dt,ids,controls,count,state_ids,states,capacity,out_count,contacts,error);
+}
+#if defined(DANGO_PHYSICS_LAB)
+DANGO_API int dango_physics_lab_version(void) { return 1; }
+DANGO_API int dango_physics_get_lab_version(void) { return 1; }
+DANGO_API int dango_physics_world_get_lab_stats(void* handle,int id,float* values,int capacity)
+{
+    collision_review* p=handle;
+    if(!p || !values || capacity<16) return -410;
+    for(int i=0;i<p->capacity;++i) if(p->active[i] && p->entity_ids[i]==id) {
+        memcpy(values,p->lab[i].stats,16*sizeof(float)); return 0;
+    }
+    return -412;
+}
+/* controls9: legacy six, stretch, real input occupancy, immediate cancel. */
+DANGO_API int dango_physics_world_step_lab(void* handle,float dt,const int* ids,const float* controls,
+    int count,int mode,float bias,int* state_ids,float* states,int capacity,int* out_count,int* contacts,int* error)
+{
+    collision_review* p=handle;
+    if(!p || count!=p->count || (count && (!ids || !controls)) || !state_ids || !states ||
+       capacity<p->count*42 || !out_count || !contacts || !error || !isfinite(dt) || dt<=0 || dt>.1f ||
+       mode<0 || mode>3 || !isfinite(bias) || fabsf(bias)>1) return -410;
+    float old[DANGO_PHYSICS_MAX_BODIES*6]={0}; int slots[DANGO_PHYSICS_MAX_BODIES],seen[DANGO_PHYSICS_MAX_BODIES]={0};
+    for(int i=0;i<count;++i) {
+        int slot=-1;
+        for(int j=0;j<p->capacity;++j) if(p->active[j] && p->entity_ids[j]==ids[i]) { slot=j; break; }
+        if(slot<0 || seen[slot]) return -412;
+        seen[slot]=1; slots[i]=slot;
+        const float* c=controls+9*i;
+        for(int j=0;j<9;++j) if(!isfinite(c[j])) return -410;
+        if(fabsf(c[0])>1 || c[1]<0 || c[1]>1 || (c[2]!=0 && c[2]!=1) || (c[3]!=0 && c[3]!=1) ||
+           c[6]<0 || c[6]>1 || (c[7]!=0 && c[7]!=1) || (c[8]!=0 && c[8]!=1)) return -410;
+        memcpy(old+6*i,c,6*sizeof(float));
+    }
+    for(int i=0;i<count;++i) {
+        dango_lab_state* s=&p->lab[slots[i]]; const float* c=controls+9*i;
+        s->mode=mode; s->bias=bias; s->stretch=c[6]; s->active=c[7]; s->cancel=c[8];
+    }
+    p->lab_call=true;
+    int result=collision_world_step_impl(handle,dt,ids,old,count,state_ids,states,capacity,out_count,contacts,error);
+    p->lab_call=false;
+    if(p->error) memset(p->lab,0,sizeof p->lab);
+    return result;
+}
+#endif
+
 DANGO_API int dango_physics_world_reset(void* handle)
 {
     collision_review* p=handle;
+#if defined(DANGO_PHYSICS_LAB)
+    if(p) { p->lab_call=false; memset(p->lab,0,sizeof p->lab); }
+#endif
     if (p) COLLISION_REST_WAKE_ALL(p);
     if (!p) return -410;
 #if defined(DANGO_REST_SLEEP)

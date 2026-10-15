@@ -2781,6 +2781,10 @@ void dango_self_initialize_at(dango_self_soft_body* body, const dango_self_physi
 
 }
 
+#if defined(DANGO_BODY_DISTRIBUTED_DRIVE)
+#include "dango_body_drive.h"
+#endif
+
 int dango_self_apply_step_forces(dango_self_soft_body* body, const dango_self_physics_config* config,
     float small_time_step, int small_step, float horizontal_control, float downward_control,
     int jump_pressed, int drag_active, float drag_target_x, float drag_target_y)
@@ -2792,10 +2796,16 @@ int dango_self_apply_step_forces(dango_self_soft_body* body, const dango_self_ph
     if ((horizontal_control < 0.0f && core_velocity.x > -config->maximum_horizontal_speed) ||
         (horizontal_control > 0.0f && core_velocity.x < config->maximum_horizontal_speed))
     {
+#if defined(DANGO_BODY_DISTRIBUTED_DRIVE)
+        int drive_error = dango_body_apply_mass_drive(body,
+            horizontal_control * config->horizontal_force * control_scale);
+        if (drive_error != 0) return drive_error;
+#else
         b2Body_ApplyForceToCenter(
             body->core_body_id,
             (b2Vec2){horizontal_control * config->horizontal_force * control_scale, 0.0f},
             true);
+#endif
     }
     if (downward_control > 0.0f)
     {

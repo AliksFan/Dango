@@ -1,0 +1,140 @@
+using Dango.Physics;
+using Dango.PhysicsLab;
+
+if (args.Length == 3 && args[0] == "--experiments")
+{
+    LabExperiments.Run(args[1], args[2]);
+    return;
+}
+
+var checks = 0;
+void Check(bool condition, string name)
+{
+    if (!condition) throw new InvalidOperationException("FAILED: " + name);
+    Console.WriteLine("PASS: " + name);
+    checks++;
+}
+
+var input = new LabInput();
+input.KeyDown(LabKey.Left);
+input.KeyDown(LabKey.Right);
+var snapshot = input.Consume();
+Check(snapshot.Horizontal == 0 && snapshot.InputActive, "opposite movement is neutral but owns input");
+input.KeyUp(LabKey.Right);
+Check(input.Consume().Horizontal == -1, "releasing one movement key preserves the other");
+input.KeyDown(LabKey.Stretch);
+Check(input.Consume().Stretch == 1, "W produces stretch before the opposite key is pressed");
+input.KeyDown(LabKey.Squash);
+snapshot = input.Consume();
+Check(snapshot.Stretch == 0 && snapshot.Downward == 0 && snapshot.InputActive && snapshot.CancelForces,
+    "opposite posture is neutral and cancels previous ramp while retaining activity");
+input.KeyUp(LabKey.Squash);
+snapshot = input.Consume();
+Check(snapshot.Stretch == 1 && snapshot.InputActive && !snapshot.CancelForces,
+    "W remains held and resumes ramp after S release");
+input.KeyDown(LabKey.Jump);
+input.KeyDown(LabKey.Interact);
+snapshot = input.Consume();
+Check(snapshot.JumpPressed && snapshot.InteractPressed, "Space and F have independent edges");
+input.KeyDown(LabKey.Jump, isRepeat: true);
+input.KeyDown(LabKey.Interact, isRepeat: true);
+snapshot = input.Consume();
+Check(!snapshot.JumpPressed && !snapshot.InteractPressed, "repeat does not create new edges");
+input.Cancel();
+snapshot = input.Consume();
+Check(!snapshot.InputActive && snapshot.CancelForces && !snapshot.JumpPressed && !snapshot.InteractPressed,
+    "cancel immediately clears all actions and requests native force cancellation");
+Check(!input.Consume().CancelForces, "cancel is consumed once");
+input.KeyDown(LabKey.Left);
+input.KeyDown(LabKey.Jump);
+Check(!input.Consume().InputActive, "held keys are suppressed across cancellation");
+input.KeyUp(LabKey.Left);
+input.KeyDown(LabKey.Left);
+Check(input.Consume().Horizontal == -1, "key-up then new press re-enables key");
+input.KeyDown(LabKey.Right, modifiers: LabModifiers.Control);
+Check(!input.Consume().InputActive, "modifier cancels rather than leaking movement");
+input.KeyUp(LabKey.Left);
+input.KeyUp(LabKey.Right);
+input.Cancel();
+input.ReconcileHeld([LabKey.Jump]);
+input.KeyDown(LabKey.Jump);
+Check(!input.Consume().JumpPressed, "activation observes a held Space without synthesizing jump");
+input.ReconcileHeld([]);
+input.KeyDown(LabKey.Jump);
+Check(input.Consume().JumpPressed, "release outside app reconciles before fresh press");
+input.KeyUp(LabKey.Jump);
+input.KeyDown(LabKey.Stretch);
+input.Consume();
+input.KeyUp(LabKey.Stretch);
+snapshot = input.Consume();
+Check(!snapshot.InputActive && !snapshot.CancelForces && snapshot.Stretch == 0,
+    "ordinary W release remains distinct from lifecycle cancel");
+input.KeyDown(LabKey.Interact, blocked: true);
+input.KeyUp(LabKey.Interact);
+input.Consume();
+input.KeyDown(LabKey.Interact);
+Check(input.Consume().InteractPressed, "blocked key-up still releases suppression");
+
+var nodes = new[] { new DangoLabNode(0, 0, 2, 0, 0, 3, 0), new DangoLabNode(1, 4, 6, 0, 0, 1, 0) };
+var body = new DangoBodyState(new(1), new float[] { -1, 1, 1, 5 }, 0, 2, 1, 2, 3, 8, 0, false, -1, 2);
+var stats = new DangoLabStats(DangoLabDrive.Mass, 0, .5f, 1, 1, 0, 0, 3, 3, 0, 0, 0, 0, 1, false, 0);
+var metrics = new LabMetrics(2);
+var sample = metrics.Record(body, nodes, stats);
+Check(sample.CenterOfMassX == 1 && sample.CenterOfMassY == 3 && sample.ContourHeight == 4,
+    "metrics use actual mass-weighted positions and real contour height");
+metrics.Record(body, nodes, stats);
+sample = metrics.Record(body, nodes, stats);
+Check(sample.ConsecutiveNoContactFrames == 3 && metrics.Samples.Count == 2 && metrics.Samples[0].Tick == 2,
+    "bounded sampling retains latest ticks and consecutive contact gaps");
+sample = metrics.Record(body with { GroundContactCount = 1 }, nodes, stats);
+Check(sample.ConsecutiveNoContactFrames == 0, "real contact resets airborne counter");
+metrics.Clear();
+Check(metrics.TotalSamples == 0 && metrics.Samples.Count == 0, "new scene clears metric history");
+
+if (args.Length > 0)
+{
+    using var world = DangoPhysicsWorld.Create(args[0], capacity: 1);
+    var id = world.Add(0, 0);
+    world.RequireLab();
+    var frame = world.StepLab(1d / 60, [new(id)] , DangoLabDrive.Core);
+    Check(frame.Succeeded && frame.Bodies.Count == 1, "real DLL lab step succeeds");
+    var actualNodes = world.ReadLabNodes(id);
+    Check(actualNodes.Count == 17 && actualNodes.All(n => n.Mass > 0), "real DLL exposes 17 actual positive masses");
+    world.StepLab(1d / 60, [new(id, Stretch: 1, InputActive: true)], DangoLabDrive.Mass);
+    Check(world.ReadLabStats(id).StretchRamp > 0, "real W starts native ramp");
+    world.StepLab(1d / 60, [new(id)], DangoLabDrive.Mass);
+    Check(world.ReadLabStats(id).StretchRamp > 0, "ordinary release keeps native decay");
+    world.StepLab(1d / 60, [new(id, CancelForces: true)], DangoLabDrive.Mass);
+    Check(world.ReadLabStats(id).StretchRamp == 0, "lifecycle cancel clears native ramp immediately");
+    var rejected = false;
+    try { world.StepLab(1d / 60, [new(id, Stretch: double.NaN)], DangoLabDrive.Core); }
+    catch (ArgumentOutOfRangeException) { rejected = true; }
+    Check(rejected, "managed boundary rejects non-finite stretch");
+    rejected = false;
+    try { world.StepLab(1d / 60, [], DangoLabDrive.Core); }
+    catch (DangoPhysicsException error) when (error.Kind == DangoPhysicsFailureKind.InvalidEntity) { rejected = true; }
+    Check(rejected, "lab inputs cannot silently omit a body");
+    rejected = false;
+    try { world.StepLab(1d / 60, [new(id)], (DangoLabDrive)42); }
+    catch (ArgumentOutOfRangeException) { rejected = true; }
+    Check(rejected, "unknown drive mode is rejected before native call");
+    var threadError = Task.Run(() => {
+        try { world.RequireLab(); return false; }
+        catch (InvalidOperationException) { return true; }
+    }).GetAwaiter().GetResult();
+    Check(threadError, "lab methods retain creating-thread ownership");
+}
+if (args.Length > 1)
+{
+    using var legacy = DangoPhysicsWorld.Create(args[1], capacity: 1);
+    var id = legacy.Add(0, 0);
+    Check(legacy.Step(TimeSpan.FromSeconds(1d / 60), [new(id)]).Succeeded,
+        "legacy production Step does not require laboratory exports");
+    var rejected = false;
+    try { legacy.RequireLab(); }
+    catch (DangoPhysicsException error) when (error.Kind == DangoPhysicsFailureKind.MissingExport) { rejected = true; }
+    Check(rejected, "laboratory capability fails explicitly on legacy DLL");
+    Check(legacy.Step(TimeSpan.FromSeconds(1d / 60), [new(id)]).Succeeded,
+        "failed lab opt-in leaves ordinary legacy world usable");
+}
+Console.WriteLine($"{checks} checks passed.");
