@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Data;
+using Binding = System.Windows.Data.Binding;
 using System.Windows.Input;
 using System.Windows.Media;
 using Dango.Desktop.AppShell.Rooms.Storage;
@@ -24,6 +26,7 @@ public partial class ProductHomeView
     private Border? roomDialog;
     private StackPanel? roomDialogBody, roomDialogActions;
     private TextBlock? roomDialogError;
+    private ScrollViewer? compactRoomScroll;
     private bool roomCommandBusy;
     private bool roomCatalogRefreshing;
     internal bool IsRoomDialogOpen => roomDialog is not null;
@@ -74,7 +77,7 @@ public partial class ProductHomeView
             { roomCatalogRefreshing = false; PorchScene.CatalogInputBlocked = IsRoomDialogOpen || RoomEntryPending; });
         }
     }
-    private void OpenRoomDialog(string title, bool showHeading = true)
+    private void OpenRoomDialog(string title, bool compact = false)
     {
         if (roomDialog is not null || !IsInPorch || RoomEntryPending) return;
         ClearLiveDirectionalInput();
@@ -85,7 +88,7 @@ public partial class ProductHomeView
         grid.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
         grid.RowDefinitions.Add(new() { Height = GridLength.Auto });
         grid.RowDefinitions.Add(new() { Height = GridLength.Auto });
-        if (showHeading)
+        if (!compact)
             grid.Children.Add(new TextBlock { Text = title, FontSize = 16, Margin = new(0, 0, 0, 14), TextWrapping = TextWrapping.Wrap });
         roomDialogBody = new() { Margin = new(0, 0, 0, 8) };
         var scroll = new ScrollViewer
@@ -116,16 +119,35 @@ public partial class ProductHomeView
         { Source = new Uri("/Dango.Desktop;component/AppShell/Rooms/RoomCatalogDialogResources.xaml", UriKind.Relative) });
         card.SetResourceReference(BackgroundProperty, "HomeBackground"); card.SetResourceReference(BorderBrushProperty, "HomeLine");
         AutomationProperties.SetName(card, title);
+        if (compact)
+        {
+            compactRoomScroll = scroll;
+            grid.Children.Remove(roomDialogError);
+            scroll.Content = null;
+            var content = new StackPanel { Margin = new(22, 22, 30, 60) };
+            content.Children.Add(roomDialogBody); content.Children.Add(roomDialogError);
+            roomDialogBody.Margin = new(0);
+            roomDialogError.MinHeight = 0; roomDialogError.Margin = new(0, 8, 0, 0);
+            scroll.Content = content; scroll.MaxHeight = double.PositiveInfinity;
+            Grid.SetRow(scroll, 0); Grid.SetRowSpan(scroll, 4);
+            Grid.SetRow(roomDialogActions, 0); Grid.SetRowSpan(roomDialogActions, 4);
+            roomDialogActions.VerticalAlignment = VerticalAlignment.Bottom;
+            roomDialogActions.Margin = new(0, 0, 14, 14);
+            card.Padding = new(0);
+            card.Height = Math.Min(440, Math.Max(180, PorchContent.ActualHeight - 40));
+        }
         roomDialog = new Border { Child = card, Background = SystemParameters.HighContrast ? SystemColors.WindowBrush : new SolidColorBrush(Color.FromArgb(75, 68, 61, 52)) };
         roomDialog.MouseDown += (_, e) => e.Handled = true;
         PorchContent.Children.Add(roomDialog);
-        AddDialogAction("× 取消", CloseRoomDialog);
+        if (compact) AddDialogIconAction("取消", "M6,6 L18,18 M18,6 L6,18", CloseRoomDialog);
+        else AddDialogAction("× 取消", CloseRoomDialog);
     }
     internal void CloseRoomDialog()
     {
         if (roomCommandBusy || roomDialog is null) return;
         PorchContent.Children.Remove(roomDialog); roomDialog = null;
         roomDialogBody = roomDialogActions = null; roomDialogError = null;
+        compactRoomScroll = null;
         PorchScene.CatalogInputBlocked = false; ClearLiveDirectionalInput(); PorchScene.FocusCatalogOrigin();
     }
     private Button AddDialogAction(string label, Action action)
@@ -135,11 +157,46 @@ public partial class ProductHomeView
         button.Click += (_, e) => { e.Handled = true; if (!roomCommandBusy) action(); };
         roomDialogActions!.Children.Add(button); return button;
     }
+    private Button AddDialogIconAction(string name, string geometry, Action action, bool primary = false)
+    {
+        var button = AddDialogAction(name, action);
+        button.Style = (Style)FindResource("FaceIconButton"); button.MinHeight = 32;
+        button.ToolTip = name;
+        var path = new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse(geometry),
+            StrokeThickness = 1.8,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            StrokeLineJoin = PenLineJoin.Round
+        };
+        path.SetBinding(System.Windows.Shapes.Shape.StrokeProperty, new Binding(nameof(Button.Foreground))
+        { RelativeSource = new(RelativeSourceMode.FindAncestor, typeof(Button), 1) });
+        var canvas = new System.Windows.Controls.Canvas { Width = 24, Height = 24, IsHitTestVisible = false };
+        canvas.Children.Add(path);
+        button.Content = new Viewbox { Width = 20, Height = 20, Child = canvas };
+        button.SetResourceReference(BackgroundProperty, primary ? "HomeSelected" : "HomeBackground");
+        if (primary) button.SetResourceReference(BorderBrushProperty, "HomeAccent");
+        return button;
+    }
+    private void SetRoomDialogError(string message)
+    {
+        if (roomDialogError is not { } error) return;
+        error.Text = message;
+        var scroll = compactRoomScroll;
+        _ = error.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded,
+            new Action(() =>
+            {
+                if (!error.IsLoaded) return;
+                if (scroll is not null) scroll.ScrollToEnd();
+                else error.BringIntoView();
+            }));
+    }
     private void AddRoomText(string text) => roomDialogBody!.Children.Add(new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, Margin = new(0, 0, 0, 12) });
     private void OpenCreateRoom()
     {
         if (roomCatalog is null || roomCatalog.ActiveCount >= 3 || IsRoomDialogOpen) return;
-        OpenRoomDialog("新建普通房", showHeading: false); if (roomDialog is null) return;
+        OpenRoomDialog("新建普通房", compact: true); if (roomDialog is null) return;
         var name = new TextBox { Text = "普通房 " + (roomCatalog.Rooms.Length + 1), MaxLength = 64, MinHeight = 36, Margin = new(0, 0, 0, 12) };
         AddRoomText("名称"); AutomationProperties.SetName(name, "房间名称"); roomDialogBody!.Children.Add(name);
         var kind = new ComboBox { ItemsSource = new[] { "私密", "公共" }, SelectedIndex = 0, MinHeight = 36, Margin = new(0, 0, 0, 12) };
@@ -148,13 +205,13 @@ public partial class ProductHomeView
         AddRoomText("容量 · 1–12"); AutomationProperties.SetName(capacity, "房间容量"); roomDialogBody.Children.Add(capacity);
         AddRoomText("仅创建到本地，尚未开放他人进入。");
         var operation = Guid.NewGuid(); var id = Guid.NewGuid();
-        AddDialogAction("＋ 创建", async () =>
+        AddDialogIconAction("创建", "M12,5 L12,19 M5,12 L19,12", async () =>
         {
             if (!int.TryParse(capacity.Text, NumberStyles.None, CultureInfo.InvariantCulture, out var count) || count is < 1 or > 12 || string.IsNullOrWhiteSpace(name.Text))
-            { roomDialogError!.Text = "请填写名称及1–12之间的整数容量。"; return; }
+            { SetRoomDialogError("请填写名称及1–12之间的整数容量。"); return; }
             var title = name.Text.Trim(); var type = kind.SelectedIndex == 1 ? LocalRoomKind.Public : LocalRoomKind.Private;
             await RunRoomCommandAsync(() => roomCatalogStore!.Create(operation, id, title, type, count), id, "已创建到本地，请主动进入房间。");
-        });
+        }, primary: true);
         name.Focus(); name.SelectAll();
     }
     private void OpenDissolveRoom(Guid id)
@@ -212,7 +269,7 @@ public partial class ProductHomeView
             else if (roomDialog is not null)
             {
                 roomDialogBody!.IsEnabled = roomDialogActions!.IsEnabled = true;
-                roomDialogError!.Text = result.Warning ?? "保存结果待核对。";
+                SetRoomDialogError(result.Warning ?? "保存结果待核对。");
                 if (!roomDialogActions.Children.OfType<Button>().Any(button => Equals(button.Content, "↶ 重新读取")))
                     AddDialogAction("↶ 重新读取", async () => { CloseRoomDialog(); await RecheckRoomCatalogAsync(); });
             }

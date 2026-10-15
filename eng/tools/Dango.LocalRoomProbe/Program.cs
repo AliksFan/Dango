@@ -144,12 +144,29 @@ internal static class Program
             var home = ((ControlCenterWindow)typeof(DangoApplicationHost).GetField("controlCenterWindow", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host)!).ProductHome;
             Pump(() => home.CatalogSnapshot is not null, "Catalog startup");
             Require(!home.IsDangoAway && !home.IsInPorch && host.LocalWindow?.IsVisible == false, "Startup automatically entered a room.");
+            home.ReduceMotion = true;
             home.ResumePorch(); Pump(() => home.OwnsLiveFrameDriver && home.PorchScene.LiveBody.IsVisible, "Porch healthy frame");
             var catalog = home.CatalogSnapshot!; Require(catalog.ActiveCount >= 2, "UI verification needs the two-room fixture.");
             SaveWindowPreview(Window.GetWindow(home), Path.Combine(root, "porch.png"));
             home.PorchScene.ResetProjection(1000); home.PorchScene.InteractNearestDoor();
             Require(home.IsRoomDialogOpen, "The vacant porch door did not open its form.");
             SaveWindowPreview(Window.GetWindow(home), Path.Combine(root, "create-room.png"));
+            var createCard = (System.Windows.Controls.Border)home.RoomDialog!.Child;
+            var createGrid = (System.Windows.Controls.Grid)createCard.Child;
+            var createScroll = createGrid.Children.OfType<System.Windows.Controls.ScrollViewer>().Single();
+            createScroll.ScrollToEnd();
+            SaveWindowPreview(Window.GetWindow(home), Path.Combine(root, "create-room-bottom.png"));
+            var createContent = (System.Windows.Controls.StackPanel)createScroll.Content;
+            var createForm = createContent.Children.OfType<System.Windows.Controls.StackPanel>().Single();
+            createForm.Children.OfType<System.Windows.Controls.TextBox>().Last().Text = "0";
+            var createActions = createGrid.Children.OfType<System.Windows.Controls.StackPanel>().Single();
+            createActions.Children.OfType<System.Windows.Controls.Button>().Single(button => System.Windows.Automation.AutomationProperties.GetName(button) == "创建")
+                .RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            Window.GetWindow(home).UpdateLayout();
+            Pump(() => createScroll.VerticalOffset >= createScroll.ScrollableHeight - .5, "Creation error remains above overlay actions");
+            Require(createContent.Children.OfType<System.Windows.Controls.TextBlock>().Single().Text.Length > 0 && home.CatalogSnapshot!.ActiveCount == 2,
+                "Invalid creation must show its actual validation error without publishing a room.");
+            SaveWindowPreview(Window.GetWindow(home), Path.Combine(root, "create-room-error.png"));
             home.CloseRoomDialog();
             host.EnterCatalogRoom(catalog.Rooms[0].RoomId, false);
             host.ReturnToPorch();
@@ -188,7 +205,7 @@ internal static class Program
             host.EnterDesktopPetRoom();
             Pump(() => host.LocalPresentation == LocalRoomPresentation.DesktopPet && !host.LocalHandoffPending, "Desktop pet healthy layered frame");
             host.ReturnToPorch(); Pump(() => !host.LocalHandoffPending && home.OwnsLiveFrameDriver, "Desktop pet return");
-            File.WriteAllText(Path.Combine(root, "ui-check-result.json"), JsonSerializer.Serialize(new { passed = true, checks = "startup, cancelled preparation, concurrent dissolution, A-B-A identity/layout/camera, editor camera protection, unique owner, desktop-pet handoff", manualInput = false }));
+            File.WriteAllText(Path.Combine(root, "ui-check-result.json"), JsonSerializer.Serialize(new { passed = true, checks = "startup, creation overlay and validation, cancelled preparation, concurrent dissolution, A-B-A identity/layout/camera, editor camera protection, unique owner, desktop-pet handoff", manualInput = false }));
         }
         finally { host.Dispose(); app.Shutdown(); }
     }

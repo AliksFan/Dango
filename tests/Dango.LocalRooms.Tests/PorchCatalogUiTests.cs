@@ -38,10 +38,10 @@ public sealed class PorchCatalogUiTests
             Assert.AreEqual(1, rig.Home.CatalogSnapshot!.ActiveCount);
             rig.Home.PorchScene.ResetProjection(780); Assert.IsTrue(rig.Home.PorchScene.InteractNearestDoor());
             Assert.IsTrue(rig.Home.IsRoomDialogOpen); Assert.IsFalse(rig.Home.PorchScene.InteractNearestDoor(), "A modal must block the underlying scene.");
-            FindButton(rig.Home.RoomDialog!, "× 取消").RaiseEvent(new(Button.ClickEvent));
+            FindButton(rig.Home.RoomDialog!, "取消").RaiseEvent(new(Button.ClickEvent));
             Assert.IsFalse(rig.Home.IsRoomDialogOpen); CollectionAssert.AreEqual(before, File.ReadAllBytes(rig.CatalogPath));
             rig.Home.PorchScene.InteractNearestDoor();
-            FindButton(rig.Home.RoomDialog!, "＋ 创建").RaiseEvent(new(Button.ClickEvent));
+            FindButton(rig.Home.RoomDialog!, "创建").RaiseEvent(new(Button.ClickEvent));
             Pump(() => !rig.Home.IsRoomDialogOpen);
             Assert.AreEqual(2, rig.Home.CatalogSnapshot!.ActiveCount); Assert.AreEqual(2, rig.Home.PorchScene.CatalogOrdinaryCount);
             Assert.AreEqual(0, rig.Entries, "Creating a room must never auto-enter it.");
