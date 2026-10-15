@@ -29,6 +29,7 @@ Write-DangoProfileJson (Join-Path $taskProfilePlan.EvidenceDirectory 'approved-i
 $taskProfileTools=[Collections.Generic.List[object]]::new()
 $taskProfileProof=$null; $taskProfileStartAttempt=$null; $taskProfileStartReturn=$null
 $taskProfileStartTool=$null; $taskProfileStartControlExit=-1
+$taskProfileStartupObservation=$null
 $taskProfileFailure=$null; $taskProfileCleanup=$false; $taskProfilePassword=$null; $taskProfileAfter=$null
 $taskProfileHashes=@{}; $taskProfileAudit=$null; $taskProfileResources=$null; $taskProfileScopedGraph=$null
 $taskProfileTestsAttempted=$false; $taskProfileInputsFrozen=$false
@@ -81,15 +82,19 @@ try {
     try {
         $taskProfileStarted=Invoke-DangoProfileProcess $taskProfileControl @('start','-D',$taskProfilePlan.DataDirectory,'-l',
             (Join-Path $taskProfilePlan.EvidenceDirectory 'postgresql.log'),'-o',"-h 127.0.0.1 -p $($taskProfileFacts.Port)",'-w','-t','30') `
-            $taskProfilePlan.Repository -TimeoutSeconds 40 -Receipts $taskProfileTools
+            $taskProfilePlan.Repository -TimeoutSeconds 40 -Receipts $taskProfileTools `
+            -OutputContract PostgresStartIgnored -PostgresStartPlan $taskProfilePlan -PostgresStartPort $taskProfileFacts.Port
         $taskProfileStartControlExit=$taskProfileStarted.ExitCode
     } finally {
         $taskProfileStartReturn=[DateTime]::UtcNow
-        if ($taskProfileTools.Count -gt $taskProfileStartIndex) { $taskProfileStartTool=$taskProfileTools[$taskProfileStartIndex] }
+        if ($taskProfileTools.Count -gt $taskProfileStartIndex) {
+            $taskProfileStartTool=$taskProfileTools[$taskProfileStartIndex]
+            if ($taskProfileStartTool.ExitCodeRecorded) { $taskProfileStartControlExit=$taskProfileStartTool.ExitCode }
+        }
     }
     $taskProfileProof=Get-DangoProfilePostgresProof $taskProfilePlan $taskProfileFacts.Port $taskProfileStartControlExit $taskProfileStartTool
     if (-not (Test-DangoProfilePostgresProof $taskProfileProof $taskProfilePostgres $taskProfilePlan.DataDirectory `
-        $taskProfileFacts.Port $taskProfileStartAttempt $taskProfileStartReturn)) { throw 'profile_run_start_ownership_unconfirmed' }
+        $taskProfileFacts.Port $taskProfileStartAttempt $taskProfileStartReturn $taskProfilePlan)) { throw 'profile_run_start_ownership_unconfirmed' }
     if ($taskProfileStartControlExit -ne 0) { throw 'profile_run_postgres_start_failed' }
     $taskProfileSql=Get-DangoProfileDatabaseSql
     $taskProfilePsqlArgs=@('-X','-w','-q','-A','-t','-v','ON_ERROR_STOP=1','-h','127.0.0.1','-p',[string]$taskProfileFacts.Port,
@@ -181,15 +186,16 @@ try {
     $taskProfileFailure=if ($_.Exception.Message -match '^profile_run_[a-z0-9_]+$') { $_.Exception.Message } else { 'profile_run_operation_failed' }
 } finally {
     try {
-        if ($null -eq $taskProfileProof -and $null -ne $taskProfileStartAttempt -and
-            [IO.File]::Exists((Join-Path $taskProfilePlan.DataDirectory 'postmaster.pid'))) {
-            $taskProfileProof=Get-DangoProfilePostgresProof $taskProfilePlan $taskProfileFacts.Port $taskProfileStartControlExit $taskProfileStartTool
+        if ($null -ne $taskProfileStartAttempt -and $null -ne $taskProfileStartReturn) {
+            $taskProfileStartupObservation=Observe-DangoProfileStartup $taskProfilePlan $taskProfileFacts.Port `
+                $taskProfileStartControlExit $taskProfileStartTool $taskProfileStartAttempt
+            if ($taskProfileStartupObservation.Verified) { $taskProfileProof=$taskProfileStartupObservation.Proof }
         }
-        if ($null -ne $taskProfileProof -and $null -ne $taskProfileStartAttempt -and $null -ne $taskProfileStartReturn) {
+        if ($null -ne $taskProfileProof -and $null -ne $taskProfileStartupObservation -and $taskProfileStartupObservation.Verified) {
             $taskProfileCurrent=Get-DangoProfilePostgresProof $taskProfilePlan $taskProfileFacts.Port $taskProfileProof.ControlExitCode $taskProfileStartTool
             if ($taskProfileCurrent.Pid -eq $taskProfileProof.Pid -and $taskProfileCurrent.CreatedAt -eq $taskProfileProof.CreatedAt -and
                 (Test-DangoProfilePostgresProof $taskProfileCurrent $taskProfilePostgres $taskProfilePlan.DataDirectory `
-                    $taskProfileFacts.Port $taskProfileStartAttempt $taskProfileStartReturn)) {
+                    $taskProfileFacts.Port $taskProfileStartAttempt $taskProfileStartupObservation.ObservedUntil $taskProfilePlan)) {
                 $taskProfileStopped=Invoke-DangoProfileProcess $taskProfileControl @('stop','-D',$taskProfilePlan.DataDirectory,'-m','fast','-w','-t','30') `
                     $taskProfilePlan.Repository -TimeoutSeconds 40 -Receipts $taskProfileTools
                 $taskProfileCleanup=$taskProfileStopped.ExitCode -eq 0 -and
@@ -197,9 +203,7 @@ try {
                     -not (Test-DangoProfileListener $taskProfileFacts.Port) -and
                     $null -eq (Get-Process -Id $taskProfileProof.Pid -ErrorAction SilentlyContinue)
             }
-        } elseif ($null -eq $taskProfileStartAttempt -or
-            (-not [IO.File]::Exists((Join-Path $taskProfilePlan.DataDirectory 'postmaster.pid')) -and
-             -not (Test-DangoProfileListener $taskProfileFacts.Port))) { $taskProfileCleanup=$true }
+        } elseif ($null -eq $taskProfileStartAttempt) { $taskProfileCleanup=$true }
     } catch { $taskProfileCleanup=$false }
     if (@($taskProfileTools | Where-Object { -not $_.CleanupConfirmed }).Count -ne 0) { $taskProfileCleanup=$false }
     $taskProfilePassword=$null; $taskProfileConnection=$null; $taskProfileMigrationEnv=$null; $taskProfileTestEnv=$null
@@ -214,6 +218,7 @@ try {
         AttemptEvidence=$taskProfileAudit;
         FixturesAttempted=$taskProfileTestsAttempted; FixtureResourceEvidence=$taskProfileResources;
         FixtureNativeCleanupConfirmed=($null -ne $taskProfileResources -and $taskProfileResources.NativeCleanupConfirmed);
+        StartupObservation=$taskProfileStartupObservation;
         WholeSuiteReserved=$true; RetryAllowed=$false; DataRetained=[IO.Directory]::Exists($taskProfilePlan.DataDirectory);
         KeysAndEpochRetained=([IO.Directory]::Exists((Join-Path $taskProfilePlan.StateDirectory 'b1tests-keys')) -and
             [IO.File]::Exists((Join-Path $taskProfilePlan.StateDirectory 'b1test-state.json'))) }) -CreateNew
