@@ -1,6 +1,18 @@
 using Dango.Physics;
 using Dango.PhysicsLab;
 
+if (args.Length == 2 && args[0] == "--ground-contracts")
+{
+    LabGroundExperiments.RunBaselineContracts(args[1]);
+    return;
+}
+
+if (args.Length == 4 && args[0] == "--ground-experiments")
+{
+    LabGroundExperiments.Run(args[1], args[2], args[3]);
+    return;
+}
+
 if (args.Length == 3 && args[0] == "--experiments")
 {
     LabExperiments.Run(args[1], args[2]);
@@ -14,6 +26,17 @@ void Check(bool condition, string name)
     Console.WriteLine("PASS: " + name);
     checks++;
 }
+
+var curve = LabGroundExperiments.CurveExtent(new float[] { -1,0, 0,1, 1,0, 0,-1 },1);
+Check(Math.Abs(curve.Maximum-.75)<1e-12 && Math.Abs(curve.Minimum+.75)<1e-12,
+    "exact curve height solves interior quadratic extrema instead of raw controls");
+var highSpectrum=LabGroundExperiments.Analyze(Enumerable.Range(0,480).Select(i=>3+Math.Sin(2*Math.PI*72*i/480)).ToArray());
+Check(Math.Abs(highSpectrum.FullBandRms-Math.Sqrt(.5))<1e-10 && highSpectrum.Band05To5Rms<1e-10 &&
+    Math.Abs(highSpectrum.DominantHz-9)<1e-3,
+    "full spectrum retains 9Hz oscillation that narrow 0.5-5Hz band excludes");
+var nyquistSpectrum=LabGroundExperiments.Analyze(Enumerable.Range(0,480).Select(i=>i%2==0?1d:-1d).ToArray());
+Check(Math.Abs(nyquistSpectrum.FullBandRms-1)<1e-10,
+    "Nyquist energy is retained once rather than doubled or silently discarded");
 
 var input = new LabInput();
 input.KeyDown(LabKey.Left);
@@ -81,7 +104,11 @@ var stats = new DangoLabStats(DangoLabDrive.Mass, 0, .5f, 1, 1, 0, 0, 3, 3, 0, 0
 var metrics = new LabMetrics(2);
 var sample = metrics.Record(body, nodes, stats);
 Check(sample.CenterOfMassX == 1 && sample.CenterOfMassY == 3 && sample.ContourHeight == 4,
-    "metrics use actual mass-weighted positions and real contour height");
+    "metrics retain actual mass-weighted positions and legacy control-point height");
+var curvedSample = metrics.Record(body with { Contour = new float[] { -1,0, 0,1, 1,0, 0,-1 } }, nodes, stats);
+Check(Math.Abs(curvedSample.ExactCurveHeight - 1.5) < 1e-12 && curvedSample.ContourHeight == 2,
+    "window metrics distinguish exact drawn curve height from legacy control-point span");
+metrics.Clear(); metrics.Record(body, nodes, stats);
 metrics.Record(body, nodes, stats);
 sample = metrics.Record(body, nodes, stats);
 Check(sample.ConsecutiveNoContactFrames == 3 && metrics.Samples.Count == 2 && metrics.Samples[0].Tick == 2,
@@ -96,6 +123,8 @@ if (args.Length > 0)
     using var world = DangoPhysicsWorld.Create(args[0], capacity: 1);
     var id = world.Add(0, 0);
     world.RequireLab();
+    Check(world.LabGroundModel == DangoLabGroundModel.DiscreteNodes && world.ReadLabGroundStats(id) is null,
+        "old lab DLL lacks optional ground exports and explicitly remains discrete");
     var frame = world.StepLab(1d / 60, [new(id)] , DangoLabDrive.Core);
     Check(frame.Succeeded && frame.Bodies.Count == 1, "real DLL lab step succeeds");
     var actualNodes = world.ReadLabNodes(id);
@@ -128,6 +157,8 @@ if (args.Length > 1)
 {
     using var legacy = DangoPhysicsWorld.Create(args[1], capacity: 1);
     var id = legacy.Add(0, 0);
+    Check(legacy.LabGroundModel == DangoLabGroundModel.DiscreteNodes,
+        "ordinary legacy world reads absent optional ground model without laboratory opt-in");
     Check(legacy.Step(TimeSpan.FromSeconds(1d / 60), [new(id)]).Succeeded,
         "legacy production Step does not require laboratory exports");
     var rejected = false;

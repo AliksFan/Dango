@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
@@ -20,12 +21,12 @@ internal sealed class LabWindow : Window
     internal static readonly Brush Ink = new SolidColorBrush(Color.FromRgb(68, 61, 52));
     internal static readonly Brush Accent = new SolidColorBrush(Color.FromRgb(136, 94, 62));
     internal static readonly Brush LineBrush = new SolidColorBrush(Color.FromRgb(233, 228, 218));
-    private readonly string module, session;
+    private readonly string module, envelopeModule, session;
     private readonly LabInput input = new();
     private readonly LabMetrics metrics = new(1200, FixedDt);
     private readonly DispatcherTimer timer = new(DispatcherPriority.Render);
     private readonly Stopwatch clock = Stopwatch.StartNew();
-    private readonly ComboBox drive = new(), replay = new();
+    private readonly ComboBox drive = new(), replay = new(), groundModel = new();
     private readonly Slider bias = new() { Minimum = -1, Maximum = 1, TickFrequency = .25, IsSnapToTickEnabled = true, Value = 0 };
     private readonly Slider size = new() { Minimum = 80, Maximum = 120, Value = 100, TickFrequency = 10, IsSnapToTickEnabled = true };
     private readonly Slider softness = new() { Minimum = 0, Maximum = 100, Value = 50, TickFrequency = 10, IsSnapToTickEnabled = true };
@@ -38,6 +39,7 @@ internal sealed class LabWindow : Window
     private readonly TextBlock applied = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
     private readonly LabSurface surface;
     private readonly LabChart chart;
+    private readonly Button platformButton;
     private DangoPhysicsWorld? world;
     private DangoEntityId entity;
     private DangoSelfPhysicsParameters configuration = DangoBodyMaterial.Configure(DangoBodyControls.Default);
@@ -49,6 +51,9 @@ internal sealed class LabWindow : Window
     private DangoBodyState? body;
     private IReadOnlyList<DangoLabNode> nodes = [];
     private DangoLabStats? stats;
+    private DangoLabGroundStats? groundStats;
+    private readonly Queue<object> groundTrace = new();
+    private bool activeEnvelope;
     internal Button ApplyButton { get; }
     internal Button PauseButton { get; }
     internal TextBox Notes { get; } = new() { MinHeight = 34, MaxLength = 500, ToolTip = "输入时不控制团子；内容不导出、不保存" };
@@ -56,14 +61,15 @@ internal sealed class LabWindow : Window
     internal int NativeSteps { get; private set; }
     internal int ButtonClicks { get; private set; }
     internal int InteractionCount => interactionCount;
+    internal bool IsContinuousGround => activeEnvelope;
     internal LabInputSnapshot CurrentInput => lastInput;
     internal DangoBodyState? CurrentBody => body;
     internal IReadOnlyList<LabMetricSample> Samples => metrics.Samples;
     internal Slider TestSlider => bias;
 
-    internal LabWindow(string module, string session)
+    internal LabWindow(string module, string session, string envelopeModule, bool useEnvelope = false)
     {
-        this.module = module; this.session = session;
+        this.module = module; this.envelopeModule = envelopeModule; this.session = session;
         Title = "团子 · 物理实验室 · 步态关闭";
         Width = Math.Min(1220, SystemParameters.WorkArea.Width - 32);
         Height = Math.Min(860, SystemParameters.WorkArea.Height - 32); MinWidth = 940; MinHeight = 660;
@@ -78,7 +84,7 @@ internal sealed class LabWindow : Window
         var root = new DockPanel { Margin = new Thickness(20, 16, 20, 16) };
         var heading = new StackPanel();
         heading.Children.Add(new TextBlock { Text = "物理实验室", FontSize = 21, Margin = new Thickness(0, 0, 0, 6) });
-        heading.Children.Add(new TextBlock { Text = "A / D 移动   W 拉伸向上看   S 下压向下看   Space 跳跃   F 近处开关   鼠标拖动团子", Foreground = Accent });
+        heading.Children.Add(new TextBlock { Text = "A / D 移动   W 拉伸向上看   S 下压向下看   Space 跳跃   F 平台开关（基线模型）   鼠标拖动团子", Foreground = Accent });
         heading.Children.Add(new TextBlock { Text = "原有步态关闭 · 相机纵向固定 · 所有形变来自真实物理", FontSize = 12, Margin = new Thickness(0, 5, 0, 12) });
         DockPanel.SetDock(heading, Dock.Top); root.Children.Add(heading);
         var columns = new Grid(); columns.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(280) });
@@ -87,6 +93,14 @@ internal sealed class LabWindow : Window
         var tools = new StackPanel { Margin = new Thickness(0, 0, 10, 8) };
         var scroll = new ScrollViewer { Content = tools, VerticalScrollBarVisibility = ScrollBarVisibility.Visible, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         columns.Children.Add(scroll);
+        Label(tools, "真实接地模型");
+        groundModel.Items.Add("离散圆节点（原基线）"); groundModel.Items.Add("连续轮廓包络（实验候选）");
+        groundModel.SelectedIndex = useEnvelope ? 1 : 0;
+        groundModel.DropDownOpened += (_, _) => CancelInput();
+        groundModel.DropDownClosed += (_, _) => input.ReconcileHeld(HeldKeys());
+        groundModel.SelectionChanged += (_, _) => message.Text = "接地模型待应用；点击应用参数或同输入回放。";
+        tools.Children.Add(groundModel);
+        tools.Children.Add(new TextBlock { Text = "连续候选只验证单体平地支撑；骨架、材料、驱动力保持。每次切换会重建独立世界。", FontSize = 12, TextWrapping = TextWrapping.Wrap });
         Label(tools, "施力方式");
         drive.Items.Add("核心单点（基线）"); drive.Items.Add("全身按实际质量分配"); drive.Items.Add("按高度偏置分配");
         drive.Items.Add("移动合力作用高度（两点分摊）"); drive.SelectedIndex = 0;
@@ -111,7 +125,7 @@ internal sealed class LabWindow : Window
         tools.Children.Add(Button("↓  导出当前物理记录", Export));
         Label(tools, "观察"); tools.Children.Add(skeleton); tools.Children.Add(polygon);
         skeleton.Click += (_, _) => surface.InvalidateVisual(); polygon.Click += (_, _) => surface.InvalidateVisual();
-        tools.Children.Add(Button("▱  放置／移除平台", TogglePlatform));
+        platformButton = Button("▱  放置／移除平台", TogglePlatform); tools.Children.Add(platformButton);
         tools.Children.Add(new TextBlock { Text = "F 只在左侧地面开关附近操作平台；远处无动作。", FontSize = 12, TextWrapping = TextWrapping.Wrap });
         Label(tools, "文字输入测试（不保存）"); tools.Children.Add(Notes);
         tools.Children.Add(new TextBlock { Text = "非文字控件上的 WASD / Space 仍控制团子；按钮用 Enter 或鼠标执行。失焦、拖动或输入文字会清按键。", FontSize = 12, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) });
@@ -138,7 +152,7 @@ internal sealed class LabWindow : Window
             initialized = true; ResetWorld(); surface.Focus();
             previousTime = clock.Elapsed.TotalSeconds; timer.Interval = TimeSpan.FromMilliseconds(8);
             timer.Tick += Tick; timer.Start();
-            File.WriteAllText(Path.Combine(session, "started.json"), JsonSerializer.Serialize(new { pid = Environment.ProcessId, visible = IsVisible, gait = false, nativeLoaded = world is not null, error = HasFault }));
+            File.WriteAllText(Path.Combine(session, "started.json"), JsonSerializer.Serialize(new { pid = Environment.ProcessId, visible = IsVisible, gait = false, nativeLoaded = world is not null, groundModel = activeEnvelope ? "continuous-envelope" : "discrete-nodes", error = HasFault }));
         };
     }
 
@@ -180,16 +194,27 @@ internal sealed class LabWindow : Window
     {
         if (!initialized) return;
         CancelInput(); replaying = false; paused = false; PauseButton.Content = "Ⅱ  暂停";
-        world?.Dispose(); world = null; HasFault = false; body = null; nodes = []; stats = null;
+        world?.Dispose(); world = null; HasFault = false; body = null; nodes = []; stats = null; groundStats = null; groundTrace.Clear();
         try
         {
             configuration = DangoBodyMaterial.Configure(new DangoBodyControls(size.Value, softness.Value, build.Value));
             if (frictionOff.IsChecked == true) configuration = configuration with { GroundFriction = 0 };
             activeDrive = (DangoLabDrive)drive.SelectedIndex; activeBias = bias.Value;
-            world = DangoPhysicsWorld.Create(module, 1, configuration); world.RequireBodyMaterialModel(1); world.RequireLab();
+            var selectedModule = groundModel.SelectedIndex == 1 ? envelopeModule : module;
+            world = DangoPhysicsWorld.Create(selectedModule, 1, configuration); world.RequireBodyMaterialModel(1); world.RequireLab();
+            activeEnvelope = world.LabGroundModel == DangoLabGroundModel.ContinuousEnvelope;
+            if (activeEnvelope != (groundModel.SelectedIndex == 1)) throw new InvalidOperationException("接地模型与所选实验模块不一致。");
             entity = world.Add(0, 0); world.SetHorizontalBounds(-256, 256); metrics.Clear(); cameraX = 0;
             accumulator = 0; NativeSteps = 0; replayFrame = 0; facing = 1; interactionCount = 0;
-            applied.Text = $"当前：{drive.SelectedItem}\n大小 {size.Value:0} / 软 {softness.Value:0} / 体态 {build.Value:0} · 摩擦 {configuration.GroundFriction:0.00}";
+            Title = activeEnvelope ? "团子 · 连续接地候选 · 步态关闭" : "团子 · 离散接地基线 · 步态关闭";
+            platformButton.IsEnabled = !activeEnvelope;
+            applied.Text = $"当前：{groundModel.SelectedItem}\n{drive.SelectedItem}\n大小 {size.Value:0} / 软 {softness.Value:0} / 体态 {build.Value:0} · 摩擦 {configuration.GroundFriction:0.00}";
+            File.AppendAllText(Path.Combine(session, "world-models.jsonl"), JsonSerializer.Serialize(new
+            {
+                model = activeEnvelope ? "continuous-envelope" : "discrete-nodes",
+                nativeSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(selectedModule))),
+                activeDrive, activeBias, configuration, fixedDt = FixedDt,
+            }) + Environment.NewLine);
             message.Text = "参数已应用；可直接操作团子。";
             StepOnce(); Paint();
         }
@@ -220,8 +245,17 @@ internal sealed class LabWindow : Window
             var frame = world.StepLab(FixedDt, [intent], activeDrive, activeBias);
             if (!frame.Succeeded) throw new InvalidOperationException($"物理故障 {frame.ErrorCode}；已暂停，需显式重置。");
             var currentBody = frame.Bodies.Single();
-            body = currentBody; nodes = world.ReadLabNodes(entity); stats = world.ReadLabStats(entity);
+            var currentNodes = world.ReadLabNodes(entity); var currentStats = world.ReadLabStats(entity);
+            var currentGround = world.ReadLabGroundStats(entity);
+            if (activeEnvelope && (currentGround is null || currentGround.SolverFault || currentGround.MaximumPenetrationAfterSolve > .0001f))
+                throw new InvalidOperationException("连续接地候选未通过本帧几何安全检查，已暂停。");
+            body = currentBody; nodes = currentNodes; stats = currentStats; groundStats = currentGround;
             metrics.Record(body, nodes, stats); NativeSteps++;
+            if (currentGround is not null)
+            {
+                groundTrace.Enqueue(new { tick = NativeSteps, diagnostics = currentGround });
+                while (groundTrace.Count > 1200) groundTrace.Dequeue();
+            }
             if (lastInput.InteractPressed && Math.Abs(currentBody.CoreX + 2.5) < 1.1) TogglePlatform();
             if (Math.Abs(currentBody.CoreX - cameraX) > 1.5) cameraX += currentBody.CoreX - cameraX - Math.Sign(currentBody.CoreX - cameraX) * 1.5;
         }
@@ -277,6 +311,7 @@ internal sealed class LabWindow : Window
     {
         if (world is null || HasFault) return;
         CancelInput();
+        if (activeEnvelope) { message.Text = "连续接地候选只验证平地；平台交互请切回离散接地基线。"; return; }
         try
         {
             if (world.StaticPlatform is null) world.SetStaticPlatform(new DangoStaticPlatformDefinition(2.8, -.30, 2.0, .22, configuration.GroundFriction));
@@ -293,8 +328,8 @@ internal sealed class LabWindow : Window
         var path = Path.Combine(session, $"trace-{DateTime.UtcNow:HHmmss-fff}.json");
         File.WriteAllText(path, JsonSerializer.Serialize(new
         {
-            gait = false, mode = activeDrive.ToString(), bias = activeBias, configuration,
-            interactionCount, discardedSeconds, metrics = metrics.Export(),
+            gait = false, groundModel = activeEnvelope ? "continuous-envelope" : "discrete-nodes", mode = activeDrive.ToString(), bias = activeBias, configuration,
+            interactionCount, discardedSeconds, metrics = metrics.Export(), groundDiagnostics = groundTrace.ToArray(),
         }, new JsonSerializerOptions { WriteIndented = true }));
         message.Text = $"已导出 {metrics.Samples.Count} 个紧凑物理样本。";
     }
@@ -311,17 +346,20 @@ internal sealed class LabWindow : Window
         File.WriteAllText(Path.Combine(session, "physics-failure.json"), JsonSerializer.Serialize(new { nativeSteps = NativeSteps, error = error.ToString() }));
     }
 
-    internal void Paint()
+    internal void Paint(bool forceInformation = false)
     {
         surface.InvalidateVisual(); chart.InvalidateVisual();
         if (body is null || stats is null || nodes.Count == 0) return;
-        if (++uiTicks % 5 != 0 && NativeSteps > 3) return;
-        var height = body.Contour.Where((_, i) => i % 2 == 1).Max() - body.Contour.Where((_, i) => i % 2 == 1).Min();
+        if (++uiTicks % 5 != 0 && NativeSteps > 3 && !forceInformation) return;
+        var extent = LabGroundExperiments.CurveExtent(body.Contour, 1);
+        var height = extent.Maximum - extent.Minimum;
         var mass = nodes.Sum(n => n.Mass); var comY = nodes.Sum(n => n.Y * n.Mass) / mass;
         information.Text = FormattableString.Invariant(
-            $"高度 {height * 72:0.00} DIP   核心Y {body.CoreY:0.0000}   质心Y {comY:0.0000}   地面接触 {body.GroundContactCount}   最高速度 {body.MaximumSpeed:0.000}") + "\n" +
+            $"曲线高 {height * 72:0.00} DIP   核心Y {body.CoreY:0.0000}   质心Y {comY:0.0000}   近地计数 {body.GroundContactCount}   最高速度 {body.MaximumSpeed:0.000}") + "\n" +
             FormattableString.Invariant($"水平力 {stats.ActualForceX:0.000}   控制力矩 {stats.TorqueAboutCenterOfMass:0.0000}   W力预算 {stats.StretchForceBudgetUsed:0.000}/{stats.MaximumStretchBudget:0.000}   帧 {NativeSteps}") +
             (replaying ? $"   回放 {replayFrame * FixedDt:0.0}s" : "");
+        if (groundStats is { } ground)
+            information.Text += FormattableString.Invariant($"\n曲面间隙 {ground.Gap * 72:0.00000} DIP   接地位置修正 {ground.MaximumPositionCorrection * 72:0.00000} DIP   骨架修正 {ground.MaximumShapePositionCorrection * 72:0.00000} DIP");
     }
 
     private void HandleKeyDown(object sender, KeyEventArgs e)
@@ -345,7 +383,7 @@ internal sealed class LabWindow : Window
     }
 
     private bool GameplayBlocked() => IsText(Keyboard.FocusedElement as DependencyObject) || dragging ||
-        Mouse.Captured is not null || drive.IsDropDownOpen || replay.IsDropDownOpen;
+        Mouse.Captured is not null || drive.IsDropDownOpen || replay.IsDropDownOpen || groundModel.IsDropDownOpen;
 
     private static LabModifiers CurrentModifiers() =>
         ((Keyboard.Modifiers & ModifierKeys.Shift) != 0 ? LabModifiers.Shift : 0) |
@@ -391,6 +429,7 @@ internal sealed class LabWindow : Window
     }
 
     internal void PrepareSmoke() { timer.Stop(); CancelInput(); }
+    internal void SelectGroundForSmoke(bool continuous) { groundModel.SelectedIndex = continuous ? 1 : 0; ResetWorld(); }
 
     private sealed class LabSurface(LabWindow owner) : FrameworkElement
     {
@@ -464,8 +503,14 @@ internal sealed class LabWindow : Window
                     drawing.DrawLine(new Pen(Brushes.IndianRed, 2), end, end + new Vector(-Math.Sign(stats.ActualForceX) * 7, -4));
                     drawing.DrawLine(new Pen(Brushes.IndianRed, 2), end, end + new Vector(-Math.Sign(stats.ActualForceX) * 7, 4));
                 }
+                if (owner.groundStats is { ContactCount: > 0 } contact)
+                {
+                    var foot = Map(contact.FootX, contact.FootY);
+                    drawing.DrawEllipse(Brushes.SeaGreen, null, foot, 4, 4);
+                    drawing.DrawLine(new Pen(Brushes.SeaGreen, 1.5), foot, foot + new Vector(0, -18));
+                }
             }
-            Text(drawing, "橙：核心   蓝：真实质心   红：水平合力作用高度", new Point(12, 12), 12, Ink);
+            Text(drawing, "橙：核心   蓝：真实质心   红：水平合力" + (owner.activeEnvelope ? "   绿：连续接地点" : ""), new Point(12, 12), 12, Ink);
             Text(drawing, owner.replaying ? "固定回放中" : owner.paused ? "已暂停" : "原生物理 · 步态关闭", new Point(12, 34), 12, Accent);
         }
         protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
@@ -493,9 +538,9 @@ internal sealed class LabWindow : Window
         protected override void OnRender(DrawingContext drawing)
         {
             base.OnRender(drawing); drawing.DrawRectangle(owner.Background, new Pen(LineBrush, 1), new Rect(RenderSize));
-            Text(drawing, "高度（棕）／质心Y（蓝）· 最近20秒去均值 · 固定量程 ±2 DIP", new Point(10, 8), 12, Ink);
+            Text(drawing, "曲线高（棕）／质心Y（蓝）· 最近20秒去均值 · 固定量程 ±2 DIP", new Point(10, 8), 12, Ink);
             var samples = owner.metrics.Samples; if (samples.Count < 2) return;
-            var heights = samples.Select(s => s.ContourHeight).ToArray(); var centers = samples.Select(s => s.CenterOfMassY).ToArray();
+            var heights = samples.Select(s => s.ExactCurveHeight).ToArray(); var centers = samples.Select(s => s.CenterOfMassY).ToArray();
             Plot(drawing, heights, Accent); Plot(drawing, centers, Brushes.SteelBlue);
         }
         private void Plot(DrawingContext drawing, double[] values, Brush brush)

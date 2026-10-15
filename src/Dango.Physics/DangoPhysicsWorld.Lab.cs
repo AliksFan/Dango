@@ -3,6 +3,17 @@ using System.Runtime.InteropServices;
 namespace Dango.Physics;
 
 public enum DangoLabDrive { Core, Mass, HeightBias, PointHeight }
+public enum DangoLabGroundModel { DiscreteNodes = 0, ContinuousEnvelope = 1 }
+public sealed record DangoLabGroundStats(float FootX, float FootY, float Gap,
+    float NormalImpulse, float AbsoluteTangentImpulse, float FrictionCoefficient,
+    float SummedPositionCorrectionL2, float MaximumPositionCorrection, float ConstraintSweeps,
+    bool Grounded, int ContactCount, float NormalEnergyBefore, float NormalEnergyAfter,
+    float FrictionEnergyBefore, float FrictionEnergyAfter, float MomentumResidualX,
+    float MomentumResidualY, float TorqueResidual, float MaximumShapePositionCorrection,
+    float MinimumGapDuringStep, float MaximumPenetrationAfterSolve, float NormalSpeedBefore,
+    float NormalSpeedAfter, float TangentSpeedBefore, float TangentSpeedAfter,
+    int SegmentIndex, float SegmentT, int FloorBox2DContactCount,
+    float ExactCurveMaximumY, float ShapeKineticEnergyDelta, bool SolverFault, int SchemaVersion);
 
 public readonly record struct DangoLabInput(
     DangoEntityId EntityId, double Horizontal = 0, double Downward = 0,
@@ -20,6 +31,19 @@ public sealed record DangoLabStats(DangoLabDrive Mode, float Bias, float Stretch
 
 public sealed partial class DangoPhysicsWorld
 {
+    /// <summary>Optional lab capability. Legacy modules without the export use discrete node contacts.</summary>
+    public DangoLabGroundModel LabGroundModel
+    {
+        get
+        {
+            VerifyAccess();
+            var value = api.GetLabGroundModel();
+            if (!Enum.IsDefined(typeof(DangoLabGroundModel), value))
+                throw new DangoPhysicsException(DangoPhysicsFailureKind.AbiMismatch, $"Unknown laboratory ground model {value}.");
+            return (DangoLabGroundModel)value;
+        }
+    }
+
     /// <summary>Explicit opt-in; ordinary worlds never resolve or require laboratory exports.</summary>
     public void RequireLab()
     {
@@ -92,6 +116,22 @@ public sealed partial class DangoPhysicsWorld
             v[9], v[10], v[11], v[12], v[13], v[14] != 0, v[15]);
     }
 
+    public DangoLabGroundStats? ReadLabGroundStats(DangoEntityId id)
+    {
+        VerifyLabEntity(id);
+        var call = api.GetLabGroundStats();
+        if (call is null) return null;
+        var v = new float[32];
+        var error = call(world, id.Value, v, v.Length);
+        if (error != 0) throw Map(error, "读取实验地面统计失败。");
+        CheckLabValues(v);
+        if (v[31] != 1) throw new DangoPhysicsException(DangoPhysicsFailureKind.AbiMismatch,
+            $"Laboratory ground statistics schema must be 1; got {v[31]}.");
+        return new(v[0],v[1],v[2],v[3],v[4],v[5],v[6],v[7],v[8],v[9]!=0,(int)v[10],
+            v[11],v[12],v[13],v[14],v[15],v[16],v[17],v[18],v[19],v[20],v[21],v[22],
+            v[23],v[24],(int)v[25],v[26],(int)v[27],v[28],v[29],v[30]!=0,(int)v[31]);
+    }
+
     private void VerifyLabEntity(DangoEntityId id)
     {
         VerifyAccess();
@@ -107,6 +147,9 @@ public sealed partial class DangoPhysicsWorld
 
     private sealed partial class NativeApi
     {
+        internal int GetLabGroundModel() => GetOptional<GetIntegerDelegate>(library, "dango_physics_lab_ground_model")?.Invoke() ?? 0;
+        internal PlatformContactDelegate? GetLabGroundStats() => GetOptional<PlatformContactDelegate>(library,
+            "dango_physics_world_get_lab_ground_stats");
         internal LabStepDelegate? StepLab { get; private set; }
         internal PlatformContactDelegate? LabNodes { get; private set; }
         internal PlatformContactDelegate? LabStats { get; private set; }

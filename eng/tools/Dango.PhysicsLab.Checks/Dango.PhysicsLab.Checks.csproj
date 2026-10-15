@@ -8,5 +8,6 @@
     <Compile Include="../Dango.PhysicsLab/LabInput.cs" Link="LabInput.cs" />
     <Compile Include="../Dango.PhysicsLab/LabMetrics.cs" Link="LabMetrics.cs" />
     <Compile Include="../Dango.PhysicsLab/LabExperiments.cs" Link="LabExperiments.cs" />
+    <Compile Include="../Dango.PhysicsLab/LabGroundExperiments.cs" Link="LabGroundExperiments.cs" />
   </ItemGroup>
 </Project>

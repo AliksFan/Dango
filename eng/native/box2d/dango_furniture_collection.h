@@ -283,6 +283,9 @@ static void collection_probe(collision_review* p,int kind,uint64_t target,uint64
 {
     *result=(dango_furniture_collection_probe){.world_generation=p->world_generation,.scene_revision=p->scene_revision,
         .physics_step=p->physics_step,.minimum_gap=1024}; *slot=-1;
+#if defined(DANGO_LAB_ENVELOPE)
+    (void)kind;(void)target;(void)revision;(void)candidate;result->rejection=2;return;
+#else
     if (p->error) { result->rejection=8; return; }
     if (p->count!=1 || p->platform_enabled || p->ball.state.enabled) { result->rejection=2; return; }
     if (revision!=p->scene_revision) { result->rejection=3; return; }
@@ -345,6 +348,7 @@ static void collection_probe(collision_review* p,int kind,uint64_t target,uint64
             if (gap<-1e-6) { result->rejection=7; return; }
         }
     }
+#endif
 }
 
 static int collection_reset(collision_review* p)

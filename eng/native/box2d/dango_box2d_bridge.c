@@ -2514,6 +2514,9 @@ bool dango_self_solve_constraints(dango_self_soft_body* body,
     state.perimeter_max = config->perimeter_maximum_ratio;
     state.radius = config->node_radius;
     state.ground = config->ground_height;
+#if defined(DANGO_LAB_ENVELOPE)
+    state.envelope_friction=config->friction; state.envelope_stats=body->envelope_stats;
+#endif
     for (int i = 0; i <= body->node_count; ++i)
     {
         b2BodyId id = i == body->node_count ? body->core_body_id : body->node_body_ids[i];
@@ -2523,6 +2526,9 @@ bool dango_self_solve_constraints(dango_self_soft_body* body,
     }
     if (!dango_constraint_solve(&state))
     {
+#if defined(DANGO_LAB_ENVELOPE)
+        body->envelope_stats[30]=1;
+#endif
         return false;
     }
     body->grounded = false;
@@ -2540,6 +2546,11 @@ bool dango_self_solve_constraints(dango_self_soft_body* body,
             body->grounded = true;
         }
     }
+#if defined(DANGO_LAB_ENVELOPE)
+    dango_envelope_point foot; if(!dango_envelope_geometry(state.positions,state.radius,&foot)) return false;
+    body->grounded=foot.point.y-config->ground_height<=.035f;
+    body->envelope_stats[20]=fmaxf(body->envelope_stats[20],fmaxf(0,config->ground_height-foot.point.y));
+#endif
     return !dango_self_has_crossing(body) && dango_self_signed_area(body) > 0.0f;
 }
 
@@ -2731,6 +2742,9 @@ int dango_self_world_create(const dango_self_physics_config* config,dango_self_s
     b2Polygon ground_box = b2MakeBox(64.0f, 0.08f);
 #else
     b2Polygon ground_box = b2MakeBox(8.0f, 0.08f);
+#endif
+#if defined(DANGO_LAB_ENVELOPE)
+    ground_shape_def.filter.maskBits=0;
 #endif
     body->ground_shape_id = b2CreatePolygonShape(body->ground_body_id, &ground_shape_def, &ground_box);
 
@@ -2929,6 +2943,13 @@ int dango_self_read_frame(dango_self_soft_body* body, const dango_self_physics_c
     *centroid_x /= (float)body->node_count;
     *centroid_y /= (float)body->node_count;
     body->grounded = *ground_contact_count > 0 || lowest <= config->ground_height + 0.035f;
+#if defined(DANGO_LAB_ENVELOPE)
+    b2Vec2 envelope_positions[17]; for(int n=0;n<16;++n)envelope_positions[n]=b2Body_GetPosition(body->node_body_ids[n]); envelope_positions[16]=core;
+    dango_envelope_point foot; if(!dango_envelope_geometry(envelope_positions,config->node_radius,&foot))return -87;
+    float gap=foot.point.y-config->ground_height; *ground_contact_count=gap<=DANGO_CONSTRAINT_TOLERANCE*body->radial_rest_length ? 1 : 0;
+    body->grounded=gap<=.035f; body->envelope_stats[0]=foot.point.x;body->envelope_stats[1]=foot.point.y;body->envelope_stats[2]=gap;
+    body->envelope_stats[9]=body->grounded ? 1.0f : 0.0f;body->envelope_stats[10]=(float)*ground_contact_count;body->envelope_stats[28]=foot.maximum_y;body->envelope_stats[31]=1;
+#endif
     if (!isfinite(*signed_area) || *signed_area < config->minimum_area)
     {
         return -88;

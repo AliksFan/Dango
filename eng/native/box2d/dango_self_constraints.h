@@ -29,6 +29,10 @@ typedef struct dango_constraint_state
     float perimeter_max;
     float radius;
     float ground;
+#if defined(DANGO_LAB_ENVELOPE)
+    float envelope_friction, envelope_normal, envelope_tangent_used;
+    float* envelope_stats;
+#endif
 } dango_constraint_state;
 
 typedef enum dango_constraint_correction_mode
@@ -37,6 +41,10 @@ typedef enum dango_constraint_correction_mode
     DANGO_CONSTRAINT_CORRECT_POSITION = 1,
     DANGO_CONSTRAINT_CORRECT_VELOCITY = 2
 } dango_constraint_correction_mode;
+
+#if defined(DANGO_LAB_ENVELOPE)
+#include "dango_lab_envelope.h"
+#endif
 
 #if defined(DANGO_CONSTRAINT_OBSERVER)
 #include "dango_constraint_observer.h"
@@ -318,6 +326,10 @@ static float dango_constraint_angle(dango_constraint_state* s, int index, bool d
 static float dango_constraint_sweep_order_mode(dango_constraint_state* s, bool correct, bool reverse,
     dango_constraint_correction_mode mode)
 {
+#if defined(DANGO_LAB_ENVELOPE)
+    b2Vec2 before_shape[17]; for(int n=0;n<17;++n)before_shape[n]=s->positions[n];
+    float before_energy=dango_envelope_energy(s);
+#endif
 #if defined(DANGO_JOINT_BASELINE_COUNTERS)
     ++dango_constraint_sweep_count;
 #endif
@@ -349,6 +361,11 @@ static float dango_constraint_sweep_order_mode(dango_constraint_state* s, bool c
         residual = fmaxf(residual, dango_constraint_angle_mode(s, i, false, correct, mode));
         residual = fmaxf(residual, dango_constraint_angle_mode(s, i, true, correct, mode));
     }
+    #if defined(DANGO_LAB_ENVELOPE)
+    if(correct && s->envelope_stats) {s->envelope_stats[29]+=dango_envelope_energy(s)-before_energy;
+        for(int n=0;n<17;++n)s->envelope_stats[18]=fmaxf(s->envelope_stats[18],b2Distance(before_shape[n],s->positions[n])); }
+    residual = fmaxf(residual, dango_envelope_contact(s, correct, mode));
+    #else
     for (int i = 0; i < 16; ++i)
     {
 #if defined(DANGO_JOINT_BASELINE_COUNTERS)
@@ -406,6 +423,7 @@ static float dango_constraint_sweep_order_mode(dango_constraint_state* s, bool c
         }
 #endif
     }
+    #endif
     return residual;
 }
 
@@ -430,6 +448,9 @@ static bool dango_constraint_solve(dango_constraint_state* s)
     for (int iteration = 0; iteration < 384; ++iteration)
     {
         float residual = dango_constraint_sweep_order(s, true, iteration % 2 != 0);
+#if defined(DANGO_LAB_ENVELOPE)
+        if(s->envelope_stats)++s->envelope_stats[8];
+#endif
         if (!isfinite(residual))
         {
             return false;

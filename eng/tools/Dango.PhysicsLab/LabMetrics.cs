@@ -6,7 +6,11 @@ public sealed record LabMetricSample(long Tick, double TimeSeconds, int EntityId
     double CoreX, double CoreY, double CenterOfMassX, double CenterOfMassY,
     double ContourHeight, double MaximumSpeed, int GroundContactCount,
     int ConsecutiveNoContactFrames, DangoLabDrive Mode, double Bias, double StretchRamp,
-    double RequestedForceX, double ActualForceX, double ActualForceY, double TorqueAboutCenterOfMass);
+    double RequestedForceX, double ActualForceX, double ActualForceY, double TorqueAboutCenterOfMass)
+{
+    // ContourHeight retains the legacy control-point span for comparison with earlier exports.
+    public double ExactCurveHeight { get; init; }
+}
 
 public sealed record LabMetricExport(double FixedDt, int Capacity, long TotalSamples,
     IReadOnlyList<LabMetricSample> Samples);
@@ -62,7 +66,10 @@ public sealed class LabMetrics
         var sample = new LabMetricSample(tick, tick * FixedDt, id, body.CoreX, body.CoreY,
             weightedX / mass, weightedY / mass, maxY - minY, body.MaximumSpeed,
             body.GroundContactCount, noContact, stats.Mode, stats.Bias, stats.StretchRamp,
-            stats.RequestedForceX, stats.ActualForceX, stats.ActualForceY, stats.TorqueAboutCenterOfMass);
+            stats.RequestedForceX, stats.ActualForceX, stats.ActualForceY, stats.TorqueAboutCenterOfMass)
+        {
+            ExactCurveHeight = CurveHeight(body.Contour),
+        };
         if (samples.Count == Capacity) samples.Dequeue();
         samples.Enqueue(sample);
         return sample;
@@ -76,4 +83,10 @@ public sealed class LabMetrics
     }
 
     public LabMetricExport Export() => new(FixedDt, Capacity, TotalSamples, Samples);
+
+    private static double CurveHeight(IReadOnlyList<float> contour)
+    {
+        var extent = LabGroundExperiments.CurveExtent(contour, 1);
+        return extent.Maximum - extent.Minimum;
+    }
 }

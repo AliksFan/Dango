@@ -698,6 +698,9 @@ static void collision_damp(collision_review* p,int r,float dt,const float* contr
         positions[n]=b2Body_GetPosition(id); velocities[n]=b2Body_GetLinearVelocity(id); masses[n]=b2Body_GetMass(id);
         if (n<16 && positions[n].y-p->body_config[r].node_radius<=p->config.ground_height+.001f) ground=true;
     }
+#if defined(DANGO_LAB_ENVELOPE)
+    ground=p->bodies[r]->envelope_stats[2]<=.001f;
+#endif
     bool active=control[0]!=0 || control[1]!=0 || control[2]!=0 || control[3]!=0;
     if (p->platform_enabled && p->platform_contacts[r][2]!=0) ground=true;
     bool collection_support=p->collection_count && p->collection_support_friction[r]>=0;
@@ -776,6 +779,10 @@ static int collision_local_floor_contacts(collision_review* p,dango_self_soft_bo
             if (contact->manifold.pointCount>0 && upward>=.7f) ++count;
         }
     }
+#if defined(DANGO_LAB_ENVELOPE)
+    body->envelope_stats[27]=(float)count;
+    count=(int)body->envelope_stats[10];near_floor=body->envelope_stats[2]<=.035f;
+#endif
     body->grounded=count>0 || near_floor;
     *grounded=body->grounded ? 1 : 0;
     return count;
@@ -809,6 +816,10 @@ static int collision_read(collision_review* p, float* output)
 
 DANGO_API int dango_collision_create(const dango_self_physics_config* config, int count, int layout, void** handle)
 {
+#if defined(DANGO_LAB_ENVELOPE)
+    (void)config;(void)count;(void)layout;if(handle)*handle=NULL;return -410;
+#else
+
     if (!dango_self_config_valid(config) || !handle || count<1 || count>2 || layout<0 || layout>4) return -400;
     *handle=NULL;
     collision_review* p=calloc(1,sizeof *p); if (!p) return -401;
@@ -845,6 +856,7 @@ DANGO_API int dango_collision_create(const dango_self_physics_config* config, in
     p->error=collision_read(p,p->snapshot);
     if (!p->error) { ++p->scene_revision; collision_ball_publish(p); }
     return 0;
+#endif
 }
 
 #if defined(DANGO_REST_SLEEP)
@@ -1197,7 +1209,7 @@ DANGO_API int dango_material_idle_trace_finish(void* handle)
 
 DANGO_API int dango_physics_world_create(const dango_self_physics_config* config,int capacity,void** handle)
 {
-#if defined(DANGO_MATERIAL_CONTACT_CANDIDATE)
+#if defined(DANGO_MATERIAL_CONTACT_CANDIDATE) || defined(DANGO_LAB_ENVELOPE)
     if (capacity!=1 || !config || config->node_count!=16) return -410;
 #endif
     if (!handle || !dango_self_config_valid(config) || capacity<1 || capacity>DANGO_PHYSICS_MAX_BODIES) return -410;
@@ -1424,6 +1436,24 @@ DANGO_API int dango_physics_world_step(void* handle,float dt,const int* ids,cons
     return collision_world_step_impl(handle,dt,ids,controls,count,state_ids,states,capacity,out_count,contacts,error);
 }
 #if defined(DANGO_PHYSICS_LAB)
+#if defined(DANGO_LAB_ENVELOPE)
+DANGO_API int dango_physics_lab_ground_model(void) { return 1; }
+#if defined(DANGO_LAB_ENVELOPE_CONTRACT_TESTS)
+DANGO_API int dango_physics_lab_test_collapse(void* handle)
+{
+    collision_review* p=handle;if(!p || p->count!=1)return -410;
+    b2Vec2 core=b2Body_GetPosition(p->bodies[0]->core_body_id);
+    for(int n=0;n<16;++n)b2Body_SetTransform(p->bodies[0]->node_body_ids[n],core,b2Rot_identity);
+    return 0;
+}
+#endif
+DANGO_API int dango_physics_world_get_lab_ground_stats(void* handle,int id,float* values,int capacity)
+{
+    collision_review* p=handle;if(!p || !values || capacity<32)return -410;
+    for(int i=0;i<p->capacity;++i)if(p->active[i] && p->entity_ids[i]==id) {memcpy(values,p->bodies[i]->envelope_stats,32*sizeof(float));return 0;}
+    return -412;
+}
+#endif
 DANGO_API int dango_physics_lab_version(void) { return 1; }
 DANGO_API int dango_physics_get_lab_version(void) { return 1; }
 DANGO_API int dango_physics_world_get_lab_stats(void* handle,int id,float* values,int capacity)
@@ -1459,6 +1489,9 @@ DANGO_API int dango_physics_world_step_lab(void* handle,float dt,const int* ids,
         dango_lab_state* s=&p->lab[slots[i]]; const float* c=controls+9*i;
         s->mode=mode; s->bias=bias; s->stretch=c[6]; s->active=c[7]; s->cancel=c[8];
     }
+#if defined(DANGO_LAB_ENVELOPE)
+    for(int i=0;i<count;++i) {memset(p->bodies[slots[i]]->envelope_stats,0,32*sizeof(float));p->bodies[slots[i]]->envelope_stats[19]=INFINITY;}
+#endif
     p->lab_call=true;
     int result=collision_world_step_impl(handle,dt,ids,old,count,state_ids,states,capacity,out_count,contacts,error);
     p->lab_call=false;
@@ -1712,6 +1745,9 @@ DANGO_API int dango_physics_world_set_static_platform(void* handle,
 {
     collision_review* p=handle;
     if (p) COLLISION_REST_WAKE_ALL(p);
+#if defined(DANGO_LAB_ENVELOPE)
+    (void)center_x;(void)center_y;(void)width;(void)height;(void)friction;return -410;
+#else
     dango_static_platform definition={center_x,center_y,width,height,friction};
     if (!p || p->error || p->collection_count || p->ball.state.enabled || p->count>1 || !platform_valid(&definition)) return -410;
     if (p->platform_enabled)
@@ -1730,6 +1766,7 @@ DANGO_API int dango_physics_world_set_static_platform(void* handle,
     p->platform_instance=++p->next_platform_instance;
     ++p->scene_revision; collision_ball_publish(p);
     return 0;
+#endif
 }
 
 DANGO_API int dango_physics_world_clear_static_platform(void* handle)
@@ -1770,6 +1807,9 @@ static void collision_furniture_probe(collision_review* p,int kind,uint64_t targ
         .physics_step=p->physics_step,.minimum_gap=1024};
     memset(contacts,0,sizeof(float)*DANGO_PHYSICS_MAX_BODIES*6);
     memset(grounded,0,sizeof(bool)*DANGO_PHYSICS_MAX_BODIES);
+#if defined(DANGO_LAB_ENVELOPE)
+    (void)kind;(void)target;(void)expected_revision;(void)candidate;result->rejection=2;return;
+#else
     if (p->error) { result->rejection=8; return; }
     if (p->collection_count || p->ball.state.enabled || p->count>1) { result->rejection=2; return; }
     if (expected_revision!=p->scene_revision) { result->rejection=3; return; }
@@ -1805,6 +1845,7 @@ static void collision_furniture_probe(collision_review* p,int kind,uint64_t targ
         contacts[r][3]=contact.normal.x; contacts[r][4]=contact.normal.y; contacts[r][5]=contact.gap;
         grounded[r]=floor || support;
     }
+#endif
 }
 
 DANGO_API int dango_physics_get_furniture_abi_version(void) { return 1; }
@@ -1826,6 +1867,9 @@ DANGO_API int dango_physics_world_prepare_static_platform_change(void* handle,in
 {
     collision_review* p=handle;
     if (!p || !result || !token || size!=sizeof *result) return -410;
+#if defined(DANGO_LAB_ENVELOPE)
+    (void)kind;(void)target;(void)expected_revision;(void)candidate;*token=(dango_furniture_token){0};return -410;
+#else
     *token=(dango_furniture_token){0};
     float contacts[DANGO_PHYSICS_MAX_BODIES][6]; bool grounded[DANGO_PHYSICS_MAX_BODIES];
     collision_furniture_probe(p,kind,target,expected_revision,candidate,result,contacts,grounded);
@@ -1838,6 +1882,7 @@ DANGO_API int dango_physics_world_prepare_static_platform_change(void* handle,in
         .token_id=++p->next_furniture_token,.scene_revision=p->scene_revision,.physics_step=p->physics_step};
     p->furniture_prepared=true; *token=p->prepared_token;
     return 0;
+#endif
 }
 
 static bool collision_furniture_token_valid(const collision_review* p,const dango_furniture_token* token)
@@ -1988,7 +2033,13 @@ DANGO_API int dango_physics_world_get_rest_state(void* handle,int* entity_ids,in
 #endif
 
 DANGO_API int dango_physics_world_add_round_ball(void* handle,const dango_ball_definition* definition,int* id)
-{ return collision_ball_add(handle,definition,id); }
+{
+#if defined(DANGO_LAB_ENVELOPE)
+    (void)handle;(void)definition;(void)id;return -410;
+#else
+    return collision_ball_add(handle,definition,id);
+#endif
+}
 DANGO_API int dango_physics_world_remove_round_ball(void* handle,int id)
 { return collision_ball_remove(handle,id); }
 DANGO_API int dango_physics_world_get_round_ball_frame(void* handle,dango_round_ball_frame* frame,int frame_size)

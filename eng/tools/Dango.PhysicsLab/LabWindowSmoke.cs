@@ -55,16 +55,28 @@ internal static class LabWindowSmoke
             window.InjectKey(Key.F, true, window.ApplyButton); window.StepOnce();
             Check(window.InteractionCount == 0, "F远离目标无动作");
             window.InjectKey(Key.F, false, window.ApplyButton);
-            window.InjectKey(Key.A, true, window.ApplyButton);
-            for (var i = 0; i < 400 && window.CurrentBody!.CoreX > -2.3; i++) window.StepOnce();
-            window.InjectKey(Key.A, false, window.ApplyButton);
-            window.InjectKey(Key.F, true, window.ApplyButton); window.StepOnce();
-            Check(window.InteractionCount == 1 && !window.HasFault, "F近处触发真实平台操作");
-            window.InjectKey(Key.F, true, window.ApplyButton); window.StepOnce();
-            Check(window.InteractionCount == 1, "F持有不重复交互");
-            window.InjectKey(Key.F, false, window.ApplyButton);
+            if (!window.IsContinuousGround)
+            {
+                window.InjectKey(Key.A, true, window.ApplyButton);
+                for (var i = 0; i < 400 && window.CurrentBody!.CoreX > -2.3; i++) window.StepOnce();
+                window.InjectKey(Key.A, false, window.ApplyButton);
+                window.InjectKey(Key.F, true, window.ApplyButton); window.StepOnce();
+                Check(window.InteractionCount == 1 && !window.HasFault, "F近处触发真实平台操作");
+                window.InjectKey(Key.F, true, window.ApplyButton); window.StepOnce();
+                Check(window.InteractionCount == 1, "F持有不重复交互");
+                window.InjectKey(Key.F, false, window.ApplyButton);
+            }
+            else
+            {
+                window.InjectKey(Key.D, true, window.ApplyButton); window.StepOnce();
+                window.SelectGroundForSmoke(false); window.StepOnce();
+                Check(!window.IsContinuousGround && window.CurrentInput.Horizontal == 0 && !window.HasFault, "切回离散基线清输入并重建世界");
+                window.InjectKey(Key.D, false, window.ApplyButton);
+                window.SelectGroundForSmoke(true); window.StepOnce();
+                Check(window.IsContinuousGround && window.CurrentInput.Horizontal == 0 && !window.HasFault, "连续模型重新进入不补发旧按键");
+            }
             window.ResetWorld(); for (var i = 0; i < 300; i++) window.StepOnce();
-            window.Paint(); window.UpdateLayout();
+            window.Paint(forceInformation: true); window.UpdateLayout();
             var bitmap = new RenderTargetBitmap((int)window.ActualWidth, (int)window.ActualHeight, 96, 96, PixelFormats.Pbgra32);
             bitmap.Render(window); var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
             using (var file = File.Create(Path.Combine(session, "window.png"))) encoder.Save(file);
