@@ -5,6 +5,8 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Dango.Core.Furniture;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
@@ -144,6 +146,11 @@ internal static class Program
             Require(!home.IsDangoAway && !home.IsInPorch && host.LocalWindow?.IsVisible == false, "Startup automatically entered a room.");
             home.ResumePorch(); Pump(() => home.OwnsLiveFrameDriver && home.PorchScene.LiveBody.IsVisible, "Porch healthy frame");
             var catalog = home.CatalogSnapshot!; Require(catalog.ActiveCount >= 2, "UI verification needs the two-room fixture.");
+            SaveWindowPreview(Window.GetWindow(home), Path.Combine(root, "porch.png"));
+            home.PorchScene.ResetProjection(1000); home.PorchScene.InteractNearestDoor();
+            Require(home.IsRoomDialogOpen, "The vacant porch door did not open its form.");
+            SaveWindowPreview(Window.GetWindow(home), Path.Combine(root, "create-room.png"));
+            home.CloseRoomDialog();
             host.EnterCatalogRoom(catalog.Rooms[0].RoomId, false);
             host.ReturnToPorch();
             Pump(() => !host.LocalHandoffPending && home.OwnsLiveFrameDriver, "Cancel preparation");
@@ -195,6 +202,14 @@ internal static class Program
             Dispatcher.PushFrame(frame);
         }
         Require(condition(), "Timed out: " + operation);
+    }
+    private static void SaveWindowPreview(Window window, string path)
+    {
+        window.UpdateLayout();
+        var bitmap = new RenderTargetBitmap((int)Math.Ceiling(window.ActualWidth), (int)Math.Ceiling(window.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(window);
+        var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var output = File.Create(path); encoder.Save(output);
     }
     private static void WaitForFile(string path)
     {

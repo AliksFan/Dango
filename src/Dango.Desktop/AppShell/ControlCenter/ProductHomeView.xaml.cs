@@ -765,7 +765,7 @@ public partial class ProductHomeView : UserControl
         Launchers.Visibility = IsEditing ? Visibility.Collapsed : Visibility.Visible;
         EnterRoomButton.Visibility = IsEditing ? Visibility.Collapsed : Visibility.Visible;
         EnterRoomButton.IsEnabled = !IsEditing && !IsInPorch;
-        Brand.Visibility = IsEditing ? Visibility.Collapsed : Visibility.Visible;
+        Brand.Visibility = IsEditing || IsInPorch ? Visibility.Collapsed : Visibility.Visible;
         FaceBrandIcon.Visibility = faceEditing ? Visibility.Visible : Visibility.Collapsed;
         AccessoryBrandIcon.Visibility = accessoryEditing ? Visibility.Visible : Visibility.Collapsed;
         if (BoundRuntime is null) PetShadow.Visibility = IsInPorch ? Visibility.Collapsed : Visibility.Visible;

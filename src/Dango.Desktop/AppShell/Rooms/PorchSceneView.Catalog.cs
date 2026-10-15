@@ -112,7 +112,14 @@ public sealed partial class PorchSceneView
         catalogActions.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
         catalogActions.VerticalAlignment = System.Windows.VerticalAlignment.Top;
         var target = DoorRect(catalogDoors.Single(door => door.Id == nearby));
-        catalogActions.Margin = new(Math.Clamp(target.Left + target.Width / 2 - 121, 8, Math.Max(8, ActualWidth - 250)), target.Bottom + 8, 0, 0);
+        catalogActions.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+        var margin = catalogActions.Margin;
+        var actions = new System.Windows.Size(
+            Math.Max(0, catalogActions.DesiredSize.Width - margin.Left - margin.Right),
+            Math.Max(0, catalogActions.DesiredSize.Height - margin.Top - margin.Bottom));
+        catalogActions.Margin = new(
+            Math.Clamp(target.Left + target.Width / 2 - actions.Width / 2, 8, Math.Max(8, ActualWidth - actions.Width - 8)),
+            Math.Max(8, target.Top - 42 * SceneScale - actions.Height - 8), 0, 0);
     }
     private void AddAction(string label, string name, Action action, bool enabled = true)
     {

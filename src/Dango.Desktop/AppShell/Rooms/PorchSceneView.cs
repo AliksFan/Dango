@@ -195,9 +195,15 @@ public sealed partial class PorchSceneView : Grid
             if (DoorRect(door).Contains(pointer)) { SelectPreviewDoor(door); e.Handled = true; break; }
     }
 
-    private Rect DoorRect(PreviewDoor door) => door.Id is "room-archive" or "room-retry"
-        ? new((door.X - CameraX - 72) * SceneScale, BackWallGroundY - 178 * SceneScale, 144 * SceneScale, 80 * SceneScale)
-        : new((door.X - CameraX - 62) * SceneScale, BackWallGroundY - 194 * SceneScale, 124 * SceneScale, 194 * SceneScale);
+    private Rect DoorRect(PreviewDoor door)
+    {
+        if (door.Id is "room-archive" or "room-retry")
+            return new((door.X - CameraX - 72) * SceneScale, BackWallGroundY - 178 * SceneScale, 144 * SceneScale, 80 * SceneScale);
+        var top = BackWallGroundY - 194 * SceneScale;
+        // Reserve the action row and the two captions above the door in short windows.
+        if (catalogProvided) top = Math.Max(top, 56 + 42 * SceneScale);
+        return new((door.X - CameraX - 62) * SceneScale, top, 124 * SceneScale, Math.Max(0, BackWallGroundY - top));
+    }
 
     protected override void OnRender(DrawingContext dc)
     {

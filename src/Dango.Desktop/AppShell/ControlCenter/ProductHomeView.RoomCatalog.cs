@@ -74,7 +74,7 @@ public partial class ProductHomeView
             { roomCatalogRefreshing = false; PorchScene.CatalogInputBlocked = IsRoomDialogOpen || RoomEntryPending; });
         }
     }
-    private void OpenRoomDialog(string title)
+    private void OpenRoomDialog(string title, bool showHeading = true)
     {
         if (roomDialog is not null || !IsInPorch || RoomEntryPending) return;
         ClearLiveDirectionalInput();
@@ -85,8 +85,8 @@ public partial class ProductHomeView
         grid.RowDefinitions.Add(new() { Height = new(1, GridUnitType.Star) });
         grid.RowDefinitions.Add(new() { Height = GridLength.Auto });
         grid.RowDefinitions.Add(new() { Height = GridLength.Auto });
-        var heading = new TextBlock { Text = title, FontSize = 16, Margin = new(0, 0, 0, 14), TextWrapping = TextWrapping.Wrap };
-        grid.Children.Add(heading);
+        if (showHeading)
+            grid.Children.Add(new TextBlock { Text = title, FontSize = 16, Margin = new(0, 0, 0, 14), TextWrapping = TextWrapping.Wrap });
         roomDialogBody = new() { Margin = new(0, 0, 0, 8) };
         var scroll = new ScrollViewer
         {
@@ -115,6 +115,7 @@ public partial class ProductHomeView
         card.Resources.MergedDictionaries.Add(new ResourceDictionary
         { Source = new Uri("/Dango.Desktop;component/AppShell/Rooms/RoomCatalogDialogResources.xaml", UriKind.Relative) });
         card.SetResourceReference(BackgroundProperty, "HomeBackground"); card.SetResourceReference(BorderBrushProperty, "HomeLine");
+        AutomationProperties.SetName(card, title);
         roomDialog = new Border { Child = card, Background = SystemParameters.HighContrast ? SystemColors.WindowBrush : new SolidColorBrush(Color.FromArgb(75, 68, 61, 52)) };
         roomDialog.MouseDown += (_, e) => e.Handled = true;
         PorchContent.Children.Add(roomDialog);
@@ -138,7 +139,7 @@ public partial class ProductHomeView
     private void OpenCreateRoom()
     {
         if (roomCatalog is null || roomCatalog.ActiveCount >= 3 || IsRoomDialogOpen) return;
-        OpenRoomDialog("新建普通房"); if (roomDialog is null) return;
+        OpenRoomDialog("新建普通房", showHeading: false); if (roomDialog is null) return;
         var name = new TextBox { Text = "普通房 " + (roomCatalog.Rooms.Length + 1), MaxLength = 64, MinHeight = 36, Margin = new(0, 0, 0, 12) };
         AddRoomText("名称"); AutomationProperties.SetName(name, "房间名称"); roomDialogBody!.Children.Add(name);
         var kind = new ComboBox { ItemsSource = new[] { "私密", "公共" }, SelectedIndex = 0, MinHeight = 36, Margin = new(0, 0, 0, 12) };
