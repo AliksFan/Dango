@@ -4,6 +4,8 @@
 
 依据：[身体材料接入捏脸设计](2026-10-10-body-material-face-integration-design.md)（已批准）。设计批准后又新增了以下事实与决定：
 
+> 2026-10-15 后续设计候选见[身体驱动与统一操作设计计划](2026-10-15-body-drive-controls-design-plan.md)。建议先经设计批准与实施授权，再按 D0～D3 稳定驱动、W／S 体态、统一输入／注视和 F 交互，然后进入 F6 混合配置休眠安全门禁、F7 房间端点联合验收；D2 负责房间输入接线，F7 复用并验收，不重复实施。本次只形成文档，候选未获批准，F5 未关闭项保留，F6／F7 未开展；下方原阶段记录保持历史含义。
+
 - v6 映射（`landing-build-v6-size-damping-preview`）的八项极端组合，用户 2026-10-13 确认形态与手感通过。
 - 静置休眠的单体人工验收通过，见[休眠设计](2026-10-13-idle-rest-sleep-design.md)第 8～9 节。
 - 多体模块支持每只团子独立体型（`dango_physics_world_add_configured`）。
