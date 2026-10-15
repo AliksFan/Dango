@@ -46,7 +46,8 @@ public partial class DeformableDangoVisual : System.Windows.Controls.UserControl
         {
             if (Visibility != Visibility.Visible || BodyPath.Visibility != Visibility.Visible ||
                 BodyPath.Data is null || BodyPath.Data.Bounds.IsEmpty) return null;
-            var bottom = GaitBodyLayer.RenderTransform.TransformBounds(BodyPath.Data.Bounds).Bottom;
+            var local = GaitBodyLayer.RenderTransform.TransformBounds(BodyPath.Data.Bounds);
+            var bottom = RenderTransform.TransformBounds(local).Bottom;
             return double.IsFinite(bottom) ? bottom : null;
         }
     }
@@ -264,7 +265,7 @@ public partial class DeformableDangoVisual : System.Windows.Controls.UserControl
         }
         transforms.Children.Add(new TranslateTransform(
             Math.Clamp(attachment.Position.X - baseline.X, -0.2, 0.2) * 72,
-            -Math.Clamp(attachment.Position.Y - baseline.Y, -0.2, 0.2) * 58));
+            -Math.Clamp(attachment.Position.Y - baseline.Y, -0.2, 0.2) * 72));
         return transforms;
     }
 

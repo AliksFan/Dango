@@ -86,9 +86,9 @@ public readonly record struct PresentationPoint
 {
     public PresentationPoint(double x, double y)
     {
-        if (!double.IsFinite(x) || !double.IsFinite(y) || Math.Abs(x) > 1 || Math.Abs(y) > 1)
+        if (!double.IsFinite(x) || !double.IsFinite(y))
         {
-            throw new ArgumentOutOfRangeException(nameof(x), "表现坐标必须是 [-1, 1] 内的有限局部坐标。");
+            throw new ArgumentOutOfRangeException(nameof(x), "表现坐标必须是有限局部坐标。");
         }
 
         X = x;

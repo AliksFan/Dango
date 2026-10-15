@@ -335,6 +335,7 @@ public partial class ControlCenterWindow : Window
 
         SaveWindowSettings();
         e.Cancel = true;
+        if (!ProductHome.CancelAppearancePreview()) return;
         Hide();
     }
 

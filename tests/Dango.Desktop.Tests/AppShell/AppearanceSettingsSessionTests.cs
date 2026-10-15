@@ -187,6 +187,41 @@ public sealed class AppearanceSettingsSessionTests
     }
 
     [TestMethod]
+    public void BodyEditsInvalidateOldPreviewEvenWhenReturningToSavedOrEarlierPreview()
+    {
+        var session = new AppearanceSettingsSession(NewPath());
+        var body = new Dango.Desktop.Physics.Tuning.DangoBodyControls(110, 30, 70);
+        session.StageBody(body);
+        session.MarkBodyPreviewed(body, Dango.Desktop.Physics.Tuning.DangoBodyMaterial.ModelVersion);
+        session.StageBody(new(111, 30, 70));
+        session.StageBody(body);
+        Assert.IsTrue(session.RequiresBodyPreview, "An earlier success must not revive after any body edit.");
+        Assert.IsNull(session.PreviewedBody);
+        session.StageBody(session.SavedAppearance.Body);
+        Assert.IsTrue(session.RequiresBodyPreview, "Saved controls also need a rebuild after another body was active.");
+        session.CancelPreview();
+        Assert.IsFalse(session.RequiresBodyPreview);
+    }
+
+    [TestMethod]
+    public void ProtectedBodyCannotBackupOrWriteBeforePreviewAndDefaultsRemainDraftOnly()
+    {
+        var path = NewPath();
+        Write(path, "broken");
+        var backupCount = 0;
+        var session = new AppearanceSettingsSession(path, backup: (_, _) => backupCount++);
+        session.StageBody(new(120, 0, 0));
+        Assert.IsFalse(session.TryRecoverAndSave());
+        Assert.AreEqual(0, backupCount);
+        Assert.IsTrue(session.IsWriteProtected);
+        Assert.AreEqual("broken", File.ReadAllText(path));
+        session.RestoreDefault();
+        Assert.IsTrue(session.RequiresBodyPreview);
+        Assert.AreEqual(DangoAppearanceConfiguration.Default, session.DraftAppearance);
+        Assert.AreEqual("broken", File.ReadAllText(path));
+    }
+
+    [TestMethod]
     public void FailedWholeAppearanceSaveKeepsSavedAndCompleteDraftUntilRetry()
     {
         var path = NewPath();

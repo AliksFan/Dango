@@ -48,7 +48,7 @@ public sealed class ShortWanderRuntimeTests
             Assert.IsTrue(new LogicalRect(16, 0, 1168, 900).Contains(bounds));
         }
         Assert.IsTrue(sawDrive); Assert.IsFalse(runtime.Wander.Active);
-        var distance = (runtime.LastPhysicsFrame!.Bodies.Single().CoreX - start) * 80 * (right ? 1 : -1);
+        var distance = (runtime.LastPhysicsFrame!.Bodies.Single().CoreX - start) * 72 * (right ? 1 : -1);
         Assert.IsTrue(distance is >= 120 and <= 160, $"Real movement was {distance} DIP");
         var eyesResumed = false;
         for (var i = 0; i < 450; i++) { LightFeedbackRuntimeTests.Steps(runtime, 1); eyesResumed |= runtime.HasQuietIdleAction; }
@@ -158,14 +158,26 @@ public sealed class ShortWanderRuntimeTests
         Assert.IsTrue(runtime.Wander.Driving, $"Default bounds: {WanderVisibleBounds.Get(runtime.LastFrame!.Bodies[0], DangoHostFrameBinding.Bounds(runtime.LastFrame, 0), runtime.DisplayHatSize)}; viewport: {view}");
         var direction = runtime.Wander.Direction;
         var start = runtime.LastPhysicsFrame!.Bodies[0].CoreX;
+        var diagnostics = new Queue<string>();
+        var previousX = start * 72d;
+        var previousSupport = double.NaN;
         for (var i = 0; i < 7500 / milliseconds; i++)
         {
             runtime.Tick(input, TimeSpan.FromMilliseconds(milliseconds));
             var visible = WanderVisibleBounds.Get(runtime.LastFrame!.Bodies[0], DangoHostFrameBinding.Bounds(runtime.LastFrame, 0), runtime.DisplayHatSize)!.Value;
             Assert.IsTrue(new LogicalRect(16, 0, width - 32, height).Contains(visible), $"Visible hull escaped: {visible}");
+            var body = runtime.LastPhysicsFrame!.Bodies[0];
+            var support = body.CoreY * 72d + runtime.LastFrame.Bodies[0].Attachments!.SourceShape!.Bottom * 160;
+            var speed = Math.Sqrt(Math.Pow((body.CoreX * 72d - previousX) / (milliseconds / 1000d), 2) +
+                Math.Pow((support - previousSupport) / (milliseconds / 1000d), 2));
+            diagnostics.Enqueue($"{i}: active={runtime.Wander.Active}, drive={runtime.Wander.Driving}, x={body.CoreX:R}, coreY={body.CoreY:R}, support={support:R}, speed={speed:R}, grounded={body.IsGrounded}");
+            if (diagnostics.Count > 60) diagnostics.Dequeue();
+            previousX = body.CoreX * 72d; previousSupport = support;
         }
-        Assert.IsFalse(runtime.Wander.Active);
-        var distance = direction * (runtime.LastPhysicsFrame!.Bodies[0].CoreX - start) * 80;
+        Assert.IsFalse(runtime.Wander.Active,
+            $"startX={start:R}; displacement={direction * (runtime.LastPhysicsFrame!.Bodies[0].CoreX - start) * 72:R} DIP" +
+            Environment.NewLine + string.Join(Environment.NewLine, diagnostics));
+        var distance = direction * (runtime.LastPhysicsFrame!.Bodies[0].CoreX - start) * 72;
         Assert.IsTrue(distance is >= 192 and <= 250, $"Displacement {distance}");
     }
 

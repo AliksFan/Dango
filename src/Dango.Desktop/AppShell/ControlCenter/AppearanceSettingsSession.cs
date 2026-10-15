@@ -12,6 +12,7 @@ public sealed class AppearanceSettingsSession
     private readonly AppearanceSettingsStore store;
     private readonly Action<string, string> backup;
     private bool pendingSave;
+    private bool bodyPreviewRequired;
 
     public AppearanceSettingsSession(string path, AppearanceSettingsStore? store = null,
         Action<string, string>? backup = null)
@@ -54,6 +55,11 @@ public sealed class AppearanceSettingsSession
     public void StagePreview(DangoAppearanceConfiguration appearance)
     {
         ArgumentNullException.ThrowIfNull(appearance);
+        if (DraftAppearance.Body != appearance.Body)
+        {
+            bodyPreviewRequired = true;
+            PreviewedBody = null;
+        }
         DraftAppearance = appearance;
     }
 
@@ -63,7 +69,7 @@ public sealed class AppearanceSettingsSession
     public void StageBody(DangoBodyControls body)
     {
         ArgumentNullException.ThrowIfNull(body);
-        DraftAppearance = DraftAppearance.WithBody(body);
+        StagePreview(DraftAppearance.WithBody(body));
     }
 
     /// <summary>Body controls whose physics the running world last built successfully, with the model version.</summary>
@@ -77,13 +83,15 @@ public sealed class AppearanceSettingsSession
         PreviewedBody = (body, modelVersion);
     }
 
-    /// <summary>The draft body differs from the saved one and exactly this body has not been previewed.</summary>
-    public bool RequiresBodyPreview => DraftAppearance.Body != SavedAppearance.Body &&
+    /// <summary>A body edit invalidates the previous success until exactly this draft is previewed again.</summary>
+    public bool RequiresBodyPreview => bodyPreviewRequired &&
         PreviewedBody != (DraftAppearance.Body, DangoBodyMaterial.ModelVersion);
 
     public void CancelPreview()
     {
         DraftAppearance = SavedAppearance;
+        bodyPreviewRequired = false;
+        PreviewedBody = null;
         StatusMessage = "已取消未保存的外观预览。";
     }
 
@@ -101,8 +109,8 @@ public sealed class AppearanceSettingsSession
 
     public void RestoreDefault()
     {
-        DraftAppearance = DangoAppearanceConfiguration.Default;
-        StatusMessage = "已预览默认外观；应用后才会写入本机。";
+        StagePreview(DangoAppearanceConfiguration.Default);
+        StatusMessage = RequiresBodyPreview ? "默认外观已进入草稿；请预览身体后再应用。" : "已预览默认外观；应用后才会写入本机。";
     }
 
     public bool TrySave()
@@ -112,12 +120,13 @@ public sealed class AppearanceSettingsSession
             StatusMessage = "本次外观未保存：原外观文件已保护。请先备份原文件并恢复保存，或取消预览。";
             return false;
         }
-        if (!HasPendingSave) return true;
         if (RequiresBodyPreview)
         {
             StatusMessage = "身体参数还没有预览，请先点“预览身体并下落”再保存。";
             return false;
         }
+
+        if (!HasPendingSave) return true;
 
         try
         {
@@ -136,6 +145,11 @@ public sealed class AppearanceSettingsSession
 
     public bool TryRecoverAndSave()
     {
+        if (RequiresBodyPreview)
+        {
+            StatusMessage = "身体参数还没有预览，请先点“预览身体并下落”再保存。";
+            return false;
+        }
         if (!IsWriteProtected) return TrySave();
         try
         {

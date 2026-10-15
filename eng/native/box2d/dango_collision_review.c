@@ -1118,6 +1118,11 @@ DANGO_API int dango_physics_get_abi_version(void)
     return DANGO_PHYSICS_MODULE_ABI_VERSION;
 }
 
+DANGO_API int dango_physics_get_body_material_model_version(void)
+{
+    return 1;
+}
+
 #if defined(DANGO_MATERIAL_IDLE_TRACE)
 DANGO_API int dango_material_idle_trace_layout(dango_it_layout* output)
 {

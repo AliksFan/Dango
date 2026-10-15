@@ -55,7 +55,9 @@ public sealed class HatEmbeddedPlacementTests
         Assert.AreEqual(a.Center.Y, b.Center.Y, 1e-9);
         Assert.AreEqual(0, a.Angle, 1e-9); Assert.AreEqual(0, b.Angle, 1e-9);
         var surface = HatTrackSolver.CreateGeometryGuide(shape)!.Fit(0)!;
-        Assert.AreEqual((66 - 36.6) / 160, placement.Fit(0)!.Center.Y, 1e-9, "Preserve the actual clamped legacy root, including on a flat fixture.");
+        // The 25 DIP material root moves by the clamped -.2 reference offset
+        // at the accepted 72:72 equal-scale mapping: 25 + .2 * 72 = 39.4.
+        Assert.AreEqual((66 - 39.4) / 160, placement.Fit(0)!.Center.Y, 1e-9, "Preserve the actual clamped legacy root, including on a flat fixture.");
         Assert.IsTrue(Math.Abs(surface.Center.Y - placement.Fit(0)!.Center.Y) > 0.001);
         var round = AttachmentShapeGeometry.Create(AttachmentShapeGeometryTests.Oval());
         var roundPlacement = HatPlacementSolver.Create(round, new(new(0, 0.8), 0))!;

@@ -255,7 +255,7 @@ public sealed class GaitClearanceConservativeBoundsTests
     public void CompleteGaitWithNoVisibleEyesSingleVisibleEyeAndClosedEyesKeepsTheFrozenFrame()
     {
         var contour = Enumerable.Range(0, 16).Select(index => Math.PI * 2 * index / 16 + .13)
-            .Select(angle => new PresentationPoint(.72 * Math.Cos(angle), .80 * Math.Sin(angle))).ToArray();
+            .Select(angle => new PresentationPoint(.72 * Math.Cos(angle), .72 * Math.Sin(angle))).ToArray();
         var shape = AttachmentShapeGeometry.Create(contour);
         var motion = new EyeMotionSample(new(.35, -.1), .65, EyeShape.Round, .7);
         var face = FaceLayoutSolver.Solve(shape, motion, motion with { Gaze = new(.2, .1) }, .04, EyeLayoutParameters.Default);

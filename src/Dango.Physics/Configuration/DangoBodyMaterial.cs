@@ -34,6 +34,7 @@ public sealed record DangoBodyControls
 public static class DangoBodyMaterial
 {
     public const string ModelVersion = "body-material-v1";
+    public const int NativeModelVersion = 1;
     private const double FatRadial = .50, FatPerimeter = .70, FatArea = 1.00;
     private const double SlimRadial = 1.60, SlimPerimeter = 1.15, SlimArea = 1.15;
     private const double FatRadialMaximumRatio = 1.30;

@@ -64,6 +64,7 @@ internal sealed class AccessorySceneController(Func<string, BitmapSource?> image
         {
             var body = frame.Bodies[0];
             var bounds = DangoHostFrameBinding.Bounds(frame, 0);
+            var bodySize = bounds.Width / 160;
             var gait = frame.Gait is { } candidate && candidate.Matches(body, entity.Value) ? candidate : null;
             var outputs = new List<AccessoryVisualFrame>();
             foreach (var item in configuration.Items.Where(item => item.IsEquipped).OrderBy(item => item.Layer).ThenBy(item => item.Order).ThenBy(item => item.Id, StringComparer.Ordinal))
@@ -72,8 +73,8 @@ internal sealed class AccessorySceneController(Func<string, BitmapSource?> image
                 if (texture is null) continue; // The session retains the unavailable asset's configuration.
                 if (!solvers.TryGetValue(item.Id, out var solver)) solvers[item.Id] = solver = new();
                 var local = AccessoryBodyMapper.Map(body, gait, item.BodyAnchorX, item.BodyAnchorY);
-                var anchor = new Point(local.X + bounds.X, local.Y + bounds.Y);
-                var longest = 64 * item.SizePercent / 100;
+                var anchor = new Point(local.X * bodySize + bounds.X, local.Y * bodySize + bounds.Y);
+                var longest = 64 * item.SizePercent / 100 * bodySize;
                 var ratio = item.PixelWidth / (double)item.PixelHeight;
                 var width = ratio >= 1 ? longest : longest * ratio;
                 var height = ratio >= 1 ? longest / ratio : longest;

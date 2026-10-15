@@ -48,6 +48,8 @@ internal static class DangoHostFrameBinding
             hat.HatSize = hatSize;
         }
         var bounds = Bounds(frame, index).Translate(translation);
+        ApplyBodyScale(body, bounds.Width / 160);
+        ApplyBodyScale(hat, bounds.Width / 160);
         Canvas.SetLeft(body, bounds.X); Canvas.SetTop(body, bounds.Y);
         Canvas.SetLeft(hat, bounds.X); Canvas.SetTop(hat, bounds.Y);
         var customized = appearanceEntity is null ? index == 0 : index < frame.EntityIds.Count && frame.EntityIds[index] == appearanceEntity;
@@ -61,6 +63,20 @@ internal static class DangoHostFrameBinding
         // visual. Runtime Hat/Gait state still advances and restores on this frame.
         if (!suppressLegacyHat) hat.ApplyFrame(frame.Bodies[index], gait);
         AccessoryHostBinding.Apply(body, hat, frame, index, translation, runtime);
+    }
+
+    private static void ApplyBodyScale(FrameworkElement element, double scale)
+    {
+        if (scale == 1)
+        {
+            element.RenderTransform = Transform.Identity;
+            return;
+        }
+        if (element.RenderTransform is ScaleTransform current && current.ScaleX == scale && current.ScaleY == scale)
+            return;
+        var transform = new ScaleTransform(scale, scale);
+        transform.Freeze();
+        element.RenderTransform = transform;
     }
 
     private static readonly SolidColorBrush DefaultEyeFill = CreateBrush(0x2B, 0x20, 0x1E);

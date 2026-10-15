@@ -250,6 +250,8 @@ internal sealed partial class DangoApplicationHost
     private void BeginLocalHandoff(LocalRoomPresentation target, bool enterWorld)
     {
         if (roomHandoff.Pending) return;
+        // Restore an editor draft before the shared runtime changes owner or surface.
+        if (!controlCenterWindow!.ProductHome.CancelAppearancePreview()) return;
         if (target != LocalRoomPresentation.Window || enterWorld)
         {
             if (!stackedRuntime.TryDetachOrdinaryFurniture())

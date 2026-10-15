@@ -36,7 +36,7 @@ public partial class DangoHatVisual : System.Windows.Controls.UserControl
             Math.Clamp(attachment.RotationRadians, -0.35, 0.35) * 180 / Math.PI));
         transforms.Children.Add(new TranslateTransform(
             Math.Clamp(attachment.Position.X, -0.2, 0.2) * 72,
-            -Math.Clamp(attachment.Position.Y - 0.82, -0.2, 0.2) * 58));
+            -Math.Clamp(attachment.Position.Y - 0.82, -0.2, 0.2) * 72));
         return transforms;
     }
 }

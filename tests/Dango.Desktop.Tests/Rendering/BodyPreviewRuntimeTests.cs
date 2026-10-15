@@ -3,6 +3,7 @@ using Dango.Desktop.DesktopHost;
 using Dango.Desktop.Physics.Presentation;
 using Dango.Desktop.Physics.Tuning;
 using Dango.Desktop.Rendering.Visuals;
+using System.Windows.Media;
 
 namespace Dango.Desktop.Tests.Rendering;
 
@@ -85,5 +86,40 @@ public sealed class BodyPreviewRuntimeTests
         Assert.IsFalse(runtime.TryApplyBody(new(90, 50, 50)));
         Assert.IsNotNull(runtime.BodyPreviewError);
         Assert.AreEqual(DangoBodyControls.Default, runtime.PhysicsBody);
+    }
+
+    [STATestMethod, TestCategory("NativeIntegration")]
+    [DataRow(80)]
+    [DataRow(100)]
+    [DataRow(120)]
+    public void BodySizeReachesTheActualHostWithoutFittingTheContourIntoTheDefaultBox(int size)
+    {
+        var (runtime, input) = Start(new(size, 50, 50));
+        using (runtime)
+        {
+            runtime.GaitEnabled = false;
+            for (var i = 0; i < 120; i++) runtime.Tick(input, Dt);
+            Assert.IsNull(runtime.LastError);
+            var frame = runtime.LastFrame!;
+            var bounds = DangoHostFrameBinding.Bounds(frame, 0);
+            var scale = size / 100d;
+            Assert.AreEqual(160 * scale, bounds.Width, 1e-10);
+            Assert.AreEqual(120 * scale, bounds.Height, 1e-10);
+            var visual = new DeformableDangoVisual();
+            var hat = new DangoHatVisual();
+            DangoHostFrameBinding.Apply(visual, hat, frame, 0, runtime: runtime);
+            Assert.AreEqual(DangoContourFailure.None, visual.LastContourFailure);
+            var displayed = visual.RenderTransform.TransformBounds(visual.BodyPath.Data.Bounds);
+            var native = runtime.LastPhysicsFrame!.Bodies[0];
+            var raw = Enumerable.Range(0, native.PointCount).Select(i =>
+                new PresentationPoint(native.Contour[2 * i], native.Contour[2 * i + 1])).ToArray();
+            var expected = DangoStreamGeometryFactory.TryCreate(raw, 160, 120);
+            Assert.IsTrue(expected.Succeeded);
+            Assert.AreEqual(expected.Geometry!.Bounds.Width, displayed.Width, 1e-5);
+            Assert.AreEqual(expected.Geometry.Bounds.Height, displayed.Height, 1e-5);
+            Assert.AreEqual(frame.EntityIds[0], DangoHostFrameBinding.HitTest(frame,
+                new(bounds.Right - .01, bounds.Bottom - .01)));
+            Assert.IsNull(DangoHostFrameBinding.HitTest(frame, new(bounds.Right + .01, bounds.Bottom + .01)));
+        }
     }
 }

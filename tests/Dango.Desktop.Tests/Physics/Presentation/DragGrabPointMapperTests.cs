@@ -15,6 +15,6 @@ public sealed class DragGrabPointMapperTests
         Assert.AreEqual(0, center.X, 0.0001);
         Assert.AreEqual(0, center.Y, 0.0001);
         Assert.AreEqual(-0.5, upperLeft.X, 0.0001);
-        Assert.AreEqual(0.827586, upperLeft.Y, 0.0001);
+        Assert.AreEqual(2d / 3, upperLeft.Y, 0.0001);
     }
 }

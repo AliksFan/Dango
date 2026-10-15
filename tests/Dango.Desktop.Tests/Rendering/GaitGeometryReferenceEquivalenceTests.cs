@@ -105,7 +105,7 @@ public sealed class GaitGeometryReferenceEquivalenceTests
     private static PhysicsPresentationFrame CreateFrame(double shear, EyeLayoutParameters parameters, EyeShape eyeShape)
     {
         var contour = Enumerable.Range(0, 16).Select(i => Math.PI * 2 * i / 16 + .13)
-            .Select(a => new PresentationPoint(.72 * Math.Cos(a) + shear * Math.Sin(a), .80 * Math.Sin(a))).ToArray();
+            .Select(a => new PresentationPoint(.72 * Math.Cos(a) + shear * Math.Sin(a), .72 * Math.Sin(a))).ToArray();
         var shape = AttachmentShapeGeometry.Create(contour);
         var eye = new EyeMotionSample(new(.35, -.1), .65, eyeShape, .7);
         var face = FaceLayoutSolver.Solve(shape, eye, eye with { Gaze = new(.2, .1) }, .04, parameters);

@@ -32,7 +32,7 @@ public sealed class AttachmentShapeGeometryTests
                 var y = u * u * (before.Y + current.Y) / 2 + 2 * u * t * current.Y + t * t * (current.Y + after.Y) / 2;
                 var actual = curve.Evaluate(i, t);
                 Assert.AreEqual(x * 72 / 160, actual.X, 1e-12);
-                Assert.AreEqual(y * 58 / 160, actual.Y, 1e-12);
+                Assert.AreEqual(y * 72 / 160, actual.Y, 1e-12);
             }
     }
 

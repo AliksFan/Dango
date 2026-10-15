@@ -7,6 +7,7 @@ using Dango.Desktop.DesktopHost;
 using Dango.Desktop.DesktopHost.StandardWindow;
 using Dango.Desktop.DesktopHost.WorkerW;
 using Dango.Desktop.Physics.Presentation;
+using Dango.Desktop.Physics.Tuning;
 using Dango.Desktop.Physics.Presentation.Attachments;
 using Dango.Desktop.Rendering.Visuals;
 using Dango.Desktop.Tests.Physics.Presentation.Attachments;
@@ -31,7 +32,7 @@ public sealed class AttachmentSceneIntegrationTests
     {
         using var candidate = StackedDangoSceneRuntime.CreateEyeHatReview();
         using var old = new StackedDangoSceneRuntime();
-        using var direct = DangoPhysicsWorld.Create(Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName));
+        using var direct = DangoPhysicsWorld.Create(Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName), configuration: DangoBodyMaterial.Configure(DangoBodyControls.Default));
         var ids = new List<DangoEntityId> { direct.Add(0, 0) };
         candidate.Start(); old.Start();
         for (var i = 1; i < count; i++) { candidate.AddDango(); old.AddDango(); ids.Add(direct.Add(i == 1 ? -2.8 : 2.8, 0)); }
@@ -48,7 +49,7 @@ public sealed class AttachmentSceneIntegrationTests
             Assert.IsNull(candidate.AttachmentError);
             for (var j = 0; j < count; j++)
             {
-                Assert.IsNull(b.Bodies[j].Attachments, "The explicit legacy comparison must keep the old route.");
+                Assert.IsNull(b.Bodies[j].Attachments, "The comparison without attachment consumers must keep attachments absent.");
                 var attachment = a.Bodies[j].Attachments!;
                 Assert.IsNotNull(attachment);
                 Assert.AreEqual((long)i, attachment.StepIndex);

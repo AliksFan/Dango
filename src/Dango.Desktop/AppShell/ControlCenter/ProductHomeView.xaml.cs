@@ -88,7 +88,7 @@ public partial class ProductHomeView : UserControl
     {
         if (IsInPorch || IsDangoAway) return;
         ClearLiveDirectionalInput();
-        if (IsEditing && SelectedEditor == HomeEditor.Face) CancelAppearancePreview();
+        if (IsEditing && SelectedEditor == HomeEditor.Face && !CancelAppearancePreview()) return;
         if (IsEditing && SelectedEditor == HomeEditor.Wardrobe) CancelAccessoryPreview();
         var wasOpen = IsEditing;
         var editorChanged = !wasOpen || SelectedEditor != editor;
@@ -117,7 +117,7 @@ public partial class ProductHomeView : UserControl
     private void CloseEditor(bool focusStage)
     {
         if (!IsEditing) return;
-        CancelAppearancePreview();
+        if (!CancelAppearancePreview()) return;
         if (focusStage) Stage.Focus();
         IsEditing = false;
         UpdateAccessoryPreviewMode();
@@ -129,6 +129,7 @@ public partial class ProductHomeView : UserControl
         if (IsInPorch) LeavePorch();
         ClearLiveDirectionalInput();
         if (IsEditing) CloseEditor(focusStage: false);
+        if (bodyRestorePending) return;
         if (!IsSettingsOpen) SettingsPage.ScrollToTop();
         IsSettingsOpen = true;
         HomeContent.Visibility = Visibility.Collapsed;
@@ -406,7 +407,7 @@ public partial class ProductHomeView : UserControl
         if (IsInPorch || IsDangoAway) return;
         ClearLiveDirectionalInput();
         if (IsEditing) CloseEditor(focusStage: false);
-        CancelAppearancePreview();
+        if (!CancelAppearancePreview()) return;
         IsInPorch = true;
         roomNavigation.ShowPorch();
         ChangeLiveSurface();
@@ -606,7 +607,7 @@ public partial class ProductHomeView : UserControl
         if (Stage is null || HomeContent is null) return;
         var commonHeight = CommonPreviewTop + BasePreviewWidth * .75 + HomeLauncherSpace;
         Stage.MinHeight = Math.Max(minimumStageHeight, IsPortraitLayout ? PortraitPreviewHeight : commonHeight);
-        if (IsEditing && !IsPortraitLayout)
+        if (IsEditing && SelectedEditor == HomeEditor.Face && !IsPortraitLayout)
             Stage.MinHeight = Math.Max(Stage.MinHeight, CommonPreviewTop + BasePreviewWidth * .75 + ShadowHeight +
                 EditorSaveActionsHeight + 16);
         var available = HomeContent.ActualHeight - Stage.Margin.Top - Stage.Margin.Bottom;

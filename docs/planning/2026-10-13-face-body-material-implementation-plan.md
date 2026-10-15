@@ -1,6 +1,6 @@
-# 捏脸接入身体材料：逐文件实施计划（草案）
+# 捏脸接入身体材料：逐文件实施计划
 
-日期：2026-10-13。状态：草案，待用户批准后才开始产品编码。
+日期：2026-10-13。2026-10-15 用户明确“继续按照计划收口，本次尽量完成到 F5”，授权在现有隔离分支继续实现与验证 F0～F5，包括容量 3 的每体配置接入。F0～F3 已有本地提交，F4／F5 已形成可验收候选；不据此标记人工验收、F6／F7 或完整阶段完成。
 
 依据：[身体材料接入捏脸设计](2026-10-10-body-material-face-integration-design.md)（已批准）。设计批准后又新增了以下事实与决定：
 
@@ -18,7 +18,7 @@
 | 批次 | 内容 | 主要文件 |
 |---|---|---|
 | F0 基线 | 从 `main` 新建 `codex/face-body-material` 工作树，只带入必需源码：原生材料与每体配置、接触轮廓修正，以及共享映射。实验工具不进入产品 | `eng/native/box2d/*`、`src/Dango.Physics/DangoPhysicsWorld.cs` |
-| F1 共享映射 | 把实验工具里的 `MaterialControls` 与 `LandingBuildControls(v6)` 收拢为产品内唯一映射，带材料模型版本号。体型 50 时逐字段等于旧配置 | 新增 `src/Dango.Desktop/Physics/Tuning/BodyMaterialMapping.cs` |
+| F1 共享映射 | 把实验工具里的 `MaterialControls` 与 `LandingBuildControls(v6)` 收拢为产品内唯一映射，带材料模型版本号。体型 50 时逐字段等于旧配置 | `src/Dango.Physics/Configuration/DangoBodyMaterial.cs`（产品内唯一共享映射） |
 | F2 数据 | `appearance.json` 升到 Schema 4：新增 `bodySizePercent`（80～120）、`bodySoftness`（0～100）、`bodyLandingBuild`（0～100）。Schema 1～3 读取时补 100／50／50，原眼睛参数保持不变 | `DangoAppearanceConfiguration.cs`、`AppearanceSettingsStore.cs`、`AppearanceSettingsSession.cs` |
 | F3 物理宿主 | 本人团子用映射配置加入世界，其余团子默认；身体预览时整体重建世界并重新标定，见下方说明 | `DesktopPhysicsScene.cs`、`StackedDangoSceneRuntime.cs` |
 | F4 呈现 | 按 1:1 等比绘制并按体型归一化，替代 0.98 框上限与 72:58 比例；眼睛倾斜镜像；同步核对命中、拖动逆映射、地面与阴影 | `DangoPhysicsPresentationAdapter.cs`、`AttachmentMotionController.cs`、宿主映射相关文件 |
@@ -30,7 +30,7 @@
 - 标定入口必须改用同一配置，即 `StackedDangoSceneRuntime` 第 304 行的标定世界。
 - 加载 DLL 时核对材料模型版本；缺少该版本时明确拒绝，不能用旧物理冒充新参数已生效。
 
-**设计中需要随新事实调整的一处**：设计原本要求候选世界容量为 1。现在原生模块已支持每只团子独立配置，所以本人团子可以在原容量 3 的世界里用自己的配置，不必单独开容量 1 的世界。这属于实现方式变化，需要你确认。
+**已随本次继续计划确认的实现调整**：设计原本要求候选世界容量为 1。原生模块已支持每只团子独立配置，本人团子在原容量 3 的世界里使用自己的配置，其余团子默认；不扩展多人外观同步。
 
 ## 2. 验证（实施前固定，可以失败）
 
@@ -84,4 +84,10 @@
 
 **设计调整**：设计第 4 节“候选入口进入房间需提示尚未开放”的要求撤销。改为在首页／捏脸验收之后，再做一轮房间人工验收。
 
-本计划获批前不修改产品代码；合并 main、推送、安装与部署也需要另行授权。
+本次授权推进 F0～F5 的实现和验证。F6／F7、人工验收和完整阶段验收仍分别记录；合并 main、推送、安装与部署需要另行授权。
+
+## 5. 本轮实际进度（2026-10-15）
+
+F0～F3 已有本地提交；本轮补齐 F3 宿主尺寸／材料版本拒绝、F4 等轴呈现与附件／步态／短走单位、F5 身体页签／显式预览／保存及离开失败恢复门禁。真实 EXE 两进程保存恢复已通过；窗口横纵自动检查与关键门禁破坏验证已记录。
+
+当前状态为 **实现到 F5 的隔离候选，待人工验收及剩余回归收口**，不标记完整阶段已验收。详见[验证记录](../verification/2026-10-15-face-body-material-f3-f5.md)。仍有三档自主短走时限、既有多体帽子隐藏、旧竖屏抬升断言、UIA 混跑限制，以及缺独立历史模块的对照未关闭；不放宽原门槛。F6／F7 未开展。

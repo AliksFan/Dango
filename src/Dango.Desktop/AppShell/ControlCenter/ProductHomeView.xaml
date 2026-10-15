@@ -165,6 +165,25 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="BodyParameterSlider" TargetType="Slider">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Background" Value="{DynamicResource HomeLine}" />
+            <Setter Property="Foreground" Value="{DynamicResource HomeAccent}" />
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Slider">
+                <Grid Background="Transparent">
+                    <Track x:Name="PART_Track" VerticalAlignment="Center" IsDirectionReversed="{TemplateBinding IsDirectionReversed}">
+                        <Track.DecreaseRepeatButton><RepeatButton Command="Slider.DecreaseLarge" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Height="3" Background="{DynamicResource HomeAccent}" /></ControlTemplate></RepeatButton.Template></RepeatButton></Track.DecreaseRepeatButton>
+                        <Track.IncreaseRepeatButton><RepeatButton Command="Slider.IncreaseLarge" Focusable="False"><RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Height="3" Background="{DynamicResource HomeLine}" /></ControlTemplate></RepeatButton.Template></RepeatButton></Track.IncreaseRepeatButton>
+                        <Track.Thumb><Thumb Width="12" Height="12"><Thumb.Template><ControlTemplate TargetType="Thumb"><Ellipse Fill="{DynamicResource HomeAccent}" Stroke="{DynamicResource HomeBackground}" StrokeThickness="1" /></ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
+                    </Track>
+                    <Border x:Name="FocusRing" BorderBrush="{DynamicResource HomeAccent}" BorderThickness="1" CornerRadius="5" Visibility="Collapsed" IsHitTestVisible="False" />
+                </Grid>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="FocusRing" Property="Visibility" Value="Visible" /></Trigger>
+                    <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5" /></Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
         <Style x:Key="SettingsRow" TargetType="Border">
             <Setter Property="BorderBrush" Value="{DynamicResource HomeLine}" />
             <Setter Property="BorderThickness" Value="0,0,0,1" />
@@ -214,6 +233,9 @@
         </Grid>
         <TextBlock x:Name="PorchBrand" Text="Dango" FontSize="18" Margin="22,8"
                    VerticalAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False" />
+        <Border x:Name="BodyRestoreFeedback" Grid.Row="1" Visibility="Collapsed" Margin="16,0,16,8" Padding="12,8" Background="{DynamicResource HomeSoft}" BorderBrush="{DynamicResource HomeAccent}" BorderThickness="1" CornerRadius="7">
+            <StackPanel><TextBlock x:Name="BodyRestoreFeedbackText" TextWrapping="Wrap" AutomationProperties.LiveSetting="Assertive" /><Button Content="恢复已保存外观" Click="OnRestoreSavedBodyClick" HorizontalAlignment="Left" Margin="0,8,0,0" /></StackPanel>
+        </Border>
         <Border x:Name="SettingsFeedbackBar" Grid.Row="1" Visibility="Collapsed" Margin="38,0,38,0" Padding="12,8"
                 Background="{DynamicResource HomeSoft}" BorderBrush="{DynamicResource HomeLine}" BorderThickness="1" CornerRadius="7">
             <TextBlock x:Name="SettingsFeedbackText" TextWrapping="Wrap" Foreground="{DynamicResource HomeInk}"
@@ -315,6 +337,27 @@
                     <ScrollViewer x:Name="OptionsBody" Grid.Row="1" Margin="0,26,0,20"
                                   VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                                   CanContentScroll="False" Focusable="False">
+                    <ScrollViewer.Resources>
+                        <Style TargetType="ScrollBar">
+                            <Setter Property="Width" Value="16" /><Setter Property="MinWidth" Value="16" />
+                            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar">
+                                <Grid Background="Transparent"><Border Width="6" Background="{DynamicResource HomeSoft}" CornerRadius="3" />
+                                    <Track x:Name="PART_Track" Orientation="Vertical" IsDirectionReversed="True">
+                                        <Track.DecreaseRepeatButton><RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" Focusable="False" /></Track.DecreaseRepeatButton>
+                                        <Track.IncreaseRepeatButton><RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" Focusable="False" /></Track.IncreaseRepeatButton>
+                                        <Track.Thumb><Thumb MinHeight="28"><Thumb.Template><ControlTemplate TargetType="Thumb">
+                                            <Grid Background="Transparent"><Border x:Name="Grip" Width="6" CornerRadius="3" Background="{DynamicResource HomeMuted}" /></Grid>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Grip" Property="Background" Value="{DynamicResource HomeAccent}" /></Trigger>
+                                                <Trigger Property="IsDragging" Value="True"><Setter TargetName="Grip" Property="Background" Value="{DynamicResource HomeAccent}" /></Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate></Thumb.Template></Thumb></Track.Thumb>
+                                    </Track>
+                                </Grid>
+                            </ControlTemplate></Setter.Value></Setter>
+                        </Style>
+                    </ScrollViewer.Resources>
+
                       <Grid>
                         <StackPanel x:Name="FaceOptions">
                             <StackPanel x:Name="AppearanceColorsPanel">
@@ -352,6 +395,21 @@
                                 <TextBlock x:Name="EyeSpacingValue" Text="眼距 · 默认" />
                                 <Slider x:Name="EyeSpacingSlider" Minimum="12" Maximum="34" Value="24.5" TickFrequency="0.5" SmallChange="0.5" LargeChange="2" IsSnapToTickEnabled="True" ValueChanged="OnEyeSliderChanged" Margin="0,6,0,2" AutomationProperties.Name="眼距" />
                                 <Grid><TextBlock Text="近" FontSize="11" /><TextBlock Text="远" FontSize="11" HorizontalAlignment="Right" /></Grid>
+                            </StackPanel>
+                            <StackPanel x:Name="AppearanceBodyPanel" Visibility="Collapsed">
+                                <TextBlock x:Name="BodySizeValue" Text="大小 · 100%" />
+                                <Slider Style="{StaticResource BodyParameterSlider}" x:Name="BodySizeSlider" Minimum="80" Maximum="120" Value="100" TickFrequency="1" SmallChange="1" LargeChange="5" IsSnapToTickEnabled="True" ValueChanged="OnBodySliderChanged" Margin="0,6,0,2" AutomationProperties.Name="身体大小" />
+                                <Grid Margin="0,0,0,8"><TextBlock Text="80%" FontSize="11" /><TextBlock Text="120%" FontSize="11" HorizontalAlignment="Right" /></Grid>
+                                <TextBlock x:Name="BodySoftnessValue" Text="柔软度 · 50" />
+                                <Slider Style="{StaticResource BodyParameterSlider}" x:Name="BodySoftnessSlider" Minimum="0" Maximum="100" Value="50" TickFrequency="1" SmallChange="1" LargeChange="10" IsSnapToTickEnabled="True" ValueChanged="OnBodySliderChanged" Margin="0,6,0,2" AutomationProperties.Name="身体柔软度" />
+                                <Grid Margin="0,0,0,8"><TextBlock Text="硬" FontSize="11" /><TextBlock Text="软" FontSize="11" HorizontalAlignment="Right" /></Grid>
+                                <TextBlock x:Name="BodyLandingBuildValue" Text="落地体型 · 50" />
+                                <Slider Style="{StaticResource BodyParameterSlider}" x:Name="BodyLandingBuildSlider" Minimum="0" Maximum="100" Value="50" TickFrequency="1" SmallChange="1" LargeChange="10" IsSnapToTickEnabled="True" ValueChanged="OnBodySliderChanged" Margin="0,6,0,2" AutomationProperties.Name="落地体型：胖到瘦" />
+                                <Grid Margin="0,0,0,12"><TextBlock Text="胖" FontSize="11" /><TextBlock Text="瘦" FontSize="11" HorizontalAlignment="Right" /></Grid>
+                                <Button x:Name="PreviewBodyButton" Click="OnPreviewBodyClick" HorizontalAlignment="Stretch" Padding="8,8" AutomationProperties.Name="预览身体并下落">
+                                    <StackPanel Orientation="Horizontal"><Viewbox Width="20" Height="20" Margin="0,0,8,0"><Path Data="M12,3 L12,17 M6,11 L12,17 L18,11 M4,21 L20,21" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" /></Viewbox><TextBlock Text="预览身体并下落" VerticalAlignment="Center" /></StackPanel>
+                                </Button>
+                                <TextBlock x:Name="BodyPreviewStatus" TextWrapping="Wrap" FontSize="11" Margin="0,8,0,0" Foreground="{DynamicResource HomeMuted}" AutomationProperties.LiveSetting="Polite" />
                             </StackPanel>
                         </StackPanel>
                         <StackPanel x:Name="WardrobeOptions" Visibility="Collapsed" />
@@ -394,6 +452,9 @@
                                     <Ellipse Width="6" Height="6" Canvas.Left="9" Canvas.Top="9" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" />
                                 </Canvas></Viewbox>
                             </Button>
+                            <Button x:Name="AppearanceBodyTab" Style="{StaticResource FaceIconButton}" Click="OnAppearanceTabClick" Margin="0,8,0,0" ToolTip="身体 · 大小、柔软度、落地体型" AutomationProperties.Name="捏脸：身体">
+                                <Viewbox Width="20" Height="20"><Path Data="M12,3 C6,3 3,7 3,13 C3,18 7,21 12,21 C17,21 21,18 21,13 C21,7 18,3 12,3 Z M7,12 L7,14 M17,12 L17,14" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" /></Viewbox>
+                            </Button>
                         </StackPanel>
                         <Grid x:Name="FacePreviewSlot" Grid.Column="1" IsHitTestVisible="False" SizeChanged="OnFacePreviewSlotSizeChanged" />
                         <StackPanel x:Name="FaceEditorPreviewActions" Grid.Column="2" VerticalAlignment="Top" Margin="6,6,0,0">
@@ -421,6 +482,7 @@
                     <StackPanel x:Name="FaceEditorSaveActions" Grid.Row="3">
                         <TextBlock x:Name="AppearanceStatus" TextWrapping="Wrap" FontSize="11" Margin="0,0,0,8" Foreground="{DynamicResource HomeMuted}"
                                    AutomationProperties.LiveSetting="Polite" />
+                        <Button x:Name="RestoreSavedBodyButton" Content="恢复已保存外观" Click="OnRestoreSavedBodyClick" Visibility="Collapsed" HorizontalAlignment="Stretch" Margin="0,0,0,8" />
                         <Button x:Name="RecoverAppearanceButton" Content="备份原文件并应用" Click="OnRecoverAppearanceClick" Visibility="Collapsed"
                                 MinHeight="32" Padding="8,4" HorizontalAlignment="Stretch" Margin="0,0,0,8" />
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">

@@ -1,6 +1,7 @@
 using Dango.Core.Animation;
 using Dango.Core.Coordinates;
 using Dango.Desktop.Physics.Presentation;
+using Dango.Desktop.Physics.Tuning;
 using Dango.Physics;
 
 namespace Dango.Desktop.Tests.Rendering;
@@ -8,8 +9,7 @@ namespace Dango.Desktop.Tests.Rendering;
 [TestClass]
 public sealed class DesktopPhysicsSceneTests
 {
-    private static string Module => Path.Combine(TestRepository.Root,
-        "artifacts", "native-spike", "physics-module-unified-build", "Release", "dango_physics_module.dll");
+    private static string Module => Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName);
     private static readonly LogicalRect Bounds = new(400, 500, 160, 120);
     private static readonly TimeSpan Step = TimeSpan.FromSeconds(1d / 60);
 
@@ -20,7 +20,7 @@ public sealed class DesktopPhysicsSceneTests
     public void DesktopMappingMatchesRealModuleFrameForFrame(int count)
     {
         using var scene = new DesktopPhysicsScene(Module, Bounds);
-        using var reference = DangoPhysicsWorld.Create(Module);
+        using var reference = DangoPhysicsWorld.Create(Module, configuration: DangoBodyMaterial.Configure(DangoBodyControls.Default));
         var ids = new List<DangoEntityId> { reference.Add(0, 0) };
         for (var i = 1; i < count; i++)
         {
@@ -53,8 +53,8 @@ public sealed class DesktopPhysicsSceneTests
             foreach (var body in actual.Bodies)
             {
                 var state = actual.Physics.Bodies.Single(value => value.EntityId == body.EntityId);
-                Assert.AreEqual(Bounds.Center.X + state.CoreX * 80d, body.Bounds.Center.X, 1e-10);
-                Assert.AreEqual(Bounds.Center.Y - state.CoreY * 60d, body.Bounds.Center.Y, 1e-10);
+                Assert.AreEqual(Bounds.Center.X + state.CoreX * 72d, body.Bounds.Center.X, 1e-10);
+                Assert.AreEqual(Bounds.Center.Y - state.CoreY * 72d, body.Bounds.Center.Y, 1e-10);
                 Assert.AreEqual(16, body.Presentation.Contour.Count);
             }
         }
@@ -88,7 +88,7 @@ public sealed class DesktopPhysicsSceneTests
     public void RemoveDoesNotResetSurvivorsAndPauseDoesNotAdvance()
     {
         using var scene = new DesktopPhysicsScene(Module, Bounds);
-        using var reference = DangoPhysicsWorld.Create(Module);
+        using var reference = DangoPhysicsWorld.Create(Module, configuration: DangoBodyMaterial.Configure(DangoBodyControls.Default));
         var first = reference.Add(0, 0);
         var extra = scene.Add(2.8, 0);
         var referenceExtra = reference.Add(2.8, 0);
@@ -112,7 +112,7 @@ public sealed class DesktopPhysicsSceneTests
     public void RehostChangesOnlyDisplayAndCancelsInput()
     {
         using var scene = new DesktopPhysicsScene(Module, Bounds);
-        using var reference = DangoPhysicsWorld.Create(Module);
+        using var reference = DangoPhysicsWorld.Create(Module, configuration: DangoBodyMaterial.Configure(DangoBodyControls.Default));
         var first = reference.Add(0, 0);
         scene.Step(Step);
         reference.Step(Step, [new(first)]);

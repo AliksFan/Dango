@@ -20,7 +20,7 @@ public sealed class HatPlacementSolver
         // not that pivot as a constraint on subsequent sliding.
         var angle = Math.Clamp(reference.RotationRadians, -0.35, 0.35);
         var rootX = 80 - 10 * Math.Sin(angle) + Math.Clamp(reference.Position.X, -0.2, 0.2) * 72;
-        var rootY = 15 + 10 * Math.Cos(angle) - Math.Clamp(reference.Position.Y - 0.82, -0.2, 0.2) * 58;
+        var rootY = 15 + 10 * Math.Cos(angle) - Math.Clamp(reference.Position.Y - 0.82, -0.2, 0.2) * 72;
         referenceCenter = new((rootX - 80) / 160, (66 - rootY) / 160);
         referenceAngle = -angle;
         using var workspace = track.RentWorkspace();

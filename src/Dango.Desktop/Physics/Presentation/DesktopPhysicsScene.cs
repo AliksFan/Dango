@@ -30,6 +30,8 @@ public sealed partial class DesktopPhysicsScene : IDisposable
     private readonly int ownerThreadId = Environment.CurrentManagedThreadId;
     private readonly double width;
     private readonly double height;
+    // The same isotropic unit scale used by the body and attachment canvas.
+    private double UnitScale => width * 72 / 160;
     private LogicalPoint origin;
     private DirectionalControlIntent intent;
     private LogicalPoint dragTarget;
@@ -55,6 +57,7 @@ public sealed partial class DesktopPhysicsScene : IDisposable
         world = DangoPhysicsWorld.Create(nativeLibraryPath, configuration: worldConfiguration);
         try
         {
+            world.RequireBodyMaterialModel(DangoBodyMaterial.NativeModelVersion);
             SelectedEntity = Add(0, 0, selfConfiguration ?? worldConfiguration);
         }
         catch
@@ -116,7 +119,7 @@ public sealed partial class DesktopPhysicsScene : IDisposable
         // cooldowns, smoothing state or adding a simulation step.
         world.TranslateHorizontal(-shift);
         world.ClearHorizontalBounds();
-        origin = new(origin.X + shift * width / 2, origin.Y);
+        origin = new(origin.X + shift * UnitScale, origin.Y);
         horizontalCoreOffset += shift;
         HorizontalRebaseCount++;
         LastFrame = frame with
@@ -159,7 +162,7 @@ public sealed partial class DesktopPhysicsScene : IDisposable
             throw new ArgumentOutOfRangeException(nameof(hostRight));
         safeCenter = default;
         if (LastFrame is not { Physics.Succeeded: true } frame) return false;
-        var scale = width / 2;
+        var scale = UnitScale;
         var self = configurations[SelectedEntity];
         if (hostRight - hostLeft < 2 * (self.RadialRestLength + self.NodeRadius) * scale) return false;
         var selected = frame.Physics.Bodies.Single(body => body.EntityId == SelectedEntity);
@@ -210,7 +213,7 @@ public sealed partial class DesktopPhysicsScene : IDisposable
         var horizontal = -(double)selected.CoreX;
         world.TranslateHorizontal(horizontal);
         horizontalCoreOffset = 0;
-        origin = new(actualCenter.X, actualCenter.Y + selected.CoreY * height / 2);
+        origin = new(actualCenter.X, actualCenter.Y + selected.CoreY * UnitScale);
         var translation = new LogicalVector(actualCenter.X - selectedBounds.Center.X, actualCenter.Y - selectedBounds.Center.Y);
         LastFrame = frame with
         {
@@ -340,14 +343,14 @@ public sealed partial class DesktopPhysicsScene : IDisposable
     {
         VerifyAccess();
         ValidatePoint(hostPoint);
-        return new((hostPoint.X - origin.X) / (width / 2), (origin.Y - hostPoint.Y) / (height / 2));
+        return new((hostPoint.X - origin.X) / UnitScale, (origin.Y - hostPoint.Y) / UnitScale);
     }
 
     public LogicalPoint ToHost(LogicalPoint worldPoint)
     {
         VerifyAccess();
         ValidatePoint(worldPoint);
-        return new(origin.X + worldPoint.X * width / 2, origin.Y - worldPoint.Y * height / 2);
+        return new(origin.X + worldPoint.X * UnitScale, origin.Y - worldPoint.Y * UnitScale);
     }
 
     public DesktopPhysicsSceneFrame Step(TimeSpan fixedStep, double autonomousHorizontal = 0)
@@ -387,8 +390,11 @@ public sealed partial class DesktopPhysicsScene : IDisposable
         var bodies = physics.Bodies.Select(state =>
         {
             var center = ToHost(new(state.CoreX, state.CoreY));
+            var size = DangoBodyMaterial.SizeScale(configurations[state.EntityId]);
+            var bodyWidth = width * size;
+            var bodyHeight = height * size;
             return new DesktopPhysicsBody(state.EntityId,
-                new(center.X - width / 2, center.Y - height / 2, width, height),
+                new(center.X - bodyWidth / 2, center.Y - bodyHeight / 2, bodyWidth, bodyHeight),
                 presenters[state.EntityId].Present(state, fixedStep, facing[state.EntityId]));
         }).ToArray();
         return LastFrame = new(physics, Array.AsReadOnly(bodies));

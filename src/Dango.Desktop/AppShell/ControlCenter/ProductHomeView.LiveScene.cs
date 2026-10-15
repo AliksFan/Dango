@@ -240,7 +240,7 @@ public partial class ProductHomeView
             visualAnchor = bounds.Center;
             shadowGroundCenterY = bounds.Center.Y;
         }
-        const double dx = 0;
+        var dx = (LiveSceneCanvas.Width - bounds.Width) / 2;
         var dy = Math.Clamp((bounds.Center.Y - visualAnchor.Value.Y) * .4, -42, 42);
         DangoHostFrameBinding.Apply(LiveDangoVisual, LiveDangoHat, frame, 0,
             new LogicalVector(-bounds.X + dx, -bounds.Y + dy),

@@ -42,13 +42,13 @@ public sealed class AttachmentShapeGeometry
     public double Height => Top - Bottom;
 
     public static AttachmentPoint MapToCanvas(PresentationPoint point, double width, double height) =>
-        new(width / 2 + point.X * width * 0.45, height * 0.55 - point.Y * height * 0.48333333333333334);
+        new(width / 2 + point.X * width * 0.45, height * 0.55 - point.Y * width * 0.45);
 
     public static AttachmentShapeGeometry Create(IReadOnlyList<PresentationPoint> contour)
     {
         ArgumentNullException.ThrowIfNull(contour);
         if (contour.Count is < 8 or > 128) throw new ArgumentException("Attachment contour count is invalid.", nameof(contour));
-        var controls = contour.Select(p => new AttachmentPoint(p.X * 72 / 160, p.Y * 58 / 160)).ToArray();
+        var controls = contour.Select(p => new AttachmentPoint(p.X * 72 / 160, p.Y * 72 / 160)).ToArray();
         var boundary = new List<AttachmentPoint>();
         for (var i = 0; i < controls.Length; i++)
         {

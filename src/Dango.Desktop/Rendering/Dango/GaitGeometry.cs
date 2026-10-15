@@ -16,6 +16,10 @@ internal static class GaitGeometry
     {
         if (strain == 0 || !frame.IsVisible || frame.FallbackReason != PhysicsPresentationFallbackReason.None ||
             frame.Attachments is not { SourceShape: { } shape, Hat.Pose: { } pose } attachment) return null;
+        // Geometry and the returned transform stay in the fixed 160x120 template.
+        // The host applies body size afterwards; every safety gate uses screen DIP.
+        var bodySizeScale = bounds.Width / 160;
+        if (!double.IsFinite(bodySizeScale) || bodySizeScale <= 0) return null;
         var body = shape.Boundary.Select(Canvas).ToArray();
         var center = (shape.Left + shape.Right) * 80 + 80;
         var bottom = 66 - shape.Bottom * 160;
@@ -48,15 +52,17 @@ internal static class GaitGeometry
             foreach (var point in all)
             {
                 var mapped = transform.Map(point);
-                if (Distance(point, mapped) > 1.99) return false;
-                // All supported hats fit inside the pre-existing overlay; never resize a host to fit gait.
-                if (mapped.X < 0 || mapped.X > bounds.Width || mapped.Y < -16 || mapped.Y > bounds.Height) return false;
-                if (mapped.X + bounds.X < viewport.X + (autonomous ? 16 : 0) ||
-                    mapped.X + bounds.X > viewport.Right - (autonomous ? 16 : 0) ||
-                    mapped.Y + bounds.Y < viewport.Y || mapped.Y + bounds.Y > viewport.Bottom) return false;
+                if (Distance(point, mapped) * bodySizeScale > 1.99) return false;
+                var screenX = mapped.X * bodySizeScale;
+                var screenY = mapped.Y * bodySizeScale;
+                // The extra hat overlay remains 16 screen DIP at every body size.
+                if (screenX < 0 || screenX > bounds.Width || screenY < -16 || screenY > bounds.Height) return false;
+                if (screenX + bounds.X < viewport.X + (autonomous ? 16 : 0) ||
+                    screenX + bounds.X > viewport.Right - (autonomous ? 16 : 0) ||
+                    screenY + bounds.Y < viewport.Y || screenY + bounds.Y > viewport.Bottom) return false;
             }
-            if (body.Any(p => { var q = transform.Map(p); return q.X < 0 || q.X > bounds.Width || q.Y < 0 || q.Y > bounds.Height; })) return false;
-            if (eyeClearance * Math.Min(transform.ScaleX, transform.ScaleY) < 1.024 || eyeGap * transform.ScaleX < 2) return false;
+            if (body.Any(p => { var q = transform.Map(p); return q.X < 0 || q.X * bodySizeScale > bounds.Width || q.Y < 0 || q.Y * bodySizeScale > bounds.Height; })) return false;
+            if (eyeClearance * bodySizeScale * Math.Min(transform.ScaleX, transform.ScaleY) < 1.024 || eyeGap * bodySizeScale * transform.ScaleX < 2) return false;
             return true;
         }
         if (!Safe(0)) return null;

@@ -26,7 +26,8 @@ public sealed class EyeMotionTests
         var right = Run(0.16, DangoFacingDirection.Left); var left = Run(-0.16, DangoFacingDirection.Right);
         Assert.IsTrue(right.ShapeTilt.Angle > 0.01);
         Assert.AreEqual(-left.ShapeTilt.Angle, right.ShapeTilt.Angle, 1e-10);
-        Assert.IsTrue(right.Face.Left.Center.Y > right.Face.Right.Center.Y);
+        Assert.IsTrue(right.Face.Left.Center.Y < right.Face.Right.Center.Y, "Eye line mirrors the body lean about the upward ground normal.");
+        Assert.AreEqual(right.ShapeTilt.Angle, right.Face.Left.Angle, 1e-10);
         Assert.AreEqual(right.ShapeTilt.Angle, Run(0.16, DangoFacingDirection.Right).ShapeTilt.Angle, 1e-10);
     }
 

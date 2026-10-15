@@ -6,12 +6,42 @@ using Dango.Desktop.DesktopHost.Interaction;
 using Dango.Desktop.Physics.Presentation;
 using Dango.Desktop.Physics.Presentation.Attachments;
 using Dango.Desktop.Rendering.Visuals;
+using Dango.Desktop.Tests.Physics.Presentation.Attachments;
 
 namespace Dango.Desktop.Tests.Rendering;
 
 [TestClass]
 public sealed class QuietIdleRuntimeTests
 {
+    [TestMethod]
+    public void BlinkPhaseBoundariesCannotChangeTiltOrHatIntegration()
+    {
+        using var referenceRouter = new AttachmentCommandRouter(true);
+        using var blinkRouter = new AttachmentCommandRouter(true);
+        var referenceTarget = referenceRouter.Add(new(1));
+        var blinkTarget = blinkRouter.Add(new(1));
+        var reference = new AttachmentMotionController(referenceRouter, referenceTarget);
+        var blinking = new AttachmentMotionController(blinkRouter, blinkTarget);
+        var token = blinkRouter.RegisterPreview(blinkTarget);
+        Assert.IsTrue(blinkRouter.Submit(blinkTarget, token, 1, Blink.Default(EyeSelection.Both)).Accepted);
+        var blinkSeen = false;
+        for (var step = 0; step < 16; step++)
+        {
+            var template = EyeMotionTests.Body();
+            var body = new PhysicsPresentationFrame(true,
+                AttachmentShapeGeometryTests.Oval(height: .5, shear: step < 5 ? .04 : -.04),
+                template.Eyes, template.Hat, template.FallbackReason, template.Diagnostics);
+            var expected = reference.Update(body, step, .02)!;
+            var actual = blinking.Update(body, step, .02)!;
+            Assert.AreEqual(expected.ShapeTilt.Angle, actual.ShapeTilt.Angle);
+            Assert.IsNotNull(actual.Hat!.Pose, "The test must exercise a visible hat.");
+            Assert.AreEqual(JsonSerializer.Serialize(expected.Hat), JsonSerializer.Serialize(actual.Hat),
+                $"Blink boundaries must not change another channel at step {step}.");
+            blinkSeen |= actual.Face.Left.Openness < .5;
+        }
+        Assert.IsTrue(blinkSeen);
+    }
+
     internal static StackedDangoSceneRuntime Create(out object owner)
     {
         var runtime = LightFeedbackRuntimeTests.Create();
@@ -176,7 +206,13 @@ public sealed class QuietIdleRuntimeTests
         var face = runtime.LastFrame!.Bodies[0].Attachments!.Face;
         Assert.IsTrue(face.Left.Openness is > .3 and < .4);
         Assert.IsTrue(face.Right.Openness is > .3 and < .4);
-        var layoutMidpoint = (face.Left.Center.X + face.Right.Center.X) * 80;
+        var attachments = runtime.LastFrame!.Bodies[0].Attachments!;
+        var neutralMotion = new EyeMotionSample(new(0, 0), .35, EyeShape.Soft, 1);
+        var neutral = FaceLayoutSolver.Solve(attachments.SourceShape!, neutralMotion, neutralMotion,
+            attachments.ShapeTilt.Angle, EyeLayoutParameters.Default, horizontalRange: 7);
+        // Raw physical contours can have a nonzero geometric center. Measure the
+        // retained manual gaze from that same frame's neutral layout, not X=0.
+        var layoutMidpoint = (face.Left.Center.X + face.Right.Center.X - neutral.Left.Center.X - neutral.Right.Center.X) * 80;
         Assert.IsGreaterThan(3.7, layoutMidpoint);
         Assert.IsLessThan(4.3, layoutMidpoint);
     }
@@ -213,8 +249,16 @@ public sealed class QuietIdleRuntimeTests
         for (var i = 0; i < 20; i++)
         {
             LightFeedbackRuntimeTests.Steps(runtime, 1); LightFeedbackRuntimeTests.Steps(reference, 1);
-            Assert.AreEqual(reference.LastFrame!.Bodies[0].Attachments!.Face.Left.Center.Y,
-                runtime.LastFrame!.Bodies[0].Attachments!.Face.Left.Center.Y, 1e-7);
+            Assert.AreEqual(JsonSerializer.Serialize(reference.LastPhysicsFrame), JsonSerializer.Serialize(runtime.LastPhysicsFrame));
+            // Releasing gaze preserves its spring state, including residual X.
+            // A tilted eye line projects that X into screen Y. Compare the local
+            // vertical coordinate to check physical Y ownership on the first step.
+            static double LocalY(EyePresentationFrame eye) =>
+                eye.Center.Y * Math.Cos(eye.Angle) - eye.Center.X * Math.Sin(eye.Angle);
+            Assert.AreEqual(reference.LastFrame!.Bodies[0].Attachments!.Face.Left.Angle,
+                runtime.LastFrame!.Bodies[0].Attachments!.Face.Left.Angle);
+            Assert.AreEqual(LocalY(reference.LastFrame!.Bodies[0].Attachments!.Face.Left),
+                LocalY(runtime.LastFrame!.Bodies[0].Attachments!.Face.Left), 1e-7);
         }
     }
 

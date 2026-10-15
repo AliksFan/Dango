@@ -88,7 +88,11 @@ public sealed class FaceLayoutReferenceEquivalenceTests
     [TestMethod]
     public void SizeReductionFallbackMatchesFrozen8f0ca91()
     {
-        var shape = AttachmentShapeGeometry.Create(AttachmentShapeGeometryTests.Oval(width: 0.28, height: 0.3, shear: 0.16));
+        // Preserve the frozen fixture's actual attachment-space height when
+        // the contour mapping changes from 58/160 to 72/160 on the Y axis.
+        var contour = AttachmentShapeGeometryTests.Oval(width: 0.28, height: 0.3, shear: 0.16)
+            .Select(point => new Dango.Desktop.Physics.Presentation.PresentationPoint(point.X, point.Y * 58 / 72)).ToArray();
+        var shape = AttachmentShapeGeometry.Create(contour);
         var left = new EyeMotionSample(new(1, 1), 1, EyeShape.Surprised, 1);
         var right = new EyeMotionSample(new(-1, -1), 1, EyeShape.Angry, 1);
         AssertLayout(shape, left, right, 0.17, 7);

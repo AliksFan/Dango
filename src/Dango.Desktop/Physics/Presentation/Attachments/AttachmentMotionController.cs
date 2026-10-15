@@ -68,15 +68,28 @@ public sealed class AttachmentMotionController(AttachmentCommandRouter router, A
                 boundaries.Add(eye.BlinkStart + blink.Close.TotalSeconds + blink.Hold.TotalSeconds);
                 boundaries.Add(eye.BlinkStart + blink.Close.TotalSeconds + blink.Hold.TotalSeconds + blink.Open.TotalSeconds);
             }
+        // Blink phase boundaries belong only to the eyes. Keep the body tilt
+        // and hat on the same canonical clock slices as a frame with no blink:
+        // sampling their changing target at a blink boundary couples channels.
+        var motionStart = clock.Elapsed;
+        var motionEnd = motionStart + seconds;
+        var motionCount = Math.Max(1, (int)Math.Ceiling((motionEnd - motionStart) * 240));
+        var previousMotionTime = motionStart;
+        for (var i = 1; i <= motionCount; i++)
+        {
+            var next = i == motionCount ? motionEnd : motionStart + (motionEnd - motionStart) * i / motionCount;
+            var motionSeconds = next - previousMotionTime;
+            tilt = DampedSpring.AdvanceBounded(tilt, signal.Angle, 4, 0.9, motionSeconds, -Math.PI / 18, Math.PI / 18);
+            hat?.Advance(motionSeconds, tilt.Position, (Command(AttachmentChannel.HatSlide)?.Intent as SetHatSlide)?.Offset ?? 0);
+            previousMotionTime = next;
+        }
         foreach (var slice in clock.Advance(stepIndex, seconds, boundaries))
         {
-            tilt = DampedSpring.AdvanceBounded(tilt, signal.Angle, 4, 0.9, slice.Seconds, -Math.PI / 18, Math.PI / 18);
-            hat?.Advance(slice.Seconds, tilt.Position, (Command(AttachmentChannel.HatSlide)?.Intent as SetHatSlide)?.Offset ?? 0);
             AdvanceEye(left, AttachmentChannel.LeftGaze, AttachmentChannel.LeftEyePose, slice);
             AdvanceEye(right, AttachmentChannel.RightGaze, AttachmentChannel.RightEyePose, slice);
         }
         EyeMotionSample Sample(EyeState eye) => new(new(eye.X.Position, eye.Y.Position), eye.Open.Position * eye.Envelope.Position, eye.Shape, eye.Soft.Position);
-        var layout = FaceLayoutSolver.Solve(shape, Sample(left), Sample(right), -tilt.Position, eyeLayout, horizontalRange: 7);
+        var layout = FaceLayoutSolver.Solve(shape, Sample(left), Sample(right), tilt.Position, eyeLayout, horizontalRange: 7);
         if (layout.GazeScale < 1)
         {
             foreach (var eye in new[] { left, right })

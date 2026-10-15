@@ -29,7 +29,7 @@ public sealed class GaitGeometryTests
         Assert.IsFalse(gait.IsIdentity);
         var curve = IndependentCurve(frame.Contour);
         var trueBottom = curve.Max(p => p.Y);
-        var controlBottom = frame.Contour.Max(p => 66 - p.Y * 58);
+        var controlBottom = frame.Contour.Max(p => 66 - p.Y * 72);
         Assert.IsGreaterThan(.02, Math.Abs(controlBottom - trueBottom), "A control-point anchor must fail this fixture.");
         Assert.AreEqual(trueBottom, gait.BottomY, .02, "The oracle analytically evaluates every quadratic extremum.");
         Assert.AreEqual(trueBottom, curve.Select(gait.Map).Max(p => p.Y), .25);
@@ -92,6 +92,65 @@ public sealed class GaitGeometryTests
         Assert.AreSame(originalShape, frame.Attachments.SourceShape);
     }
 
+    [STATestMethod]
+    [DataRow(.8)]
+    [DataRow(1.2)]
+    public void BodySizeKeepsTheActualScreenDisplacementAndOverlayLimits(double size)
+    {
+        var frame = Frame();
+        var bounds = new LogicalRect(100, 100, 160 * size, 120 * size);
+        var gait = GaitGeometry.Create(frame, Entity, bounds, Viewport, -.02, false, 1.35);
+        Assert.IsNotNull(gait, "Supported body sizes must compare local points with the corresponding scaled bounds.");
+        Assert.IsFalse(gait.IsIdentity);
+        foreach (var appearance in Enum.GetValues<HatAppearance>())
+            foreach (var point in DrawnPoints(frame, appearance))
+            {
+                var mapped = gait.Map(point);
+                Assert.IsTrue(Distance(point, mapped) * size <= 1.99 + 1e-9,
+                    "The unchanged 1.99 DIP gate applies after the host body-size transform.");
+                Assert.IsTrue(mapped.X * size >= 0 && mapped.X * size <= bounds.Width &&
+                    mapped.Y * size >= -16 && mapped.Y * size <= bounds.Height);
+            }
+    }
+
+    [TestMethod]
+    [DataRow(.8, false)]
+    [DataRow(.8, true)]
+    [DataRow(1.2, false)]
+    [DataRow(1.2, true)]
+    public void BodySizeUsesScreenCoordinatesForViewportAndAutonomousMargins(double size, bool autonomous)
+    {
+        var frame = Frame();
+        var bounds = new LogicalRect(100, 100, 160 * size, 120 * size);
+        var points = IndependentCurve(frame.Contour);
+        var left = points.Min(p => p.X) * size;
+        var viewport = new LogicalRect(bounds.X + left - .2 - (autonomous ? 16 : 0), 0, 1000, 800);
+        var unrestricted = GaitGeometry.Create(frame, Entity, bounds, Viewport, -.02, autonomous, 1.35);
+        var restricted = GaitGeometry.Create(frame, Entity, bounds, viewport, -.02, autonomous, 1.35);
+        Assert.IsNotNull(unrestricted); Assert.IsNotNull(restricted);
+        Assert.IsTrue(restricted.ScaleY > unrestricted.ScaleY);
+        Assert.IsTrue(restricted.ScaleY < 1);
+        foreach (var p in points.Select(restricted.Map))
+            Assert.IsTrue(p.X * size + bounds.X >= viewport.X + (autonomous ? 16 : 0) - .01);
+    }
+
+    [TestMethod]
+    public void SmallBodyCannotReduceTheRequiredScreenEyeGap()
+    {
+        var frame = Frame();
+        var old = frame.Attachments!;
+        var width = 12d / 160;
+        var spacing = width + 2.2 / 160;
+        frame = frame with { Attachments = old with { Face = old.Face with
+        {
+            Left = old.Face.Left with { Center = new(-spacing / 2, 0), Width = width, Height = width, Angle = 0 },
+            Right = old.Face.Right with { Center = new(spacing / 2, 0), Width = width, Height = width, Angle = 0 },
+        } } };
+        Assert.IsNotNull(GaitGeometry.Create(frame, Entity, Bounds, Viewport, -.02, false, 1.35));
+        Assert.IsNull(GaitGeometry.Create(frame, Entity, new(100, 100, 128, 96), Viewport, -.02, false, 1.35),
+            "A 2.2 DIP local gap becomes 1.76 screen DIP at 80%; retain the original 2 DIP gate.");
+    }
+
     [TestMethod]
     public void EyeEntirelyOutsideBodyIsUnsafeEvenWhenItClearsEveryBoundarySegment()
     {
@@ -108,7 +167,7 @@ public sealed class GaitGeometryTests
     private static PhysicsPresentationFrame Frame()
     {
         var contour = Enumerable.Range(0, 16).Select(i => Math.PI * 2 * i / 16 + .13)
-            .Select(a => new PresentationPoint(.72 * Math.Cos(a) + .035 * Math.Sin(a), .80 * Math.Sin(a))).ToArray();
+            .Select(a => new PresentationPoint(.72 * Math.Cos(a) + .035 * Math.Sin(a), .72 * Math.Sin(a))).ToArray();
         var shape = AttachmentShapeGeometry.Create(contour);
         var eye = new EyeMotionSample(new(.35, -.1), .65, EyeShape.Soft, .7);
         var face = FaceLayoutSolver.Solve(shape, eye, eye with { Gaze = new(.2, .1) }, .04);
@@ -128,7 +187,7 @@ public sealed class GaitGeometryTests
     // Deliberately independent of AttachmentShapeGeometry's recursive flattening.
     private static LogicalPoint[] IndependentCurve(IReadOnlyList<PresentationPoint> contour)
     {
-        LogicalPoint CanvasPoint(PresentationPoint p) => new(80 + p.X * 72, 66 - p.Y * 58);
+        LogicalPoint CanvasPoint(PresentationPoint p) => new(80 + p.X * 72, 66 - p.Y * 72);
         static LogicalPoint Mid(LogicalPoint a, LogicalPoint b) => new((a.X + b.X) / 2, (a.Y + b.Y) / 2);
         var result = new List<LogicalPoint>();
         for (var i = 0; i < contour.Count; i++)

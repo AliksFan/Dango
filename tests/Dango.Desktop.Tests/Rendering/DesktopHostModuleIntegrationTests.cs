@@ -7,6 +7,7 @@ using Dango.Desktop.DesktopHost;
 using Dango.Desktop.DesktopHost.StandardWindow;
 using Dango.Desktop.DesktopHost.WorkerW;
 using Dango.Desktop.Physics.Presentation;
+using Dango.Desktop.Physics.Tuning;
 using Dango.Desktop.Rendering.Visuals;
 using Dango.Physics;
 
@@ -36,7 +37,7 @@ public sealed class DesktopHostModuleIntegrationTests
     public void HostRuntimeMatchesNativeForEveryBodyAndEveryFrame(int count)
     {
         using var runtime = new StackedDangoSceneRuntime();
-        using var reference = DangoPhysicsWorld.Create(Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName));
+        using var reference = DangoPhysicsWorld.Create(Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName), configuration: DangoBodyMaterial.Configure(DangoBodyControls.Default));
         var ids = new List<DangoEntityId> { reference.Add(0, 0) };
         runtime.Start();
         for (var i = 1; i < count; i++)

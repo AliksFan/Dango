@@ -9,7 +9,7 @@ namespace Dango.Desktop.Tests.Rendering;
 public sealed class DangoContourRenderingTests
 {
     [TestMethod]
-    public void AcceptedDesktopMappingKeepsDistinctHorizontalAndVerticalScales()
+    public void AcceptedDesktopMappingUsesEqualHorizontalAndVerticalScales()
     {
         var origin = DangoStreamGeometryFactory.Map(new PresentationPoint(0, 0), 160, 120);
         var right = DangoStreamGeometryFactory.Map(new PresentationPoint(1, 0), 160, 120);
@@ -18,7 +18,7 @@ public sealed class DangoContourRenderingTests
         Assert.AreEqual(80d, origin.X, 1e-10);
         Assert.AreEqual(66d, origin.Y, 1e-10);
         Assert.AreEqual(72d, right.X - origin.X, 1e-10);
-        Assert.AreEqual(58d, origin.Y - top.Y, 1e-10);
+        Assert.AreEqual(72d, origin.Y - top.Y, 1e-10);
     }
 
     [TestMethod]
@@ -45,10 +45,10 @@ public sealed class DangoContourRenderingTests
         var figure = System.Windows.Media.PathGeometry.CreateFromGeometry(result.Geometry!).Figures[0];
         Assert.IsTrue(figure.Segments.All(segment => segment is
             System.Windows.Media.QuadraticBezierSegment or System.Windows.Media.PolyQuadraticBezierSegment));
-        var oldTop = 66 - 0.82 * 58;
+        var oldTop = 66 - 0.82 * 72;
         Assert.IsGreaterThan(oldTop + 0.1, result.Geometry!.Bounds.Top, "轮廓应圆滑靠近最高节点，而不是穿过尖点。");
         Assert.IsLessThan(oldTop + 2, result.Geometry.Bounds.Top, "不能通过明显缩小身体制造圆润。");
-        var mapped = contour.Select(p => new System.Windows.Point(80 + p.X * 72, 66 - p.Y * 58)).ToArray();
+        var mapped = contour.Select(p => new System.Windows.Point(80 + p.X * 72, 66 - p.Y * 72)).ToArray();
         var polygonArea = Math.Abs(Enumerable.Range(0, 16).Sum(i =>
             mapped[i].X * mapped[(i + 1) % 16].Y - mapped[(i + 1) % 16].X * mapped[i].Y) / 2);
         Assert.IsGreaterThan(polygonArea * 0.95, result.Geometry.GetArea());
@@ -187,7 +187,7 @@ public sealed class DangoContourRenderingTests
                     }
                     ((System.Windows.Shapes.Path)visual.FindName("BodyPath")).Data = old;
                     ((System.Windows.Controls.Canvas)visual.FindName("DebugLayer")).RenderTransform =
-                        new System.Windows.Media.MatrixTransform(80d / 72, 0, 0, 60d / 58, 80 - 80 * 80d / 72, 60 - 66 * 60d / 58);
+                        new System.Windows.Media.MatrixTransform(80d / 72, 0, 0, 60d / 72, 80 - 80 * 80d / 72, 60 - 66 * 60d / 72);
                 }
                 else if (row == 1)
                 {

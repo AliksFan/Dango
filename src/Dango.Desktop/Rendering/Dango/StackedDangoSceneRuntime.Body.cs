@@ -35,8 +35,9 @@ public sealed partial class StackedDangoSceneRuntime
         var baseline = calibration.LastFrame!.Bodies.Single().Presentation;
         var geometry = DangoStreamGeometryFactory.TryCreate(baseline.Contour, 160, 120);
         if (!geometry.Succeeded) throw new InvalidOperationException("中性身体轮廓不可用。");
-        return new(baseline, geometry.Geometry!.Bounds.Width,
-            calibration.GroundY - (calibration.LastFrame.Bodies.Single().Bounds.Y + geometry.Geometry.Bounds.Bottom));
+        var size = DangoBodyMaterial.SizeScale(configuration);
+        return new(baseline, geometry.Geometry!.Bounds.Width * size,
+            calibration.GroundY - (calibration.LastFrame.Bodies.Single().Bounds.Y + geometry.Geometry.Bounds.Bottom * size));
     }
 
     /// <summary>
@@ -51,9 +52,8 @@ public sealed partial class StackedDangoSceneRuntime
         BodyPreviewError = null;
         if (scene is null || InitializationState != SceneInitializationState.Ready)
         {
-            if (RequiresInitialization) { BodyPreviewError = "场景尚未初始化，无法预览身体。"; return false; }
-            physicsBody = body;
-            return true;
+            BodyPreviewError = "场景尚未初始化，无法预览身体。";
+            return false;
         }
         if (LastError is not null) { BodyPreviewError = "物理场景处于故障状态，请先恢复团子。"; return false; }
         if (!TryDetachOrdinaryFurniture())

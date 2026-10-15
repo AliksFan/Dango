@@ -90,6 +90,15 @@ public sealed partial class DangoPhysicsWorld : IDisposable
 
     public int Count => entities.Count;
 
+    /// <summary>Refuses older ABI-compatible modules that lack the body-material contract.</summary>
+    public void RequireBodyMaterialModel(int version)
+    {
+        VerifyAccess();
+        if (api.BodyMaterialModelVersion != version)
+            throw new DangoPhysicsException(DangoPhysicsFailureKind.AbiMismatch,
+                $"身体材料模型不匹配：需要 {version}，实际 {api.BodyMaterialModelVersion}；请使用本批隔离模块。");
+    }
+
     public int LastErrorCode { get; private set; }
 
     public double PreviewJumpSpeedScale { get; private set; } = 1;
@@ -350,6 +359,7 @@ public sealed partial class DangoPhysicsWorld : IDisposable
         internal readonly ResetDelegate? ClearStaticPlatform;
         internal readonly PlatformContactDelegate? ReadStaticPlatformContact;
         internal AddConfiguredDelegate? AddConfigured { get; private init; }
+        internal int BodyMaterialModelVersion { get; private init; }
 
         private NativeApi(nint library, CreateDelegate create, AddDelegate add, RemoveDelegate remove,
             StepDelegate step, ResetDelegate reset, DestroyDelegate destroy,
@@ -389,6 +399,8 @@ public sealed partial class DangoPhysicsWorld : IDisposable
                     GetOptional<ResetDelegate>(library, "dango_physics_world_clear_static_platform"),
                     GetOptional<PlatformContactDelegate>(library, "dango_physics_world_get_static_platform_contact"))
                 {
+                    BodyMaterialModelVersion = GetOptional<GetIntegerDelegate>(library,
+                        "dango_physics_get_body_material_model_version")?.Invoke() ?? 0,
                     AddConfigured = GetOptional<AddConfiguredDelegate>(library, "dango_physics_world_add_configured"),
                 };
             }

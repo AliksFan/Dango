@@ -10,6 +10,7 @@
 #define DANGO_PHYSICS_STATE_FLOATS 42
 
 DANGO_API int dango_physics_get_abi_version(void);
+DANGO_API int dango_physics_get_body_material_model_version(void);
 DANGO_API int dango_physics_world_create(
     const dango_self_physics_config* config,
     int capacity,

@@ -4,18 +4,18 @@ public static class DragGrabPointMapper
 {
     private const double HorizontalScale = 0.45;
     private const double VerticalOrigin = 0.55;
-    private const double VerticalScale = 0.48333333333333334;
 
-    public static PresentationPoint FromVisualPoint(double x, double y, double width, double height)
+    public static PresentationPoint FromVisualPoint(double x, double y, double width, double height, double bodySizeScale = 1)
     {
         if (!double.IsFinite(x) || !double.IsFinite(y) ||
-            !double.IsFinite(width) || !double.IsFinite(height) || width <= 0 || height <= 0)
+            !double.IsFinite(width) || !double.IsFinite(height) || width <= 0 || height <= 0 ||
+            !double.IsFinite(bodySizeScale) || bodySizeScale <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(width));
         }
 
         return new PresentationPoint(
-            Math.Clamp((x - (width / 2)) / (width * HorizontalScale), -1, 1),
-            Math.Clamp(((height * VerticalOrigin) - y) / (height * VerticalScale), -1, 1));
+            (x - (width / 2)) / (width * HorizontalScale) * bodySizeScale,
+            ((height * VerticalOrigin) - y) / (width * HorizontalScale) * bodySizeScale);
     }
 }

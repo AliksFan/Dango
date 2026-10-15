@@ -1,6 +1,6 @@
 ﻿namespace Dango.Desktop.Rendering.Visuals;
 
-internal readonly record struct WanderSample(double X, double Y, bool Grounded, double LeftRoom, double RightRoom, double ScreenWidth = 1200);
+internal readonly record struct WanderSample(double X, double Y, bool Grounded, double LeftRoom, double RightRoom, double ScreenWidth = 1200, double PixelsPerUnit = 80);
 
 internal sealed class ShortWanderController
 {
@@ -20,21 +20,22 @@ internal sealed class ShortWanderController
         if (!eligible || !double.IsFinite(sample.X) || !double.IsFinite(sample.Y) ||
             !double.IsFinite(sample.LeftRoom) || !double.IsFinite(sample.RightRoom) ||
             !double.IsFinite(sample.ScreenWidth) || sample.ScreenWidth <= 0 ||
+            !double.IsFinite(sample.PixelsPerUnit) || sample.PixelsPerUnit <= 0 ||
             sample.LeftRoom < 0 || sample.RightRoom < 0 || !sample.Grounded)
         { Cancel(); return; }
-        var speed = previous is { } p ? Math.Sqrt(Math.Pow((sample.X - p.X) / seconds, 2) + Math.Pow((sample.Y - p.Y) / seconds, 2)) : double.PositiveInfinity;
+        var speed = previous is { } p ? Math.Sqrt(Math.Pow((sample.X - p.X) / seconds, 2) + Math.Pow((sample.Y - p.Y) / seconds, 2)) * sample.PixelsPerUnit : double.PositiveInfinity;
         previous = sample;
         if (Driving)
         {
             elapsed += seconds;
-            var distance = Direction * (sample.X - startX) * 80;
+            var distance = Direction * (sample.X - startX) * sample.PixelsPerUnit;
             if (distance + 1e-6 >= target || elapsed + 1e-9 >= maximumDriveSeconds ||
                 (Direction < 0 ? sample.LeftRoom : sample.RightRoom) <= 32 ||
                 elapsed + 1e-9 >= .5 && distance < 2)
             { Driving = false; stable = 0; }
             return;
         }
-        if (speed > .15)
+        if (speed > 12)
         { stable = 0; scheduled = false; waiting = 0; return; }
         if (!scheduled)
         {

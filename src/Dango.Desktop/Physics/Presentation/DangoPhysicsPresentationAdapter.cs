@@ -28,8 +28,9 @@ public sealed class DangoPhysicsPresentationAdapter
         if (fixedStep <= TimeSpan.Zero || fixedStep > TimeSpan.FromMilliseconds(100))
             throw new ArgumentOutOfRangeException(nameof(fixedStep));
         stepCount++;
-        var maximumCoordinate = state.Contour.Take(parameters.NodeCount * 2).Max(value => Math.Abs(value));
-        var presentationScale = maximumCoordinate > 0.98 ? 0.98 / maximumCoordinate : 1;
+        // Normalize only the configured natural size. The host restores that size
+        // through its bounds; material strain must never be fitted into a box.
+        var presentationScale = DangoSelfPhysicsParameters.CreateDefault().RadialRestLength / parameters.RadialRestLength;
         var contour = Enumerable.Range(0, parameters.NodeCount).Select(index => new PresentationPoint(
             state.Contour[index * 2] * presentationScale,
             state.Contour[index * 2 + 1] * presentationScale)).ToArray();

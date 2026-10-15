@@ -734,12 +734,16 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
             if (frame.Physics.Succeeded) AfterLightFeedbackStep(fixedStep.TotalSeconds);
             if (frame.Physics.Succeeded && attachments is not null && LightInteractionsEnabled)
                 QuietIdle.AfterStep(fixedStep.TotalSeconds, attachments);
+            var authoredBounds = frame.Bodies.Select(body => new LogicalRect(
+                primary.AuthoritativeBounds.Center.X - body.Bounds.Width / 2,
+                primary.AuthoritativeBounds.Center.Y - body.Bounds.Height / 2,
+                body.Bounds.Width, body.Bounds.Height)).ToArray();
             LastFrame = new(
                 attachmentFrames ?? frame.Bodies.Select(body => body.Presentation).ToArray(),
-                frame.Bodies.Select(_ => primary.AuthoritativeBounds).ToArray(),
-                frame.Bodies.Select(body => new LogicalVector(
-                    body.Bounds.X - primary.AuthoritativeBounds.X,
-                    body.Bounds.Y - primary.AuthoritativeBounds.Y)).ToArray(),
+                authoredBounds,
+                frame.Bodies.Select((body, index) => new LogicalVector(
+                    body.Bounds.X - authoredBounds[index].X,
+                    body.Bounds.Y - authoredBounds[index].Y)).ToArray(),
                 frame.Physics.ContactStepCount + frame.Physics.Bodies.Sum(body => body.GroundContactCount),
                 [],
                 !frame.Physics.Succeeded,
@@ -783,8 +787,13 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
             var direction = manual ? (directionalIntent.Left ? -1 : 1) :
                 Wander.Driving ? Math.Sign(autonomousHorizontal) : 0;
             var pressed = lightPresses.Count > 0 || lightFeedback.Count > 0;
-            var strain = Gait.Advance(new(scene!.ContinuousCoreX(body) * 80d, body.CoreY * 60d,
-                body.IsGrounded, shape.Width * 160, shape.Height * 160, body.SignedArea,
+            var bodySize = DangoBodyMaterial.SizeScale(scene!.ConfigurationOf(body.EntityId));
+            // A soft body's core bobs while its feet stay on the floor. Measure
+            // support at the actual lower contour so elastic motion cannot be
+            // mistaken for losing support; keep the controller's safety limits.
+            var supportY = body.CoreY * 72d + shape.Bottom * 160 * bodySize;
+            var strain = Gait.Advance(new(scene.ContinuousCoreX(body) * 72d, supportY,
+                body.IsGrounded, shape.Width * 160 * bodySize, shape.Height * 160 * bodySize, body.SignedArea,
                 direction, (quietIdleHostEnabled || unboundedHorizontalPreview) && LayoutWarning is null && QuietIdleError is null &&
                     LightInteractionError is null && !Doze.Active && !pressed,
                 IsDragging || directionalIntent.Jump || directionalIntent.Squash || !body.IsGrounded,
@@ -816,9 +825,15 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
         if (bounds is not { } visible || visible.Y < view.Y || visible.Bottom > view.Bottom)
         { Wander.Cancel(); return; }
         var body = physical.Physics.Bodies[0];
+        if (LastFrame.Bodies[0].Attachments?.SourceShape is not { } shape)
+        { Wander.Cancel(); return; }
+        var bodySize = DangoBodyMaterial.SizeScale(scene.ConfigurationOf(body.EntityId));
+        // Core bobbing is elastic deformation, not support motion. Sample the
+        // actual lower contour in native units and let the controller use DIP.
+        var supportY = body.CoreY + shape.Bottom * 160 * bodySize / 72d;
         var wasActive = Wander.Active;
-        Wander.Advance(new(scene.ContinuousCoreX(body), body.CoreY, body.IsGrounded,
-            visible.X - view.X - 16, view.Right - visible.Right - 16, wanderScreenWidth!.Value), seconds, true, QuietIdle.HasActive || Doze.Due || Doze.Active);
+        Wander.Advance(new(scene.ContinuousCoreX(body), supportY, body.IsGrounded,
+            visible.X - view.X - 16, view.Right - visible.Right - 16, wanderScreenWidth!.Value, 72), seconds, true, QuietIdle.HasActive || Doze.Due || Doze.Active);
         if (!wasActive && Wander.Active)
         {
             QuietIdle.CancelAll(attachments);
