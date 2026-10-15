@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageReference Include="MSTest.TestAdapter" Version="4.3.3" />
+    <PackageReference Include="MSTest.TestFramework" Version="4.3.3" />
+    <ProjectReference Include="../../src/Dango.Desktop/Dango.Desktop.csproj" />
+    <Compile Include="../Dango.Desktop.Tests/AppShell/LocalRoomCatalogStoreTests.cs" Link="LocalRoomCatalogStoreTests.cs" />
+    <Compile Include="../Dango.Desktop.Tests/Furniture/FurnitureLayoutStore*.cs" Link="Furniture/%(Filename)%(Extension)" />
+    <Compile Include="../Dango.Desktop.Tests/TestRepository.cs" Link="TestRepository.cs" />
+  </ItemGroup>
+</Project>

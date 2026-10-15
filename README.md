@@ -72,7 +72,7 @@ Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](d
 
 ## 当前文档
 
-- [本地房间目录与每房存档设计](docs/planning/2026-10-15-local-room-catalog-save-design.md)及[管理小样](docs/prototypes/dango-local-room-catalog.html)：独立本地房间身份、统一3间额度、新建／解散／恢复、旧固定房原件保护及真实跨进程验收方案。首页启动、安全位置／本机镜头和纯本地房到期保留已确认，具体设计待批，尚未实施。
+- [本地房间目录与每房存档设计](docs/planning/2026-10-15-local-room-catalog-save-design.md)、[实施计划](docs/planning/2026-10-15-local-room-catalog-save-plan.md)及[门廊小样](docs/prototypes/dango-local-room-catalog.html)：设计已获用户批准，按目录存储、逐房绑定、门廊场景入口和跨进程恢复分批实施；自动、实时及人工结果分别记录，未合main或交付日常安装。
 - [普通房单人家具整合记录](docs/verification/2026-10-11-single-player-furniture-main-integration.md)：Windows 本地单人普通房支持官方木平台、皮球、最多 30 件实例与逐操作本地保存；三段侧栏、两列实际家具图片、门廊 E／房内 Esc 编辑入口及四项反馈修正已实现，见[集合计划](docs/planning/2026-10-10-multiple-furniture-ball-room-plan.md)与[人工重验记录](docs/verification/2026-10-10-furniture-editor-feedback-fix.md)。600 秒多家具观察、OS DPI／辅助设置、前台捕获和既有性能专项仍开放。
 - [官方预设家具方向与物理小样方案](docs/planning/2026-10-09-official-furniture-design.md)：平台及刚性皮球已分批验证并接入本地单人普通房；自定义家具、参数调节、蹦床、窗帘和多人接入继续后置。历史设计与验证保留各批实际范围。
 - [AI Agent 工作区规则](AGENTS.md)：项目红线、验证门禁、Git 权限与文档同步规则。
