@@ -186,7 +186,9 @@ internal sealed class LabWindow : Window
         };
     }
 
-    private void SetupStyles()
+    private void SetupStyles() => ApplyStyles(Resources);
+
+    internal static void ApplyStyles(ResourceDictionary resources)
     {
         foreach (var type in new[] { typeof(Button), typeof(Slider), typeof(ComboBox), typeof(CheckBox), typeof(TextBox) })
         {
@@ -203,9 +205,9 @@ internal sealed class LabWindow : Window
             var focus = new Trigger { Property = IsKeyboardFocusWithinProperty, Value = true };
             focus.Setters.Add(new Setter(Control.BorderBrushProperty, SystemParameters.HighContrast ? SystemColors.HighlightBrush : Accent));
             focus.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(2)));
-            style.Triggers.Add(focus); Resources.Add(type, style);
+            style.Triggers.Add(focus); resources.Add(type, style);
         }
-        var scrollbar = new Style(typeof(ScrollBar)); scrollbar.Setters.Add(new Setter(WidthProperty, 7d)); Resources.Add(typeof(ScrollBar), scrollbar);
+        var scrollbar = new Style(typeof(ScrollBar)); scrollbar.Setters.Add(new Setter(WidthProperty, 7d)); resources.Add(typeof(ScrollBar), scrollbar);
     }
 
     private static void Label(Panel target, string text) => target.Children.Add(new TextBlock { Text = text, Margin = new Thickness(0, 14, 0, 3), Foreground = Accent });
