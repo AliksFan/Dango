@@ -33,7 +33,7 @@ public sealed class ProductControlCenterLayoutTests
         var expected = Math.Min(610, viewport.ViewportWidth - (width <= 680 ? 32 : 76));
         Assert.AreEqual(expected, column.ActualWidth, 1,
             "Settings must use the available reading width instead of shrinking to its text content.");
-        foreach (var name in new[] { "DisplayToggleButton", "WindowModeButton", "AboveIconsButton", "KeyboardToggleButton", "RetryWallpaperSettingsButton" })
+        foreach (var name in new[] { "Landscape1080pSettingsButton", "PortraitSettingsButton", "ShowDiagnosticsButton", "BackFromSettingsButton", "SettingsExitButton" })
         {
             var button = (FrameworkElement)home.FindName(name);
             var bounds = button.TransformToAncestor(home).TransformBounds(new Rect(button.RenderSize));
@@ -85,12 +85,10 @@ public sealed class ProductControlCenterLayoutTests
     public void SelectedSettingsRemainReadableInHighContrast()
     {
         var home = new ProductHomeView();
-        home.UpdateSettings(new ProductSettingsState(
-            true, true, true, "Wallpaper", KeyboardControlSettings.CreateDefault(),
-            DesktopObjectLayer.BelowDesktopIcons, null, false, false, string.Empty));
+        home.SetWindowPreset(ControlCenterWindowPreset.Portrait);
         home.ApplyTheme(contrast: true);
 
-        var selected = (Button)home.FindName("WallpaperModeButton");
+        var selected = (Button)home.FindName("PortraitSettingsButton");
         Assert.AreEqual(SystemColors.HighlightBrush, selected.Background);
         Assert.AreEqual(SystemColors.HighlightTextBrush, selected.Foreground,
             "Selected text must not use the same highlight color as its background.");

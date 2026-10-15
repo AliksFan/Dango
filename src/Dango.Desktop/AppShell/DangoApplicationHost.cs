@@ -209,6 +209,7 @@ internal sealed partial class DangoApplicationHost : IDisposable
             controlCenterWindow.ProductHome.BindLiveScene(sceneSession, stackedRuntime);
             controlCenterWindow.ProductHome.SetPorchReviewMode(porchReview);
             if (!porchReview && !faceReview) BindLocalRoom(controlCenterWindow);
+            controlCenterWindow.BindSettingsScene(ReadProductSettingsScene, RestoreRoomDisplayFromSettings, ReinitializeSceneFromSettings);
             if (porchReview) controlCenterWindow.Title = "Dango · 门廊 E1 场景预览";
         }
         controlCenterWindow.OverviewPresented += () =>

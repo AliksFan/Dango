@@ -28,6 +28,18 @@ public partial class ProductHomeView
     internal DesktopSceneSession? BoundSceneSession { get; private set; }
     internal StackedDangoSceneRuntime? BoundRuntime { get; private set; }
     internal bool OwnsLiveFrameDriver => liveScheduler?.OwnsRuntime == true;
+    internal string? CurrentSurfaceFailure => liveSurfaceFailure;
+
+    internal void ResumeAfterSettingsRecovery()
+    {
+        liveSurfaceFailure = null;
+        liveSurfacePhysicsError = null;
+        liveSurfaceRuntimeFault = false;
+        liveSceneSuspended = false;
+        porchPhysicsConfigured = true;
+        ChangeLiveSurface();
+        RefreshLiveSceneOwnership();
+    }
     internal void ReleaseLiveScene() => StopLiveScene();
     internal void UnbindLiveScene()
     {

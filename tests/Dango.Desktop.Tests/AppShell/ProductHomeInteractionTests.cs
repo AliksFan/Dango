@@ -354,7 +354,7 @@ public sealed class ProductHomeInteractionTests
             Click(home, "SettingsButton");
             Assert.AreEqual(Visibility.Visible, ((UIElement)home.FindName("SettingsPage")).Visibility);
             Assert.AreEqual(Visibility.Collapsed, ((UIElement)window.FindName("LegacyShell")).Visibility);
-            Assert.IsNotNull(home.FindName("RetryInitializationButton"), "Recovery stays reachable in the accepted shell.");
+            Assert.IsNotNull(home.FindName("ReinitializeSceneButton"), "Recovery stays reachable in the accepted shell.");
             Assert.AreEqual(336, window.MinWidth);
             window.ShowOverview();
             Assert.AreEqual(Visibility.Visible, home.Visibility);

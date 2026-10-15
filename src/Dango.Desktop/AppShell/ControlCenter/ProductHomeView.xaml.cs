@@ -5,7 +5,6 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
-using Dango.Desktop.DesktopHost;
 using Brushes = System.Windows.Media.Brushes;
 using Button = System.Windows.Controls.Button;
 using Color = System.Windows.Media.Color;
@@ -18,17 +17,16 @@ public enum HomeEditor { Face, Wardrobe }
 
 public enum ProductSettingsAction
 {
-    ToggleVisibility, ToggleInteraction, WallpaperMode, WindowMode, BelowIcons, AboveIcons,
-    ToggleKeyboard,
-    RetryInitialization, RestoreDango, RetryWallpaper, RetrySave, RecoverSettings,
+    RestoreRoomDisplay, ReinitializeScene, RetrySave, RecoverSettings,
     RefreshDiagnostics, Exit,
 }
 
+public sealed record ProductSettingsSceneSnapshot(
+    string Name, string Status, string? Error = null,
+    bool CanRestoreDisplay = false, bool CanReinitialize = false, string Diagnostics = "", long Revision = 0);
+
 public sealed record ProductSettingsState(
-    bool SceneReady, bool IsVisible, bool IsInteractionEnabled, string Mode,
-    KeyboardControlSettings Keyboard, DesktopObjectLayer DangoLayer,
-    string? LastError, bool HasSaveWarning, bool IsWriteProtected, string SaveMessage,
-    bool CanShowDesktop = true);
+    ProductSettingsSceneSnapshot Scene, bool HasSaveWarning, bool IsWriteProtected, string SaveMessage);
 
 /// <summary>The product shell: the home shows the shared live scene; appearance drafts save only on explicit apply.</summary>
 public partial class ProductHomeView : UserControl
@@ -47,13 +45,14 @@ public partial class ProductHomeView : UserControl
     public event Action<ControlCenterWindowPreset>? WindowPresetRequested;
     public bool IsEditing { get; private set; }
     public bool IsSettingsOpen { get; private set; }
+    internal bool IsSettingsDiagnosticsOpen => SettingsDiagnosticsText.Visibility == Visibility.Visible;
     public bool IsInPorch { get; private set; }
     public HomeEditor SelectedEditor { get; private set; }
     public Color PreviewColor { get; private set; } = Color.FromRgb(255, 232, 194);
     public bool ReduceMotion
     {
         get => reduceMotion;
-        set { reduceMotion = value; if (value) UpdateTransition(false); }
+        set { reduceMotion = value; SettingsPage.ReduceMotion = value; if (value) UpdateTransition(false); }
     }
 
     public ProductHomeView()
@@ -134,6 +133,7 @@ public partial class ProductHomeView : UserControl
         HomeContent.Visibility = Visibility.Collapsed;
         HomeFooter.Visibility = Visibility.Collapsed;
         SettingsPage.Visibility = Visibility.Visible;
+        SettingsShell.Visibility = Visibility.Visible;
         RefreshLiveSceneOwnership();
         UpdateNavigationSelection();
         UpdateSettingsFeedback();
@@ -157,11 +157,11 @@ public partial class ProductHomeView : UserControl
         if (IsInPorch) LeavePorch();
         IsSettingsOpen = false;
         SettingsPage.Visibility = Visibility.Collapsed;
+        SettingsShell.Visibility = Visibility.Collapsed;
         HomeContent.Visibility = Visibility.Visible;
         HomeFooter.Visibility = Visibility.Visible;
         settingsCommandError = null;
         SettingsFeedbackBar.Visibility = Visibility.Collapsed;
-        SettingsCommandStatus.Visibility = Visibility.Collapsed;
         UpdateNavigationSelection();
         Stage.Focus();
         RefreshLiveSceneOwnership();
@@ -177,46 +177,30 @@ public partial class ProductHomeView : UserControl
     public void UpdateSettings(ProductSettingsState state)
     {
         settingsState = state;
-        var ready = state.SceneReady;
-        DisplayToggleButton.Content = !state.CanShowDesktop ? "进入房间后" : state.IsVisible ? "已显示" : "已隐藏";
-        InteractionToggleButton.Content = state.IsInteractionEnabled ? "已开启" : "已关闭";
-        KeyboardToggleButton.Content = state.Keyboard.IsEnabled ? "已开启" : "已关闭";
-        AutomationProperties.SetName(DisplayToggleButton, $"桌面团子，{DisplayToggleButton.Content}，点击切换");
-        AutomationProperties.SetHelpText(DisplayToggleButton, state.CanShowDesktop ? "仅本次会话" : "进入房间后才会显示在桌面");
-        AutomationProperties.SetName(InteractionToggleButton, $"鼠标互动，{InteractionToggleButton.Content}，点击切换");
-        AutomationProperties.SetName(KeyboardToggleButton, $"键盘控制，{KeyboardToggleButton.Content}，点击切换");
-        foreach (var button in new[] { DisplayToggleButton, InteractionToggleButton, KeyboardToggleButton,
-                     WallpaperModeButton, WindowModeButton })
-            button.IsEnabled = ready;
-        DisplayToggleButton.IsEnabled = ready && state.CanShowDesktop;
-        var wallpaper = string.Equals(state.Mode, "Wallpaper", StringComparison.Ordinal);
-        BelowIconsButton.IsEnabled = AboveIconsButton.IsEnabled = ready && wallpaper;
-        RetryInitializationButton.Visibility = ready ? Visibility.Collapsed : Visibility.Visible;
-        RetryInitializationButton.IsEnabled = !ready;
-        RestoreDangoSettingsButton.IsEnabled = RetryWallpaperSettingsButton.IsEnabled = ready;
-        SettingRunState.Text = ready ? state.LastError is null ? "场景已就绪" : state.LastError
-            : state.LastError ?? "团子尚未启动";
+        SettingsSceneName.Text = state.Scene.Name;
+        SettingRunState.Text = state.Scene.Status;
+        SettingsSceneError.Text = state.Scene.Error ?? string.Empty;
+        SettingsSceneError.Visibility = string.IsNullOrEmpty(state.Scene.Error) ? Visibility.Collapsed : Visibility.Visible;
+        RestoreRoomDisplayButton.IsEnabled = state.Scene.CanRestoreDisplay;
+        RestoreRoomDisplayButton.Visibility = state.Scene.CanRestoreDisplay ? Visibility.Visible : Visibility.Collapsed;
+        ReinitializeSceneButton.IsEnabled = state.Scene.CanReinitialize;
+        ReinitializeSceneButton.Visibility = state.Scene.CanReinitialize ? Visibility.Visible : Visibility.Collapsed;
+        SceneRecoveryActions.Visibility = state.Scene.CanRestoreDisplay || state.Scene.CanReinitialize ? Visibility.Visible : Visibility.Collapsed;
         SaveWarningRow.Visibility = state.HasSaveWarning ? Visibility.Visible : Visibility.Collapsed;
-        SaveWarningText.Text = state.SaveMessage;
         RetrySaveSettingsButton.IsEnabled = !state.IsWriteProtected;
         RecoverSettingsButton.Visibility = state.IsWriteProtected ? Visibility.Visible : Visibility.Collapsed;
         ShowDiagnosticsButton.IsEnabled = SettingsExitButton.IsEnabled = true;
-        Select(WallpaperModeButton, wallpaper);
-        Select(WindowModeButton, string.Equals(state.Mode, "Window", StringComparison.Ordinal));
-        Select(BelowIconsButton, state.DangoLayer == DesktopObjectLayer.BelowDesktopIcons);
-        Select(AboveIconsButton, state.DangoLayer == DesktopObjectLayer.AboveDesktopIcons);
         UpdateSettingsFeedback();
     }
 
     public void ShowSettingsStatus(string text, bool failed)
     {
-        SettingsCommandStatus.Text = text;
-        SettingsCommandStatus.Visibility = Visibility.Visible;
         settingsCommandError = failed ? text : null;
         UpdateSettingsFeedback();
     }
 
     public void SetDiagnosticsText(string text) => SettingsDiagnosticsText.Text = text;
+    private void OnSettingsDiagnosticsWheel(object sender, MouseWheelEventArgs e) => SettingsPage.ScrollFromChild(e);
 
     private void UpdateSettingsFeedback()
     {
@@ -226,7 +210,7 @@ public partial class ProductHomeView : UserControl
             return;
         }
 
-        var warning = settingsState?.HasSaveWarning == true ? "设置未保存，请在下方重试保存。" : null;
+        var warning = settingsState?.HasSaveWarning == true ? settingsState.SaveMessage : null;
         SettingsFeedbackText.Text = settingsCommandError is null ? warning ?? string.Empty
             : warning is null ? settingsCommandError : $"{settingsCommandError}\n{warning}";
         SettingsFeedbackBar.Visibility = string.IsNullOrEmpty(SettingsFeedbackText.Text)
@@ -253,13 +237,8 @@ public partial class ProductHomeView : UserControl
         HomeRequested?.Invoke();
         if (IsSettingsOpen) ShowHomePage();
     }
-    private void OnDisplayToggleClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.ToggleVisibility);
-    private void OnInteractionToggleClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.ToggleInteraction);
-    private void OnWallpaperModeClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.WallpaperMode);
-    private void OnWindowModeClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.WindowMode);
-    private void OnBelowIconsClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.BelowIcons);
-    private void OnAboveIconsClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.AboveIcons);
-    private void OnKeyboardToggleClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.ToggleKeyboard);
+    private void OnRestoreRoomDisplayClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.RestoreRoomDisplay);
+    private void OnReinitializeSceneClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.ReinitializeScene);
     private void OnLandscape1080pSettingsClick(object sender, RoutedEventArgs e) => RequestWindowPreset(ControlCenterWindowPreset.Landscape1080p);
     private void OnLandscape1440pSettingsClick(object sender, RoutedEventArgs e) => RequestWindowPreset(ControlCenterWindowPreset.Landscape1440p);
     private void OnPortraitSettingsClick(object sender, RoutedEventArgs e) => RequestWindowPreset(ControlCenterWindowPreset.Portrait);
@@ -269,9 +248,6 @@ public partial class ProductHomeView : UserControl
         SetWindowPreset(preset);
         WindowPresetRequested?.Invoke(preset);
     }
-    private void OnRetryInitializationClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.RetryInitialization);
-    private void OnRestoreDangoClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.RestoreDango);
-    private void OnRetryWallpaperClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.RetryWallpaper);
     private void OnRetrySaveClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.RetrySave);
     private void OnRecoverSettingsClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.RecoverSettings);
     private void OnExitSettingsClick(object sender, RoutedEventArgs e) => Request(ProductSettingsAction.Exit);
@@ -280,7 +256,7 @@ public partial class ProductHomeView : UserControl
         if (SettingsDiagnosticsText.Visibility == Visibility.Visible)
         {
             SettingsDiagnosticsText.Visibility = Visibility.Collapsed;
-            ShowDiagnosticsButton.Content = "查看诊断";
+            ShowDiagnosticsLabel.Text = "查看诊断";
             return;
         }
         OpenDiagnostics();
@@ -289,7 +265,7 @@ public partial class ProductHomeView : UserControl
     private void OpenDiagnostics()
     {
         SettingsDiagnosticsText.Visibility = Visibility.Visible;
-        ShowDiagnosticsButton.Content = "收起诊断";
+        ShowDiagnosticsLabel.Text = "收起诊断";
         Request(ProductSettingsAction.RefreshDiagnostics);
         Dispatcher.BeginInvoke(() =>
         {
@@ -478,6 +454,7 @@ public partial class ProductHomeView : UserControl
         Resources["HomeSoft"] = contrast ? Background : Brush("#F3EFE8");
         Resources["HomeAccent"] = contrast ? System.Windows.SystemColors.HighlightBrush : Brush("#885E3E");
         Resources["HomeSelected"] = contrast ? System.Windows.SystemColors.HighlightBrush : Brush("#EFE3D4");
+        Resources["SettingsScrollGrip"] = contrast ? Foreground : Brush("#B7A28E");
         PorchScene.InvalidateVisual();
         UpdateLauncherSelection();
         RefreshAppearanceControls();
@@ -595,6 +572,7 @@ public partial class ProductHomeView : UserControl
         HomeFooter.Margin = new Thickness(portrait ? 16 : 22, 0, portrait ? 16 : 22, 0);
         SettingsInner.Margin = portrait ? new Thickness(16, 8, 16, 20)
             : compactLandscape ? new Thickness(18, 8, 18, 20) : new Thickness(38, 10, 38, 24);
+        SettingsHeader.Margin = SettingsFooter.Margin = new Thickness(SettingsInner.Margin.Left, 6, SettingsInner.Margin.Right + 16, 8);
         SettingsFeedbackBar.Margin = portrait ? new Thickness(16, 0, 16, 0)
             : compactLandscape ? new Thickness(18, 0, 18, 0) : new Thickness(38, 0, 38, 0);
         UpdateStageSizing();

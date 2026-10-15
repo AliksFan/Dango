@@ -67,6 +67,7 @@ public partial class ControlCenterWindow : Window
         this.requestExit = requestExit ?? throw new ArgumentNullException(nameof(requestExit));
         this.settingsSession = settingsSession;
         this.saveSettings = saveSettings;
+        ConfirmSceneReinitialization = ConfirmSettingsSceneReinitialization;
         refreshingHostState = true;
         InitializeComponent();
         sizeMenuFocusTimer.Tick += (_, _) =>
@@ -220,6 +221,7 @@ public partial class ControlCenterWindow : Window
         ScheduleSizeMenuFocusRestore(explicitSelection: true);
         ApplyWindowPresetSize(fitWorkingArea: new WindowInteropHelper(this).Handle != IntPtr.Zero);
         saveSettings?.Invoke();
+        RefreshHostState();
     }
 
     private void ApplyWindowPresetSize(bool fitWorkingArea)
@@ -578,39 +580,11 @@ public partial class ControlCenterWindow : Window
     {
         switch (action)
         {
-            case ProductSettingsAction.ToggleVisibility:
-                ApplyCommand(commandController.SetVisibility(!commandController.GetSnapshot().IsVisible));
+            case ProductSettingsAction.RestoreRoomDisplay:
+                RunSceneSettingsAction(reinitialize: false);
                 break;
-            case ProductSettingsAction.ToggleInteraction:
-                ApplyCommand(commandController.SetInteractionEnabled(!commandController.GetSnapshot().IsInteractionEnabled));
-                break;
-            case ProductSettingsAction.WallpaperMode:
-            case ProductSettingsAction.WindowMode:
-                ApplyCommand(commandController.SetHostMode(action == ProductSettingsAction.WallpaperMode
-                    ? DesktopDisplayMode.Wallpaper : DesktopDisplayMode.Window));
-                break;
-            case ProductSettingsAction.BelowIcons:
-            case ProductSettingsAction.AboveIcons:
-                var currentLayering = commandController.GetLayeringSettings();
-                ApplyCommand(commandController.ApplyLayeringSettings(currentLayering with
-                {
-                    DangoLayer = action == ProductSettingsAction.BelowIcons
-                        ? DesktopObjectLayer.BelowDesktopIcons : DesktopObjectLayer.AboveDesktopIcons,
-                }));
-                break;
-            case ProductSettingsAction.ToggleKeyboard:
-                var currentKeyboard = commandController.GetKeyboardControlSettings();
-                var updatedKeyboard = currentKeyboard with { IsEnabled = !currentKeyboard.IsEnabled };
-                ApplyCommand(commandController.ApplyKeyboardControlSettings(updatedKeyboard));
-                break;
-            case ProductSettingsAction.RetryInitialization:
-                OnRetrySceneClick(this, new RoutedEventArgs());
-                break;
-            case ProductSettingsAction.RestoreDango:
-                OnRegenerateDangoClick(this, new RoutedEventArgs());
-                break;
-            case ProductSettingsAction.RetryWallpaper:
-                OnRetryWallpaperClick(this, new RoutedEventArgs());
+            case ProductSettingsAction.ReinitializeScene:
+                RunSceneSettingsAction(reinitialize: true);
                 break;
             case ProductSettingsAction.RetrySave:
                 OnRetrySaveClick(this, new RoutedEventArgs());
@@ -710,13 +684,7 @@ public partial class ControlCenterWindow : Window
             var modeLabel = snapshot.Mode == "Wallpaper" ? "桌面模式" : snapshot.Mode == "Window" ? "窗口模式" : snapshot.Mode;
             OverviewHostStatusText.Text =
                 $"{modeLabel} · {(snapshot.IsVisible ? "正在运行" : "已隐藏")} · {snapshot.LastError ?? snapshot.VerificationStatus}";
-            ProductHome.UpdateSettings(new ProductSettingsState(
-                ready, snapshot.IsVisible, snapshot.IsInteractionEnabled, snapshot.Mode,
-                keyboard, layering.DangoLayer,
-                snapshot.LastError, settingsSession?.HasWarning == true,
-                settingsSession is { IsWriteProtected: true } or { IsPresetWriteProtected: true },
-                settingsSession?.StatusMessage ?? string.Empty,
-                commandController.CanShowDesktop));
+            RefreshProductSettings();
         }
         finally
         {
@@ -914,7 +882,9 @@ public partial class ControlCenterWindow : Window
 
     private void RefreshDiagnostics()
     {
-        var summary = commandController.CreateDiagnosticSummary();
+        if (commandController.UiMode == ApplicationUiMode.Product) RefreshProductSettings();
+        var summary = commandController.UiMode == ApplicationUiMode.Product
+            ? CreateProductSettingsDiagnostics() : commandController.CreateDiagnosticSummary();
         DiagnosticsTextBox.Text = summary;
         ProductHome.SetDiagnosticsText(summary);
     }

@@ -54,14 +54,17 @@ public sealed class ProductControlCenterTests
             window.ShowOverview();
             window.ShowDiagnostics();
             var home = Element<ProductHomeView>(window, "ProductHome");
+            window.BindSettingsScene(() => new("我的团子", "团子尚未启动", CanReinitialize: true), () => { },
+                () => host.RetryInitialization());
+            window.ConfirmSceneReinitialization = () => true;
 
             Assert.AreEqual(Visibility.Visible, ((UIElement)home.FindName("SettingsPage")).Visibility);
             Assert.AreEqual(Visibility.Collapsed, Element<UIElement>(window, "LegacyShell").Visibility);
-            Assert.AreEqual(Visibility.Visible, ((Button)home.FindName("RetryInitializationButton")).Visibility);
-            Assert.IsFalse(((Button)home.FindName("RestoreDangoSettingsButton")).IsEnabled);
+            Assert.AreEqual(Visibility.Visible, ((Button)home.FindName("ReinitializeSceneButton")).Visibility);
+            Assert.IsFalse(((Button)home.FindName("RestoreRoomDisplayButton")).IsEnabled);
             Assert.AreEqual(0, host.WorldCreateCalls);
 
-            Click((Button)home.FindName("RetryInitializationButton"));
+            Click((Button)home.FindName("ReinitializeSceneButton"));
             Assert.AreEqual(1, host.RetryCalls);
             Assert.AreEqual(0, host.WorldCreateCalls);
 
