@@ -47,6 +47,14 @@ internal static class LabWindowSmoke
             window.InjectKey(Key.D, true, window.ApplyButton); window.StepOnce();
             Check(window.CurrentInput.Horizontal == 0, "取消后未松开不能补发");
             window.InjectKey(Key.D, false, window.ApplyButton);
+            window.InjectKey(Key.D, true, window.ApplyButton); window.StepOnce();
+            var beforeDisplayToggle = window.CurrentBody; var beforeDisplaySteps = window.NativeSteps;
+            window.SetDisplaySmoothing(false); window.SetDisplaySmoothing(true);
+            Check(ReferenceEquals(beforeDisplayToggle, window.CurrentBody) && window.NativeSteps == beforeDisplaySteps,
+                "显示开关不重建或推进物理");
+            window.StepOnce();
+            Check(window.CurrentInput.Horizontal == 1, "显示开关不取消正在进行的移动");
+            window.InjectKey(Key.D, false, window.ApplyButton);
             Check(window.ApplyButton.FocusVisualStyle is null && window.TestSlider.FocusVisualStyle is null, "非文字控件无虚线焦点装饰");
             var beforeEnter = window.ButtonClicks;
             window.InjectKey(Key.Enter, true, window.ApplyButton); window.InjectKey(Key.Enter, false, window.ApplyButton);
@@ -75,7 +83,24 @@ internal static class LabWindowSmoke
                 window.SelectGroundForSmoke(true); window.StepOnce();
                 Check(window.IsContinuousGround && window.CurrentInput.Horizontal == 0 && !window.HasFault, "连续模型重新进入不补发旧按键");
             }
+            if ((int)window.CurrentDrive >= 4)
+            {
+                window.SelectDriveForSmoke(Dango.Physics.DangoLabDrive.DirectionRegion);
+                for (var i=0;i<300;i++) window.StepOnce();
+                window.InjectKey(Key.D,true,window.ApplyButton); window.StepOnce();
+                Check(window.CurrentRegionStats is { ActualForceX: >0, HorizontalMask: >0 }, "方向区域模式产生右侧真实施力诊断");
+                window.InjectKey(Key.D,false,window.ApplyButton);
+                window.SelectDriveForSmoke(Dango.Physics.DangoLabDrive.DirectionPoint);
+                for (var i=0;i<300;i++) window.StepOnce();
+                window.InjectKey(Key.W,true,window.ApplyButton); window.StepOnce();
+                Check(window.CurrentRegionStats is { ActualForceY: >0 } selected && System.Numerics.BitOperations.PopCount((uint)selected.VerticalMask)==1,
+                    "最近单节点模式从上部向上施力");
+                window.InjectKey(Key.W,false,window.ApplyButton);
+                window.SelectDriveForSmoke(Dango.Physics.DangoLabDrive.DirectionRegion);
+            }
             window.ResetWorld(); for (var i = 0; i < 300; i++) window.StepOnce();
+            window.ShowControlsForSmoke();
+            await window.Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle);
             window.Paint(forceInformation: true); window.UpdateLayout();
             var bitmap = new RenderTargetBitmap((int)window.ActualWidth, (int)window.ActualHeight, 96, 96, PixelFormats.Pbgra32);
             bitmap.Render(window); var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));

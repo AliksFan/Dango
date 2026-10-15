@@ -9,5 +9,9 @@
     <Compile Include="../Dango.PhysicsLab/LabMetrics.cs" Link="LabMetrics.cs" />
     <Compile Include="../Dango.PhysicsLab/LabExperiments.cs" Link="LabExperiments.cs" />
     <Compile Include="../Dango.PhysicsLab/LabGroundExperiments.cs" Link="LabGroundExperiments.cs" />
+    <Compile Include="../Dango.PhysicsLab/LabDisplaySmoothing.cs" Link="LabDisplaySmoothing.cs" />
+    <Compile Include="../Dango.PhysicsLab/LabDisplayMotionGate.cs" Link="LabDisplayMotionGate.cs" />
+    <Compile Include="../Dango.PhysicsLab/LabDisplayGeometry.cs" Link="LabDisplayGeometry.cs" />
+    <Compile Include="../Dango.PhysicsLab/LabRegionExperiments.cs" Link="LabRegionExperiments.cs" />
   </ItemGroup>
 </Project>

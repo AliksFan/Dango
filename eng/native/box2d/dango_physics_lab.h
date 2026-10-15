@@ -3,7 +3,14 @@
 #include "dango_self_physics_internal.h"
 #include <math.h>
 #include <string.h>
-typedef struct dango_lab_state { float ramp, stretch, active, cancel; int mode; bool jump_accepted; float bias, stats[16]; } dango_lab_state;
+#if defined(DANGO_LAB_REGIONS)
+#include "dango_lab_regions.h"
+#endif
+typedef struct dango_lab_state { float ramp, stretch, active, cancel; int mode; bool jump_accepted; float bias, stats[16];
+#if defined(DANGO_LAB_REGIONS)
+float region_stats[16];
+#endif
+ } dango_lab_state;
 /* Lab-only: all inputs have been atomically validated by the public entry. */
 static int dango_lab_forces(dango_self_soft_body* body,const dango_self_physics_config* cfg,
     dango_lab_state* s,float dt,const float* c)
@@ -35,6 +42,41 @@ static int dango_lab_forces(dango_self_soft_body* body,const dango_self_physics_
     if((c[0]<0 && velocity.x > -cfg->maximum_horizontal_speed) || (c[0]>0 && velocity.x < cfg->maximum_horizontal_speed))
         force=c[0]*cfg->horizontal_force*(body->grounded ? 1.0f : cfg->air_control_ratio);
     out[3]=force;
+#if defined(DANGO_LAB_REGIONS)
+    memset(s->region_stats,0,sizeof s->region_stats);
+    if(s->mode>=4) {
+        float* r=s->region_stats;r[15]=1;
+        if(!dango_region_bounds(pos,cfg->node_radius,r))return -497;
+        /* S takes effect immediately, without inheriting a released W tail.
+           Accepted Space retains the original frozen-ramp arbitration. */
+        if(c[1]>0 && !s->jump_accepted)s->ramp=0;
+        out[2]=s->ramp;
+        float vertical=s->jump_accepted || s->cancel ? 0 : cfg->downward_force*(s->ramp-c[1]);
+        if(s->cancel)force=0;
+        unsigned hm=force==0 ? 0 : dango_region_select(pos,r,force<0 ? -1 : 1,s->mode==5);
+        unsigned vm=vertical==0 ? 0 : dango_region_select(pos,r,0,s->mode==5);
+        r[4]=(float)hm;r[5]=(float)vm;
+        if(force!=0 && dango_region_apply(ids,pos,mass,hm,(b2Vec2){force,0},cx,cy,r,6))return -497;
+        if(vertical!=0 && dango_region_apply(ids,pos,mass,vm,(b2Vec2){0,vertical},cx,cy,r,8))return -497;
+        out[4]=r[10];out[5]=r[11];out[6]=r[12];
+        if(force!=0)out[7]=r[7];
+        out[9]=s->jump_accepted || s->cancel ? 0 : cfg->downward_force*s->ramp;
+        out[11]=out[9];
+        /* W-only moment about the physical core. S has cleared the W ramp;
+           horizontal and S moments belong only to the combined region stats. */
+        if(out[9]>0) {
+            double selectedMass=0,torque=0;
+            for(int i=0;i<16;++i)if(vm&(1u<<i))selectedMass+=mass[i+1];
+            for(int i=0;i<16;++i)if(vm&(1u<<i)) {
+                float weight=(float)(mass[i+1]/selectedMass);
+                float fy=weight*out[9];
+                torque+=(pos[i+1].x-pos[0].x)*fy;
+            }
+            out[12]=(float)torque;
+        }
+        return 0;
+    }
+#endif
     if(s->mode==0 || (s->mode==3 && s->bias==0)) {
         out[4]=force; out[6]=(float)(-(pos[0].y-cy)*force); out[7]=pos[0].y;
     } else if(s->mode==3) {

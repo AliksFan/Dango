@@ -13,6 +13,9 @@ static int capturedCalls;
 static b2BodyId captureCore;
 static b2Vec2 captureOrigin;
 static void lab_capture(b2BodyId id,b2Vec2 force,bool wake) {
+#ifdef DANGO_LAB_CAPTURE_DETAIL
+    DANGO_LAB_CAPTURE_DETAIL(id,force);
+#endif
     b2Vec2 p=b2Body_GetWorldCenterOfMass(id);
     capturedX+=force.x; capturedY+=force.y;
     capturedTorque+=(p.x-captureOrigin.x)*force.y-(p.y-captureOrigin.y)*force.x;

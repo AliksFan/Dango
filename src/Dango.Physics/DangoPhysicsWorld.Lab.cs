@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace Dango.Physics;
 
-public enum DangoLabDrive { Core, Mass, HeightBias, PointHeight }
+public enum DangoLabDrive { Core, Mass, HeightBias, PointHeight, DirectionRegion, DirectionPoint }
 public enum DangoLabGroundModel { DiscreteNodes = 0, ContinuousEnvelope = 1 }
 public sealed record DangoLabGroundStats(float FootX, float FootY, float Gap,
     float NormalImpulse, float AbsoluteTangentImpulse, float FrictionCoefficient,
@@ -19,6 +19,11 @@ public readonly record struct DangoLabInput(
     DangoEntityId EntityId, double Horizontal = 0, double Downward = 0,
     bool JumpPressed = false, bool DragActive = false, double DragTargetX = 0,
     double DragTargetY = 0, double Stretch = 0, bool InputActive = false, bool CancelForces = false);
+
+public sealed record DangoLabRegionStats(float BoundsMinX, float BoundsMinY, float BoundsMaxX, float BoundsMaxY,
+    int HorizontalMask, int VerticalMask, float HorizontalPointX, float HorizontalPointY,
+    float VerticalPointX, float VerticalPointY, float ActualForceX, float ActualForceY,
+    float TorqueAboutCenterOfMass, int SchemaVersion);
 
 public sealed record DangoLabNode(int Index, float X, float Y, float VelocityX, float VelocityY,
     float Mass, int ContactCount);
@@ -69,6 +74,9 @@ public sealed partial class DangoPhysicsWorld
                 !IsFiniteFloat(v.DragTargetX) || !IsFiniteFloat(v.DragTargetY))
                 throw new ArgumentOutOfRangeException(nameof(inputs));
         api.RequireLab();
+        if (mode >= DangoLabDrive.DirectionRegion && api.GetLabRegionVersion() != 1)
+            throw new DangoPhysicsException(DangoPhysicsFailureKind.AbiMismatch,
+                "当前实验 DLL 不支持方向区域施力；请加载独立 regions 实验模块。");
         var ids = inputs.Select(v => v.EntityId.Value).ToArray();
         var controls = inputs.SelectMany(v => new[] {
             (float)v.Horizontal, (float)v.Downward, v.JumpPressed ? 1f : 0f,
@@ -116,6 +124,21 @@ public sealed partial class DangoPhysicsWorld
             v[9], v[10], v[11], v[12], v[13], v[14] != 0, v[15]);
     }
 
+    public DangoLabRegionStats? ReadLabRegionStats(DangoEntityId id)
+    {
+        VerifyLabEntity(id);
+        var call = api.GetLabRegionStats();
+        if (call is null) return null;
+        var v = new float[16];
+        var error = call(world, id.Value, v, v.Length);
+        if (error != 0) throw Map(error, "读取实验方向施力统计失败。");
+        CheckLabValues(v);
+        if (v[15] == 0) return null;
+        if (v[15] != 1) throw new DangoPhysicsException(DangoPhysicsFailureKind.AbiMismatch,
+            $"Laboratory region statistics schema must be 1; got {v[15]}.");
+        return new(v[0],v[1],v[2],v[3],(int)v[4],(int)v[5],v[6],v[7],v[8],v[9],v[10],v[11],v[12],(int)v[15]);
+    }
+
     public DangoLabGroundStats? ReadLabGroundStats(DangoEntityId id)
     {
         VerifyLabEntity(id);
@@ -147,6 +170,9 @@ public sealed partial class DangoPhysicsWorld
 
     private sealed partial class NativeApi
     {
+        internal int GetLabRegionVersion() => GetOptional<GetIntegerDelegate>(library, "dango_physics_lab_region_version")?.Invoke() ?? 0;
+        internal PlatformContactDelegate? GetLabRegionStats() => GetOptional<PlatformContactDelegate>(library,
+            "dango_physics_world_get_lab_region_stats");
         internal int GetLabGroundModel() => GetOptional<GetIntegerDelegate>(library, "dango_physics_lab_ground_model")?.Invoke() ?? 0;
         internal PlatformContactDelegate? GetLabGroundStats() => GetOptional<PlatformContactDelegate>(library,
             "dango_physics_world_get_lab_ground_stats");

@@ -31,4 +31,13 @@ DANGO_API int dango_physics_world_step_lab(void* handle,float dt,const int* enti
 DANGO_API int dango_physics_world_get_lab_stats(void* handle,int entity_id,float* stats,int capacity);
 /* Existing D1 layout: core + sixteen nodes, each x,y,vx,vy,mass,contact count. */
 DANGO_API int dango_physics_world_get_drive_review(void* handle,int entity_id,float* samples,int capacity);
+/* Optional DANGO_LAB_REGIONS capability only. Modes 4/5 use physical contour
+   nodes in the left/right/top outer third of the exact rendered spline AABB.
+   4 shares one force by actual mass; 5 uses its center-nearest in-region node.
+   S cancels W release immediately; accepted Space freezes/omits both as above.
+   Stats: minX,minY,maxX,maxY, horizontal/vertical node masks (bits 0..15),
+   horizontal point XY, vertical point XY, actual resultant XY, torque about
+   actual COM, reserved[2], schema=1. Last physical small step only. */
+DANGO_API int dango_physics_lab_region_version(void);
+DANGO_API int dango_physics_world_get_lab_region_stats(void* handle,int entity_id,float* stats,int capacity);
 #endif

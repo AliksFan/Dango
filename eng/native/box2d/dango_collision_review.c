@@ -1009,6 +1009,9 @@ DANGO_API int dango_collision_step(void* handle, float dt, const float* controls
                         (body->grounded || (!(p->legacy_interaction_flags&1) && supported[r]>=0)) &&
                         body->seconds_since_jump+small_dt>=p->body_config[r].jump_cooldown_seconds;
                     if(p->lab[r].jump_accepted) downward=0;
+#if defined(DANGO_LAB_REGIONS)
+                    if(p->lab[r].mode>=4) downward=0;
+#endif
                     p->error=dango_lab_forces(body,&p->body_config[r],&p->lab[r],small_dt,c);
                     if(p->error) break;
                     if(p->lab[r].mode!=0 && !(p->lab[r].mode==3 && p->lab[r].bias==0)) horizontal=0;
@@ -1465,6 +1468,17 @@ DANGO_API int dango_physics_world_get_lab_stats(void* handle,int id,float* value
     }
     return -412;
 }
+#if defined(DANGO_LAB_REGIONS)
+DANGO_API int dango_physics_lab_region_version(void) { return 1; }
+DANGO_API int dango_physics_world_get_lab_region_stats(void* handle,int id,float* values,int capacity)
+{
+    collision_review* p=handle;if(!p || !values || capacity<16)return -410;
+    for(int i=0;i<p->capacity;++i)if(p->active[i] && p->entity_ids[i]==id) {
+        memcpy(values,p->lab[i].region_stats,16*sizeof(float));return 0;
+    }
+    return -412;
+}
+#endif
 /* controls9: legacy six, stretch, real input occupancy, immediate cancel. */
 DANGO_API int dango_physics_world_step_lab(void* handle,float dt,const int* ids,const float* controls,
     int count,int mode,float bias,int* state_ids,float* states,int capacity,int* out_count,int* contacts,int* error)
@@ -1472,7 +1486,13 @@ DANGO_API int dango_physics_world_step_lab(void* handle,float dt,const int* ids,
     collision_review* p=handle;
     if(!p || count!=p->count || (count && (!ids || !controls)) || !state_ids || !states ||
        capacity<p->count*42 || !out_count || !contacts || !error || !isfinite(dt) || dt<=0 || dt>.1f ||
-       mode<0 || mode>3 || !isfinite(bias) || fabsf(bias)>1) return -410;
+       mode<0 || mode>
+#if defined(DANGO_LAB_REGIONS)
+       5
+#else
+       3
+#endif
+       || !isfinite(bias) || fabsf(bias)>1) return -410;
     float old[DANGO_PHYSICS_MAX_BODIES*6]={0}; int slots[DANGO_PHYSICS_MAX_BODIES],seen[DANGO_PHYSICS_MAX_BODIES]={0};
     for(int i=0;i<count;++i) {
         int slot=-1;

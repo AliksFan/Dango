@@ -1,5 +1,12 @@
 using Dango.Physics;
 using Dango.PhysicsLab;
+using Dango.PhysicsLab.Checks;
+
+if (args.Length == 4 && args[0] == "--region-experiments")
+{
+    LabRegionExperiments.Run(args[1], args[2], args[3]);
+    return;
+}
 
 if (args.Length == 2 && args[0] == "--ground-contracts")
 {
@@ -20,12 +27,39 @@ if (args.Length == 3 && args[0] == "--experiments")
 }
 
 var checks = 0;
+checks += LabDisplaySmoothingChecks.Run();
 void Check(bool condition, string name)
 {
     if (!condition) throw new InvalidOperationException("FAILED: " + name);
     Console.WriteLine("PASS: " + name);
     checks++;
 }
+
+var motionGate = new LabDisplayMotionGate();
+Check(motionGate.ShouldBypass(false,false,false,0,1d/60,.45), "near-ground proximity without actual floor contact bypasses smoothing");
+Check(motionGate.ShouldBypass(true,true,false,2,1d/60,.45), "Space begins a persistent display bypass");
+for (var i=0;i<40;i++) motionGate.ShouldBypass(false,false,false,1,1d/60,.45);
+Check(motionGate.ShouldBypass(true,false,false,.5,1d/60,.45), "landing motion still bypasses after cooldown");
+motionGate.ShouldBypass(true,false,false,0,1d/60,.45);
+motionGate.ShouldBypass(true,false,false,0,1d/60,.45);
+Check(!motionGate.ShouldBypass(true,false,false,0,1d/60,.45), "three settled contact frames restore smoothing after a jump");
+Check(motionGate.ShouldBypass(true,false,true,0,1d/60,.45), "drag bypasses display filtering");
+motionGate.Reset();
+Check(!motionGate.ShouldBypass(true,false,false,0,1d/60,.45), "motion reset clears jump history");
+var rotatingFilter=new LabDisplaySmoothing(); var rotatingSafe=true;
+for (var tick=0;tick<720;tick++)
+{
+    var points=Enumerable.Range(0,16).SelectMany(i=> {
+        var angle=i*2*Math.PI/16+tick*(2*Math.PI*.3/60);
+        return new[] {(float)Math.Cos(angle),(float)(Math.Sin(angle)*(.6+.01*Math.Sin(tick*2*Math.PI*4/60)))};
+    }).ToArray();
+    var minimum=LabGroundExperiments.CurveExtent(points,1).Minimum;
+    var rotating=new DangoBodyState(new(777),points,0,(float)-minimum,1,0,0,0,1,true,-1,16);
+    var shown=rotatingFilter.Update(rotating,1d/60,true);
+    var geometry=LabDisplayGeometry.Inspect(shown.Contour);
+    rotatingSafe &= geometry.Area>0 && !geometry.SelfIntersects;
+}
+Check(rotatingSafe,"rotating deforming ellipse stays a positive simple sampled display contour");
 
 var curve = LabGroundExperiments.CurveExtent(new float[] { -1,0, 0,1, 1,0, 0,-1 },1);
 Check(Math.Abs(curve.Maximum-.75)<1e-12 && Math.Abs(curve.Minimum+.75)<1e-12,
@@ -125,6 +159,11 @@ if (args.Length > 0)
     world.RequireLab();
     Check(world.LabGroundModel == DangoLabGroundModel.DiscreteNodes && world.ReadLabGroundStats(id) is null,
         "old lab DLL lacks optional ground exports and explicitly remains discrete");
+    Check(world.ReadLabRegionStats(id) is null, "old lab module has no directional region diagnostics");
+    var regionRejected = false;
+    try { world.StepLab(1d/60,[new(id)],DangoLabDrive.DirectionRegion); }
+    catch (DangoPhysicsException error) when (error.Kind == DangoPhysicsFailureKind.AbiMismatch) { regionRejected=true; }
+    Check(regionRejected, "old lab module explicitly rejects new directional modes");
     var frame = world.StepLab(1d / 60, [new(id)] , DangoLabDrive.Core);
     Check(frame.Succeeded && frame.Bodies.Count == 1, "real DLL lab step succeeds");
     var actualNodes = world.ReadLabNodes(id);
