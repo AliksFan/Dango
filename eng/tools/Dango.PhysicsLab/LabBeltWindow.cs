@@ -27,7 +27,10 @@ internal sealed class LabBeltWindow : Window
     private readonly ComboBox model = new();
     private readonly CheckBox shortBones = new() { Content = "保留短骨架塑形（不碰撞）", IsChecked = true };
     private readonly CheckBox whaleDrive = new() { Content = "鲸形行走（仅改变受力）", IsChecked = true };
-    private readonly CheckBox showSkeleton = new() { Content = "骨架、质心与合力位置", IsChecked = true };
+    private readonly CheckBox showSkeleton = new() { Content = "骨架与质心", IsChecked = true };
+    private readonly CheckBox showForces = new() { Content = "详细施力", IsChecked = true };
+    private readonly TextBlock forceDetails = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap, Focusable = false };
+    private readonly Slider forceScale = new() { Minimum = 30, Maximum = 600, Value = 150, TickFrequency = 30, IsSnapToTickEnabled = true };
     private readonly CheckBox showReference = new() { Content = "叠加原版静置轮廓", IsChecked = true };
     private readonly CheckBox showAppearance = new() { Content = "正式眼睛与已佩戴配饰", IsChecked = true };
     private readonly TextBlock appearanceStatus = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(0, 5, 0, 4) };
@@ -47,7 +50,6 @@ internal sealed class LabBeltWindow : Window
     private LabBeltFrame? beltFrame;
     private DangoBodyState? oldFrame, reference;
     private IReadOnlyList<DangoLabNode> oldNodes = [];
-    private DangoLabRegionStats? oldRegion;
     private DangoSelfPhysicsParameters config = DangoBodyMaterial.Configure(DangoBodyControls.Default);
     private bool fault, paused, initialized, dragging, replaying;
     private int steps, replayFrame, clicks;
@@ -56,7 +58,7 @@ internal sealed class LabBeltWindow : Window
     private LabBeltCalibrationParameters? activeCalibration;
     private string activePreset = "";
     private float[]? guardDiagnostics;
-    private double[]? speedLimitDiagnostics, whaleDriveDiagnostics;
+    private double[]? speedLimitDiagnostics, whaleDriveDiagnostics, forceLedger;
     private string? failureReason;
     private double[]? preStepSnapshot, solverFailureDetails;
     private LabBeltInput? actualBeltInput;
@@ -76,7 +78,7 @@ internal sealed class LabBeltWindow : Window
         size.Value = 80; softness.Value = 100; build.Value = 0;
         appearance = new PhysicsLabAppearancePresenter(appearanceSettingsPath);
         showSkeleton.IsChecked = false; showReference.IsChecked = false;
-        Title = "团子 · 鲸形行走 · 头尾差异预览";
+        Title = "团子 · 鲸形行走·收尾与施力预览";
         Width = Math.Min(1220, SystemParameters.WorkArea.Width - 32);
         Height = Math.Min(850, SystemParameters.WorkArea.Height - 32); MinWidth = 940; MinHeight = 660;
         Background = new SolidColorBrush(Color.FromRgb(253, 252, 249)); Foreground = LabWindow.Ink;
@@ -108,11 +110,16 @@ internal sealed class LabBeltWindow : Window
         tools.Children.Add(new TextBlock { Text = "新圈整体承重。取消鲸形行走可对照原推动；更改模型、材料或行走开关后点击应用。", FontSize = 12, TextWrapping = TextWrapping.Wrap });
         model.DropDownOpened += (_, _) => Cancel(); model.DropDownClosed += (_, _) => input.ReconcileHeld(HeldKeys());
         Label(tools, "材料"); AddSlider(tools, "大小", size); AddSlider(tools, "柔软度", softness); AddSlider(tools, "落地体态", build);
-        Label(tools, "观察"); showAppearance.Content = "正式眼睛与测试配饰"; tools.Children.Add(showAppearance); tools.Children.Add(appearanceStatus); tools.Children.Add(showSkeleton); tools.Children.Add(showReference);
+        Label(tools, "观察"); showAppearance.Content = "正式眼睛与测试配饰"; tools.Children.Add(showAppearance); tools.Children.Add(appearanceStatus); tools.Children.Add(showSkeleton); tools.Children.Add(showForces); tools.Children.Add(showReference);
+        AddSlider(tools, "施力箭头 DIP / N（仅显示）", forceScale);
+        forceScale.ValueChanged += (_, _) => surface.Refresh();
+        showForces.Click += (_, _) => surface.Refresh();
+        tools.Children.Add(new TextBlock { Text = "主动施力；末子步积分前位置；不含重力/接触反力。小段合力与64个真实积分力同尺度。", FontSize = 12, TextWrapping = TextWrapping.Wrap });
+        tools.Children.Add(new Expander { Header = "施力明细 · N", Content = new ScrollViewer { Content = forceDetails, MaxHeight = 220, Focusable = false, VerticalScrollBarVisibility = ScrollBarVisibility.Visible, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled } });
         showAppearance.Click += (_, _) => surface.Refresh();
         showSkeleton.Click += (_, _) => surface.Refresh(); showReference.Click += (_, _) => surface.Refresh();
         tools.Children.Add(MakeButton("▷  同输入走停回放", () => { Reset(); replaying = !fault; replayFrame = 0; }));
-        tools.Children.Add(MakeButton("Ⅱ  暂停／继续", () => { Cancel(); paused = !paused; appearance.Paused = paused; }));
+        tools.Children.Add(MakeButton("Ⅱ  暂停／继续", () => { Cancel(); paused = !paused; appearance.Paused = paused; UpdateForceDetails(); surface.Refresh(); }));
         tools.Children.Add(MakeButton("↓  导出物理记录", Export));
         Label(tools, "文字输入隔离"); tools.Children.Add(Notes);
         Label(tools, "实时诊断"); tools.Children.Add(details);
@@ -144,10 +151,37 @@ internal sealed class LabBeltWindow : Window
         Refresh(); slider.ValueChanged += (_, _) => Refresh(); p.Children.Add(label); p.Children.Add(slider);
     }
     private void WriteStarted() => File.WriteAllText(Path.Combine(session, "started.json"), JsonSerializer.Serialize(new
-    { pid = Environment.ProcessId, visible = IsVisible, nativeLoaded = belt is not null || old is not null, model = ActiveBelt ? "continuous-belt" : "old-half", preset = activePreset, calibration = activeCalibration, originalGroundJump = belt?.OriginalGroundJumpEnabled, shapeGuard = GuardState(), speedLimit = SpeedLimitState(), whaleDrive = WhaleDriveState(), failureReason, shortBones = beltFrame?.Stats[40] == 1, displaySmoothing = false, gait = false, formalAppearance = true, equippedCount = appearance.EquippedCount, renderedAccessories = appearance.RenderedAccessoryCount, error = fault }));
+    { pid = Environment.ProcessId, visible = IsVisible, nativeLoaded = belt is not null || old is not null, model = ActiveBelt ? "continuous-belt" : "old-half", preset = activePreset, calibration = activeCalibration, originalGroundJump = belt?.OriginalGroundJumpEnabled, shapeGuard = GuardState(), speedLimit = SpeedLimitState(), whaleDrive = WhaleDriveState(), forceLedger = ForceLedgerState(false), failureReason, shortBones = beltFrame?.Stats[40] == 1, displaySmoothing = false, gait = false, formalAppearance = true, equippedCount = appearance.EquippedCount, renderedAccessories = appearance.RenderedAccessoryCount, error = fault }));
 
     private object WhaleDriveState() => new { available = belt?.WhaleDriveAvailable ?? false, enabled = belt?.WhaleDriveEnabled ?? false,
         requested = model.SelectedIndex == 0 && whaleDrive.IsChecked == true, schema = LabBeltWorld.WhaleDriveSchema, diagnostics = whaleDriveDiagnostics };
+
+    private object ForceLedgerState(bool includeRows = true) => new
+    {
+        available = belt?.ForceLedgerAvailable ?? false, schema = LabBeltWorld.ForceLedgerSchema,
+        tick = forceLedger is { } ledger ? (double?)ledger[2] : null,
+        rowCount = forceLedger is { } rows ? (int)rows[4] : 0,
+        sourceMask = forceLedger is { } sources ? (int)sources[5] : 0,
+        sourceCounts = Enumerable.Range(1, 4).Select(kind => new { kind, count = ForceRowCount(kind) }).ToArray(),
+        values = includeRows ? forceLedger : null,
+        position = "last substep before integration", scope = "active applied forces; excludes gravity and contact reactions",
+        displayEnabled = showForces.IsChecked == true, displayDipPerNewton = forceScale.Value,
+    };
+    private int ForceRowCount(int kind) => forceLedger is not { } ledger ? 0 :
+        Enumerable.Range(0, (int)ledger[4]).Count(i => (int)ledger[8 + 6*i + 4] == kind);
+    private static string ForceSource(int kind) => kind switch { 1 => "A/D段", 2 => "W/S段", 3 => "塑形点", 4 => "拖动点", _ => "未知" };
+    private void UpdateForceDetails()
+    {
+        if (forceLedger is not { } ledger) { forceDetails.Text = "当前模块未提供真实施力明细。"; return; }
+        var lines = new List<string> { $"帧 {ledger[2]:0} / 末子步 {ledger[3]:0} / {ledger[4]:0} 项", "来源 #  Fx / Fy / |F| (N)" };
+        for (var i = 0; i < (int)ledger[4]; i++)
+        {
+            var r = 8 + 6*i; var fx = ledger[r+2]; var fy = ledger[r+3];
+            var material = (int)ledger[r+4] is 1 or 2 ? $"段{ledger[r+5]:0}" : $"θ{ledger[r+5]:0.000}";
+            lines.Add(FormattableString.Invariant($"#{i:00} {ForceSource((int)ledger[r+4])} {material}\nFx {fx:0.00000} / Fy {fy:0.00000} / |F| {Math.Sqrt(fx*fx+fy*fy):0.00000}"));
+        }
+        forceDetails.Text = string.Join("\n", lines);
+    }
 
     private object SpeedLimitState() => new { available = belt?.SpeedSaturationAvailable ?? false, enabled = belt?.SpeedSaturationEnabled ?? false, requested = model.SelectedIndex == 0, maximumSpeed = config.MaximumSpeed, schema = LabBeltWorld.SpeedLimitSchema, diagnostics = speedLimitDiagnostics };
 
@@ -157,7 +191,7 @@ internal sealed class LabBeltWindow : Window
     {
         if (!initialized) return;
         Cancel(); belt?.Dispose(); old?.Dispose(); belt = null; old = null; beltFrame = null; oldFrame = null; reference = null;
-        fault = paused = false; failureReason = null; guardDiagnostics = null; speedLimitDiagnostics = whaleDriveDiagnostics = null; preStepSnapshot = solverFailureDetails = null; actualBeltInput = null; actualBeltDt = null; preStepTick = null; cameraX = accumulator = 0; steps = 0; trace.Clear();
+        fault = paused = false; failureReason = null; guardDiagnostics = null; speedLimitDiagnostics = whaleDriveDiagnostics = forceLedger = null; UpdateForceDetails(); preStepSnapshot = solverFailureDetails = null; actualBeltInput = null; actualBeltDt = null; preStepTick = null; cameraX = accumulator = 0; steps = 0; trace.Clear();
         appearance.Paused = false; appearance.Reset();
         try
         {
@@ -173,7 +207,7 @@ internal sealed class LabBeltWindow : Window
                 }
             }
             activePreset = model.SelectedItem?.ToString() ?? "";
-            Title = "团子 · " + activePreset + (model.SelectedIndex == 0 ? whaleDrive.IsChecked == true ? " · 鲸形行走·头尾差异预览" : " · 原推动对照" : " · 身体参数校准");
+            Title = "团子 · " + activePreset + (model.SelectedIndex == 0 ? whaleDrive.IsChecked == true ? " · 鲸形行走·收尾与施力预览" : " · 原推动对照" : " · 身体参数校准");
             activeCalibration = model.SelectedIndex == 0
                 ? LabBeltCalibrationParameters.Default with { RadialStiffnessScale = 1.4, AreaScale = 1.4, BeltBendScale = 4, OverallDamping = config.OverallDamping, GroundedBrake = 35, GroundedHorizontalDamping = 60 }
                 : null;
@@ -238,6 +272,10 @@ internal sealed class LabBeltWindow : Window
                 guardDiagnostics = belt.ShapeGuardEnabled ? belt.ReadShapeGuard() : null;
                 speedLimitDiagnostics = belt.SpeedSaturationEnabled ? belt.ReadSpeedLimit() : null;
                 whaleDriveDiagnostics = belt.WhaleDriveAvailable ? belt.ReadWhaleDrive() : null;
+                forceLedger = belt.ForceLedgerAvailable ? belt.ReadForceLedger() : null;
+                if (forceLedger is { } forces && (forces.Length != 1024 || forces[0] != 1 || forces[1] != 1024 ||
+                    forces[2] != steps + 1 || forces[4] < 0 || forces[4] > 97 || forces[6] != 6 || forces[7] != 64))
+                    throw new InvalidOperationException("真实施力明细格式或同帧诊断失败");
                 if (belt.WhaleDriveEnabled && (whaleDriveDiagnostics is not { } whale || whale[1] != 1 || whale[2] != steps + 1 ||
                     whale[5] > 1e-9 || whale[6] > 1e-9 || whale[7] > 1e-9))
                     throw new InvalidOperationException("行走受力同帧、净力或力矩诊断失败");
@@ -257,12 +295,13 @@ internal sealed class LabBeltWindow : Window
                     JumpPressed: lastInput.JumpPressed, InputActive: lastInput.InputActive, CancelForces: lastInput.CancelForces,
                     DragActive: dragging, DragTargetX: dragX, DragTargetY: dragY)], DangoLabDrive.DirectionRegion);
                 if (!f.Succeeded) throw new InvalidOperationException("原版物理失败 " + f.ErrorCode);
-                oldFrame = f.Bodies.Single(); oldNodes = old.ReadLabNodes(oldId); oldRegion = old.ReadLabRegionStats(oldId);
+                oldFrame = f.Bodies.Single(); oldNodes = old.ReadLabNodes(oldId);
                 var ex = LabGroundExperiments.CurveExtent(oldFrame.Contour, 1);
                 var mass = oldNodes.Sum(n => n.Mass); var comY = oldNodes.Sum(n => n.Mass * n.Y) / mass;
                 trace.Enqueue(new { tick = steps, model = "old-half", coreY = oldFrame.CoreY, comY, height = ex.Maximum - ex.Minimum });
                 if (steps % 6 == 0) details.Text = FormattableString.Invariant($"高 {(ex.Maximum - ex.Minimum) * 72:0.00} DIP\n真实质心Y {comY:0.0000} / 核心Y {oldFrame.CoreY:0.0000}\n原外围独立碰撞体 16 / 帧 {steps}");
             }
+            if (steps % 6 == 0) UpdateForceDetails();
             UpdateAppearance();
             while (trace.Count > 1200) trace.Dequeue(); steps++;
             if (Math.Abs(CoreX - cameraX) > 1.5) cameraX = CoreX - Math.Sign(CoreX - cameraX) * 1.5;
@@ -305,7 +344,7 @@ internal sealed class LabBeltWindow : Window
     }
     private object StepEvidence() => new
     {
-        speedLimit = SpeedLimitState(), whaleDrive = WhaleDriveState(),
+        speedLimit = SpeedLimitState(), whaleDrive = WhaleDriveState(), forceLedger = ForceLedgerState(),
         tick = preStepTick, dt = actualBeltDt, nativeDt = actualBeltDt is { } dt ? (float?)dt : null,
         actualInput = actualBeltInput,
         nativeControls = actualBeltInput is { } nativeInput ? LabBeltWorld.NativeControls(nativeInput) : null,
@@ -333,6 +372,11 @@ internal sealed class LabBeltWindow : Window
         {
             try { whaleDriveDiagnostics = belt.ReadWhaleDrive(); }
             catch (Exception diagnosticError) { failureReason += "；读取行走受力诊断失败：" + diagnosticError.Message; }
+        }
+        if (belt?.ForceLedgerAvailable == true)
+        {
+            try { forceLedger = belt.ReadForceLedger(); UpdateForceDetails(); }
+            catch (Exception diagnosticError) { failureReason += "；读取施力明细失败：" + diagnosticError.Message; }
         }
         if (belt?.SolverDiagnosticsAvailable == true)
         {
@@ -418,12 +462,12 @@ internal sealed class LabBeltWindow : Window
             void Check(bool ok, string label) { if (!ok) throw new InvalidOperationException(label); checks.Add(label); }
             async Task Capture(string name)
             {
-                sidebarScroll.ScrollToTop(); surface.Refresh();
+                sidebarScroll.ScrollToTop(); UpdateForceDetails(); surface.Refresh();
                 await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle); UpdateLayout();
                 var bitmap = new RenderTargetBitmap((int)ActualWidth, (int)ActualHeight, 96, 96, PixelFormats.Pbgra32); bitmap.Render(this);
                 var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
                 using var file = File.Create(Path.Combine(session, name + ".png")); encoder.Save(file);
-                walkingFrames.Add(new { name, steps, input = lastInput, frame = beltFrame, whaleDrive = WhaleDriveState(),
+                walkingFrames.Add(new { name, steps, input = lastInput, frame = beltFrame, whaleDrive = WhaleDriveState(), forceLedger = ForceLedgerState(),
                     appearance = appearance.Status });
                 File.WriteAllText(Path.Combine(session, "walking-review.json"), JsonSerializer.Serialize(new { material = new { size = size.Value, softness = softness.Value, build = build.Value },
                     scope = "actual physics frames at one of the eight approved corners; no render deformation or manual acceptance", frames = walkingFrames }, new JsonSerializerOptions { WriteIndented = true }));
@@ -435,15 +479,23 @@ internal sealed class LabBeltWindow : Window
                 "80/100/0限速显式启用且同帧速度上界合法");
             Check(belt.WhaleDriveEnabled && whaleDriveDiagnostics is { } whale && whale[1] == 1 && whale[2] == steps,
                 "鲸形行走受力显式启用且诊断与身体同帧");
+            Check(belt.ForceLedgerAvailable && forceLedger is { Length: 1024 } ledger && ledger[0] == 1 && ledger[1] == 1024 && ledger[6] == 6 && ledger[7] == 64 && !string.IsNullOrWhiteSpace(LabBeltWorld.ForceLedgerSchema), "原生施力ledger可读且格式版本明确");
+            Check(forceLedger![2] == steps, "施力ledger与成功身体帧同帧");
             for (var i = 0; i < 300; i++) StepOnce(); Check(!fault && beltFrame!.Stats[14] == 1, "闭合带落稳接地");
             Check(appearance.EquippedCount == 2 && appearance.RenderedAccessoryCount == 2, "虚构已佩戴前后配饰使用正式柔性网格");
             Check(!appearance.EyeDiagnostic.Contains("等待", StringComparison.Ordinal), "正式眼睛布局已消费真实身体帧");
             var snapshot = beltFrame; var beforeToggle = steps;
+            var forceSnapshot = forceLedger?.ToArray();
+            var physicalSnapshot = belt!.ReadDebugState();
+            showForces.IsChecked = false; surface.Refresh(); forceScale.Value = 300; surface.Refresh(); forceScale.Value = 150; showForces.IsChecked = true; surface.Refresh();
+            Check(steps == beforeToggle && forceSnapshot is not null && belt!.ReadForceLedger().SequenceEqual(forceSnapshot) && belt.ReadDebugState().SequenceEqual(physicalSnapshot), "详细施力显示倍率与只读读取不推进或改变物理");
+            Check(showForces.IsChecked == true && showSkeleton.IsChecked == false, "详细施力默认开启且独立于骨架");
             showAppearance.IsChecked = false; surface.Refresh(); showAppearance.IsChecked = true; surface.Refresh();
             Check(ReferenceEquals(snapshot, beltFrame) && steps == beforeToggle, "完整形象开关不推进或重建物理");
             Inject(Key.D, true, ApplyButton); StepOnce(); Check(lastInput.Horizontal == 1 && beltFrame!.Stats[18] > 0, "按钮焦点D驱动真实半区力");
             Inject(Key.D, false, ApplyButton); StepOnce();
             Inject(Key.W, true, size); StepOnce(); Check(lastInput.Stretch == 1 && beltFrame!.Stats[19] > 0, "滑条焦点W仍向上施力");
+            Check(ForceRowCount(2) is > 0 and <= 16 && ((int)forceLedger![5] & 2) != 0, "W施力ledger包含真实上半区分段合力");
             Inject(Key.S, true, size); StepOnce(); Check(lastInput.CancelForces && beltFrame!.Stats[19] == 0, "W加S撤销垂直力");
             Inject(Key.W, false, size); Inject(Key.S, false, size); StepOnce();
             Inject(Key.A, true, Notes); StepOnce(); Check(!lastInput.InputActive && beltFrame!.Stats[18] == 0, "文字输入不驱动"); Inject(Key.A, false, Notes);
@@ -458,6 +510,7 @@ internal sealed class LabBeltWindow : Window
             Inject(Key.D, true, ApplyButton); StepOnce(); Cancel(); StepOnce(); Check(lastInput.CancelForces && lastInput.Horizontal == 0, "取消清除玩法状态");
             Inject(Key.D, true, ApplyButton); StepOnce(); Check(lastInput.Horizontal == 0, "取消后按住的键不补发"); Inject(Key.D, false, ApplyButton);
             model.SelectedIndex = 1; Reset(); for (var i = 0; i < 300; i++) StepOnce(); Check(!fault && !ActiveBelt && oldFrame!.IsGrounded, "原外围半区对照真实落地");
+            UpdateForceDetails(); Check(forceLedger is null && forceDetails.Text.Contains("未提供", StringComparison.Ordinal), "旧模块明确显示未提供真实施力");
             model.SelectedIndex = 0;
             Reset(); for (var i = 0; i < 300; i++) StepOnce(); Check(!fault && appearance.RenderedAccessoryCount == 2, "最终落稳和正式配饰恢复无故障");
             var restingHeight = beltFrame!.Height; var restingWidth = beltFrame.Width;
@@ -465,6 +518,9 @@ internal sealed class LabBeltWindow : Window
             Inject(Key.D, true, ApplyButton); for (var i = 0; i < 90; i++) StepOnce();
             Check(!fault && whaleDriveDiagnostics is { } right && right[3] > .99 && right[4] > 0 && appearance.RenderedAccessoryCount == 2,
                 "右行时鲸形受力真实激活并带正式眼睛配饰");
+            Check(forceLedger is { } rightForces && rightForces[2] == steps && ForceRowCount(1) is > 0 and <= 16 && ForceRowCount(3) == 64 && ((int)rightForces[5] & 5) == 5,
+                "右行ledger包含16材质区间中受力段合力及64个实际塑形积分力");
+            await Capture("window-walk-right-forceoverlay");
             await Capture("window-walk-right");
             Inject(Key.D, false, ApplyButton); Inject(Key.A, true, ApplyButton); for (var i = 0; i < 90; i++) StepOnce();
             Check(!fault && whaleDriveDiagnostics is { } left && left[3] < -.99 && left[4] > 0,
@@ -565,19 +621,27 @@ internal sealed class LabBeltWindow : Window
                         if (belt.Stats[40] == 1) { var j = i == 16 ? 1 : i + 1; d.DrawLine(pen, p, Map(s[4 * j], s[4 * j + 1])); }
                     }
                     Cross(d, Map(belt.Stats[4], belt.Stats[5]));
-                    Arrow(d, Map(belt.Stats[20], belt.Stats[21]), belt.Stats[18], 0);
-                    Arrow(d, Map(belt.Stats[22], belt.Stats[23]), 0, belt.Stats[19]);
                 }
                 else if (owner.oldNodes.Count > 0)
                 {
                     foreach (var n in owner.oldNodes.Skip(1)) { var p = Map(n.X, n.Y); d.DrawLine(new Pen(LabWindow.LineBrush, .8), core, p); d.DrawEllipse(LabWindow.Accent, null, p, 2, 2); }
                     var mass = owner.oldNodes.Sum(n => n.Mass); Cross(d, Map(owner.oldNodes.Sum(n => n.Mass * n.X) / mass, owner.oldNodes.Sum(n => n.Mass * n.Y) / mass));
-                    if (owner.oldRegion is { } r) { Arrow(d, Map(r.HorizontalPointX, r.HorizontalPointY), r.ActualForceX, 0); Arrow(d, Map(r.VerticalPointX, r.VerticalPointY), 0, r.ActualForceY); }
                 }
                 d.DrawEllipse(Brushes.DarkOrange, null, core, 4, 4);
             }
-            Text(d, "橙：核心／塑形附着点   蓝：真实质量质心   红：区域合力", 12);
-            Text(d, owner.fault ? "物理失败，已暂停" : owner.replaying ? "同输入回放中" : owner.paused ? "已暂停" : owner.belt?.WhaleDriveEnabled == true ? "行走受力轮廓 · 无周期摆动" : "原始显示 · 原推动对照", 34);
+            if (owner.showForces.IsChecked == true && owner.forceLedger is { } ledger)
+            {
+                for (var i = 0; i < (int)ledger[4]; i++)
+                {
+                    var r = 8 + 6*i; var kind = (int)ledger[r+4];
+                    var brush = kind switch { 1 => Brushes.Sienna, 2 => Brushes.SteelBlue, 3 => Brushes.Teal, 4 => Brushes.MediumPurple, _ => LabWindow.Ink };
+                    Arrow(d, Map(ledger[r], ledger[r+1]), ledger[r+2], ledger[r+3], brush, owner.forceScale.Value);
+                }
+            }
+            Text(d, "棕红 A/D段合力 · 蓝 W/S段合力 · 青 实际塑形积分力 · 紫 拖动力", 12);
+            Text(d, owner.showForces.IsChecked == true ? owner.forceLedger is { } f ? $"主动施力 · 末子步积分前位置 · {owner.forceScale.Value:0} DIP/N · 帧 {f[2]:0}" : "详细施力：当前模块未提供" : "详细施力已隐藏", 34);
+            Text(d, "不含重力/接触反力 · 橙 核心 · 蓝十字 真实质心", 56);
+            Text(d, owner.fault ? "物理失败，已暂停" : owner.replaying ? "同输入回放中" : owner.paused ? "已暂停" : owner.belt?.WhaleDriveEnabled == true ? "行走受力轮廓 · 无周期摆动" : "原始显示 · 原推动对照", 78);
         }
         private sealed class DebugOverlay(Surface surface) : FrameworkElement
         {
@@ -586,11 +650,14 @@ internal sealed class LabBeltWindow : Window
         private void Text(DrawingContext d, string text, double y) => d.DrawText(new FormattedText(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
             new Typeface(owner.FontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal), 12, LabWindow.Ink, VisualTreeHelper.GetDpi(this).PixelsPerDip), new Point(12, y));
         private static void Cross(DrawingContext d, Point p) { var pen = new Pen(Brushes.SteelBlue, 1.5); d.DrawLine(pen, p + new Vector(-5, 0), p + new Vector(5, 0)); d.DrawLine(pen, p + new Vector(0, -5), p + new Vector(0, 5)); }
-        private static void Arrow(DrawingContext d, Point p, double fx, double fy)
+        private static void Arrow(DrawingContext d, Point p, double fx, double fy, Brush brush, double dipPerNewton)
         {
-            if (Math.Abs(fx) + Math.Abs(fy) < 1e-7) return;
-            var v = new Vector(Math.Sign(fx) * 38, -Math.Sign(fy) * 38); var end = p + v; var unit = v; unit.Normalize(); var side = new Vector(-unit.Y, unit.X);
-            var pen = new Pen(Brushes.IndianRed, 1.5); d.DrawLine(pen, p, end); d.DrawLine(pen, end, end - unit * 7 + side * 4); d.DrawLine(pen, end, end - unit * 7 - side * 4);
+            var v = new Vector(fx * dipPerNewton, -fy * dipPerNewton);
+            if (v.Length < 1e-8) return;
+            var end = p + v; var unit = v; unit.Normalize(); var side = new Vector(-unit.Y, unit.X);
+            var head = Math.Min(5, v.Length * .35); var pen = new Pen(brush, .85);
+            d.DrawEllipse(brush, null, p, 1.2, 1.2);
+            d.DrawLine(pen, p, end); d.DrawLine(pen, end, end - unit * head + side * head * .5); d.DrawLine(pen, end, end - unit * head - side * head * .5);
         }
         protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
         {

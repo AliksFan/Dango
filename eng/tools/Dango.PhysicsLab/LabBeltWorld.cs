@@ -48,10 +48,12 @@ internal sealed class LabBeltWorld : IDisposable
     private readonly OriginalGroundJumpDelegate? originalGroundJump;
     private readonly OriginalGroundJumpDelegate? shapeGuard;
     private readonly DiagnosticsDelegate? shapeGuardDiagnostics;
-    private readonly DoubleDiagnosticsDelegate? debugState, solverDiagnostics, speedLimitDiagnostics, whaleDriveDiagnostics;
+    private readonly DoubleDiagnosticsDelegate? debugState, solverDiagnostics, speedLimitDiagnostics, whaleDriveDiagnostics, forceLedgerDiagnostics;
     private readonly OriginalGroundJumpDelegate? speedSaturation, whaleDrive;
     public bool WhaleDriveAvailable => whaleDrive is not null && whaleDriveDiagnostics is not null;
     public bool WhaleDriveEnabled { get; private set; }
+    public bool ForceLedgerAvailable => forceLedgerDiagnostics is not null;
+    public const string ForceLedgerSchema = "v1:1024;header0=version,1=capacity,2=lastSuccessfulSolverAttemptTick,3=lastSubstepZeroBased,4=rowCount,5=sourceMask,6=rowWidth6,7=materialQuadrature64;rowsFrom8:x,y,fx,fy,kind,thetaOrPart;kind1=horizontal16MaterialBinResultants,2=vertical16MaterialBinResultants,3=shape64ActualQuadratureForces,4=dragActualPointForce;positions=actualPreIntegration;scope=activeForcesOnly,noGravityOrContact;rejectedFrame=previousSuccessfulLedger";
     public const string WhaleDriveSchema = "v1:16;0=version,1=enabled,2=attemptTick,3=signedGain,4=activeSubsteps,5=maxAbsNetFx,6=maxAbsNetFy,7=maxAbsTorque,8=shapeEndpointWorkSubset,9=maxPointTraction,10=maxGeneralizedForce,11=suppressionBits,12=gainBefore,13=gainAfter,14=guardWorkPeak,15=reserved;suppression:1=air,2=drag,4=jump,8=WSramp,16=cancel";
     public bool SpeedSaturationAvailable => speedSaturation is not null && speedLimitDiagnostics is not null;
     public bool SpeedSaturationEnabled { get; private set; }
@@ -93,6 +95,8 @@ internal sealed class LabBeltWorld : IDisposable
                 whaleDrive=Marshal.GetDelegateForFunctionPointer<OriginalGroundJumpDelegate>(whaleAddress);
             if(NativeLibrary.TryGetExport(library,"dango_belt_read_whale_drive",out var whaleDiagnosticsAddress))
                 whaleDriveDiagnostics=Marshal.GetDelegateForFunctionPointer<DoubleDiagnosticsDelegate>(whaleDiagnosticsAddress);
+            if(NativeLibrary.TryGetExport(library,"dango_belt_read_force_ledger",out var forceLedgerAddress))
+                forceLedgerDiagnostics=Marshal.GetDelegateForFunctionPointer<DoubleDiagnosticsDelegate>(forceLedgerAddress);
             if(enableWhaleDrive && !WhaleDriveAvailable)
                 throw new NotSupportedException("此模块缺少行走受力 ABI；请构建本轮鲸形行走实验组件。");
             if(enableSpeedSaturation && !SpeedSaturationAvailable)
@@ -183,6 +187,26 @@ internal sealed class LabBeltWorld : IDisposable
         if(!SpeedSaturationAvailable) throw new NotSupportedException("Native belt module does not export the complete speed saturation ABI.");
         var values=ReadDoubleDiagnostics(speedLimitDiagnostics!,12,"read speed limit");
         if(values[0]!=1) throw new NotSupportedException("Unsupported belt speed limit schema.");
+        return values;
+    }
+    public double[] ReadForceLedger()
+    {
+        VerifyAccess();
+        if(!ForceLedgerAvailable) throw new NotSupportedException("Native belt module does not export active-force distribution diagnostics.");
+        var values=ReadDoubleDiagnostics(forceLedgerDiagnostics!,1024,"read active-force ledger");
+        if(values[0]!=1 || values[1]!=1024 || values[6]!=6 || values[7]!=64)
+            throw new NotSupportedException("Unsupported active-force ledger schema.");
+        if(values[2]<0 || values[2]!=Math.Truncate(values[2]) || values[3]<-1 || values[3]!=Math.Truncate(values[3]) ||
+            values[4] is <0 or >97 || values[4]!=Math.Truncate(values[4]))
+            throw new InvalidOperationException("Invalid active-force ledger header.");
+        var mask=0;
+        for(var i=0;i<(int)values[4];i++)
+        {
+            var kind=values[8+6*i+4];
+            if(kind is <1 or >4 || kind!=Math.Truncate(kind)) throw new InvalidOperationException("Invalid active-force source.");
+            mask|=1<<((int)kind-1);
+        }
+        if(values[5]!=mask) throw new InvalidOperationException("Active-force ledger source mask disagrees with its rows.");
         return values;
     }
     public double[] ReadWhaleDrive()

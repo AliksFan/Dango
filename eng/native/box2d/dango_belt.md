@@ -198,10 +198,16 @@ not changed to impose a shape. The intended visual result is a mildly fuller,
 raised front and narrower rear while walking, swapping on reversal; this intent
 requires separate visual acceptance.
 
-With current bounding-box normalized coordinates x/y and signed input gain u,
-the current traction is `Fx=0.10*horizontal_force*abs(u)*x` and
-`Fy=horizontal_force*u*(1.6*x*y+0.08*x*x*x)`. A 64-point material-angle integral
-removes mean force and the rigid rotational component before Fourier mapping.
+With bounding-box normalized x/y, signed gain u, q=sign(u)*x and a=abs(u),
+the current rear-localized preview uses smoothstep-clamped weights
+`rear=S((-q-.15)/.60)` and `front=S((q-.05)/.55)`. Its raw traction is
+`Fx=-sign(u)*horizontal_force*a*.18*rear` and
+`Fy=horizontal_force*a*((.40*front-4.0*rear)*y+.08*q*q*q)`.
+The rear is squeezed and gently pulled back while the front has weaker support.
+A 64-point material-angle integral removes mean force and the rigid rotational
+component before Fourier mapping. The compensating projection can distribute
+some force over the rest of the belt. Spatial weight boundaries are C1; input
+reversal through zero is continuous and is not asserted to be time-C1.
 The added traction has zero net force/torque to numerical precision; it can
 still change ground/friction response. Existing drive speed gating does not
 toggle this shape field: u follows input with bounded 0.15s rise / 0.20s release
@@ -216,12 +222,29 @@ ledger again. Snapshot slots 177/178 record enablement and signed gain. Rejected
 steps restore that state and Whale16 telemetry, except its attempt counter.
 
 `dango_belt_read_whale_drive(handle,double[16])` and the full schema are in the
-header. The current preview is built separately in `artifacts/physics-lab/belt-whale-head-tail-native`;
+header. The current preview is built separately in `artifacts/physics-lab/belt-whale-tail-native`;
 the earlier candidates and accepted robust module remain available. Only the
 80/100/0 endpoint is used for this stronger-head/tail visual preview; the prior
 eight-corner result belongs to the 0.64-inflate candidate, whose appearance the
 user rejected as too subtle. The experiment checkbox takes
 effect on reset and can compare the same F body with original driving forces.
+
+### Active-force distribution display
+
+`dango_belt_read_force_ledger(handle,double[1024])` is read-only. Header8 and
+row6 are documented in the header. It stores the last successful frame's final
+substep force evaluation, at the actual pre-integration world positions. Rejected
+frames retain the previous successful ledger. Initial row count is zero, unused
+slots are zero and insufficient capacity writes nothing.
+
+Horizontal/W/S driving uses up to 16 exact material-bin resultants, preserving
+the original analytic total force and torque. These are equivalent small-region
+resultants, not sixteen physical point loads. Shape rows are the actual 64
+quadrature weights after zero-force/torque projection and before Fourier mapping;
+drag is its actual single evaluated point force. Gravity/contact are omitted.
+The display reads these recorded rows directly with a common linear arrow scale;
+it does not infer forces from the subsequently rendered shape. Toggling the
+overlay or reading the ledger cannot advance or modify the physical state.
 
 ## ABI and diagnostics
 

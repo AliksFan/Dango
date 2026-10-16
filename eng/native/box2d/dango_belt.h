@@ -58,6 +58,16 @@ DANGO_BELT_API int dango_belt_read_speed_limit(void*,double*,int);
    15 reserved0. Entire frame rolls back on failure except attempt[2]. */
 DANGO_BELT_API int dango_belt_set_whale_drive(void*,int);
 DANGO_BELT_API int dango_belt_read_whale_drive(void*,double*,int);
+/* Read-only last successful substep active-force evaluation, pre-integration.
+   Ledger1024 header: 0 schema1,1 capacity1024,2 successful frame attemptTick,
+   3 zero-based lastSubstep (-1 before step),4 rowCount (max97),5 sourceMask,
+   6 rowWidth6,7 whaleQuadrature64. Rows from8: x,y,fx,fy,sourceKind,material.
+   Kind1 horizontal and kind2 vertical are exact resultants of 16 material bins,
+   material=binIndex (not physical nodes); kind3 is actual projected whale point
+   weight t/64, material=theta; kind4 actual drag point, material=theta.
+   SourceMask uses 1<<(kind-1). Gravity/contact omitted. Unused slots zero.
+   Read capacity failure writes nothing. Failed frames retain previous ledger. */
+DANGO_BELT_API int dango_belt_read_force_ledger(void*,double*,int);
 /* Lab-only read-only reproducibility data; no public restore/mutation API.
    Snapshot200: 0 schema1,1 count200,2..37 q36,38..73 v36,
    74 radius,75 scale,76 left,77 right,78 ramp,79 cooldown,80 dragTheta,
