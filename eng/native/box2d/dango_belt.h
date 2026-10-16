@@ -35,10 +35,45 @@ enum { DANGO_BELT_SHAPE_GUARD_FLOATS=24 };
    [11]crossLower [12]clearanceLower [13]winding [14..15]guardElasticBefore/After
    [16]peakCoreReaction [17]guardEndpointWork [18]rigidGroundFallbacks
    [19]hardClearance [20]hardCross [21]workBudget [22]substeps [23]reserved.
-   Reasons 1 cross,2 clearance,3 budget,4 winding,5 nonfinite,6 solve,7 ground.
+   Reasons 1 cross,2 clearance,3 global work budget,4 winding,5 nonfinite,
+   6 solve,7 ground,8 local certificate uncertainty (bounded depth/stack),
+   9 ground candidate outside the unchanged material domain.
    Stages 1 Newton,2 integrated path,3 ground,4 initial frame certificate. */
 DANGO_BELT_API int dango_belt_set_shape_guard(void*,int);
 DANGO_BELT_API int dango_belt_read_shape_guard(void*,float*,int);
+/* Separate opt-in, before the first successful step; requires shape guard.
+   All generalized velocities share one positive scale, positions unchanged.
+   Original energy diagnostic[18] records its KE delta separately.
+   Speed12: 0 schema1,1 enabled,2 attempt,3 limitedSubsteps,4 minFactor(default1),
+   5 maxBeforeUpper,6 maxAfterUpper,7 deltaKE,8 deltaPx,9 deltaPy,10 deltaL,
+   11 reserved zero. Rejected-attempt telemetry survives physical rollback. */
+DANGO_BELT_API int dango_belt_set_speed_saturation(void*,int);
+DANGO_BELT_API int dango_belt_read_speed_limit(void*,double*,int);
+/* Lab-only read-only reproducibility data; no public restore/mutation API.
+   Snapshot200: 0 schema1,1 count200,2..37 q36,38..73 v36,
+   74 radius,75 scale,76 left,77 right,78 ramp,79 cooldown,80 dragTheta,
+   81 shortBones,82 grounded,83 dragging,84 originalJump,85 hasStepped,86 guard,
+   87..127 config41 in struct order,128..138 calibration11,139 guardAttemptTick,
+   140..175 mass36,176 speedSaturationEnabled,177..199 reserved zero.
+   JSON doubles preserve binary64.
+   Solver24: 0 schema1,1 attemptTick,2 return,3 returnSite,4 substep,5 GNiteration,
+   6 lineSearch,7 residual,8 objective,9 directional,10 trialObjective,11 factor,
+   12 contactResidual,13 penetration,14 speed,15 stage,16 residualValidatedLineSearchStops,
+   17 dampedBfgsUpdates,18 gaussNewtonResets,19 speedCertificateSamples,
+   20 speedCoreOrCurveSampleMaximum,21 speedCertifiedUpper,
+   22 lastRefinementCoarseUpper,23 lastRefinementCertifiedUpper.
+   stage 1 forces,2 integration,3 contact,4 speed/bounds,5 final validation.
+   returnSite: 1 initial residual,2 objective nonfinite,3 Cholesky,4 Armijo,
+   5 GN residual cap,6 integrated-path guard,7 Newton work budget,
+   8 ground work budget,9 rigid ground fallback guard,10 ground penetration,
+   11 contact residual,12 contact energy,13 speed,14 bounds,15 final residual,
+   16 area,17 stats finite,18 energy diagnostics finite,19 initial guard,
+   20 region force,21 speed saturation nonfinite/unresolved,
+   31 initial derivative,32 initial radial length,33 initial short edge,
+   34 initial area,35 initial barrier material domain.
+   Solver diagnostics retain the rejected attempt. */
+DANGO_BELT_API int dango_belt_read_snapshot(void*,double*,int);
+DANGO_BELT_API int dango_belt_read_solver_diagnostics(void*,double*,int);
 DANGO_BELT_API int dango_belt_version(void);
 DANGO_BELT_API int dango_belt_create(const dango_belt_config*,float,float,int,void**);
 DANGO_BELT_API int dango_belt_step(void*,float,const float*,int);

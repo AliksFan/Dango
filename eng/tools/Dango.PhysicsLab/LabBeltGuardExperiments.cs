@@ -39,7 +39,7 @@ public static class LabBeltGuardExperiments
             LabBeltWorld? world = null;
             try
             {
-                world = new LabBeltWorld(guardedModule, config, true, calibration, enableShapeGuard: true);
+                world = new LabBeltWorld(guardedModule, config, true, calibration, enableShapeGuard: true, enableSpeedSaturation: true);
                 world.SetOriginalGroundJump(); world.SetBounds(-256, 256);
                 foreach (var phase in phases)
                 {
@@ -48,6 +48,8 @@ public static class LabBeltGuardExperiments
                     var dragX = initial.ComX; var dragY = config.GroundHeight + .05 * initial.Height;
                     var maxPenetration = 0d; var minClearance = double.PositiveInfinity; var maxWork = 0d;
                     var maxFallbacks = 0d; var maxRefusals = 0d; var maxGap = 0d; var airborne = 0; var longestAir = 0; var acceptedJump = false;
+                    var maxAcceptedResidual = 0d; var maxIterations = 0d; var residualValidatedStops = 0d;
+                    var limitedSubsteps = 0d; var speedLimitEnergy = 0d; var maxSpeedAfterLimit = 0d; var bfgsUpdates = 0d;
                     for (var i = 0; i < phase.Frames; i++)
                     {
                         phaseTick = i;
@@ -58,6 +60,19 @@ public static class LabBeltGuardExperiments
                             InputActive: phase.Horizontal != 0 || phase.Down != 0 || phase.Up != 0 || phase.Drag || phase.Jump && i == 0));
                         var elapsed = Stopwatch.GetElapsedTime(started).TotalMilliseconds; timings.Add(elapsed);
                         var frame = world.Read(); var guard = world.ReadShapeGuard(); ticks++;
+                        var solver = world.SolverDiagnosticsAvailable ? world.ReadSolverDiagnostics() : null;
+                        var speedLimit = world.ReadSpeedLimit();
+                        if (speedLimit[0] != 1 || speedLimit[1] != 1 || speedLimit[2] != ticks || speedLimit[6] > config.MaximumSpeed || speedLimit[7] > 1e-10)
+                            throw new InvalidOperationException("Invalid same-frame speed limit or kinetic-energy increase");
+                        var energy = world.ReadDiagnostics();
+                        if (Math.Abs(energy[18] - speedLimit[7]) > 1e-7 * (1 + Math.Abs(speedLimit[7])))
+                            throw new InvalidOperationException("Speed limit kinetic energy missing from the energy ledger");
+                        limitedSubsteps += speedLimit[3]; speedLimitEnergy += speedLimit[7];
+                        maxSpeedAfterLimit = Math.Max(maxSpeedAfterLimit, speedLimit[6]); bfgsUpdates += solver?[17] ?? 0;
+                        maxAcceptedResidual = Math.Max(maxAcceptedResidual, frame.Stats[34]);
+                        maxIterations = Math.Max(maxIterations, frame.Stats[56]);
+                        residualValidatedStops += solver?[16] ?? 0;
+                        if (frame.Stats[34] > 2e-7) throw new InvalidOperationException("Accepted nonlinear residual exceeded the unchanged 2e-7 cap");
                         if (guard[0] != 1 || guard[1] != 1 || guard[2] != ticks || guard[3] != 0 || guard[13] != 1 ||
                             guard[11] < guard[20] || guard[12] < guard[19] || guard[4] > guard[21])
                             throw new InvalidOperationException("Invalid same-frame continuous shape certificate or work budget");
@@ -91,6 +106,9 @@ public static class LabBeltGuardExperiments
                         TailComY = tail.Average(x => x.ComY), TailAbsoluteComVelocity = tail.Average(x => Math.Abs(x.ComVx)), FinalComVelocity = tail[^1].ComVx,
                         MinimumSampledCoreClearance = minClearance, MaximumPenetration = maxPenetration, MaximumCertificateWork = maxWork,
                         MaximumGroundFallbacksPerFrame = maxFallbacks, MaximumRefusedCandidatesPerFrame = maxRefusals,
+                        MaximumAcceptedResidual = maxAcceptedResidual, MaximumNewtonIterations = maxIterations, ResidualValidatedLineSearchStops = residualValidatedStops,
+                        SpeedLimitedSubsteps = limitedSubsteps, SpeedLimitKineticEnergyDelta = speedLimitEnergy,
+                        MaximumSpeedAfterLimit = maxSpeedAfterLimit, QuasiNewtonUpdates = bfgsUpdates,
                         JumpAccepted = acceptedJump, LongestAirborneFrames = longestAir, MaximumGap = maxGap });
                     trace.Flush();
                 }
@@ -114,7 +132,7 @@ public static class LabBeltGuardExperiments
             File.WriteAllText(Path.Combine(output, "guard-eight-corner-results.json"), JsonSerializer.Serialize(new { Kind = "guard-eight-material-corners",
                 NativeSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(guardedModule))), FixedDt = Dt, Substeps = 4,
                 ExpectedCases = 8, AttemptedCases = results.Count, CompletedCases = completedCases, Passed = allPassed && completedCases == 8, GuardSchema = LabBeltWorld.ShapeGuardSchema,
-                Scope = "exactly 80/120 x 0/100 x 0/100; no intermediate materials; F, short bones, whole-body Space; no appearance or OS input",
+                Scope = "exactly 80/120 x 0/100 x 0/100; no intermediate materials; F, short bones, whole-body Space, explicit speed saturation; no appearance or OS input",
                 Geometry = "native continuous interval/path certificate plus independent sampled polygon core and crossing screening",
                 Performance = "wall-clock duration around each native Step only, excludes reads, output, independent screening and WPF; not a hard realtime guarantee",
                 RecoveryGate = "last 60 frames of each S/W/drag release: height and width each within 2% of own initial rest tail; separate from manual softness acceptance",

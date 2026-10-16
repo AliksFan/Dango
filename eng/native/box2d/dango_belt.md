@@ -123,6 +123,71 @@ most 20. Existing Newton/contact limits still apply; this is not a wall-clock or
 60 Hz guarantee. Return `-605` means guarded-frame refusal and `-606` work-budget
 exhaustion; the caller pauses once and offers reset rather than retrying forever.
 
+### Drag-convergence correction
+
+Two actual 80/100/0 drag states exposed incomplete convergence within the
+unchanged 40 Newton iterations. The original Gauss-Newton metric omitted the
+positive scalar curvature of the divergent guard penalty. With `g=x-hard` and
+`A=on-hard`, its residual is `r=A^2/g-2A+g`; `r''=2A^2/g^3`. The guard-only
+Hessian weight now includes `k*r*r''` as well as `k*(r')^2`, implemented as a
+multiplier `1+2*A^2/(A+g)^2` on that residual's Jacobian outer product. Energy,
+gradient, forces and physical k/c remain unchanged. This is scalar curvature
+completion, not the full geometric Hessian.
+
+If all 40 iterations are used, the guarded path recomputes the actual current
+endpoint residual before applying the original `2e-7` cap; the legacy path is
+unchanged. If Armijo exhausts 20 attempts, the guard may retain the current
+already-certified state only when its actual residual meets that same `2e-7`
+cap. No rejected or uphill trial is committed. The full integrated path and all
+subsequent material/contact/speed checks still run. Solver diagnostic slot 16
+counts `residualValidatedLineSearchStops`; these must not be reported as reaching
+the stricter normal `2e-9` target. This final rule replaces the first candidate's
+`64*DBL_EPSILON` special case and does not use a separate incremental-energy test.
+
+For slowly converging guard-only solves, a damped positive-definite BFGS metric
+may accelerate the latter half of the same 40-iteration budget, when the current
+Gauss-Newton convergence predicts missing the unchanged hard residual cap.
+History resets each substep; energy and gradient are unchanged. If the direction
+is unsuitable or rejected, the solver returns to Gauss-Newton within the same
+20-candidate line-search budget. Slots 17/18 disclose BFGS updates/GN resets.
+
+Local certificate depth/stack uncertainty (reason 8) is separate from the global
+131072-visit budget (reason 3). Local refusal can backtrack or use the existing
+rigid upward ground fallback; true global exhaustion still rejects the frame.
+In guard mode both a deforming ground candidate and its rigid fallback must also
+pass the original material residual domain and configured minimum area before
+commit. The original `|B'| > 0.02*R` and all other thresholds remain unchanged;
+star-shaped geometry alone does not imply this material-domain condition.
+
+### Opt-in speed saturation
+
+`dango_belt_set_speed_saturation(handle,1)` requires shape protection and must
+be called before the first successful step. It defaults off. The F lab enables
+it explicitly after the user approved limiting true overspeed and continuing.
+The continuous speed certificate refines a coarse bound only near the cap, with
+at most 16384 samples. All 36 generalized velocities are scaled by one positive
+factor after contact, while positions stay unchanged; the original speed cap
+is not raised. At most four inward corrections and re-certifications are used.
+Unresolved/nonfinite results still reject and atomically roll back the frame.
+
+This is dissipative and changes extreme-drag feedback and momentum; it is not a
+momentum-conserving force. Existing energy diagnostic slot 18 records its true
+kinetic-energy delta, and the separate 12-double speed diagnostic reports that
+delta plus linear/angular momentum changes. Snapshot slot 176 records enablement.
+Continuous bounds and finite work caps are not a stable 60 Hz guarantee.
+
+Read-only `dango_belt_read_snapshot(...,200)` and
+`dango_belt_read_solver_diagnostics(...,24)` expose numerical world state and
+precise failure sites, as documented in the header. Failure diagnostics survive
+physical rollback. No snapshot restoration is exported; fixture restoration is
+private to the regression executable. The lab retains the pre-step snapshot,
+exact float timestep and nine native control values in memory, writing them
+only on explicit export or failure. No OS input, screen content or text is read.
+The current corrected module is built in `artifacts/physics-lab/belt-guard-robust-native`;
+the first solver candidate, original guard and diagnostic-only builds remain
+available for comparison. Six actual numerical fixtures and bounded follow-on
+drag/release sequences are kept in the private solver regression executable.
+
 ## ABI and diagnostics
 
 See `dango_belt.h`. Version is 1. All calls return 0 on success; -600 means

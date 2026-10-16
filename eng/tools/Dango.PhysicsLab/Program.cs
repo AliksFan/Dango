@@ -23,7 +23,7 @@ internal static class Program
         var beltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "belt-native", "Release", "dango_physics_lab_belt.dll");
         var calibratedBeltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "belt-calibration-native", "Release", "dango_physics_lab_belt.dll");
         var originalJumpBeltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "belt-calibration-v2-native", "Release", "dango_physics_lab_belt.dll");
-        var guardedBeltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "belt-guard-native", "Release", "dango_physics_lab_belt.dll");
+        var guardedBeltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "belt-guard-robust-native", "Release", "dango_physics_lab_belt.dll");
         var beltBatches = new[] { "--belt-experiments", "--belt-calibration", "--belt-candidates", "--belt-refinement", "--belt-dynamics", "--belt-guard-experiments" };
         var useBelt = args.Contains("--belt") || args.Any(beltBatches.Contains);
         if (useBelt && (args.Any(a => a is not ("--belt" or "--belt-experiments" or "--belt-calibration" or "--belt-candidates" or "--belt-refinement" or "--belt-dynamics" or "--belt-guard-experiments" or "--smoke" or "--saved-appearance")) ||
@@ -45,7 +45,7 @@ internal static class Program
         if ((args.Contains("--belt-calibration") || args.Contains("--belt-candidates") || args.Contains("--belt-refinement")) && !File.Exists(calibratedBeltModule)) return 9;
         if (args.Contains("--belt-dynamics") && !File.Exists(originalJumpBeltModule)) return 9;
         if ((args.Contains("--belt-guard-experiments") || useBelt && !args.Any(beltBatches.Contains)) && !File.Exists(guardedBeltModule))
-        { Console.Error.WriteLine("缺少形状保护实验 DLL：请构建 belt-guard-native 后重新启动。"); return 9; }
+        { Console.Error.WriteLine("缺少形状保护实验组件，请重新生成本轮实验应用后启动。"); return 9; }
         var session = Path.Combine(root.FullName, "artifacts", "physics-lab", "sessions",
             DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff") + "-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(session);

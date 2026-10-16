@@ -5,7 +5,7 @@
    covered analytically; only theta is bisected. A refusal is not a proof of
    invalidity. Floating point roundoff has an explicit outward allowance. */
 enum { BELT_GUARD_CROSS=1,BELT_GUARD_CLEARANCE=2,BELT_GUARD_BUDGET=3,
- BELT_GUARD_WINDING=4,BELT_GUARD_NONFINITE=5,BELT_GUARD_SOLVE=6,BELT_GUARD_GROUND=7 };
+ BELT_GUARD_WINDING=4,BELT_GUARD_NONFINITE=5,BELT_GUARD_SOLVE=6,BELT_GUARD_GROUND=7,BELT_GUARD_UNCERTAIN=8,BELT_GUARD_MATERIAL_DOMAIN=9 };
 typedef struct belt_guard_result {int reason,work,leaves,depth;double cross_lower,distance_lower,winding;} belt_guard_result;
 static double belt_guard_quadratic_min(double a,double b,double c){double m=fmin(c,a+b+c);if(a>0){double s=-b/(2*a);if(s>0&&s<1)m=fmin(m,(a*s+b)*s+c);}return m;}
 static double belt_guard_norm_bound(const double* q,int derivative){
@@ -39,7 +39,7 @@ static int belt_guard_certify(const double* from,const double* to,double radius,
    out->cross_lower=fmin(out->cross_lower,cross_lower);out->distance_lower=fmin(out->distance_lower,distance_lower);++out->leaves;
    belt_v lo=belt_guard_relative(to,t-h),hi=belt_guard_relative(to,t+h);winding+=atan2(belt_cross(lo,hi),belt_dot(lo,hi));continue;
   }
-  if(v.depth>=20||pending>29){out->reason=BELT_GUARD_BUDGET;return 0;}
+  if(v.depth>=20||pending>29){out->reason=BELT_GUARD_UNCERTAIN;return 0;}
   stack[pending++]=(belt_guard_interval){t+h*.5,h*.5,v.depth+1};stack[pending++]=(belt_guard_interval){t-h*.5,h*.5,v.depth+1};
  }
  out->winding=winding/(2*BELT_PI);if(fabs(out->winding-1)>1e-7){out->reason=BELT_GUARD_WINDING;return 0;}return 1;

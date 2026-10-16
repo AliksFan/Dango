@@ -48,12 +48,22 @@ internal sealed class LabBeltWorld : IDisposable
     private readonly OriginalGroundJumpDelegate? originalGroundJump;
     private readonly OriginalGroundJumpDelegate? shapeGuard;
     private readonly DiagnosticsDelegate? shapeGuardDiagnostics;
-    public const string ShapeGuardSchema = "v1:version,enabled,stepAttemptTick,lastStepReturnCode,certificateWork,certificateCalls,maxDepth,certifiedLeaves,refusedCandidates,lastRefusalReason,refusalStage,acceptedCrossLower,acceptedClearanceLower,winding,initialGuardElastic,finalGuardElastic,peakGuardCoreForce,guardEndpointForceWork,groundRigidFallbacks,hardClearance,hardCross,workBudget,acceptedSubsteps,reserved";
+    private readonly DoubleDiagnosticsDelegate? debugState, solverDiagnostics, speedLimitDiagnostics;
+    private readonly OriginalGroundJumpDelegate? speedSaturation;
+    public bool SpeedSaturationAvailable => speedSaturation is not null && speedLimitDiagnostics is not null;
+    public bool SpeedSaturationEnabled { get; private set; }
+    public const string SpeedLimitSchema = "v1:12;0=version,1=enabled,2=attemptTick,3=limitedSubsteps,4=minScale,5=maxBeforeUpper,6=maxAfterUpper,7=deltaKE,8=deltaPx,9=deltaPy,10=deltaL,11=reserved";
+    public const string DebugStateSchema = "v1:200;0=version,1=count,2..37=q36,38..73=v36,74=radius,75=scale,76=left,77=right,78=ramp,79=cooldown,80=dragTheta,81=shortBones,82=grounded,83=dragging,84=originalJump,85=hasStepped,86=shapeGuard,87..127=config41,128..138=calibration11,139=guardAttemptTick,140..175=mass36,176=speedSaturation,177..199=reserved";
+    public const string SolverDiagnosticsSchema = "v1:24;0=version,1=attemptTick,2=returnCode,3=returnSite,4=substep,5=GNiteration,6=lineSearch,7=residual,8=objective,9=directional,10=trialObjective,11=factor,12=contactResidual,13=penetration,14=speed,15=stage,16=residualValidatedLineSearchStops,17=dampedBfgsUpdates,18=gaussNewtonResets,19=speedCertificateSamples,20=speedCoreOrCurveSampleMaximum,21=speedCertifiedUpper,22=lastRefinementCoarseUpper,23=lastRefinementCertifiedUpper";
+    public const string SolverFailureSites = "1=initialResidual,2=nonfiniteObjective,3=Cholesky,4=ArmijoExhausted,5=GNResidualCap,6=integratedPathGuard,7=NewtonWorkBudget,8=groundWorkBudget,9=groundFallbackGuard,10=groundPenetration,11=contactResidual,12=contactEnergy,13=speed,14=bounds,15=finalResidual,16=area,17=statsNonfinite,18=energyDiagNonfinite,19=initialGuard,20=regionForce,21=speedSaturationUnresolved,31=initialDerivative,32=initialRadialLength,33=initialShortEdge,34=initialArea,35=initialBarrierMaterialDomain;stage:1=forces,2=integration,3=contact,4=speedBounds,5=final";
+    public bool DebugStateAvailable => ShapeGuardEnabled && debugState is not null;
+    public bool SolverDiagnosticsAvailable => ShapeGuardEnabled && solverDiagnostics is not null;
+    public const string ShapeGuardSchema = "v1:version,enabled,stepAttemptTick,lastStepReturnCode,certificateWork,certificateCalls,maxDepth,certifiedLeaves,refusedCandidates,lastRefusalReason,refusalStage,acceptedCrossLower,acceptedClearanceLower,winding,initialGuardElastic,finalGuardElastic,peakGuardCoreForce,guardEndpointForceWork,groundRigidFallbacks,hardClearance,hardCross,workBudget,acceptedSubsteps,reserved;refusalReason:1=cross,2=clearance,3=budget,4=winding,5=nonfinite,6=solver,7=ground,8=uncertain,9=materialDomain";
     public bool ShapeGuardAvailable => shapeGuard is not null && shapeGuardDiagnostics is not null;
     public bool ShapeGuardEnabled { get; private set; }
     public bool OriginalGroundJumpEnabled { get; private set; }
     public string? CalibrationSchema { get; }
-    public LabBeltWorld(string module,DangoSelfPhysicsParameters config,bool shortBones=true,LabBeltCalibrationParameters? calibration=null,bool enableShapeGuard=false)
+    public LabBeltWorld(string module,DangoSelfPhysicsParameters config,bool shortBones=true,LabBeltCalibrationParameters? calibration=null,bool enableShapeGuard=false,bool enableSpeedSaturation=false)
     {
         config.Validate();
         library=NativeLibrary.Load(Path.GetFullPath(module));
@@ -68,8 +78,18 @@ internal sealed class LabBeltWorld : IDisposable
                 shapeGuard=Marshal.GetDelegateForFunctionPointer<OriginalGroundJumpDelegate>(guardAddress);
             if(NativeLibrary.TryGetExport(library,"dango_belt_read_shape_guard",out var guardDiagnosticsAddress))
                 shapeGuardDiagnostics=Marshal.GetDelegateForFunctionPointer<DiagnosticsDelegate>(guardDiagnosticsAddress);
+            if(NativeLibrary.TryGetExport(library,"dango_belt_read_snapshot",out var snapshotAddress))
+                debugState=Marshal.GetDelegateForFunctionPointer<DoubleDiagnosticsDelegate>(snapshotAddress);
+            if(NativeLibrary.TryGetExport(library,"dango_belt_read_solver_diagnostics",out var solverAddress))
+                solverDiagnostics=Marshal.GetDelegateForFunctionPointer<DoubleDiagnosticsDelegate>(solverAddress);
+            if(NativeLibrary.TryGetExport(library,"dango_belt_set_speed_saturation",out var speedAddress))
+                speedSaturation=Marshal.GetDelegateForFunctionPointer<OriginalGroundJumpDelegate>(speedAddress);
+            if(NativeLibrary.TryGetExport(library,"dango_belt_read_speed_limit",out var speedDiagnosticsAddress))
+                speedLimitDiagnostics=Marshal.GetDelegateForFunctionPointer<DoubleDiagnosticsDelegate>(speedDiagnosticsAddress);
+            if(enableSpeedSaturation && !SpeedSaturationAvailable)
+                throw new NotSupportedException("此模块缺少完整限速 ABI；请构建 belt-guard-robust-native 后点击应用并重置。");
             if(enableShapeGuard && !ShapeGuardAvailable)
-                throw new NotSupportedException("此模块缺少完整形状保护 ABI；请构建 belt-guard-native 后点击应用并重置。");
+                throw new NotSupportedException("此模块缺少完整形状保护 ABI；请构建 belt-guard-robust-native 后点击应用并重置。");
             var native=NativeConfiguration.From(config);
             if(NativeLibrary.TryGetExport(library,"dango_belt_calibration_schema",out var schemaAddress) &&
                 NativeLibrary.TryGetExport(library,"dango_belt_read_diagnostics",out var diagnosticsAddress) &&
@@ -91,6 +111,11 @@ internal sealed class LabBeltWorld : IDisposable
                 Check(shapeGuard!(handle,1),"enable shape guard before first step");
                 ShapeGuardEnabled=true;
             }
+            if(enableSpeedSaturation)
+            {
+                Check(speedSaturation!(handle,1),"enable speed saturation before first step");
+                SpeedSaturationEnabled=true;
+            }
         }
         catch { if(handle!=0) { destroy?.Invoke(handle); handle=0; } NativeLibrary.Free(library); library=0; throw; }
     }
@@ -100,11 +125,11 @@ internal sealed class LabBeltWorld : IDisposable
         if(!Finite(dt)||dt<=0||dt>1d/30 || !Finite(input.Horizontal)||Math.Abs(input.Horizontal)>1 ||
             !Finite(input.Stretch)||input.Stretch is <0 or >1 || !Finite(input.Downward)||input.Downward is <0 or >1 ||
             !Finite(input.DragTargetX)||!Finite(input.DragTargetY)) throw new ArgumentOutOfRangeException(nameof(input));
-        float[] controls=[(float)input.Horizontal,(float)input.Downward,input.JumpPressed?1:0,
-            input.DragActive?1:0,(float)input.DragTargetX,(float)input.DragTargetY,(float)input.Stretch,
-            input.InputActive?1:0,input.CancelForces?1:0];
+        var controls=NativeControls(input);
         Check(step(handle,(float)dt,controls,controls.Length),"step");
     }
+    internal static float[] NativeControls(LabBeltInput input) => [(float)input.Horizontal,(float)input.Downward,input.JumpPressed?1:0,
+        input.DragActive?1:0,(float)input.DragTargetX,(float)input.DragTargetY,(float)input.Stretch,input.InputActive?1:0,input.CancelForces?1:0];
     public LabBeltFrame Read()
     {
         VerifyAccess();
@@ -138,6 +163,37 @@ internal sealed class LabBeltWorld : IDisposable
         if(values.Any(x=>!float.IsFinite(x))) throw new InvalidOperationException("Belt returned nonfinite shape guard diagnostics");
         return values;
     }
+    public double[] ReadSpeedLimit()
+    {
+        VerifyAccess();
+        if(!SpeedSaturationAvailable) throw new NotSupportedException("Native belt module does not export the complete speed saturation ABI.");
+        var values=ReadDoubleDiagnostics(speedLimitDiagnostics!,12,"read speed limit");
+        if(values[0]!=1) throw new NotSupportedException("Unsupported belt speed limit schema.");
+        return values;
+    }
+    public double[] ReadDebugState()
+    {
+        VerifyAccess();
+        if(!DebugStateAvailable) throw new NotSupportedException("Native guarded belt module does not export the numeric snapshot ABI.");
+        var values=ReadDoubleDiagnostics(debugState!,200,"read snapshot");
+        if(values[0]!=1 || values[1]!=200) throw new NotSupportedException("Unsupported numeric belt snapshot schema.");
+        return values;
+    }
+    public double[] ReadSolverDiagnostics()
+    {
+        VerifyAccess();
+        if(!SolverDiagnosticsAvailable) throw new NotSupportedException("Native guarded belt module does not export solver diagnostics.");
+        // Nonfinite objective values are useful failure evidence; the physical snapshot remains finite-only.
+        var values=ReadDoubleDiagnostics(solverDiagnostics!,24,"read solver diagnostics",requireFinite:false);
+        if(values[0]!=1) throw new NotSupportedException("Unsupported belt solver diagnostics schema.");
+        return values;
+    }
+    private double[] ReadDoubleDiagnostics(DoubleDiagnosticsDelegate reader,int count,string operation,bool requireFinite=true)
+    {
+        var values=new double[count]; Check(reader(handle,values,count),operation);
+        if(requireFinite && values.Any(x=>!double.IsFinite(x))) throw new InvalidOperationException("Belt returned nonfinite numeric diagnostics");
+        return values;
+    }
     public void SetBounds(double left,double right)
     {
         VerifyAccess();
@@ -165,6 +221,7 @@ internal sealed class LabBeltWorld : IDisposable
     private T Export<T>(string name) where T:Delegate => Marshal.GetDelegateForFunctionPointer<T>(NativeLibrary.GetExport(library,name));
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int OriginalGroundJumpDelegate(nint handle,int enabled);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate nint SchemaDelegate();
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int DoubleDiagnosticsDelegate(nint handle,[Out]double[] values,int count);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int DiagnosticsDelegate(nint handle,[Out]float[] values,int count);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int CreateCalibratedDelegate(in NativeConfiguration config,float x,float y,int bones,[In]float[] parameters,int count,out nint handle);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int VersionDelegate();
