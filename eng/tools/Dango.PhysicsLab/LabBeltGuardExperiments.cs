@@ -13,7 +13,9 @@ public static class LabBeltGuardExperiments
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
     private sealed record Phase(string Name, int Frames, double Horizontal = 0, double Down = 0, double Up = 0, bool Jump = false, bool Drag = false);
     private sealed record Sample(double Height, double Width, double CoreY, double ComY, double ComVx,
-        double CoreClearance, double GuardClearance, double GuardCross, double StepMilliseconds);
+        double CoreClearance, double GuardClearance, double GuardCross, double StepMilliseconds,
+        double WhaleGain, double WhaleActiveSubsteps, double WhaleNetFx, double WhaleNetFy, double WhaleTorque,
+        double WhaleShapeWork, double WhalePointTraction, double? FrontThickness, double? RearThickness);
 
     public static bool Run(string guardedModule, string output)
     {
@@ -39,7 +41,9 @@ public static class LabBeltGuardExperiments
             LabBeltWorld? world = null;
             try
             {
-                world = new LabBeltWorld(guardedModule, config, true, calibration, enableShapeGuard: true, enableSpeedSaturation: true);
+                world = new LabBeltWorld(guardedModule, config, true, calibration, enableShapeGuard: true, enableSpeedSaturation: true, enableWhaleDrive: true);
+                if (!world.WhaleDriveAvailable || !world.WhaleDriveEnabled)
+                    throw new InvalidOperationException("Whale drive ABI was not available and enabled for this runner.");
                 world.SetOriginalGroundJump(); world.SetBounds(-256, 256);
                 foreach (var phase in phases)
                 {
@@ -50,6 +54,8 @@ public static class LabBeltGuardExperiments
                     var maxFallbacks = 0d; var maxRefusals = 0d; var maxGap = 0d; var airborne = 0; var longestAir = 0; var acceptedJump = false;
                     var maxAcceptedResidual = 0d; var maxIterations = 0d; var residualValidatedStops = 0d;
                     var limitedSubsteps = 0d; var speedLimitEnergy = 0d; var maxSpeedAfterLimit = 0d; var bfgsUpdates = 0d;
+                    var whaleActiveSubsteps = 0d; var whaleShapeWork = 0d; var whaleMaxNetFx = 0d; var whaleMaxNetFy = 0d;
+                    var whaleMaxTorque = 0d; var whaleMaxPointTraction = 0d; var whaleMaxAbsGain = 0d; var whaleFinalGain = 0d;
                     for (var i = 0; i < phase.Frames; i++)
                     {
                         phaseTick = i;
@@ -60,6 +66,21 @@ public static class LabBeltGuardExperiments
                             InputActive: phase.Horizontal != 0 || phase.Down != 0 || phase.Up != 0 || phase.Drag || phase.Jump && i == 0));
                         var elapsed = Stopwatch.GetElapsedTime(started).TotalMilliseconds; timings.Add(elapsed);
                         var frame = world.Read(); var guard = world.ReadShapeGuard(); ticks++;
+                        var whale = world.ReadWhaleDrive();
+                        if (whale.Length != 16 || whale.Any(x => !double.IsFinite(x)))
+                            throw new InvalidOperationException("Whale drive diagnostics must contain 16 finite values.");
+                        if (whale[1] != 1 || whale[2] != ticks)
+                            throw new InvalidOperationException("Whale drive was not enabled in the same attempted frame.");
+                        if (Math.Abs(whale[5]) > 1e-9 || Math.Abs(whale[6]) > 1e-9 || Math.Abs(whale[7]) > 1e-9)
+                            throw new InvalidOperationException("Whale shape force left a nonzero net force or torque residual.");
+                        if (new[] { whale[3], whale[12], whale[13] }.Any(x => x < -1 || x > 1))
+                            throw new InvalidOperationException("Whale signed gain escaped [-1,1].");
+                        if ((phase.Name is "S" or "S-release" or "W" or "W-release" or "Space" or "drag-compress" or "drag-release") && whale[4] != 0)
+                            throw new InvalidOperationException("Whale force activated during a W/S, Space, or drag phase.");
+                        whaleActiveSubsteps += whale[4]; whaleShapeWork += whale[8];
+                        whaleMaxNetFx = Math.Max(whaleMaxNetFx, whale[5]); whaleMaxNetFy = Math.Max(whaleMaxNetFy, whale[6]);
+                        whaleMaxTorque = Math.Max(whaleMaxTorque, whale[7]); whaleMaxPointTraction = Math.Max(whaleMaxPointTraction, whale[9]);
+                        whaleMaxAbsGain = Math.Max(whaleMaxAbsGain, Math.Abs(whale[3])); whaleFinalGain = whale[3];
                         var solver = world.SolverDiagnosticsAvailable ? world.ReadSolverDiagnostics() : null;
                         var speedLimit = world.ReadSpeedLimit();
                         if (speedLimit[0] != 1 || speedLimit[1] != 1 || speedLimit[2] != ticks || speedLimit[6] > config.MaximumSpeed || speedLimit[7] > 1e-10)
@@ -86,14 +107,20 @@ public static class LabBeltGuardExperiments
                         maxWork = Math.Max(maxWork, guard[4]); maxFallbacks = Math.Max(maxFallbacks, guard[18]); maxRefusals = Math.Max(maxRefusals, guard[8]);
                         maxGap = Math.Max(maxGap, frame.Gap); acceptedJump |= frame.JumpAccepted;
                         airborne = frame.Gap > 1e-4 ? airborne + 1 : 0; longestAir = Math.Max(longestAir, airborne);
+                        var (frontThickness, rearThickness) = BodyThickness(frame.Curve, phase.Horizontal);
                         var sample = new Sample(frame.Height, frame.Width, frame.CoreY, frame.ComY, frame.Stats[43] / frame.TotalMass,
-                            clearance, guard[12], guard[11], elapsed); samples.Add(sample);
+                            clearance, guard[12], guard[11], elapsed, whale[3], whale[4], whale[5], whale[6], whale[7], whale[8], whale[9],
+                            frontThickness, rearThickness); samples.Add(sample);
                         if (i % 30 == 0) trace.WriteLine(JsonSerializer.Serialize(new { Tick = ticks, Phase = phase.Name, Sample = sample, Guard = guard }));
                     }
                     var tail = samples.TakeLast(Math.Min(60, samples.Count)).ToArray(); var height = tail.Average(x => x.Height);
                     var width = tail.Average(x => x.Width);
                     if (phase.Name == "rest") { restHeight = height; restWidth = width; }
                     var recoveryHeightError = height / restHeight - 1; var recoveryWidthError = width / restWidth - 1;
+                    if (phase.Name is ("right" or "left") && whaleActiveSubsteps <= 0)
+                        gates.Add(phase.Name + ": whale drive had no active substeps");
+                    if (phase.Name is ("stop-right" or "stop-left") && Math.Abs(whaleFinalGain) >= 1e-9)
+                        gates.Add(phase.Name + ": signed gain did not return to zero at the final frame");
                     if (phase.Name.EndsWith("release", StringComparison.Ordinal) &&
                         (Math.Abs(recoveryHeightError) > .02 || Math.Abs(recoveryWidthError) > .02))
                         gates.Add(phase.Name + ": tail height/width did not return within 2% of own rest");
@@ -101,6 +128,14 @@ public static class LabBeltGuardExperiments
                         gates.Add(phase.Name + ": true COM not stopped after three seconds");
                     if (phase.Jump && (!acceptedJump || longestAir < 3)) gates.Add("Space: no accepted true airborne jump");
                     measurements.Add(new { phase.Name, phase.Frames, TailHeight = height, TailWidth = width,
+                        WhaleShapeNetFxPeak = whaleMaxNetFx, WhaleShapeNetFyPeak = whaleMaxNetFy, WhaleShapeTorquePeak = whaleMaxTorque,
+                        WhaleActiveSubsteps = whaleActiveSubsteps, WhaleShapeEndpointWork = whaleShapeWork,
+                        WhaleSignedGainPeakAbsolute = whaleMaxAbsGain, WhaleSignedGainFinal = whaleFinalGain,
+                        WhalePointTractionPeak = whaleMaxPointTraction,
+                        TailFrontThickness = tail.All(x => x.FrontThickness.HasValue) ? tail.Average(x => x.FrontThickness!.Value) : (double?)null,
+                        TailRearThickness = tail.All(x => x.RearThickness.HasValue) ? tail.Average(x => x.RearThickness!.Value) : (double?)null,
+                        TailFrontRearThicknessDifferenceOverHeight = tail.All(x => x.FrontThickness.HasValue && x.RearThickness.HasValue)
+                            ? (tail.Average(x => x.FrontThickness!.Value) - tail.Average(x => x.RearThickness!.Value)) / height : (double?)null,
                         RecoveryHeightRelativeError = recoveryHeightError, RecoveryWidthRelativeError = recoveryWidthError,
                         TailHeightRms = Math.Sqrt(tail.Average(x => Math.Pow(x.Height - height, 2))), TailCoreY = tail.Average(x => x.CoreY),
                         TailComY = tail.Average(x => x.ComY), TailAbsoluteComVelocity = tail.Average(x => Math.Abs(x.ComVx)), FinalComVelocity = tail[^1].ComVx,
@@ -132,7 +167,9 @@ public static class LabBeltGuardExperiments
             File.WriteAllText(Path.Combine(output, "guard-eight-corner-results.json"), JsonSerializer.Serialize(new { Kind = "guard-eight-material-corners",
                 NativeSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(guardedModule))), FixedDt = Dt, Substeps = 4,
                 ExpectedCases = 8, AttemptedCases = results.Count, CompletedCases = completedCases, Passed = allPassed && completedCases == 8, GuardSchema = LabBeltWorld.ShapeGuardSchema,
-                Scope = "exactly 80/120 x 0/100 x 0/100; no intermediate materials; F, short bones, whole-body Space, explicit speed saturation; no appearance or OS input",
+                Scope = "exactly 80/120 x 0/100 x 0/100; no intermediate materials; F, short bones, whole-body Space, explicit speed saturation; force-only whale drive enabled with no periodic gait; no appearance or OS input",
+                WhaleDriveSchema = LabBeltWorld.WhaleDriveSchema,
+                WhaleShapeEndpointWorkNote = "Per-phase sum of diagnostic shapeEndpointWork; this is a subset of total external work and is not added to the energy ledger again.",
                 Geometry = "native continuous interval/path certificate plus independent sampled polygon core and crossing screening",
                 Performance = "wall-clock duration around each native Step only, excludes reads, output, independent screening and WPF; not a hard realtime guarantee",
                 RecoveryGate = "last 60 frames of each S/W/drag release: height and width each within 2% of own initial rest tail; separate from manual softness acceptance",
@@ -153,6 +190,27 @@ public static class LabBeltGuardExperiments
             distance = Math.Min(distance, Math.Sqrt(Math.Pow(f.CoreX - ax - t * dx, 2) + Math.Pow(f.CoreY - ay - t * dy, 2)));
         }
         return (inside, distance);
+    }
+
+    private static (double? Front, double? Rear) BodyThickness(float[] points, double direction)
+    {
+        if (direction == 0) return (null, null);
+        var minX = double.PositiveInfinity; var maxX = double.NegativeInfinity;
+        for (var i = 0; i < 256; i++) { minX = Math.Min(minX, points[2 * i]); maxX = Math.Max(maxX, points[2 * i]); }
+        var midX = (minX + maxX) * .5; var halfWidth = (maxX - minX) * .5;
+        static double? ThicknessAt(float[] curve, double x)
+        {
+            var ys = new List<double>(8);
+            for (var i = 0; i < 256; i++)
+            {
+                var j = (i + 1) % 256; var ax = (double)curve[2 * i]; var ay = (double)curve[2 * i + 1];
+                var bx = (double)curve[2 * j]; var by = (double)curve[2 * j + 1];
+                if ((ax <= x && bx > x) || (bx <= x && ax > x)) ys.Add(ay + (by - ay) * ((x - ax) / (bx - ax)));
+            }
+            return ys.Count < 2 ? null : ys.Max() - ys.Min();
+        }
+        var left = ThicknessAt(points, midX - .5 * halfWidth); var right = ThicknessAt(points, midX + .5 * halfWidth);
+        return direction > 0 ? (right, left) : (left, right);
     }
 
     private static bool HasCrossing(float[] points)

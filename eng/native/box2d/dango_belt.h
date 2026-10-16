@@ -49,12 +49,21 @@ DANGO_BELT_API int dango_belt_read_shape_guard(void*,float*,int);
    11 reserved zero. Rejected-attempt telemetry survives physical rollback. */
 DANGO_BELT_API int dango_belt_set_speed_saturation(void*,int);
 DANGO_BELT_API int dango_belt_read_speed_limit(void*,double*,int);
+/* Optional pre-first-successful-step traction; requires shape guard. Default off.
+   Whale16: 0 schema1,1 enabled,2 attempt,3 signedGain,4 activeSubsteps,
+   5..7 maxAbs netFx/netFy/torque residual,8 shapeEndpointWork (subset of
+   original external work, never added twice),9 maxPointTraction,
+   10 maxGeneralizedForce,11 final suppressionBits (air1,drag2,jump4,
+   W/S/residualRamp8,cancel16),12 gainBefore,13 gainAfter,14 guardWorkPeak,
+   15 reserved0. Entire frame rolls back on failure except attempt[2]. */
+DANGO_BELT_API int dango_belt_set_whale_drive(void*,int);
+DANGO_BELT_API int dango_belt_read_whale_drive(void*,double*,int);
 /* Lab-only read-only reproducibility data; no public restore/mutation API.
    Snapshot200: 0 schema1,1 count200,2..37 q36,38..73 v36,
    74 radius,75 scale,76 left,77 right,78 ramp,79 cooldown,80 dragTheta,
    81 shortBones,82 grounded,83 dragging,84 originalJump,85 hasStepped,86 guard,
    87..127 config41 in struct order,128..138 calibration11,139 guardAttemptTick,
-   140..175 mass36,176 speedSaturationEnabled,177..199 reserved zero.
+   140..175 mass36,176 speedSaturationEnabled,177 whaleDriveEnabled,178 whaleSignedGain,179..199 reserved zero.
    JSON doubles preserve binary64.
    Solver24: 0 schema1,1 attemptTick,2 return,3 returnSite,4 substep,5 GNiteration,
    6 lineSearch,7 residual,8 objective,9 directional,10 trialObjective,11 factor,
@@ -68,7 +77,7 @@ DANGO_BELT_API int dango_belt_read_speed_limit(void*,double*,int);
    8 ground work budget,9 rigid ground fallback guard,10 ground penetration,
    11 contact residual,12 contact energy,13 speed,14 bounds,15 final residual,
    16 area,17 stats finite,18 energy diagnostics finite,19 initial guard,
-   20 region force,21 speed saturation nonfinite/unresolved,
+   20 region force,21 speed saturation nonfinite/unresolved,22 whale traction domain,
    31 initial derivative,32 initial radial length,33 initial short edge,
    34 initial area,35 initial barrier material domain.
    Solver diagnostics retain the rejected attempt. */

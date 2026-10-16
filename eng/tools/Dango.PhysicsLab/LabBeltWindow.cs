@@ -26,6 +26,7 @@ internal sealed class LabBeltWindow : Window
     private readonly Stopwatch clock = Stopwatch.StartNew();
     private readonly ComboBox model = new();
     private readonly CheckBox shortBones = new() { Content = "保留短骨架塑形（不碰撞）", IsChecked = true };
+    private readonly CheckBox whaleDrive = new() { Content = "鲸形行走（仅改变受力）", IsChecked = true };
     private readonly CheckBox showSkeleton = new() { Content = "骨架、质心与合力位置", IsChecked = true };
     private readonly CheckBox showReference = new() { Content = "叠加原版静置轮廓", IsChecked = true };
     private readonly CheckBox showAppearance = new() { Content = "正式眼睛与已佩戴配饰", IsChecked = true };
@@ -55,7 +56,7 @@ internal sealed class LabBeltWindow : Window
     private LabBeltCalibrationParameters? activeCalibration;
     private string activePreset = "";
     private float[]? guardDiagnostics;
-    private double[]? speedLimitDiagnostics;
+    private double[]? speedLimitDiagnostics, whaleDriveDiagnostics;
     private string? failureReason;
     private double[]? preStepSnapshot, solverFailureDetails;
     private LabBeltInput? actualBeltInput;
@@ -75,7 +76,7 @@ internal sealed class LabBeltWindow : Window
         size.Value = 80; softness.Value = 100; build.Value = 0;
         appearance = new PhysicsLabAppearancePresenter(appearanceSettingsPath);
         showSkeleton.IsChecked = false; showReference.IsChecked = false;
-        Title = "团子 · 拖压稳定性修复（二） · 步态关闭";
+        Title = "团子 · 鲸形行走受力实验 · 无周期摆动";
         Width = Math.Min(1220, SystemParameters.WorkArea.Width - 32);
         Height = Math.Min(850, SystemParameters.WorkArea.Height - 32); MinWidth = 940; MinHeight = 660;
         Background = new SolidColorBrush(Color.FromRgb(253, 252, 249)); Foreground = LabWindow.Ink;
@@ -88,7 +89,7 @@ internal sealed class LabBeltWindow : Window
         var heading = new StackPanel { Margin = new Thickness(0, 0, 0, 14) };
         heading.Children.Add(new TextBlock { Text = "连续闭合带实验", FontSize = 21, Margin = new Thickness(0, 0, 0, 6) });
         heading.Children.Add(new TextBlock { Text = "A / D 左右半区   W / S 上半区向上／向下   Space 跳跃   鼠标拖动", Foreground = LabWindow.Accent });
-        heading.Children.Add(new TextBlock { Text = "正式眼睛与配饰 · 原始物理显示 · 步态关闭 · 外观仅用于实验，不写回日常设置", FontSize = 12, Margin = new Thickness(0, 5, 0, 0) });
+        heading.Children.Add(new TextBlock { Text = "正式眼睛与配饰 · 原始物理显示 · 无周期摆动 · 外观仅用于实验，不写回日常设置", FontSize = 12, Margin = new Thickness(0, 5, 0, 0) });
         DockPanel.SetDock(heading, Dock.Top); root.Children.Add(heading);
         var grid = new Grid(); grid.ColumnDefinitions.Add(new() { Width = new GridLength(280) });
         grid.ColumnDefinitions.Add(new() { Width = new GridLength(18) }); grid.ColumnDefinitions.Add(new());
@@ -103,8 +104,8 @@ internal sealed class LabBeltWindow : Window
         Label(tools, "身体参数对照");
         model.Items.Add("当前身体 · F 基础＋形状保护");
         model.Items.Add("旧对照 · 原外围半侧驱动"); model.Items.Add("旧对照 · 闭合带校正前"); model.SelectedIndex = 0;
-        tools.Children.Add(model); tools.Children.Add(shortBones);
-        tools.Children.Add(new TextBlock { Text = "新圈整体承重；16 个附着点只负责塑形。更改模型或材料后点击应用。", FontSize = 12, TextWrapping = TextWrapping.Wrap });
+        tools.Children.Add(model); tools.Children.Add(shortBones); tools.Children.Add(whaleDrive);
+        tools.Children.Add(new TextBlock { Text = "新圈整体承重。取消鲸形行走可对照原推动；更改模型、材料或行走开关后点击应用。", FontSize = 12, TextWrapping = TextWrapping.Wrap });
         model.DropDownOpened += (_, _) => Cancel(); model.DropDownClosed += (_, _) => input.ReconcileHeld(HeldKeys());
         Label(tools, "材料"); AddSlider(tools, "大小", size); AddSlider(tools, "柔软度", softness); AddSlider(tools, "落地体态", build);
         Label(tools, "观察"); showAppearance.Content = "正式眼睛与测试配饰"; tools.Children.Add(showAppearance); tools.Children.Add(appearanceStatus); tools.Children.Add(showSkeleton); tools.Children.Add(showReference);
@@ -143,7 +144,10 @@ internal sealed class LabBeltWindow : Window
         Refresh(); slider.ValueChanged += (_, _) => Refresh(); p.Children.Add(label); p.Children.Add(slider);
     }
     private void WriteStarted() => File.WriteAllText(Path.Combine(session, "started.json"), JsonSerializer.Serialize(new
-    { pid = Environment.ProcessId, visible = IsVisible, nativeLoaded = belt is not null || old is not null, model = ActiveBelt ? "continuous-belt" : "old-half", preset = activePreset, calibration = activeCalibration, originalGroundJump = belt?.OriginalGroundJumpEnabled, shapeGuard = GuardState(), speedLimit = SpeedLimitState(), failureReason, shortBones = beltFrame?.Stats[40] == 1, displaySmoothing = false, gait = false, formalAppearance = true, equippedCount = appearance.EquippedCount, renderedAccessories = appearance.RenderedAccessoryCount, error = fault }));
+    { pid = Environment.ProcessId, visible = IsVisible, nativeLoaded = belt is not null || old is not null, model = ActiveBelt ? "continuous-belt" : "old-half", preset = activePreset, calibration = activeCalibration, originalGroundJump = belt?.OriginalGroundJumpEnabled, shapeGuard = GuardState(), speedLimit = SpeedLimitState(), whaleDrive = WhaleDriveState(), failureReason, shortBones = beltFrame?.Stats[40] == 1, displaySmoothing = false, gait = false, formalAppearance = true, equippedCount = appearance.EquippedCount, renderedAccessories = appearance.RenderedAccessoryCount, error = fault }));
+
+    private object WhaleDriveState() => new { available = belt?.WhaleDriveAvailable ?? false, enabled = belt?.WhaleDriveEnabled ?? false,
+        requested = model.SelectedIndex == 0 && whaleDrive.IsChecked == true, schema = LabBeltWorld.WhaleDriveSchema, diagnostics = whaleDriveDiagnostics };
 
     private object SpeedLimitState() => new { available = belt?.SpeedSaturationAvailable ?? false, enabled = belt?.SpeedSaturationEnabled ?? false, requested = model.SelectedIndex == 0, maximumSpeed = config.MaximumSpeed, schema = LabBeltWorld.SpeedLimitSchema, diagnostics = speedLimitDiagnostics };
 
@@ -153,7 +157,7 @@ internal sealed class LabBeltWindow : Window
     {
         if (!initialized) return;
         Cancel(); belt?.Dispose(); old?.Dispose(); belt = null; old = null; beltFrame = null; oldFrame = null; reference = null;
-        fault = paused = false; failureReason = null; guardDiagnostics = null; speedLimitDiagnostics = null; preStepSnapshot = solverFailureDetails = null; actualBeltInput = null; actualBeltDt = null; preStepTick = null; cameraX = accumulator = 0; steps = 0; trace.Clear();
+        fault = paused = false; failureReason = null; guardDiagnostics = null; speedLimitDiagnostics = whaleDriveDiagnostics = null; preStepSnapshot = solverFailureDetails = null; actualBeltInput = null; actualBeltDt = null; preStepTick = null; cameraX = accumulator = 0; steps = 0; trace.Clear();
         appearance.Paused = false; appearance.Reset();
         try
         {
@@ -169,18 +173,20 @@ internal sealed class LabBeltWindow : Window
                 }
             }
             activePreset = model.SelectedItem?.ToString() ?? "";
-            Title = "团子 · " + activePreset + (model.SelectedIndex == 0 ? " · 拖压稳定性修复（二）" : " · 身体参数校准");
+            Title = "团子 · " + activePreset + (model.SelectedIndex == 0 ? whaleDrive.IsChecked == true ? " · 鲸形行走受力实验" : " · 原推动对照" : " · 身体参数校准");
             activeCalibration = model.SelectedIndex == 0
                 ? LabBeltCalibrationParameters.Default with { RadialStiffnessScale = 1.4, AreaScale = 1.4, BeltBendScale = 4, OverallDamping = config.OverallDamping, GroundedBrake = 35, GroundedHorizontalDamping = 60 }
                 : null;
             var selectedModule = model.SelectedIndex == 0 ? calibratedModule : model.SelectedIndex == 1 ? halfModule : beltModule;
             if (model.SelectedIndex != 1)
             {
-                belt = new LabBeltWorld(selectedModule, config, shortBones.IsChecked == true, activeCalibration, enableShapeGuard: model.SelectedIndex == 0, enableSpeedSaturation: model.SelectedIndex == 0);
+                belt = new LabBeltWorld(selectedModule, config, shortBones.IsChecked == true, activeCalibration, enableShapeGuard: model.SelectedIndex == 0, enableSpeedSaturation: model.SelectedIndex == 0,
+                    enableWhaleDrive: model.SelectedIndex == 0 && whaleDrive.IsChecked == true);
                 if (activeCalibration is not null) belt.SetOriginalGroundJump();
                 belt.SetBounds(-256, 256); beltFrame = belt.Read();
                 if (belt.ShapeGuardEnabled) guardDiagnostics = belt.ReadShapeGuard();
                 if (belt.SpeedSaturationEnabled) speedLimitDiagnostics = belt.ReadSpeedLimit();
+                if (belt.WhaleDriveAvailable) whaleDriveDiagnostics = belt.ReadWhaleDrive();
             }
             else
             {
@@ -188,10 +194,10 @@ internal sealed class LabBeltWindow : Window
                 if (old.LabRegionDenominator != 2) throw new InvalidOperationException("原版模块不是半区驱动");
                 oldId = old.Add(0, 0); old.SetHorizontalBounds(-256, 256);
             }
-            status.Text = activeCalibration is not null ? "F 基础与形状保护已应用。大小、柔软度、落地体态由三个滑条控制；待人工观感验收。" :
+            status.Text = activeCalibration is not null ? belt!.WhaleDriveEnabled ? "鲸形行走已启用。A/D观察前后轮廓，松手恢复；无周期摆动。" : "原推动对照，F身体、形状保护与限速保持开启。" :
                 ActiveBelt ? "旧对照：校正前闭合带，旧跳跃接线。" : "旧对照：原外围半区驱动。";
             File.AppendAllText(Path.Combine(session, "body-presets.jsonl"), JsonSerializer.Serialize(new
-            { preset = activePreset, config, calibration = activeCalibration, originalGroundJump = belt?.OriginalGroundJumpEnabled, shapeGuard = GuardState(), speedLimit = SpeedLimitState(),
+            { preset = activePreset, config, calibration = activeCalibration, originalGroundJump = belt?.OriginalGroundJumpEnabled, shapeGuard = GuardState(), speedLimit = SpeedLimitState(), whaleDrive = WhaleDriveState(),
                 nativeSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(selectedModule))) }) + Environment.NewLine);
             StepOnce(); WriteStarted();
         }
@@ -231,6 +237,10 @@ internal sealed class LabBeltWindow : Window
                 beltFrame = belt.Read(); var s = beltFrame.Stats;
                 guardDiagnostics = belt.ShapeGuardEnabled ? belt.ReadShapeGuard() : null;
                 speedLimitDiagnostics = belt.SpeedSaturationEnabled ? belt.ReadSpeedLimit() : null;
+                whaleDriveDiagnostics = belt.WhaleDriveAvailable ? belt.ReadWhaleDrive() : null;
+                if (belt.WhaleDriveEnabled && (whaleDriveDiagnostics is not { } whale || whale[1] != 1 || whale[2] != steps + 1 ||
+                    whale[5] > 1e-9 || whale[6] > 1e-9 || whale[7] > 1e-9))
+                    throw new InvalidOperationException("行走受力同帧、净力或力矩诊断失败");
                 if (speedLimitDiagnostics is { } cap && (cap[1] != 1 || cap[2] != steps + 1 || cap[6] > config.MaximumSpeed))
                     throw new InvalidOperationException("限速同帧或安全速度上限诊断失败");
                 if (guardDiagnostics is { } g && (g[0] != 1 || g[1] != 1 || g[2] != steps + 1 || g[3] != 0 ||
@@ -238,8 +248,8 @@ internal sealed class LabBeltWindow : Window
                     throw new InvalidOperationException("形状保护同帧、核心在内或硬边界诊断失败");
                 if (s[36] != 0 || s[31] > .0001 || s[39] != 0) throw new InvalidOperationException("闭合带本帧安全诊断失败");
                 trace.Enqueue(new { tick = steps, model = "belt", stats = s,
-                    diagnostics = activeCalibration is null ? null : belt.ReadDiagnostics(), shapeGuard = guardDiagnostics, speedLimit = speedLimitDiagnostics });
-                if (steps % 6 == 0) details.Text = FormattableString.Invariant($"高 {(s[11] - s[9]) * 72:0.00} DIP / 宽 {(s[10] - s[8]) * 72:0.00} DIP\n真实质心Y {s[5]:0.0000} / 核心Y {s[1]:0.0000}\n接触 {s[25]:0} / 间隙 {s[12] * 72:0.00000} DIP\n合力 ({s[18]:0.000}, {s[19]:0.000})\nKKT残差 {s[30]:0.0e+0} / 36自由度\n独立外围碰撞体 {s[39]:0} / 帧 {steps}") + GuardSummary() + (belt.SpeedSaturationEnabled ? "\n限速：已启用，真实超速后限速继续运行" : "\n限速：旧对照未启用");
+                    diagnostics = activeCalibration is null ? null : belt.ReadDiagnostics(), shapeGuard = guardDiagnostics, speedLimit = speedLimitDiagnostics, whaleDrive = whaleDriveDiagnostics });
+                if (steps % 6 == 0) details.Text = FormattableString.Invariant($"高 {(s[11] - s[9]) * 72:0.00} DIP / 宽 {(s[10] - s[8]) * 72:0.00} DIP\n真实质心Y {s[5]:0.0000} / 核心Y {s[1]:0.0000}\n接触 {s[25]:0} / 间隙 {s[12] * 72:0.00000} DIP\n合力 ({s[18]:0.000}, {s[19]:0.000})\nKKT残差 {s[30]:0.0e+0} / 36自由度\n独立外围碰撞体 {s[39]:0} / 帧 {steps}") + GuardSummary() + (belt.SpeedSaturationEnabled ? "\n限速：已启用，真实超速后限速继续运行" : "\n限速：旧对照未启用") + (belt.WhaleDriveEnabled ? FormattableString.Invariant($"\n行走受力强度 {whaleDriveDiagnostics?[3]:0.00} · 无周期摆动") : "\n行走受力：原推动");
             }
             else if (old is not null)
             {
@@ -295,7 +305,7 @@ internal sealed class LabBeltWindow : Window
     }
     private object StepEvidence() => new
     {
-        speedLimit = SpeedLimitState(),
+        speedLimit = SpeedLimitState(), whaleDrive = WhaleDriveState(),
         tick = preStepTick, dt = actualBeltDt, nativeDt = actualBeltDt is { } dt ? (float?)dt : null,
         actualInput = actualBeltInput,
         nativeControls = actualBeltInput is { } nativeInput ? LabBeltWorld.NativeControls(nativeInput) : null,
@@ -319,6 +329,11 @@ internal sealed class LabBeltWindow : Window
             try { speedLimitDiagnostics = belt.ReadSpeedLimit(); }
             catch (Exception diagnosticError) { failureReason += "；读取限速诊断失败：" + diagnosticError.Message; }
         }
+        if (belt?.WhaleDriveAvailable == true)
+        {
+            try { whaleDriveDiagnostics = belt.ReadWhaleDrive(); }
+            catch (Exception diagnosticError) { failureReason += "；读取行走受力诊断失败：" + diagnosticError.Message; }
+        }
         if (belt?.SolverDiagnosticsAvailable == true)
         {
             try { solverFailureDetails = belt.ReadSolverDiagnostics(); }
@@ -331,6 +346,7 @@ internal sealed class LabBeltWindow : Window
             7 or 8 => "形状计算超过本帧预算",
             6 or 9 or 19 => "本次变形无法通过形状安全检查",
             21 => "本次速度无法安全限制在上限内",
+            22 => "行走局部受力计算失败",
             31 or 32 or 33 or 34 or 35 => "身体几何不满足材料计算条件",
             _ => null,
         } : null;
@@ -340,7 +356,7 @@ internal sealed class LabBeltWindow : Window
         if (File.Exists(failurePath)) failurePath = Path.Combine(session, $"physics-failure-{DateTime.UtcNow:HHmmss-fff}-{Guid.NewGuid():N}.json");
         using var failureFile = new FileStream(failurePath, FileMode.CreateNew, FileAccess.Write);
         JsonSerializer.Serialize(failureFile, new
-        { steps, error = e.ToString(), config, activePreset, activeCalibration, shapeGuard = GuardState(), speedLimit = SpeedLimitState(), stepEvidence = StepEvidence(), lastInput, beltFrame, oldFrame, trace = trace.ToArray(), discardedSeconds }, EvidenceJson);
+        { steps, error = e.ToString(), config, activePreset, activeCalibration, shapeGuard = GuardState(), speedLimit = SpeedLimitState(), whaleDrive = WhaleDriveState(), stepEvidence = StepEvidence(), lastInput, beltFrame, oldFrame, trace = trace.ToArray(), discardedSeconds }, EvidenceJson);
     }
     private void Cancel()
     {
@@ -350,7 +366,7 @@ internal sealed class LabBeltWindow : Window
     private void Export()
     {
         Cancel(); File.WriteAllText(Path.Combine(session, $"belt-trace-{DateTime.UtcNow:HHmmss-fff}.json"), JsonSerializer.Serialize(new
-        { model = ActiveBelt ? "continuous-belt" : "old-half", preset = activePreset, calibration = activeCalibration, config, fixedDt = LabWindow.FixedDt, displaySmoothing = false, gait = false, discardedSeconds, shapeGuard = GuardState(), speedLimit = SpeedLimitState(), failureReason, stepEvidence = StepEvidence(), trace = trace.ToArray() }, EvidenceJson));
+        { model = ActiveBelt ? "continuous-belt" : "old-half", preset = activePreset, calibration = activeCalibration, config, fixedDt = LabWindow.FixedDt, displaySmoothing = false, gait = false, discardedSeconds, shapeGuard = GuardState(), speedLimit = SpeedLimitState(), whaleDrive = WhaleDriveState(), failureReason, stepEvidence = StepEvidence(), trace = trace.ToArray() }, EvidenceJson));
         status.Text = fault ? "已导出失败记录。" + failureReason + " 点击应用并重置可恢复。" : $"已导出 {trace.Count} 帧物理诊断。";
     }
     private bool Blocked() => IsText(Keyboard.FocusedElement as DependencyObject) || dragging || Mouse.Captured is not null || model.IsDropDownOpen;
@@ -394,16 +410,31 @@ internal sealed class LabBeltWindow : Window
     internal async Task Smoke()
     {
         var checks = new List<string>();
+        var walkingFrames = new List<object>();
         try
         {
             timer.Stop(); Cancel();
-            size.Value = 80; softness.Value = 100; build.Value = 0; model.SelectedIndex = 0; Reset();
+            size.Value = 80; softness.Value = 100; build.Value = 0; model.SelectedIndex = 0; whaleDrive.IsChecked = true; Reset();
             void Check(bool ok, string label) { if (!ok) throw new InvalidOperationException(label); checks.Add(label); }
+            async Task Capture(string name)
+            {
+                sidebarScroll.ScrollToTop(); surface.Refresh();
+                await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle); UpdateLayout();
+                var bitmap = new RenderTargetBitmap((int)ActualWidth, (int)ActualHeight, 96, 96, PixelFormats.Pbgra32); bitmap.Render(this);
+                var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                using var file = File.Create(Path.Combine(session, name + ".png")); encoder.Save(file);
+                walkingFrames.Add(new { name, steps, input = lastInput, frame = beltFrame, whaleDrive = WhaleDriveState(),
+                    appearance = appearance.Status });
+                File.WriteAllText(Path.Combine(session, "walking-review.json"), JsonSerializer.Serialize(new { material = new { size = size.Value, softness = softness.Value, build = build.Value },
+                    scope = "actual physics frames at one of the eight approved corners; no render deformation or manual acceptance", frames = walkingFrames }, new JsonSerializerOptions { WriteIndented = true }));
+            }
             Check(IsLoaded && IsVisible && !fault && ActiveBelt, "真实WPF已显示且连接闭合带DLL");
             Check(belt!.ShapeGuardEnabled && guardDiagnostics is { } g && g[2] == steps && g[13] == 1,
                 "80/100/0形状保护启用且核心在内诊断与身体同帧");
             Check(belt.SpeedSaturationEnabled && speedLimitDiagnostics is { } cap && cap[1] == 1 && cap[2] == steps && cap[6] <= config.MaximumSpeed,
                 "80/100/0限速显式启用且同帧速度上界合法");
+            Check(belt.WhaleDriveEnabled && whaleDriveDiagnostics is { } whale && whale[1] == 1 && whale[2] == steps,
+                "鲸形行走受力显式启用且诊断与身体同帧");
             for (var i = 0; i < 300; i++) StepOnce(); Check(!fault && beltFrame!.Stats[14] == 1, "闭合带落稳接地");
             Check(appearance.EquippedCount == 2 && appearance.RenderedAccessoryCount == 2, "虚构已佩戴前后配饰使用正式柔性网格");
             Check(!appearance.EyeDiagnostic.Contains("等待", StringComparison.Ordinal), "正式眼睛布局已消费真实身体帧");
@@ -428,15 +459,40 @@ internal sealed class LabBeltWindow : Window
             Inject(Key.D, true, ApplyButton); StepOnce(); Check(lastInput.Horizontal == 0, "取消后按住的键不补发"); Inject(Key.D, false, ApplyButton);
             model.SelectedIndex = 1; Reset(); for (var i = 0; i < 300; i++) StepOnce(); Check(!fault && !ActiveBelt && oldFrame!.IsGrounded, "原外围半区对照真实落地");
             model.SelectedIndex = 0;
-            Reset(); for (var i = 0; i < 300; i++) StepOnce(); Check(!fault && appearance.RenderedAccessoryCount == 2, "最终落稳和正式配饰恢复无故障"); sidebarScroll.ScrollToTop(); surface.Refresh();
-            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle); UpdateLayout();
-            var bitmap = new RenderTargetBitmap((int)ActualWidth, (int)ActualHeight, 96, 96, PixelFormats.Pbgra32); bitmap.Render(this);
-            var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap)); using (var file = File.Create(Path.Combine(session, "window.png"))) encoder.Save(file);
-            File.WriteAllText(Path.Combine(session, "wpf-smoke.json"), JsonSerializer.Serialize(new { passed = true, material = new { size = size.Value, softness = softness.Value, build = build.Value }, shapeGuard = GuardState(), speedLimit = SpeedLimitState(), checks, method = "shown WPF routed events; not OS keyboard automation", manualAcceptance = false }, new JsonSerializerOptions { WriteIndented = true })); Close();
+            Reset(); for (var i = 0; i < 300; i++) StepOnce(); Check(!fault && appearance.RenderedAccessoryCount == 2, "最终落稳和正式配饰恢复无故障");
+            var restingHeight = beltFrame!.Height; var restingWidth = beltFrame.Width;
+            await Capture("window-rest-before");
+            Inject(Key.D, true, ApplyButton); for (var i = 0; i < 90; i++) StepOnce();
+            Check(!fault && whaleDriveDiagnostics is { } right && right[3] > .99 && right[4] > 0 && appearance.RenderedAccessoryCount == 2,
+                "右行时鲸形受力真实激活并带正式眼睛配饰");
+            await Capture("window-walk-right");
+            Inject(Key.D, false, ApplyButton); Inject(Key.A, true, ApplyButton); for (var i = 0; i < 90; i++) StepOnce();
+            Check(!fault && whaleDriveDiagnostics is { } left && left[3] < -.99 && left[4] > 0,
+                "反向左行时受力方向平滑交换");
+            await Capture("window-walk-left");
+            Inject(Key.A, false, ApplyButton); for (var i = 0; i < 180; i++) StepOnce();
+            Check(!fault && whaleDriveDiagnostics is { } release && Math.Abs(release[3]) < 1e-9 && release[4] == 0 &&
+                Math.Abs(beltFrame!.Height / restingHeight - 1) < .02 && Math.Abs(beltFrame.Width / restingWidth - 1) < .02,
+                "松手后行走受力撤除且高宽恢复至自身静置2%内");
+            await Capture("window-release");
+            whaleDrive.IsChecked = false; Reset(); for (var i = 0; i < 300; i++) StepOnce();
+            Inject(Key.D, false, ApplyButton);
+            Inject(Key.D, true, ApplyButton); var originalDriveApplied = false;
+            for (var i = 0; i < 90; i++) { StepOnce(); originalDriveApplied |= beltFrame!.HorizontalForce > 0; }
+            Check(!fault && !belt!.WhaleDriveEnabled && whaleDriveDiagnostics is { } disabled && disabled[1] == 0 && disabled[4] == 0 &&
+                belt.ShapeGuardEnabled && belt.SpeedSaturationEnabled && originalDriveApplied,
+                "关闭鲸形开关后原推动真实运行且保留F和安全保护");
+            await Capture("window-original-drive-right");
+            Inject(Key.D, false, ApplyButton); whaleDrive.IsChecked = true; Reset(); for (var i = 0; i < 300; i++) StepOnce();
+            Check(!fault && belt!.WhaleDriveEnabled && appearance.RenderedAccessoryCount == 2, "恢复鲸形实验开关与外观无故障");
+            await Capture("window");
+            File.WriteAllText(Path.Combine(session, "walking-review.json"), JsonSerializer.Serialize(new { material = new { size = size.Value, softness = softness.Value, build = build.Value },
+                scope = "actual physics frames at one of the eight approved corners; no render deformation or manual acceptance", frames = walkingFrames }, new JsonSerializerOptions { WriteIndented = true }));
+            File.WriteAllText(Path.Combine(session, "wpf-smoke.json"), JsonSerializer.Serialize(new { passed = true, material = new { size = size.Value, softness = softness.Value, build = build.Value }, shapeGuard = GuardState(), speedLimit = SpeedLimitState(), whaleDrive = WhaleDriveState(), checks, method = "shown WPF routed events; not OS keyboard automation", manualAcceptance = false }, new JsonSerializerOptions { WriteIndented = true })); Close();
         }
         catch (Exception e)
         {
-            File.WriteAllText(Path.Combine(session, "wpf-smoke.json"), JsonSerializer.Serialize(new { passed = false, checks, error = e.ToString(), speedLimit = SpeedLimitState(), stepEvidence = StepEvidence() }, new JsonSerializerOptions { WriteIndented = true })); Application.Current.Shutdown(11);
+            File.WriteAllText(Path.Combine(session, "wpf-smoke.json"), JsonSerializer.Serialize(new { passed = false, checks, error = e.ToString(), speedLimit = SpeedLimitState(), whaleDrive = WhaleDriveState(), stepEvidence = StepEvidence() }, new JsonSerializerOptions { WriteIndented = true })); Application.Current.Shutdown(11);
         }
     }
 
@@ -521,7 +577,7 @@ internal sealed class LabBeltWindow : Window
                 d.DrawEllipse(Brushes.DarkOrange, null, core, 4, 4);
             }
             Text(d, "橙：核心／塑形附着点   蓝：真实质量质心   红：区域合力", 12);
-            Text(d, owner.fault ? "物理失败，已暂停" : owner.replaying ? "同输入回放中" : owner.paused ? "已暂停" : "原始显示 · 步态关闭", 34);
+            Text(d, owner.fault ? "物理失败，已暂停" : owner.replaying ? "同输入回放中" : owner.paused ? "已暂停" : owner.belt?.WhaleDriveEnabled == true ? "行走受力轮廓 · 无周期摆动" : "原始显示 · 原推动对照", 34);
         }
         private sealed class DebugOverlay(Surface surface) : FrameworkElement
         {

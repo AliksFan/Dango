@@ -188,6 +188,38 @@ the first solver candidate, original guard and diagnostic-only builds remain
 available for comparison. Six actual numerical fixtures and bounded follow-on
 drag/release sequences are kept in the private solver regression executable.
 
+### Force-only walking outline
+
+The optional `dango_belt_set_whale_drive(handle,1)` is default-off, requires shape
+protection, and is set before the first successful step. The new lab candidate
+keeps the original half-region horizontal force and adds a small traction field
+on the continuous belt. Materials, collision, q/v and the energy objective are
+not changed to impose a shape. The intended visual result is a mildly fuller,
+raised front and narrower rear while walking, swapping on reversal; this intent
+requires separate visual acceptance.
+
+With current bounding-box normalized coordinates x/y and signed input gain u,
+the current traction is `Fx=0.10*horizontal_force*abs(u)*x` and
+`Fy=horizontal_force*u*(0.64*x*y+0.08*x*x*x)`. A 64-point material-angle integral
+removes mean force and the rigid rotational component before Fourier mapping.
+The added traction has zero net force/torque to numerical precision; it can
+still change ground/friction response. Existing drive speed gating does not
+toggle this shape field: u follows input with bounded 0.15s rise / 0.20s release
+rates. Reversal crosses zero in at most 0.30s. There is no periodic gait phase.
+
+Air, drag, accepted jump, W/S or remaining W ramp suppress traction; cancel also
+clears u immediately. Other suppressed states let u decay without applying it.
+The exact original W/S forces, jump rule and all solver/safety limits remain.
+The field's work is already a subset of the integrator's external work; its new
+Whale16 diagnostic slot 8 is informational and must not be added to the energy
+ledger again. Snapshot slots 177/178 record enablement and signed gain. Rejected
+steps restore that state and Whale16 telemetry, except its attempt counter.
+
+`dango_belt_read_whale_drive(handle,double[16])` and the full schema are in the
+header. The module is built separately in `artifacts/physics-lab/belt-whale-v2-native`;
+the initial smaller-force candidate and accepted robust module remain available. The experiment checkbox takes
+effect on reset and can compare the same F body with original driving forces.
+
 ## ABI and diagnostics
 
 See `dango_belt.h`. Version is 1. All calls return 0 on success; -600 means

@@ -48,14 +48,17 @@ internal sealed class LabBeltWorld : IDisposable
     private readonly OriginalGroundJumpDelegate? originalGroundJump;
     private readonly OriginalGroundJumpDelegate? shapeGuard;
     private readonly DiagnosticsDelegate? shapeGuardDiagnostics;
-    private readonly DoubleDiagnosticsDelegate? debugState, solverDiagnostics, speedLimitDiagnostics;
-    private readonly OriginalGroundJumpDelegate? speedSaturation;
+    private readonly DoubleDiagnosticsDelegate? debugState, solverDiagnostics, speedLimitDiagnostics, whaleDriveDiagnostics;
+    private readonly OriginalGroundJumpDelegate? speedSaturation, whaleDrive;
+    public bool WhaleDriveAvailable => whaleDrive is not null && whaleDriveDiagnostics is not null;
+    public bool WhaleDriveEnabled { get; private set; }
+    public const string WhaleDriveSchema = "v1:16;0=version,1=enabled,2=attemptTick,3=signedGain,4=activeSubsteps,5=maxAbsNetFx,6=maxAbsNetFy,7=maxAbsTorque,8=shapeEndpointWorkSubset,9=maxPointTraction,10=maxGeneralizedForce,11=suppressionBits,12=gainBefore,13=gainAfter,14=guardWorkPeak,15=reserved;suppression:1=air,2=drag,4=jump,8=WSramp,16=cancel";
     public bool SpeedSaturationAvailable => speedSaturation is not null && speedLimitDiagnostics is not null;
     public bool SpeedSaturationEnabled { get; private set; }
     public const string SpeedLimitSchema = "v1:12;0=version,1=enabled,2=attemptTick,3=limitedSubsteps,4=minScale,5=maxBeforeUpper,6=maxAfterUpper,7=deltaKE,8=deltaPx,9=deltaPy,10=deltaL,11=reserved";
-    public const string DebugStateSchema = "v1:200;0=version,1=count,2..37=q36,38..73=v36,74=radius,75=scale,76=left,77=right,78=ramp,79=cooldown,80=dragTheta,81=shortBones,82=grounded,83=dragging,84=originalJump,85=hasStepped,86=shapeGuard,87..127=config41,128..138=calibration11,139=guardAttemptTick,140..175=mass36,176=speedSaturation,177..199=reserved";
+    public const string DebugStateSchema = "v1:200;0=version,1=count,2..37=q36,38..73=v36,74=radius,75=scale,76=left,77=right,78=ramp,79=cooldown,80=dragTheta,81=shortBones,82=grounded,83=dragging,84=originalJump,85=hasStepped,86=shapeGuard,87..127=config41,128..138=calibration11,139=guardAttemptTick,140..175=mass36,176=speedSaturation,177=whaleDrive,178=whaleSignedGain,179..199=reserved";
     public const string SolverDiagnosticsSchema = "v1:24;0=version,1=attemptTick,2=returnCode,3=returnSite,4=substep,5=GNiteration,6=lineSearch,7=residual,8=objective,9=directional,10=trialObjective,11=factor,12=contactResidual,13=penetration,14=speed,15=stage,16=residualValidatedLineSearchStops,17=dampedBfgsUpdates,18=gaussNewtonResets,19=speedCertificateSamples,20=speedCoreOrCurveSampleMaximum,21=speedCertifiedUpper,22=lastRefinementCoarseUpper,23=lastRefinementCertifiedUpper";
-    public const string SolverFailureSites = "1=initialResidual,2=nonfiniteObjective,3=Cholesky,4=ArmijoExhausted,5=GNResidualCap,6=integratedPathGuard,7=NewtonWorkBudget,8=groundWorkBudget,9=groundFallbackGuard,10=groundPenetration,11=contactResidual,12=contactEnergy,13=speed,14=bounds,15=finalResidual,16=area,17=statsNonfinite,18=energyDiagNonfinite,19=initialGuard,20=regionForce,21=speedSaturationUnresolved,31=initialDerivative,32=initialRadialLength,33=initialShortEdge,34=initialArea,35=initialBarrierMaterialDomain;stage:1=forces,2=integration,3=contact,4=speedBounds,5=final";
+    public const string SolverFailureSites = "1=initialResidual,2=nonfiniteObjective,3=Cholesky,4=ArmijoExhausted,5=GNResidualCap,6=integratedPathGuard,7=NewtonWorkBudget,8=groundWorkBudget,9=groundFallbackGuard,10=groundPenetration,11=contactResidual,12=contactEnergy,13=speed,14=bounds,15=finalResidual,16=area,17=statsNonfinite,18=energyDiagNonfinite,19=initialGuard,20=regionForce,21=speedSaturationUnresolved,22=whaleForce,31=initialDerivative,32=initialRadialLength,33=initialShortEdge,34=initialArea,35=initialBarrierMaterialDomain;stage:1=forces,2=integration,3=contact,4=speedBounds,5=final";
     public bool DebugStateAvailable => ShapeGuardEnabled && debugState is not null;
     public bool SolverDiagnosticsAvailable => ShapeGuardEnabled && solverDiagnostics is not null;
     public const string ShapeGuardSchema = "v1:version,enabled,stepAttemptTick,lastStepReturnCode,certificateWork,certificateCalls,maxDepth,certifiedLeaves,refusedCandidates,lastRefusalReason,refusalStage,acceptedCrossLower,acceptedClearanceLower,winding,initialGuardElastic,finalGuardElastic,peakGuardCoreForce,guardEndpointForceWork,groundRigidFallbacks,hardClearance,hardCross,workBudget,acceptedSubsteps,reserved;refusalReason:1=cross,2=clearance,3=budget,4=winding,5=nonfinite,6=solver,7=ground,8=uncertain,9=materialDomain";
@@ -63,7 +66,7 @@ internal sealed class LabBeltWorld : IDisposable
     public bool ShapeGuardEnabled { get; private set; }
     public bool OriginalGroundJumpEnabled { get; private set; }
     public string? CalibrationSchema { get; }
-    public LabBeltWorld(string module,DangoSelfPhysicsParameters config,bool shortBones=true,LabBeltCalibrationParameters? calibration=null,bool enableShapeGuard=false,bool enableSpeedSaturation=false)
+    public LabBeltWorld(string module,DangoSelfPhysicsParameters config,bool shortBones=true,LabBeltCalibrationParameters? calibration=null,bool enableShapeGuard=false,bool enableSpeedSaturation=false,bool enableWhaleDrive=false)
     {
         config.Validate();
         library=NativeLibrary.Load(Path.GetFullPath(module));
@@ -86,6 +89,12 @@ internal sealed class LabBeltWorld : IDisposable
                 speedSaturation=Marshal.GetDelegateForFunctionPointer<OriginalGroundJumpDelegate>(speedAddress);
             if(NativeLibrary.TryGetExport(library,"dango_belt_read_speed_limit",out var speedDiagnosticsAddress))
                 speedLimitDiagnostics=Marshal.GetDelegateForFunctionPointer<DoubleDiagnosticsDelegate>(speedDiagnosticsAddress);
+            if(NativeLibrary.TryGetExport(library,"dango_belt_set_whale_drive",out var whaleAddress))
+                whaleDrive=Marshal.GetDelegateForFunctionPointer<OriginalGroundJumpDelegate>(whaleAddress);
+            if(NativeLibrary.TryGetExport(library,"dango_belt_read_whale_drive",out var whaleDiagnosticsAddress))
+                whaleDriveDiagnostics=Marshal.GetDelegateForFunctionPointer<DoubleDiagnosticsDelegate>(whaleDiagnosticsAddress);
+            if(enableWhaleDrive && !WhaleDriveAvailable)
+                throw new NotSupportedException("此模块缺少行走受力 ABI；请构建本轮鲸形行走实验组件。");
             if(enableSpeedSaturation && !SpeedSaturationAvailable)
                 throw new NotSupportedException("此模块缺少完整限速 ABI；请构建 belt-guard-robust-native 后点击应用并重置。");
             if(enableShapeGuard && !ShapeGuardAvailable)
@@ -115,6 +124,11 @@ internal sealed class LabBeltWorld : IDisposable
             {
                 Check(speedSaturation!(handle,1),"enable speed saturation before first step");
                 SpeedSaturationEnabled=true;
+            }
+            if(enableWhaleDrive)
+            {
+                Check(whaleDrive!(handle,1),"enable whale drive before first step");
+                WhaleDriveEnabled=true;
             }
         }
         catch { if(handle!=0) { destroy?.Invoke(handle); handle=0; } NativeLibrary.Free(library); library=0; throw; }
@@ -169,6 +183,14 @@ internal sealed class LabBeltWorld : IDisposable
         if(!SpeedSaturationAvailable) throw new NotSupportedException("Native belt module does not export the complete speed saturation ABI.");
         var values=ReadDoubleDiagnostics(speedLimitDiagnostics!,12,"read speed limit");
         if(values[0]!=1) throw new NotSupportedException("Unsupported belt speed limit schema.");
+        return values;
+    }
+    public double[] ReadWhaleDrive()
+    {
+        VerifyAccess();
+        if(!WhaleDriveAvailable) throw new NotSupportedException("Native belt module does not export the complete whale drive ABI.");
+        var values=ReadDoubleDiagnostics(whaleDriveDiagnostics!,16,"read whale drive");
+        if(values[0]!=1) throw new NotSupportedException("Unsupported whale drive diagnostic schema.");
         return values;
     }
     public double[] ReadDebugState()
