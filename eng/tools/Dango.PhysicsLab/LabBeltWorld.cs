@@ -46,9 +46,14 @@ internal sealed class LabBeltWorld : IDisposable
     private readonly DestroyDelegate destroy;
     private readonly DiagnosticsDelegate? diagnostics;
     private readonly OriginalGroundJumpDelegate? originalGroundJump;
+    private readonly OriginalGroundJumpDelegate? shapeGuard;
+    private readonly DiagnosticsDelegate? shapeGuardDiagnostics;
+    public const string ShapeGuardSchema = "v1:version,enabled,stepAttemptTick,lastStepReturnCode,certificateWork,certificateCalls,maxDepth,certifiedLeaves,refusedCandidates,lastRefusalReason,refusalStage,acceptedCrossLower,acceptedClearanceLower,winding,initialGuardElastic,finalGuardElastic,peakGuardCoreForce,guardEndpointForceWork,groundRigidFallbacks,hardClearance,hardCross,workBudget,acceptedSubsteps,reserved";
+    public bool ShapeGuardAvailable => shapeGuard is not null && shapeGuardDiagnostics is not null;
+    public bool ShapeGuardEnabled { get; private set; }
     public bool OriginalGroundJumpEnabled { get; private set; }
     public string? CalibrationSchema { get; }
-    public LabBeltWorld(string module,DangoSelfPhysicsParameters config,bool shortBones=true,LabBeltCalibrationParameters? calibration=null)
+    public LabBeltWorld(string module,DangoSelfPhysicsParameters config,bool shortBones=true,LabBeltCalibrationParameters? calibration=null,bool enableShapeGuard=false)
     {
         config.Validate();
         library=NativeLibrary.Load(Path.GetFullPath(module));
@@ -59,6 +64,12 @@ internal sealed class LabBeltWorld : IDisposable
             bounds=Export<BoundsDelegate>("dango_belt_set_bounds"); destroy=Export<DestroyDelegate>("dango_belt_destroy");
             if(NativeLibrary.TryGetExport(library,"dango_belt_set_original_ground_jump",out var originalJumpAddress))
                 originalGroundJump=Marshal.GetDelegateForFunctionPointer<OriginalGroundJumpDelegate>(originalJumpAddress);
+            if(NativeLibrary.TryGetExport(library,"dango_belt_set_shape_guard",out var guardAddress))
+                shapeGuard=Marshal.GetDelegateForFunctionPointer<OriginalGroundJumpDelegate>(guardAddress);
+            if(NativeLibrary.TryGetExport(library,"dango_belt_read_shape_guard",out var guardDiagnosticsAddress))
+                shapeGuardDiagnostics=Marshal.GetDelegateForFunctionPointer<DiagnosticsDelegate>(guardDiagnosticsAddress);
+            if(enableShapeGuard && !ShapeGuardAvailable)
+                throw new NotSupportedException("此模块缺少完整形状保护 ABI；请构建 belt-guard-native 后点击应用并重置。");
             var native=NativeConfiguration.From(config);
             if(NativeLibrary.TryGetExport(library,"dango_belt_calibration_schema",out var schemaAddress) &&
                 NativeLibrary.TryGetExport(library,"dango_belt_read_diagnostics",out var diagnosticsAddress) &&
@@ -75,8 +86,13 @@ internal sealed class LabBeltWorld : IDisposable
             else if(calibration is not null) throw new NotSupportedException("Native belt module does not support calibration; calibrated parameters were not applied.");
             if(calibration is null) Check(Export<CreateDelegate>("dango_belt_create")(in native,0,0,shortBones?1:0,out handle),"create");
             if(handle==0) throw new InvalidOperationException("Belt create returned null handle");
+            if(enableShapeGuard)
+            {
+                Check(shapeGuard!(handle,1),"enable shape guard before first step");
+                ShapeGuardEnabled=true;
+            }
         }
-        catch { NativeLibrary.Free(library); library=0; throw; }
+        catch { if(handle!=0) { destroy?.Invoke(handle); handle=0; } NativeLibrary.Free(library); library=0; throw; }
     }
     public void Step(double dt,LabBeltInput input)
     {
@@ -113,6 +129,15 @@ internal sealed class LabBeltWorld : IDisposable
         if(values.Any(x=>!float.IsFinite(x)))throw new InvalidOperationException("Belt returned nonfinite diagnostics");
         return values;
     }
+    public float[] ReadShapeGuard()
+    {
+        VerifyAccess();
+        if(!ShapeGuardAvailable) throw new NotSupportedException("Native belt module does not export the complete shape guard ABI.");
+        float[] values=new float[24];
+        Check(shapeGuardDiagnostics!(handle,values,values.Length),"read shape guard");
+        if(values.Any(x=>!float.IsFinite(x))) throw new InvalidOperationException("Belt returned nonfinite shape guard diagnostics");
+        return values;
+    }
     public void SetBounds(double left,double right)
     {
         VerifyAccess();
@@ -132,7 +157,11 @@ internal sealed class LabBeltWorld : IDisposable
     }
     private static bool Finite(double value)=>double.IsFinite(value)&&Math.Abs(value)<=float.MaxValue;
     private static void Check(int result,string operation)
-    { if(result!=0) throw new InvalidOperationException($"Belt {operation} failed ({result}); native rejected step preserves prior state"); }
+    {
+        if(result==0) return;
+        var reason=result switch { -605 => "形状保护或求解器拒绝本帧", -606 => "形状认证工作预算耗尽", _ => "原生模块拒绝操作" };
+        throw new InvalidOperationException($"Belt {operation} failed ({result}): {reason}; prior accepted state preserved");
+    }
     private T Export<T>(string name) where T:Delegate => Marshal.GetDelegateForFunctionPointer<T>(NativeLibrary.GetExport(library,name));
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int OriginalGroundJumpDelegate(nint handle,int enabled);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate nint SchemaDelegate();

@@ -23,9 +23,10 @@ internal static class Program
         var beltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "belt-native", "Release", "dango_physics_lab_belt.dll");
         var calibratedBeltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "belt-calibration-native", "Release", "dango_physics_lab_belt.dll");
         var originalJumpBeltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "belt-calibration-v2-native", "Release", "dango_physics_lab_belt.dll");
-        var beltBatches = new[] { "--belt-experiments", "--belt-calibration", "--belt-candidates", "--belt-refinement", "--belt-dynamics" };
+        var guardedBeltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "belt-guard-native", "Release", "dango_physics_lab_belt.dll");
+        var beltBatches = new[] { "--belt-experiments", "--belt-calibration", "--belt-candidates", "--belt-refinement", "--belt-dynamics", "--belt-guard-experiments" };
         var useBelt = args.Contains("--belt") || args.Any(beltBatches.Contains);
-        if (useBelt && (args.Any(a => a is not ("--belt" or "--belt-experiments" or "--belt-calibration" or "--belt-candidates" or "--belt-refinement" or "--belt-dynamics" or "--smoke" or "--saved-appearance")) ||
+        if (useBelt && (args.Any(a => a is not ("--belt" or "--belt-experiments" or "--belt-calibration" or "--belt-candidates" or "--belt-refinement" or "--belt-dynamics" or "--belt-guard-experiments" or "--smoke" or "--saved-appearance")) ||
             args.Count(beltBatches.Contains) > 1 || args.Any(beltBatches.Contains) && args.Contains("--smoke")))
         { Console.Error.WriteLine("闭合带请单独使用 --belt [--smoke] 或 --belt-experiments；本轮仅原始显示。"); return 7; }
         if (args.Contains("--arcs") || args.Contains("--arc-experiments"))
@@ -42,7 +43,9 @@ internal static class Program
         if ((useArcs || args.Contains("--arc-experiments")) && !File.Exists(arcModule)) return 8;
         if (useBelt && !File.Exists(beltModule)) return 9;
         if ((args.Contains("--belt-calibration") || args.Contains("--belt-candidates") || args.Contains("--belt-refinement")) && !File.Exists(calibratedBeltModule)) return 9;
-        if ((args.Contains("--belt-dynamics") || useBelt && !args.Any(beltBatches.Contains)) && !File.Exists(originalJumpBeltModule)) return 9;
+        if (args.Contains("--belt-dynamics") && !File.Exists(originalJumpBeltModule)) return 9;
+        if ((args.Contains("--belt-guard-experiments") || useBelt && !args.Any(beltBatches.Contains)) && !File.Exists(guardedBeltModule))
+        { Console.Error.WriteLine("缺少形状保护实验 DLL：请构建 belt-guard-native 后重新启动。"); return 9; }
         var session = Path.Combine(root.FullName, "artifacts", "physics-lab", "sessions",
             DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff") + "-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(session);
@@ -57,6 +60,7 @@ internal static class Program
             beltNativeSha256 = File.Exists(beltModule) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(beltModule))) : null,
             calibratedBeltNativeSha256 = File.Exists(calibratedBeltModule) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(calibratedBeltModule))) : null,
             originalJumpBeltNativeSha256 = File.Exists(originalJumpBeltModule) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(originalJumpBeltModule))) : null,
+            guardedBeltNativeSha256 = File.Exists(guardedBeltModule) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(guardedBeltModule))) : null,
             initialGroundModel = useBelt ? "continuous-belt" : useEnvelope ? "continuous-envelope" : "discrete-nodes",
             initialDrive = useRegions ? "direction-half-region" : "core", regionDenominator = 2,
             initialDisplaySmoothing = useSmoothing, displaySmoothingTauSeconds = LabDisplaySmoothing.TimeConstantSeconds,
@@ -67,7 +71,12 @@ internal static class Program
         {
             try
             {
-                if (args.Contains("--belt-dynamics")) LabBeltDynamics.Run(regionModule, originalJumpBeltModule, session);
+                if (args.Contains("--belt-guard-experiments"))
+                {
+                    if (!LabBeltGuardExperiments.Run(guardedBeltModule, session))
+                        throw new InvalidOperationException("形状保护极值实验未通过，详见本次实验记录。");
+                }
+                else if (args.Contains("--belt-dynamics")) LabBeltDynamics.Run(regionModule, originalJumpBeltModule, session);
                 else if (args.Contains("--belt-candidates") || args.Contains("--belt-refinement"))
                 {
                     var reference = Directory.EnumerateFiles(Path.GetDirectoryName(session)!, "calibration-results.json", SearchOption.AllDirectories)
@@ -100,7 +109,7 @@ internal static class Program
             var useTestAppearance = args.Contains("--smoke") || !args.Contains("--saved-appearance");
             var appearanceSettingsPath = useTestAppearance ? LabAppearanceFixture.Create(session) :
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Dango", "settings.json");
-            var beltWindow = new LabBeltWindow(regionModule, beltModule, originalJumpBeltModule, session, appearanceSettingsPath,
+            var beltWindow = new LabBeltWindow(regionModule, beltModule, guardedBeltModule, session, appearanceSettingsPath,
                 useTestAppearance ? "内置测试搭配 · 不代表日常佩戴" : "当前已保存外观 · 只读快照");
             if (args.Contains("--smoke")) beltWindow.Loaded += async (_, _) => await beltWindow.Smoke();
             return app.Run(beltWindow);

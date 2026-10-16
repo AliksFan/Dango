@@ -53,6 +53,8 @@ internal sealed class LabBeltWindow : Window
     private LabInputSnapshot lastInput;
     private LabBeltCalibrationParameters? activeCalibration;
     private string activePreset = "";
+    private float[]? guardDiagnostics;
+    private string? failureReason;
     internal Button ApplyButton { get; }
     internal TextBox Notes { get; } = new() { MinHeight = 34, MaxLength = 500, ToolTip = "仅用于验证文字输入隔离；内容不保存" };
     private bool ActiveBelt => belt is not null;
@@ -63,6 +65,8 @@ internal sealed class LabBeltWindow : Window
     {
         this.halfModule = halfModule; this.beltModule = beltModule; this.calibratedModule = calibratedModule; this.session = session;
         this.appearanceSource = appearanceSource;
+        // Open the reported failing corner for review; product material defaults stay unchanged.
+        size.Value = 120; softness.Value = 100; build.Value = 0;
         appearance = new PhysicsLabAppearancePresenter(appearanceSettingsPath);
         showSkeleton.IsChecked = false; showReference.IsChecked = false;
         Title = "团子 · 连续闭合带实验 · 步态关闭";
@@ -91,8 +95,8 @@ internal sealed class LabBeltWindow : Window
         sidebarScroll = new ScrollViewer { Content = tools, VerticalScrollBarVisibility = ScrollBarVisibility.Visible, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         sidebar.Children.Add(sidebarScroll);
         Label(tools, "身体参数对照");
-        model.Items.Add("闭合带 · 校正前（旧跳跃接线）"); model.Items.Add("原外围 · 半侧驱动对照");
-        model.Items.Add("身体候选 D · 抗压优先"); model.Items.Add("身体候选 F · 轮廓优先"); model.SelectedIndex = 2;
+        model.Items.Add("当前身体 · F 基础＋形状保护");
+        model.Items.Add("旧对照 · 原外围半侧驱动"); model.Items.Add("旧对照 · 闭合带校正前"); model.SelectedIndex = 0;
         tools.Children.Add(model); tools.Children.Add(shortBones);
         tools.Children.Add(new TextBlock { Text = "新圈整体承重；16 个附着点只负责塑形。更改模型或材料后点击应用。", FontSize = 12, TextWrapping = TextWrapping.Wrap });
         model.DropDownOpened += (_, _) => Cancel(); model.DropDownClosed += (_, _) => input.ReconcileHeld(HeldKeys());
@@ -133,13 +137,15 @@ internal sealed class LabBeltWindow : Window
         Refresh(); slider.ValueChanged += (_, _) => Refresh(); p.Children.Add(label); p.Children.Add(slider);
     }
     private void WriteStarted() => File.WriteAllText(Path.Combine(session, "started.json"), JsonSerializer.Serialize(new
-    { pid = Environment.ProcessId, visible = IsVisible, nativeLoaded = belt is not null || old is not null, model = ActiveBelt ? "continuous-belt" : "old-half", preset = activePreset, calibration = activeCalibration, originalGroundJump = belt?.OriginalGroundJumpEnabled, shortBones = beltFrame?.Stats[40] == 1, displaySmoothing = false, gait = false, formalAppearance = true, equippedCount = appearance.EquippedCount, renderedAccessories = appearance.RenderedAccessoryCount, error = fault }));
+    { pid = Environment.ProcessId, visible = IsVisible, nativeLoaded = belt is not null || old is not null, model = ActiveBelt ? "continuous-belt" : "old-half", preset = activePreset, calibration = activeCalibration, originalGroundJump = belt?.OriginalGroundJumpEnabled, shapeGuard = GuardState(), failureReason, shortBones = beltFrame?.Stats[40] == 1, displaySmoothing = false, gait = false, formalAppearance = true, equippedCount = appearance.EquippedCount, renderedAccessories = appearance.RenderedAccessoryCount, error = fault }));
+
+    private object GuardState() => new { available = belt?.ShapeGuardAvailable ?? false, enabled = belt?.ShapeGuardEnabled ?? false, requested = model.SelectedIndex == 0, schema = LabBeltWorld.ShapeGuardSchema, diagnostics = guardDiagnostics };
 
     private void Reset()
     {
         if (!initialized) return;
         Cancel(); belt?.Dispose(); old?.Dispose(); belt = null; old = null; beltFrame = null; oldFrame = null; reference = null;
-        fault = paused = false; cameraX = accumulator = 0; steps = 0; trace.Clear();
+        fault = paused = false; failureReason = null; guardDiagnostics = null; cameraX = accumulator = 0; steps = 0; trace.Clear();
         appearance.Paused = false; appearance.Reset();
         try
         {
@@ -156,18 +162,16 @@ internal sealed class LabBeltWindow : Window
             }
             activePreset = model.SelectedItem?.ToString() ?? "";
             Title = "团子 · " + activePreset + " · 身体参数校准";
-            activeCalibration = model.SelectedIndex switch
-            {
-                2 => LabBeltCalibrationParameters.Default with { RadialStiffnessScale = 1.2, AreaScale = 2, OverallDamping = config.OverallDamping, GroundedBrake = 35, GroundedHorizontalDamping = 60 },
-                3 => LabBeltCalibrationParameters.Default with { RadialStiffnessScale = 1.4, AreaScale = 1.4, BeltBendScale = 4, OverallDamping = config.OverallDamping, GroundedBrake = 35, GroundedHorizontalDamping = 60 },
-                _ => null,
-            };
-            var selectedModule = model.SelectedIndex == 0 ? beltModule : model.SelectedIndex == 1 ? halfModule : calibratedModule;
+            activeCalibration = model.SelectedIndex == 0
+                ? LabBeltCalibrationParameters.Default with { RadialStiffnessScale = 1.4, AreaScale = 1.4, BeltBendScale = 4, OverallDamping = config.OverallDamping, GroundedBrake = 35, GroundedHorizontalDamping = 60 }
+                : null;
+            var selectedModule = model.SelectedIndex == 0 ? calibratedModule : model.SelectedIndex == 1 ? halfModule : beltModule;
             if (model.SelectedIndex != 1)
             {
-                belt = new LabBeltWorld(selectedModule, config, shortBones.IsChecked == true, activeCalibration);
+                belt = new LabBeltWorld(selectedModule, config, shortBones.IsChecked == true, activeCalibration, enableShapeGuard: model.SelectedIndex == 0);
                 if (activeCalibration is not null) belt.SetOriginalGroundJump();
                 belt.SetBounds(-256, 256); beltFrame = belt.Read();
+                if (belt.ShapeGuardEnabled) guardDiagnostics = belt.ReadShapeGuard();
             }
             else
             {
@@ -175,12 +179,10 @@ internal sealed class LabBeltWindow : Window
                 if (old.LabRegionDenominator != 2) throw new InvalidOperationException("原版模块不是半区驱动");
                 oldId = old.Add(0, 0); old.SetHorizontalBounds(-256, 256);
             }
-            status.Text = activeCalibration is not null ?
-                model.SelectedIndex == 2 ? "D：抖动已明显降低，速度接近原版；移动额外压缩约2.3个百分点，仍待校正。眼睛配饰参数未调。" :
-                "F：局部轮廓更近；速度/移动压缩仍超目标。眼睛配饰参数未调。" :
-                ActiveBelt ? "校正前对照：静置更扁、走速增加，旧实验跳跃接线偏弱。" : "已应用原外围半区对照。无显示滤波。";
+            status.Text = activeCalibration is not null ? "F 基础与形状保护已应用。大小、柔软度、落地体态由三个滑条控制；待人工观感验收。" :
+                ActiveBelt ? "旧对照：校正前闭合带，旧跳跃接线。" : "旧对照：原外围半区驱动。";
             File.AppendAllText(Path.Combine(session, "body-presets.jsonl"), JsonSerializer.Serialize(new
-            { preset = activePreset, config, calibration = activeCalibration, originalGroundJump = belt?.OriginalGroundJumpEnabled,
+            { preset = activePreset, config, calibration = activeCalibration, originalGroundJump = belt?.OriginalGroundJumpEnabled, shapeGuard = GuardState(),
                 nativeSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(selectedModule))) }) + Environment.NewLine);
             StepOnce(); WriteStarted();
         }
@@ -215,10 +217,14 @@ internal sealed class LabBeltWindow : Window
                     JumpPressed: lastInput.JumpPressed, InputActive: lastInput.InputActive, CancelForces: lastInput.CancelForces,
                     DragActive: dragging, DragTargetX: dragX, DragTargetY: dragY));
                 beltFrame = belt.Read(); var s = beltFrame.Stats;
+                guardDiagnostics = belt.ShapeGuardEnabled ? belt.ReadShapeGuard() : null;
+                if (guardDiagnostics is { } g && (g[0] != 1 || g[1] != 1 || g[2] != steps + 1 || g[3] != 0 ||
+                    g[13] != 1 || g[11] < g[20] || g[12] < g[19]))
+                    throw new InvalidOperationException("形状保护同帧、核心在内或硬边界诊断失败");
                 if (s[36] != 0 || s[31] > .0001 || s[39] != 0) throw new InvalidOperationException("闭合带本帧安全诊断失败");
                 trace.Enqueue(new { tick = steps, model = "belt", stats = s,
-                    diagnostics = activeCalibration is null ? null : belt.ReadDiagnostics() });
-                if (steps % 6 == 0) details.Text = FormattableString.Invariant($"高 {(s[11] - s[9]) * 72:0.00} DIP / 宽 {(s[10] - s[8]) * 72:0.00} DIP\n真实质心Y {s[5]:0.0000} / 核心Y {s[1]:0.0000}\n接触 {s[25]:0} / 间隙 {s[12] * 72:0.00000} DIP\n合力 ({s[18]:0.000}, {s[19]:0.000})\nKKT残差 {s[30]:0.0e+0} / 36自由度\n独立外围碰撞体 {s[39]:0} / 帧 {steps}");
+                    diagnostics = activeCalibration is null ? null : belt.ReadDiagnostics(), shapeGuard = guardDiagnostics });
+                if (steps % 6 == 0) details.Text = FormattableString.Invariant($"高 {(s[11] - s[9]) * 72:0.00} DIP / 宽 {(s[10] - s[8]) * 72:0.00} DIP\n真实质心Y {s[5]:0.0000} / 核心Y {s[1]:0.0000}\n接触 {s[25]:0} / 间隙 {s[12] * 72:0.00000} DIP\n合力 ({s[18]:0.000}, {s[19]:0.000})\nKKT残差 {s[30]:0.0e+0} / 36自由度\n独立外围碰撞体 {s[39]:0} / 帧 {steps}") + GuardSummary();
             }
             else if (old is not null)
             {
@@ -240,6 +246,9 @@ internal sealed class LabBeltWindow : Window
         }
         catch (Exception e) { Fault(e); }
     }
+    private string GuardSummary() => guardDiagnostics is not { } g ? "\n形状保护：旧对照未启用" :
+        FormattableString.Invariant($"\n形状保护：同帧 {g[2]:0} / 核心绕数 {g[13]:0}\n核心净距 ≥{g[12]:0.0000} / 叉积 ≥{g[11]:0.000000}\n认证工作 {g[4]:0}/{g[21]:0} / 拒绝候选 {g[8]:0}");
+
     private void UpdateAppearance()
     {
         PhysicsLabBoundaryPoint[] boundary;
@@ -271,10 +280,17 @@ internal sealed class LabBeltWindow : Window
     }
     private void Fault(Exception e)
     {
-        fault = paused = true; Cancel(); status.Text = "已暂停：" + e.Message;
+        if (fault) return;
+        fault = paused = true; failureReason = e.Message; Cancel(); status.Text = "已暂停：" + e.Message + " 点击应用并重置可重新创建物理世界。";
         appearance.Paused = true;
+        if (belt?.ShapeGuardAvailable == true)
+        {
+            try { guardDiagnostics = belt.ReadShapeGuard(); }
+            catch (Exception diagnosticError) { failureReason += "；读取保护诊断失败：" + diagnosticError.Message; }
+        }
+        WriteStarted();
         File.WriteAllText(Path.Combine(session, "physics-failure.json"), JsonSerializer.Serialize(new
-        { steps, error = e.ToString(), config, activePreset, activeCalibration, lastInput, beltFrame, oldFrame, trace = trace.ToArray(), discardedSeconds }));
+        { steps, error = e.ToString(), config, activePreset, activeCalibration, shapeGuard = GuardState(), lastInput, beltFrame, oldFrame, trace = trace.ToArray(), discardedSeconds }));
     }
     private void Cancel()
     {
@@ -284,8 +300,8 @@ internal sealed class LabBeltWindow : Window
     private void Export()
     {
         Cancel(); File.WriteAllText(Path.Combine(session, $"belt-trace-{DateTime.UtcNow:HHmmss-fff}.json"), JsonSerializer.Serialize(new
-        { model = ActiveBelt ? "continuous-belt" : "old-half", preset = activePreset, calibration = activeCalibration, config, fixedDt = LabWindow.FixedDt, displaySmoothing = false, gait = false, discardedSeconds, trace = trace.ToArray() }));
-        status.Text = $"已导出 {trace.Count} 帧物理诊断。";
+        { model = ActiveBelt ? "continuous-belt" : "old-half", preset = activePreset, calibration = activeCalibration, config, fixedDt = LabWindow.FixedDt, displaySmoothing = false, gait = false, discardedSeconds, shapeGuard = GuardState(), failureReason, trace = trace.ToArray() }));
+        status.Text = fault ? "已导出失败记录。" + failureReason + " 点击应用并重置可恢复。" : $"已导出 {trace.Count} 帧物理诊断。";
     }
     private bool Blocked() => IsText(Keyboard.FocusedElement as DependencyObject) || dragging || Mouse.Captured is not null || model.IsDropDownOpen;
     private static bool IsText(DependencyObject? d)
@@ -331,8 +347,11 @@ internal sealed class LabBeltWindow : Window
         try
         {
             timer.Stop(); Cancel();
+            size.Value = 120; softness.Value = 100; build.Value = 0; model.SelectedIndex = 0; Reset();
             void Check(bool ok, string label) { if (!ok) throw new InvalidOperationException(label); checks.Add(label); }
             Check(IsLoaded && IsVisible && !fault && ActiveBelt, "真实WPF已显示且连接闭合带DLL");
+            Check(belt!.ShapeGuardEnabled && guardDiagnostics is { } g && g[2] == steps && g[13] == 1,
+                "120/100/0形状保护启用且核心在内诊断与身体同帧");
             for (var i = 0; i < 300; i++) StepOnce(); Check(!fault && beltFrame!.Stats[14] == 1, "闭合带落稳接地");
             Check(appearance.EquippedCount == 2 && appearance.RenderedAccessoryCount == 2, "虚构已佩戴前后配饰使用正式柔性网格");
             Check(!appearance.EyeDiagnostic.Contains("等待", StringComparison.Ordinal), "正式眼睛布局已消费真实身体帧");
@@ -356,12 +375,12 @@ internal sealed class LabBeltWindow : Window
             Inject(Key.D, true, ApplyButton); StepOnce(); Cancel(); StepOnce(); Check(lastInput.CancelForces && lastInput.Horizontal == 0, "取消清除玩法状态");
             Inject(Key.D, true, ApplyButton); StepOnce(); Check(lastInput.Horizontal == 0, "取消后按住的键不补发"); Inject(Key.D, false, ApplyButton);
             model.SelectedIndex = 1; Reset(); for (var i = 0; i < 300; i++) StepOnce(); Check(!fault && !ActiveBelt && oldFrame!.IsGrounded, "原外围半区对照真实落地");
-            model.SelectedIndex = 2;
+            model.SelectedIndex = 0;
             Reset(); for (var i = 0; i < 300; i++) StepOnce(); Check(!fault && appearance.RenderedAccessoryCount == 2, "最终落稳和正式配饰恢复无故障"); sidebarScroll.ScrollToTop(); surface.Refresh();
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle); UpdateLayout();
             var bitmap = new RenderTargetBitmap((int)ActualWidth, (int)ActualHeight, 96, 96, PixelFormats.Pbgra32); bitmap.Render(this);
             var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap)); using (var file = File.Create(Path.Combine(session, "window.png"))) encoder.Save(file);
-            File.WriteAllText(Path.Combine(session, "wpf-smoke.json"), JsonSerializer.Serialize(new { passed = true, checks, method = "shown WPF routed events; not OS keyboard automation", manualAcceptance = false }, new JsonSerializerOptions { WriteIndented = true })); Close();
+            File.WriteAllText(Path.Combine(session, "wpf-smoke.json"), JsonSerializer.Serialize(new { passed = true, material = new { size = size.Value, softness = softness.Value, build = build.Value }, shapeGuard = GuardState(), checks, method = "shown WPF routed events; not OS keyboard automation", manualAcceptance = false }, new JsonSerializerOptions { WriteIndented = true })); Close();
         }
         catch (Exception e)
         {

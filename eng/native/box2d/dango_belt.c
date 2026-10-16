@@ -1,16 +1,25 @@
 #include "dango_belt.h"
 #include "dango_belt_math.h"
+#include "dango_belt_guard.h"
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <float.h>
-#define BELT_MAX_RESIDUALS 180
+#define BELT_MAX_RESIDUALS 320
+#define BELT_GUARD_FRAME_BUDGET 131072
 typedef struct belt_residual {double value,k,c,j[BELT_D];} belt_residual;
 typedef struct belt_body {
  dango_belt_config cfg;double q[BELT_D],v[BELT_D],mass[BELT_D];
  double radius,scale,left,right,ramp,cooldown,drag_theta;
  int short_bones,grounded,dragging,original_ground_jump,has_stepped;double stats[64],cal[11],diag[48];
+ int shape_guard;double guard[24];
 } belt_body;
+static int belt_guard_path(belt_body* b,const double* from,const double* to,int stage){
+ if(!b->shape_guard)return 1;belt_guard_result result;int remaining=BELT_GUARD_FRAME_BUDGET-(int)b->guard[4];
+ int ok=belt_guard_certify(from,to,b->radius,remaining,&result);b->guard[4]+=result.work;b->guard[5]+=1;b->guard[6]=fmax(b->guard[6],result.depth);b->guard[7]+=result.leaves;
+ if(!ok){b->guard[8]+=1;b->guard[9]=result.reason;b->guard[10]=stage;return 0;}
+ b->guard[11]=result.cross_lower;b->guard[12]=result.distance_lower;b->guard[13]=result.winding;return 1;
+}
 static struct {uintptr_t token;belt_body* body;} belt_handles[64];
 static uintptr_t belt_next_token=1;
 static belt_body* belt_lookup(void* handle){uintptr_t token=(uintptr_t)handle;for(int i=0;i<64;++i)if(belt_handles[i].token==token&&token)return belt_handles[i].body;return NULL;}
@@ -48,9 +57,25 @@ static int belt_residuals(const belt_body* b,const double* q,belt_residual* r,do
  }
  double target=BELT_PI*b->radius*b->radius;belt_residual* area=&r[count++];memset(area,0,sizeof *area);double actual=belt_area(q,area->j);if(actual<=target*.05)return -1;
  double old_target=8*b->cfg.radial_rest_length*b->cfg.radial_rest_length*sin(2*BELT_PI/16),area_scale=old_target/target;
- area->value=fmin(0,actual-target);if(actual>=target)memset(area->j,0,sizeof area->j);area->k=b->cfg.area_strength/(old_target*b->cfg.radial_rest_length*sin(2*BELT_PI/16))*area_scale*area_scale*b->cal[4];return count;
+ area->value=fmin(0,actual-target);if(actual>=target)memset(area->j,0,sizeof area->j);area->k=b->cfg.area_strength/(old_target*b->cfg.radial_rest_length*sin(2*BELT_PI/16))*area_scale*area_scale*b->cal[4];
+ if(b->shape_guard){
+  /* Smooth one-sided divergent barriers. Both scalars are rigid-objective;
+     their exact gradients include equal core reactions. No hidden damping. */
+  for(int i=0;i<BELT_Q;++i){double basis[BELT_B],db[BELT_B];belt_basis(dtheta*i,0,basis);belt_basis(dtheta*i,1,db);
+   belt_v rel=belt_guard_relative(q,dtheta*i),u=belt_eval_basis(q,db);double length=hypot(rel.x,rel.y),cross=belt_cross(rel,u);
+   for(int kind=0;kind<2;++kind){belt_residual* barrier=&r[count++];memset(barrier,0,sizeof *barrier);
+    double unit=kind?b->radius*b->radius:b->radius,x=(kind?cross:length)/unit,hard=kind?1e-4:.04,on=kind?.12:.18;
+    if(x<=hard)return -1;barrier->k=(b->cfg.core_mass+16*b->cfg.node_mass)*pow(2*BELT_PI*6,2)*b->radius*b->radius/BELT_Q;
+    if(x>=on)continue;double d=on-x,gap=x-hard;barrier->value=d*d/gap;double slope=(-2*d/gap-d*d/(gap*gap))/unit;
+    belt_v gr=kind?(belt_v){u.y,-u.x}:belt_mul(1/length,rel),gu=kind?(belt_v){-rel.y,rel.x}:(belt_v){0,0};
+    for(int j=0;j<BELT_B;++j){barrier->j[2*j]=slope*(gr.x*basis[j]+gu.x*db[j]);barrier->j[2*j+1]=slope*(gr.y*basis[j]+gu.y*db[j]);}barrier->j[34]=-slope*gr.x;barrier->j[35]=-slope*gr.y;
+   }
+  }
+ }
+ return count;
 }
 static double belt_elastic_energy(const belt_body* b){belt_residual r[BELT_MAX_RESIDUALS];double md,e=0;int n=belt_residuals(b,b->q,r,&md);if(n<0)return INFINITY;for(int i=0;i<n;++i)e+=.5*r[i].k*r[i].value*r[i].value;return e;}
+static double belt_guard_energy(const belt_body* b){if(!b->shape_guard)return 0;belt_residual r[BELT_MAX_RESIDUALS];double md,e=0;int n=belt_residuals(b,b->q,r,&md);if(n<0)return INFINITY;for(int i=n-2*BELT_Q;i<n;++i)e+=.5*r[i].k*r[i].value*r[i].value;return e;}
 static double belt_objective(const belt_body* b,const double* q,const double* old,const double* predicted,const belt_residual* previous,double dt,double* gradient,double hessian[BELT_D][BELT_D],double* elastic,double* damping,double* min_derivative){
  belt_residual r[BELT_MAX_RESIDUALS];int n=belt_residuals(b,q,r,min_derivative);if(n<0)return INFINITY;double objective=0;*elastic=*damping=0;
  if(gradient)memset(gradient,0,BELT_D*sizeof(double));if(hessian)memset(hessian,0,BELT_D*BELT_D*sizeof(double));
@@ -73,14 +98,17 @@ static int belt_integrate(belt_body* b,double dt,const double* force){
   if(residual<2e-9)break;if(!belt_cholesky(matrix,step,step))return 0;
   double directional=0;for(int j=0;j<BELT_D;++j)directional+=gradient[j]*step[j];bool accepted=false;
   for(int ls=0;ls<20;++ls){double trial[BELT_D],factor=ldexp(1.0,-ls),e,d,md;for(int j=0;j<BELT_D;++j)trial[j]=b->q[j]+factor*step[j];
+   if(!belt_guard_path(b,b->q,trial,1)){if(b->guard[9]==BELT_GUARD_BUDGET)return 0;continue;}
    double next=belt_objective(b,trial,old,predicted,previous,dt,NULL,NULL,&e,&d,&md);
    if(isfinite(next)&&next<=value+1e-4*factor*directional){memcpy(b->q,trial,sizeof trial);accepted=true;break;}}
   if(!accepted)return 0;
  }
- if(residual>2e-7)return 0;for(int j=0;j<BELT_D;++j)b->v[j]=(b->q[j]-old[j])/dt;
+ if(residual>2e-7)return 0;if(!belt_guard_path(b,old,b->q,2))return 0;for(int j=0;j<BELT_D;++j)b->v[j]=(b->q[j]-old[j])/dt;
  b->stats[32]=elastic;b->stats[33]+=damping;b->stats[34]=fmax(b->stats[34],residual);b->stats[54]=derivative;b->stats[56]=fmax(b->stats[56],iteration+1);
  belt_residual current[BELT_MAX_RESIDUALS];int count=belt_residuals(b,b->q,current,&derivative);double material[BELT_D]={0};
- for(int i=0;i<count;++i){double delta=current[i].value-previous[i].value,rate=delta/dt,linear_delta=0;for(int j=0;j<BELT_D;++j)linear_delta+=current[i].j[j]*(b->q[j]-old[j]);b->diag[8]+=current[i].c*rate*linear_delta;b->diag[9]+=current[i].c*rate*delta;double f=-(current[i].k*current[i].value+current[i].c/dt*(current[i].value-previous[i].value));for(int j=0;j<BELT_D;++j)material[j]+=f*current[i].j[j];}
+ double guard_force[2]={0};for(int i=0;i<count;++i){double delta=current[i].value-previous[i].value,rate=delta/dt,linear_delta=0;for(int j=0;j<BELT_D;++j)linear_delta+=current[i].j[j]*(b->q[j]-old[j]);b->diag[8]+=current[i].c*rate*linear_delta;b->diag[9]+=current[i].c*rate*delta;double f=-(current[i].k*current[i].value+current[i].c/dt*(current[i].value-previous[i].value));for(int j=0;j<BELT_D;++j)material[j]+=f*current[i].j[j];
+  if(b->shape_guard&&i>=count-2*BELT_Q){guard_force[0]+=f*current[i].j[34];guard_force[1]+=f*current[i].j[35];b->guard[17]+=f*linear_delta;}}
+ if(b->shape_guard)b->guard[16]=fmax(b->guard[16],hypot(guard_force[0],guard_force[1]));
  double work=0,torque=0;for(int j=0;j<BELT_D;++j)work+=force[j]*(b->q[j]-old[j]);for(int j=0;j<BELT_D;j+=2)torque+=b->q[j]*force[j+1]-b->q[j+1]*force[j];b->diag[27]+=work;b->diag[28]+=belt_kinetic(b)+belt_elastic_energy(b)-energy_before-work;double p_after[3];belt_momentum(b,p_after);b->diag[44]+=p_after[0]-p_before[0]-dt*(force[0]+force[34]);b->diag[45]+=p_after[1]-p_before[1]-dt*(force[1]+force[35]);b->diag[46]+=p_after[2]-p_before[2]-dt*torque;
  b->stats[59]=material[0]+material[34];b->stats[60]=material[1]+material[35];b->stats[61]=0;for(int j=0;j<BELT_D;j+=2)b->stats[61]+=b->q[j]*material[j+1]-b->q[j+1]*material[j];return 1;
 }
@@ -107,7 +135,15 @@ static int belt_contact_solve(belt_body* b){
  /* Position-only projection, repeatedly rebuilding true curve extrema. */
  for(int it=0;it<32;++it){belt_bounds(b->q,bounds,&foot);double penetration=b->cfg.ground_height-bounds[1];if(penetration<=2e-9)break;
   double basis[BELT_B];belt_basis(foot,0,basis);double effective=0;for(int j=0;j<BELT_B;++j)effective+=basis[j]*basis[j]/b->mass[2*j+1];double lambda=penetration/effective;
-  for(int j=0;j<BELT_B;++j){double delta=lambda*basis[j]/b->mass[2*j+1];b->q[2*j+1]+=delta;b->stats[35]=fmax(b->stats[35],fabs(delta));}}
+  double trial[BELT_D];memcpy(trial,b->q,sizeof trial);for(int j=0;j<BELT_B;++j)trial[2*j+1]+=lambda*basis[j]/b->mass[2*j+1];
+  if(!belt_guard_path(b,b->q,trial,3)){
+   if(b->guard[9]==BELT_GUARD_BUDGET)return 0;
+   /* A common translation of core and belt is always shape-safe and resolves
+      the complete floor in one step. Its potential work is recorded below. */
+   memcpy(trial,b->q,sizeof trial);trial[1]+=penetration;trial[35]+=penetration;b->guard[18]+=1;
+   if(!belt_guard_path(b,b->q,trial,3))return 0;
+  }
+  for(int j=0;j<BELT_D;++j)b->stats[35]=fmax(b->stats[35],fabs(trial[j]-b->q[j]));memcpy(b->q,trial,sizeof trial);}
  belt_bounds(b->q,bounds,&foot);b->stats[31]=fmax(0,b->cfg.ground_height-bounds[1]);if(b->stats[31]>1e-7)return 0;
  b->diag[15]+=belt_elastic_energy(b)-elastic_before;b->diag[16]+=belt_gravity_energy(b)-gravity_before;b->diag[17]=fmax(b->diag[17],b->stats[35]);double p_projected[3];belt_momentum(b,p_projected);b->diag[19]+=p_projected[2]-p_projection[2];
  belt_contact rows[64];int n=belt_contact_rows(b,rows,2e-6);b->stats[25]=n;b->grounded=n>0;
@@ -144,6 +180,10 @@ const char* dango_belt_calibration_schema(void){return
  "\"diagnostics\":[\"schemaVersion\",\"substeps\",\"initialKE\",\"finalKE\",\"initialElastic\",\"finalElastic\",\"initialGravityPotential\",\"finalGravityPotential\",\"shapeDampingEndpointWorkRemoved\",\"shapeDampingStrainDissipation\",\"overallDampingKEDelta\",\"groundedBrakeKEDelta\",\"contactKEBeforeSum\",\"contactKEAfterSum\",\"contactKEDelta\",\"projectionElasticDelta\",\"projectionGravityDelta\",\"projectionMaxCoordinateDelta\",\"reserved\",\"projectionAngularMomentumDelta\",\"jumpAccepted\",\"jumpActualImpulseY\",\"jumpMomentumDeltaY\",\"jumpMomentumBeforeY\",\"jumpMomentumAfterY\",\"jumpKEDelta\",\"jumpRequestedImpulseY\",\"externalForceEndpointWork\",\"integrationEnergyDeltaMinusExternalWork\",\"initialPx\",\"initialPy\",\"initialL\",\"finalPx\",\"finalPy\",\"finalL\",\"contactDeltaPx\",\"contactDeltaPy\",\"contactDeltaL\",\"overallDampingDeltaPx\",\"overallDampingDeltaPy\",\"overallDampingDeltaL\",\"groundedBrakeDeltaPx\",\"groundedBrakeDeltaPy\",\"groundedBrakeDeltaL\",\"integrationMomentumResidualX\",\"integrationMomentumResidualY\",\"integrationAngularMomentumResidual\",\"duration\"],"
  "\"unsupportedLegacyConfig\":[\"radial_minimum_ratio\",\"radial_maximum_ratio\",\"perimeter_minimum_ratio\",\"perimeter_maximum_ratio\",\"ground_deformation_strength\",\"repulsion_distance\",\"repulsion_strength\",\"repulsion_maximum_force\",\"core_exclusion_ratio\",\"angle_strength\",\"top_inward_force\",\"restitution\",\"contact_hertz\",\"linear_damping\"]}";}
 int dango_belt_read_diagnostics(void* handle,float* output,int count){belt_body* b=belt_lookup(handle);if(!b)return -601;if(!output||count<48)return -600;for(int i=0;i<48;++i)output[i]=(float)b->diag[i];return 0;}
+int dango_belt_read_shape_guard(void* handle,float* output,int count){belt_body* b=belt_lookup(handle);if(!b)return -601;if(!output||count<24)return -600;for(int i=0;i<24;++i)output[i]=(float)b->guard[i];return 0;}
+int dango_belt_set_shape_guard(void* handle,int enabled){belt_body* b=belt_lookup(handle);if(!b)return -601;if((enabled!=0&&enabled!=1)||b->has_stepped)return -600;
+ if(enabled){belt_guard_result result;if(!belt_guard_certify(b->q,b->q,b->radius,BELT_GUARD_FRAME_BUDGET,&result))return result.reason==BELT_GUARD_BUDGET?-606:-605;}
+ b->shape_guard=enabled;memset(b->guard,0,sizeof b->guard);b->guard[0]=1;b->guard[1]=enabled;b->guard[19]=.04*b->radius;b->guard[20]=1e-4*b->radius*b->radius;b->guard[21]=BELT_GUARD_FRAME_BUDGET;return 0;}
 int dango_belt_set_original_ground_jump(void* handle,int enabled){belt_body* b=belt_lookup(handle);if(!b)return -601;if((enabled!=0&&enabled!=1)||b->has_stepped)return -600;b->original_ground_jump=enabled;return 0;}
 int dango_belt_create(const dango_belt_config* cfg,float x,float y,int short_bones,void** output){
  if(!cfg||!output||!isfinite(x)||!isfinite(y)||(short_bones!=0&&short_bones!=1))return -600;
@@ -152,7 +192,7 @@ int dango_belt_create(const dango_belt_config* cfg,float x,float y,int short_bon
  int slot=-1;for(int i=0;i<64;++i)if(!belt_handles[i].body){slot=i;break;}if(slot<0)return -604;belt_body* b=calloc(1,sizeof *b);if(!b)return -604;
  b->cfg=*cfg;for(int j=0;j<8;++j)b->cal[j]=1;b->short_bones=short_bones;b->radius=((double)cfg->radial_rest_length+cfg->node_radius)*.5*(cos(BELT_PI/16)+.75+.25*cos(BELT_PI/8));b->scale=cfg->radial_rest_length/b->radius;
  if(!isfinite(b->radius)||b->radius<=1e-8||b->radius>FLT_MAX/4||!isfinite(b->scale)||16.0*cfg->node_mass+cfg->core_mass>FLT_MAX){free(b);return -602;}
- b->q[0]=b->q[34]=x;b->q[1]=b->q[35]=(double)y+cfg->drop_height;b->q[2]=b->q[5]=b->radius;b->cooldown=cfg->jump_cooldown_seconds;b->left=-1e6;b->right=1e6;
+ b->q[0]=b->q[34]=x;b->q[1]=b->q[35]=(double)y+cfg->drop_height;b->q[2]=b->q[5]=b->radius;b->cooldown=cfg->jump_cooldown_seconds;b->left=-1e6;b->right=1e6;b->guard[0]=1;b->guard[19]=.04*b->radius;b->guard[20]=1e-4*b->radius*b->radius;b->guard[21]=BELT_GUARD_FRAME_BUDGET;
  for(int j=0;j<34;++j)b->mass[j]=16.0*cfg->node_mass*(j<2?1:.5);b->mass[34]=b->mass[35]=cfg->core_mass;belt_read_stats(b);for(int i=0;i<64;++i)if(!isfinite(b->stats[i])||fabs(b->stats[i])>FLT_MAX){free(b);return -602;}
  uintptr_t token=belt_next_token++;if(!token)token=belt_next_token++;belt_handles[slot].token=token;belt_handles[slot].body=b;*output=(void*)token;return 0;
 }
@@ -181,7 +221,8 @@ int dango_belt_read(void* handle,float* scaffold,int sc,float* curve,int cc,floa
 }
 int dango_belt_step(void* handle,float dt,const float* c,int count){belt_body* b=belt_lookup(handle);if(!b)return -601;if(!c||count!=9||!isfinite(dt)||dt<=0||dt>1.0f/30)return -600;
  for(int i=0;i<9;++i)if(!isfinite(c[i]))return -600;if(fabsf(c[0])>1||c[1]<0||c[1]>1||c[6]<0||c[6]>1)return -600;const int flags[4]={2,3,7,8};for(int i=0;i<4;++i)if(c[flags[i]]!=0&&c[flags[i]]!=1)return -600;
- belt_body backup=*b;memset(b->stats,0,sizeof b->stats);memset(b->diag,0,sizeof b->diag);b->diag[0]=1;b->diag[2]=belt_kinetic(b);b->diag[4]=belt_elastic_energy(b);b->diag[6]=belt_gravity_energy(b);belt_momentum(b,&b->diag[29]);b->diag[47]=dt;double h=dt/b->cfg.substep_count;
+ belt_body backup=*b;if(b->shape_guard){double tick=b->guard[2]+1;memset(b->guard,0,sizeof b->guard);b->guard[0]=1;b->guard[1]=1;b->guard[2]=tick;b->guard[19]=.04*b->radius;b->guard[20]=1e-4*b->radius*b->radius;b->guard[21]=BELT_GUARD_FRAME_BUDGET;if(!belt_guard_path(b,b->q,b->q,4))goto fault;b->guard[14]=belt_guard_energy(b);}
+ memset(b->stats,0,sizeof b->stats);memset(b->diag,0,sizeof b->diag);b->diag[0]=1;b->diag[2]=belt_kinetic(b);b->diag[4]=belt_elastic_energy(b);b->diag[6]=belt_gravity_energy(b);belt_momentum(b,&b->diag[29]);b->diag[47]=dt;double h=dt/b->cfg.substep_count;
  bool accepted=belt_try_jump(b,c[2]!=0,h);
  if(c[3]!=0&&!b->dragging){double bounds[4],foot;belt_bounds(b->q,bounds,&foot);double roots[64];int n=belt_roots(b->q,1,1,0,roots);double high=-INFINITY;for(int i=0;i<n;++i){belt_v p=belt_eval(b->q,roots[i],0);if(p.y>high){high=p.y;b->drag_theta=roots[i];}}}b->dragging=c[3]!=0;
  for(int small=0;small<b->cfg.substep_count;++small){if(!b->original_ground_jump||!accepted||small>0)b->cooldown+=h;if(c[8]!=0)b->ramp=0;else if(!accepted){double delta=c[6]-b->ramp,step=h/(delta>0?.15:.20);b->ramp+=fmax(-step,fmin(step,delta));if(c[1]>0)b->ramp=0;}
@@ -195,9 +236,10 @@ int dango_belt_step(void* handle,float dt,const float* c,int count){belt_body* b
   belt_apply_calibration_damping(b,h,c,accepted);if(!belt_integrate(b,h,f)||!belt_contact_solve(b)||belt_speed_bound(b)>b->cfg.maximum_speed)goto fault;
   double bounds[4],foot;belt_bounds(b->q,bounds,&foot);if(bounds[0]<b->left||bounds[2]>b->right)goto fault;
   b->stats[50]+=1;
+  if(b->shape_guard)b->guard[22]+=1;
  }
  {belt_residual final[BELT_MAX_RESIDUALS];double derivative;int n=belt_residuals(b,b->q,final,&derivative);if(n<0)goto fault;b->stats[32]=0;for(int i=0;i<n;++i)b->stats[32]+=.5*final[i].k*final[i].value*final[i].value;b->stats[54]=derivative;
   double old_area_scale=8*b->cfg.radial_rest_length*b->cfg.radial_rest_length*sin(2*BELT_PI/16)/(BELT_PI*b->radius*b->radius);if(belt_area(b->q,NULL)*old_area_scale<b->cfg.minimum_area)goto fault;}
- b->diag[1]=b->cfg.substep_count;b->diag[3]=belt_kinetic(b);b->diag[5]=belt_elastic_energy(b);b->diag[7]=belt_gravity_energy(b);belt_momentum(b,&b->diag[32]);belt_read_stats(b);for(int i=0;i<64;++i)if(!isfinite(b->stats[i])||fabs(b->stats[i])>FLT_MAX)goto fault;for(int i=0;i<48;++i)if(!isfinite(b->diag[i])||fabs(b->diag[i])>FLT_MAX)goto fault;b->has_stepped=1;return 0;
-fault:*b=backup;return -603;
+ b->diag[1]=b->cfg.substep_count;b->diag[3]=belt_kinetic(b);b->diag[5]=belt_elastic_energy(b);b->diag[7]=belt_gravity_energy(b);belt_momentum(b,&b->diag[32]);belt_read_stats(b);for(int i=0;i<64;++i)if(!isfinite(b->stats[i])||fabs(b->stats[i])>FLT_MAX)goto fault;for(int i=0;i<48;++i)if(!isfinite(b->diag[i])||fabs(b->diag[i])>FLT_MAX)goto fault;if(b->shape_guard){b->guard[15]=belt_guard_energy(b);b->guard[3]=0;}b->has_stepped=1;return 0;
+fault:{int result=-603;double diagnostics[24];memcpy(diagnostics,b->guard,sizeof diagnostics);if(b->shape_guard){result=b->guard[9]==BELT_GUARD_BUDGET?-606:-605;if(diagnostics[9]==0)diagnostics[9]=BELT_GUARD_SOLVE;diagnostics[3]=result;}*b=backup;if(b->shape_guard)memcpy(b->guard,diagnostics,sizeof diagnostics);return result;}
 }

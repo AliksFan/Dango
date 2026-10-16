@@ -85,8 +85,43 @@ radial/perimeter hard length ratios, ground_deformation_strength, repulsion
 parameters, core_exclusion_ratio, angle_strength, top_inward_force, restitution,
 contact_hertz and linear_damping. The old grounded release brake is not applied.
 No parameter equivalence or old walking/stopping behavior is claimed for these
-unsupported mechanisms. Shape self-intersection prevention is not implemented;
-positive area and derivative/nondegeneracy gates do not prove a simple curve.
+unsupported mechanisms. With the optional shape guard disabled, self-intersection
+prevention is not implemented: positive area and derivative/nondegeneracy gates
+do not prove a simple curve. The opt-in guard below supplies a stricter shape domain.
+
+## Optional shape guard
+
+`dango_belt_set_shape_guard(handle,1)` opts in before the first successful step.
+The default is off; config layout, original outputs and energy diagnostics are
+unchanged. The guard DLL is built separately in `artifacts/physics-lab/belt-guard-native`.
+`dango_belt_read_shape_guard(handle,output,24)` reports the independent attempt
+schema documented in `dango_belt.h`. Only these attempt diagnostics survive a
+rejected step; physical state and all original diagnostics roll back atomically.
+
+For every theta and every interpolation time of an accepted update, the guard
+requires `cross(B-Core,B') > 0.0001*R^2`, `|B-Core| > 0.04*R`, and winding one.
+This keeps the core inside a star-shaped simple boundary. It allows flattening,
+elongation and some nonconvex shapes, but excludes deep folds even when they
+would be simple curves. A small disk around the core remains inside the body;
+this is not a general thickness guarantee for every distant protrusion.
+
+The certificate covers interpolation time analytically using quadratic minima,
+then bounds theta intervals using Fourier derivative norms and Taylor remainder.
+Finite interval bisection includes a floating-point outward allowance; failure
+to certify is conservative refusal, not proof that the candidate is invalid.
+It is not a 256-sample intersection test or an exact-arithmetic theorem prover.
+Every Newton candidate, integrated path and ground repair is certified. A ground
+shape repair that would violate the guard may translate the entire belt and core
+upward instead; its gravitational potential change remains in the existing ledger.
+
+One-sided soft penalties begin at clearance `0.18*R` and cross `0.12*R^2`.
+The 6 Hz penalty uses paired core/belt gradients and the existing elastic energy
+and work ledger. Its 64-point energy quadrature is separate from the continuous
+safety certificate. Material sliders, total mass, jump and actuation are unchanged.
+The exact per-frame certificate work cap is 131072 interval visits, with depth at
+most 20. Existing Newton/contact limits still apply; this is not a wall-clock or
+60 Hz guarantee. Return `-605` means guarded-frame refusal and `-606` work-budget
+exhaustion; the caller pauses once and offers reset rather than retrying forever.
 
 ## ABI and diagnostics
 

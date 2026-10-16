@@ -25,6 +25,20 @@ DANGO_BELT_API const char* dango_belt_calibration_schema(void);
 DANGO_BELT_API int dango_belt_create_calibrated(const dango_belt_config*,float,float,int,const float*,int,void**);
 DANGO_BELT_API int dango_belt_read_diagnostics(void*,float*,int);
 DANGO_BELT_API int dango_belt_set_original_ground_jump(void*,int);
+enum { DANGO_BELT_SHAPE_GUARD_FLOATS=24 };
+/* Opt-in before first successful step. Default disabled preserves legacy.
+   -605: rejected guarded frame; -606: bounded certificate work exhausted.
+   q/v and original read/energy diagnostics roll back atomically. Only the new
+   attempt diagnostics survive failure, so callers can distinguish failures.
+   [0]schema1 [1]enabled [2]attemptTick [3]lastReturn [4]work [5]calls
+   [6]maxDepth [7]leaves [8]refusals [9]lastRefusalReason [10]stage
+   [11]crossLower [12]clearanceLower [13]winding [14..15]guardElasticBefore/After
+   [16]peakCoreReaction [17]guardEndpointWork [18]rigidGroundFallbacks
+   [19]hardClearance [20]hardCross [21]workBudget [22]substeps [23]reserved.
+   Reasons 1 cross,2 clearance,3 budget,4 winding,5 nonfinite,6 solve,7 ground.
+   Stages 1 Newton,2 integrated path,3 ground,4 initial frame certificate. */
+DANGO_BELT_API int dango_belt_set_shape_guard(void*,int);
+DANGO_BELT_API int dango_belt_read_shape_guard(void*,float*,int);
 DANGO_BELT_API int dango_belt_version(void);
 DANGO_BELT_API int dango_belt_create(const dango_belt_config*,float,float,int,void**);
 DANGO_BELT_API int dango_belt_step(void*,float,const float*,int);
