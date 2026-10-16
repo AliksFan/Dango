@@ -10,6 +10,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Dango.Desktop.Physics.Tuning;
+using Dango.Desktop.Rendering.Diagnostics;
 using Dango.Physics;
 using Dango.Physics.Configuration;
 
@@ -18,7 +19,7 @@ namespace Dango.PhysicsLab;
 /// <summary>Isolated single-body, flat-ground experiment. No display deformation or filtering.</summary>
 internal sealed class LabBeltWindow : Window
 {
-    private readonly string halfModule, beltModule, session;
+    private readonly string halfModule, beltModule, calibratedModule, session;
     private readonly LabInput input = new();
     private readonly DispatcherTimer timer = new(DispatcherPriority.Render);
     private readonly Stopwatch clock = Stopwatch.StartNew();
@@ -26,6 +27,10 @@ internal sealed class LabBeltWindow : Window
     private readonly CheckBox shortBones = new() { Content = "保留短骨架塑形（不碰撞）", IsChecked = true };
     private readonly CheckBox showSkeleton = new() { Content = "骨架、质心与合力位置", IsChecked = true };
     private readonly CheckBox showReference = new() { Content = "叠加原版静置轮廓", IsChecked = true };
+    private readonly CheckBox showAppearance = new() { Content = "正式眼睛与已佩戴配饰", IsChecked = true };
+    private readonly TextBlock appearanceStatus = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(0, 5, 0, 4) };
+    private readonly PhysicsLabAppearancePresenter appearance;
+    private readonly string appearanceSource;
     private readonly Slider size = new() { Minimum = 80, Maximum = 120, Value = 100, TickFrequency = 10, IsSnapToTickEnabled = true };
     private readonly Slider softness = new() { Minimum = 0, Maximum = 100, Value = 50, TickFrequency = 10, IsSnapToTickEnabled = true };
     private readonly Slider build = new() { Minimum = 0, Maximum = 100, Value = 50, TickFrequency = 10, IsSnapToTickEnabled = true };
@@ -46,15 +51,20 @@ internal sealed class LabBeltWindow : Window
     private int steps, replayFrame, clicks;
     private double previousTime, accumulator, cameraX, dragX, dragY, discardedSeconds;
     private LabInputSnapshot lastInput;
+    private LabBeltCalibrationParameters? activeCalibration;
+    private string activePreset = "";
     internal Button ApplyButton { get; }
     internal TextBox Notes { get; } = new() { MinHeight = 34, MaxLength = 500, ToolTip = "仅用于验证文字输入隔离；内容不保存" };
     private bool ActiveBelt => belt is not null;
     private float CoreX => beltFrame?.Stats[0] ?? oldFrame?.CoreX ?? 0;
     private float CoreY => beltFrame?.Stats[1] ?? oldFrame?.CoreY ?? 0;
 
-    internal LabBeltWindow(string halfModule, string beltModule, string session)
+    internal LabBeltWindow(string halfModule, string beltModule, string calibratedModule, string session, string appearanceSettingsPath, string appearanceSource)
     {
-        this.halfModule = halfModule; this.beltModule = beltModule; this.session = session;
+        this.halfModule = halfModule; this.beltModule = beltModule; this.calibratedModule = calibratedModule; this.session = session;
+        this.appearanceSource = appearanceSource;
+        appearance = new PhysicsLabAppearancePresenter(appearanceSettingsPath);
+        showSkeleton.IsChecked = false; showReference.IsChecked = false;
         Title = "团子 · 连续闭合带实验 · 步态关闭";
         Width = Math.Min(1220, SystemParameters.WorkArea.Width - 32);
         Height = Math.Min(850, SystemParameters.WorkArea.Height - 32); MinWidth = 940; MinHeight = 660;
@@ -67,8 +77,8 @@ internal sealed class LabBeltWindow : Window
         var root = new DockPanel { Margin = new Thickness(20, 16, 20, 16) };
         var heading = new StackPanel { Margin = new Thickness(0, 0, 0, 14) };
         heading.Children.Add(new TextBlock { Text = "连续闭合带实验", FontSize = 21, Margin = new Thickness(0, 0, 0, 6) });
-        heading.Children.Add(new TextBlock { Text = "A / D 左右半区   W / S 上半区向上／向下   Space 跳跃（当前偏弱）   鼠标拖动", Foreground = LabWindow.Accent });
-        heading.Children.Add(new TextBlock { Text = "步态关闭 · 原始物理显示 · 单体平地 · 灰线是原版落稳轮廓", FontSize = 12, Margin = new Thickness(0, 5, 0, 0) });
+        heading.Children.Add(new TextBlock { Text = "A / D 左右半区   W / S 上半区向上／向下   Space 跳跃   鼠标拖动", Foreground = LabWindow.Accent });
+        heading.Children.Add(new TextBlock { Text = "正式眼睛与配饰 · 原始物理显示 · 步态关闭 · 外观仅用于实验，不写回日常设置", FontSize = 12, Margin = new Thickness(0, 5, 0, 0) });
         DockPanel.SetDock(heading, Dock.Top); root.Children.Add(heading);
         var grid = new Grid(); grid.ColumnDefinitions.Add(new() { Width = new GridLength(280) });
         grid.ColumnDefinitions.Add(new() { Width = new GridLength(18) }); grid.ColumnDefinitions.Add(new());
@@ -80,15 +90,18 @@ internal sealed class LabBeltWindow : Window
         var tools = new StackPanel { Margin = new Thickness(0, 0, 10, 8) };
         sidebarScroll = new ScrollViewer { Content = tools, VerticalScrollBarVisibility = ScrollBarVisibility.Visible, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         sidebar.Children.Add(sidebarScroll);
-        Label(tools, "外围模型"); model.Items.Add("连续闭合带（新实验）"); model.Items.Add("原外围（半侧驱动对照）"); model.SelectedIndex = 0;
+        Label(tools, "身体参数对照");
+        model.Items.Add("闭合带 · 校正前（旧跳跃接线）"); model.Items.Add("原外围 · 半侧驱动对照");
+        model.Items.Add("身体候选 D · 抗压优先"); model.Items.Add("身体候选 F · 轮廓优先"); model.SelectedIndex = 2;
         tools.Children.Add(model); tools.Children.Add(shortBones);
         tools.Children.Add(new TextBlock { Text = "新圈整体承重；16 个附着点只负责塑形。更改模型或材料后点击应用。", FontSize = 12, TextWrapping = TextWrapping.Wrap });
         model.DropDownOpened += (_, _) => Cancel(); model.DropDownClosed += (_, _) => input.ReconcileHeld(HeldKeys());
         Label(tools, "材料"); AddSlider(tools, "大小", size); AddSlider(tools, "柔软度", softness); AddSlider(tools, "落地体态", build);
-        Label(tools, "观察"); tools.Children.Add(showSkeleton); tools.Children.Add(showReference);
-        showSkeleton.Click += (_, _) => surface.InvalidateVisual(); showReference.Click += (_, _) => surface.InvalidateVisual();
+        Label(tools, "观察"); showAppearance.Content = "正式眼睛与测试配饰"; tools.Children.Add(showAppearance); tools.Children.Add(appearanceStatus); tools.Children.Add(showSkeleton); tools.Children.Add(showReference);
+        showAppearance.Click += (_, _) => surface.Refresh();
+        showSkeleton.Click += (_, _) => surface.Refresh(); showReference.Click += (_, _) => surface.Refresh();
         tools.Children.Add(MakeButton("▷  同输入走停回放", () => { Reset(); replaying = !fault; replayFrame = 0; }));
-        tools.Children.Add(MakeButton("Ⅱ  暂停／继续", () => { Cancel(); paused = !paused; }));
+        tools.Children.Add(MakeButton("Ⅱ  暂停／继续", () => { Cancel(); paused = !paused; appearance.Paused = paused; }));
         tools.Children.Add(MakeButton("↓  导出物理记录", Export));
         Label(tools, "文字输入隔离"); tools.Children.Add(Notes);
         Label(tools, "实时诊断"); tools.Children.Add(details);
@@ -96,9 +109,10 @@ internal sealed class LabBeltWindow : Window
         AddHandler(Keyboard.PreviewKeyDownEvent, new KeyEventHandler(KeyDownHandler), true);
         AddHandler(Keyboard.PreviewKeyUpEvent, new KeyEventHandler(KeyUpHandler), true);
         AddHandler(Keyboard.GotKeyboardFocusEvent, new KeyboardFocusChangedEventHandler((_, _) => { if (IsText(Keyboard.FocusedElement as DependencyObject)) Cancel(); }), true);
-        Deactivated += (_, _) => Cancel(); Activated += (_, _) => input.ReconcileHeld(HeldKeys());
-        StateChanged += (_, _) => { if (WindowState == WindowState.Minimized) Cancel(); };
-        Closed += (_, _) => { timer.Stop(); belt?.Dispose(); old?.Dispose(); };
+        Deactivated += (_, _) => { Cancel(); appearance.Paused = true; };
+        Activated += (_, _) => { input.ReconcileHeld(HeldKeys()); appearance.Paused = paused || fault; };
+        StateChanged += (_, _) => { if (WindowState == WindowState.Minimized) { Cancel(); appearance.Paused = true; } };
+        Closed += (_, _) => { timer.Stop(); belt?.Dispose(); old?.Dispose(); appearance.Dispose(); };
         Loaded += (_, _) =>
         {
             initialized = true; Reset(); surface.Focus(); previousTime = clock.Elapsed.TotalSeconds;
@@ -119,13 +133,14 @@ internal sealed class LabBeltWindow : Window
         Refresh(); slider.ValueChanged += (_, _) => Refresh(); p.Children.Add(label); p.Children.Add(slider);
     }
     private void WriteStarted() => File.WriteAllText(Path.Combine(session, "started.json"), JsonSerializer.Serialize(new
-    { pid = Environment.ProcessId, visible = IsVisible, nativeLoaded = belt is not null || old is not null, model = ActiveBelt ? "continuous-belt" : "old-half", shortBones = beltFrame?.Stats[40] == 1, displaySmoothing = false, gait = false, error = fault }));
+    { pid = Environment.ProcessId, visible = IsVisible, nativeLoaded = belt is not null || old is not null, model = ActiveBelt ? "continuous-belt" : "old-half", preset = activePreset, calibration = activeCalibration, originalGroundJump = belt?.OriginalGroundJumpEnabled, shortBones = beltFrame?.Stats[40] == 1, displaySmoothing = false, gait = false, formalAppearance = true, equippedCount = appearance.EquippedCount, renderedAccessories = appearance.RenderedAccessoryCount, error = fault }));
 
     private void Reset()
     {
         if (!initialized) return;
         Cancel(); belt?.Dispose(); old?.Dispose(); belt = null; old = null; beltFrame = null; oldFrame = null; reference = null;
         fault = paused = false; cameraX = accumulator = 0; steps = 0; trace.Clear();
+        appearance.Paused = false; appearance.Reset();
         try
         {
             config = DangoBodyMaterial.Configure(new DangoBodyControls(size.Value, softness.Value, build.Value));
@@ -139,9 +154,20 @@ internal sealed class LabBeltWindow : Window
                     reference = f.Bodies.Single();
                 }
             }
-            if (model.SelectedIndex == 0)
+            activePreset = model.SelectedItem?.ToString() ?? "";
+            Title = "团子 · " + activePreset + " · 身体参数校准";
+            activeCalibration = model.SelectedIndex switch
             {
-                belt = new LabBeltWorld(beltModule, config, shortBones.IsChecked == true); belt.SetBounds(-256, 256); beltFrame = belt.Read();
+                2 => LabBeltCalibrationParameters.Default with { RadialStiffnessScale = 1.2, AreaScale = 2, OverallDamping = config.OverallDamping, GroundedBrake = 35, GroundedHorizontalDamping = 60 },
+                3 => LabBeltCalibrationParameters.Default with { RadialStiffnessScale = 1.4, AreaScale = 1.4, BeltBendScale = 4, OverallDamping = config.OverallDamping, GroundedBrake = 35, GroundedHorizontalDamping = 60 },
+                _ => null,
+            };
+            var selectedModule = model.SelectedIndex == 0 ? beltModule : model.SelectedIndex == 1 ? halfModule : calibratedModule;
+            if (model.SelectedIndex != 1)
+            {
+                belt = new LabBeltWorld(selectedModule, config, shortBones.IsChecked == true, activeCalibration);
+                if (activeCalibration is not null) belt.SetOriginalGroundJump();
+                belt.SetBounds(-256, 256); beltFrame = belt.Read();
             }
             else
             {
@@ -149,7 +175,13 @@ internal sealed class LabBeltWindow : Window
                 if (old.LabRegionDenominator != 2) throw new InvalidOperationException("原版模块不是半区驱动");
                 oldId = old.Add(0, 0); old.SetHorizontalBounds(-256, 256);
             }
-            status.Text = ActiveBelt ? "默认材料测试未通过：静置更扁、走速增加，Space未形成正常离地。无显示滤波。" : "已应用原外围半区对照。无显示滤波。";
+            status.Text = activeCalibration is not null ?
+                model.SelectedIndex == 2 ? "D：抖动已明显降低，速度接近原版；移动额外压缩约2.3个百分点，仍待校正。眼睛配饰参数未调。" :
+                "F：局部轮廓更近；速度/移动压缩仍超目标。眼睛配饰参数未调。" :
+                ActiveBelt ? "校正前对照：静置更扁、走速增加，旧实验跳跃接线偏弱。" : "已应用原外围半区对照。无显示滤波。";
+            File.AppendAllText(Path.Combine(session, "body-presets.jsonl"), JsonSerializer.Serialize(new
+            { preset = activePreset, config, calibration = activeCalibration, originalGroundJump = belt?.OriginalGroundJumpEnabled,
+                nativeSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(selectedModule))) }) + Environment.NewLine);
             StepOnce(); WriteStarted();
         }
         catch (Exception e) { Fault(e); }
@@ -158,11 +190,12 @@ internal sealed class LabBeltWindow : Window
     {
         var now = clock.Elapsed.TotalSeconds; var elapsed = now - previousTime; previousTime = now;
         if (paused || fault || !IsActive || !IsVisible || WindowState == WindowState.Minimized) { accumulator = 0; return; }
+        appearance.Paused = false;
         accumulator += Math.Min(elapsed, .25); var count = 0;
         while (accumulator >= LabWindow.FixedDt && count++ < 4)
         { StepOnce(); accumulator -= LabWindow.FixedDt; if (fault) break; }
         if (accumulator > 4 * LabWindow.FixedDt) { discardedSeconds += accumulator; accumulator = 0; }
-        surface.InvalidateVisual();
+        surface.Refresh();
     }
     private void StepOnce()
     {
@@ -183,7 +216,8 @@ internal sealed class LabBeltWindow : Window
                     DragActive: dragging, DragTargetX: dragX, DragTargetY: dragY));
                 beltFrame = belt.Read(); var s = beltFrame.Stats;
                 if (s[36] != 0 || s[31] > .0001 || s[39] != 0) throw new InvalidOperationException("闭合带本帧安全诊断失败");
-                trace.Enqueue(new { tick = steps, model = "belt", stats = s });
+                trace.Enqueue(new { tick = steps, model = "belt", stats = s,
+                    diagnostics = activeCalibration is null ? null : belt.ReadDiagnostics() });
                 if (steps % 6 == 0) details.Text = FormattableString.Invariant($"高 {(s[11] - s[9]) * 72:0.00} DIP / 宽 {(s[10] - s[8]) * 72:0.00} DIP\n真实质心Y {s[5]:0.0000} / 核心Y {s[1]:0.0000}\n接触 {s[25]:0} / 间隙 {s[12] * 72:0.00000} DIP\n合力 ({s[18]:0.000}, {s[19]:0.000})\nKKT残差 {s[30]:0.0e+0} / 36自由度\n独立外围碰撞体 {s[39]:0} / 帧 {steps}");
             }
             else if (old is not null)
@@ -198,17 +232,49 @@ internal sealed class LabBeltWindow : Window
                 trace.Enqueue(new { tick = steps, model = "old-half", coreY = oldFrame.CoreY, comY, height = ex.Maximum - ex.Minimum });
                 if (steps % 6 == 0) details.Text = FormattableString.Invariant($"高 {(ex.Maximum - ex.Minimum) * 72:0.00} DIP\n真实质心Y {comY:0.0000} / 核心Y {oldFrame.CoreY:0.0000}\n原外围独立碰撞体 16 / 帧 {steps}");
             }
+            UpdateAppearance();
             while (trace.Count > 1200) trace.Dequeue(); steps++;
             if (Math.Abs(CoreX - cameraX) > 1.5) cameraX = CoreX - Math.Sign(CoreX - cameraX) * 1.5;
+            surface.Refresh();
             if (lastInput.InteractPressed) status.Text = "闭合带本轮只实验单体平地，平台交互未接入。";
         }
         catch (Exception e) { Fault(e); }
     }
+    private void UpdateAppearance()
+    {
+        PhysicsLabBoundaryPoint[] boundary;
+        double vx, vy; bool grounded, jump;
+        if (beltFrame is { } b)
+        {
+            boundary = Enumerable.Range(0, b.Curve.Length / 2).Select(i => new PhysicsLabBoundaryPoint(b.Curve[2*i], b.Curve[2*i+1])).ToArray();
+            vx = b.Stats[46]; vy = b.Stats[47]; grounded = b.Grounded; jump = b.JumpAccepted;
+        }
+        else if (oldFrame is { } o)
+        {
+            boundary = LegacyBoundary(o); vx = oldNodes[0].VelocityX; vy = oldNodes[0].VelocityY; grounded = o.IsGrounded; jump = lastInput.JumpPressed;
+        }
+        else return;
+        appearance.Update(new(steps, LabWindow.FixedDt, boundary, CoreX, CoreY, vx, vy, grounded,
+            lastInput.Horizontal, lastInput.Downward > 0, lastInput.Stretch > 0, jump, dragging));
+        appearanceStatus.Text = appearanceSource + "\n" + appearance.Status;
+    }
+    private static PhysicsLabBoundaryPoint[] LegacyBoundary(DangoBodyState b)
+    {
+        var n = b.PointCount; var points = new PhysicsLabBoundaryPoint[256];
+        for (var j = 0; j < points.Length; j++)
+        {
+            var u = j * n / (double)points.Length; var i = (int)u; var t = u - i; var a = (i+n-1)%n; var c = (i+1)%n;
+            double At(int axis) => .5*(1-t)*(1-t)*b.Contour[2*a+axis] + (.5+t-t*t)*b.Contour[2*i+axis] + .5*t*t*b.Contour[2*c+axis];
+            points[j] = new(b.CoreX + At(0), b.CoreY + At(1));
+        }
+        return points;
+    }
     private void Fault(Exception e)
     {
         fault = paused = true; Cancel(); status.Text = "已暂停：" + e.Message;
+        appearance.Paused = true;
         File.WriteAllText(Path.Combine(session, "physics-failure.json"), JsonSerializer.Serialize(new
-        { steps, error = e.ToString(), config, lastInput, beltFrame, oldFrame, trace = trace.ToArray(), discardedSeconds }));
+        { steps, error = e.ToString(), config, activePreset, activeCalibration, lastInput, beltFrame, oldFrame, trace = trace.ToArray(), discardedSeconds }));
     }
     private void Cancel()
     {
@@ -218,7 +284,7 @@ internal sealed class LabBeltWindow : Window
     private void Export()
     {
         Cancel(); File.WriteAllText(Path.Combine(session, $"belt-trace-{DateTime.UtcNow:HHmmss-fff}.json"), JsonSerializer.Serialize(new
-        { model = ActiveBelt ? "continuous-belt" : "old-half", config, fixedDt = LabWindow.FixedDt, displaySmoothing = false, gait = false, discardedSeconds, trace = trace.ToArray() }));
+        { model = ActiveBelt ? "continuous-belt" : "old-half", preset = activePreset, calibration = activeCalibration, config, fixedDt = LabWindow.FixedDt, displaySmoothing = false, gait = false, discardedSeconds, trace = trace.ToArray() }));
         status.Text = $"已导出 {trace.Count} 帧物理诊断。";
     }
     private bool Blocked() => IsText(Keyboard.FocusedElement as DependencyObject) || dragging || Mouse.Captured is not null || model.IsDropDownOpen;
@@ -268,6 +334,11 @@ internal sealed class LabBeltWindow : Window
             void Check(bool ok, string label) { if (!ok) throw new InvalidOperationException(label); checks.Add(label); }
             Check(IsLoaded && IsVisible && !fault && ActiveBelt, "真实WPF已显示且连接闭合带DLL");
             for (var i = 0; i < 300; i++) StepOnce(); Check(!fault && beltFrame!.Stats[14] == 1, "闭合带落稳接地");
+            Check(appearance.EquippedCount == 2 && appearance.RenderedAccessoryCount == 2, "虚构已佩戴前后配饰使用正式柔性网格");
+            Check(!appearance.EyeDiagnostic.Contains("等待", StringComparison.Ordinal), "正式眼睛布局已消费真实身体帧");
+            var snapshot = beltFrame; var beforeToggle = steps;
+            showAppearance.IsChecked = false; surface.Refresh(); showAppearance.IsChecked = true; surface.Refresh();
+            Check(ReferenceEquals(snapshot, beltFrame) && steps == beforeToggle, "完整形象开关不推进或重建物理");
             Inject(Key.D, true, ApplyButton); StepOnce(); Check(lastInput.Horizontal == 1 && beltFrame!.Stats[18] > 0, "按钮焦点D驱动真实半区力");
             Inject(Key.D, false, ApplyButton); StepOnce();
             Inject(Key.W, true, size); StepOnce(); Check(lastInput.Stretch == 1 && beltFrame!.Stats[19] > 0, "滑条焦点W仍向上施力");
@@ -276,14 +347,17 @@ internal sealed class LabBeltWindow : Window
             Inject(Key.A, true, Notes); StepOnce(); Check(!lastInput.InputActive && beltFrame!.Stats[18] == 0, "文字输入不驱动"); Inject(Key.A, false, Notes);
             Reset(); for (var i = 0; i < 300; i++) StepOnce();
             ApplyButton.Focus(); var c = clicks; Inject(Key.Space, true, ApplyButton); StepOnce();
-            Check(lastInput.JumpPressed && beltFrame!.Stats[15] == 1 && beltFrame.Stats[47] > 0, "按钮焦点Space接受原核心跳跃冲量");
+            Check(lastInput.JumpPressed && beltFrame!.Stats[15] == 1 && beltFrame.Stats[47] > 0, "按钮焦点Space接受原版整身起跳");
             StepOnce(); Check(!lastInput.JumpPressed, "Space不自动重复"); Inject(Key.Space, false, ApplyButton); Check(clicks == c, "Space不误点应用");
+            var wholeBodyAirborne = false;
+            for (var i = 0; i < 90; i++) { StepOnce(); wholeBodyAirborne |= beltFrame!.Gap > 1e-4; }
+            Check(!fault && wholeBodyAirborne, "原版整身起跳规则使真实连续最低点离地");
             Check(ApplyButton.FocusVisualStyle is null && size.FocusVisualStyle is null, "按钮滑条无虚线焦点");
             Inject(Key.D, true, ApplyButton); StepOnce(); Cancel(); StepOnce(); Check(lastInput.CancelForces && lastInput.Horizontal == 0, "取消清除玩法状态");
             Inject(Key.D, true, ApplyButton); StepOnce(); Check(lastInput.Horizontal == 0, "取消后按住的键不补发"); Inject(Key.D, false, ApplyButton);
             model.SelectedIndex = 1; Reset(); for (var i = 0; i < 300; i++) StepOnce(); Check(!fault && !ActiveBelt && oldFrame!.IsGrounded, "原外围半区对照真实落地");
-            model.SelectedIndex = 0;
-            Reset(); for (var i = 0; i < 300; i++) StepOnce(); Check(!fault, "最终落稳无故障"); sidebarScroll.ScrollToTop(); surface.InvalidateVisual();
+            model.SelectedIndex = 2;
+            Reset(); for (var i = 0; i < 300; i++) StepOnce(); Check(!fault && appearance.RenderedAccessoryCount == 2, "最终落稳和正式配饰恢复无故障"); sidebarScroll.ScrollToTop(); surface.Refresh();
             await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.ContextIdle); UpdateLayout();
             var bitmap = new RenderTargetBitmap((int)ActualWidth, (int)ActualHeight, 96, 96, PixelFormats.Pbgra32); bitmap.Render(this);
             var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap)); using (var file = File.Create(Path.Combine(session, "window.png"))) encoder.Save(file);
@@ -295,8 +369,28 @@ internal sealed class LabBeltWindow : Window
         }
     }
 
-    private sealed class Surface(LabBeltWindow owner) : FrameworkElement
+    private sealed class Surface : Canvas
     {
+        private readonly LabBeltWindow owner;
+        private readonly DebugOverlay overlay;
+        internal Surface(LabBeltWindow owner)
+        {
+            this.owner = owner;
+            Children.Add(owner.appearance.View);
+            Children.Add(overlay = new DebugOverlay(this) { IsHitTestVisible = false });
+            owner.appearance.View.IsHitTestVisible = false;
+            owner.appearance.View.RenderTransform = new ScaleTransform(Scale / PhysicsLabAppearancePresenter.WorldToCanvas, Scale / PhysicsLabAppearancePresenter.WorldToCanvas);
+            SizeChanged += (_, _) => Refresh();
+        }
+        internal void Refresh()
+        {
+            var scale = Scale / PhysicsLabAppearancePresenter.WorldToCanvas;
+            var core = Map(owner.CoreX, owner.CoreY);
+            SetLeft(owner.appearance.View, core.X - 80*scale); SetTop(owner.appearance.View, core.Y - 66*scale);
+            owner.appearance.View.Visibility = owner.showAppearance.IsChecked == true ? Visibility.Visible : Visibility.Hidden;
+            overlay.Width = ActualWidth; overlay.Height = ActualHeight;
+            InvalidateVisual(); overlay.InvalidateVisual();
+        }
         private const double Scale = 120;
         private double Floor => ActualHeight * .78;
         private Point Map(double x, double y) => new(ActualWidth / 2 + (x - owner.cameraX) * Scale, Floor - (y - owner.config.GroundHeight) * Scale);
@@ -325,12 +419,14 @@ internal sealed class LabBeltWindow : Window
             if (owner.beltFrame is { } b) geometry = Shape(b.Curve);
             else if (owner.oldFrame is { } o) geometry = Shape(o.Contour, o.CoreX, o.CoreY, true);
             if (geometry is null) return;
-            d.DrawGeometry(new SolidColorBrush(Color.FromRgb(245, 226, 190)), new Pen(LabWindow.Accent, 1.2), geometry);
+            if (owner.showAppearance.IsChecked != true)
+                d.DrawGeometry(new SolidColorBrush(Color.FromRgb(245, 226, 190)), new Pen(LabWindow.Accent, 1.2), geometry);
+        }
+        private void DrawOverlay(DrawingContext d)
+        {
             if (owner.showReference.IsChecked == true && owner.reference is { } reference)
                 d.DrawGeometry(null, new Pen(Brushes.SlateGray, 1), Shape(reference.Contour, owner.CoreX, reference.CoreY, true));
             var core = Map(owner.CoreX, owner.CoreY);
-            foreach (var side in new[] { -1, 1 })
-            { var eye = core + new Vector(side * 20, -4); if (geometry.FillContains(eye)) d.DrawEllipse(LabWindow.Ink, null, eye, 3.4, 5); }
             if (owner.showSkeleton.IsChecked == true)
             {
                 if (owner.beltFrame is { } belt)
@@ -355,6 +451,10 @@ internal sealed class LabBeltWindow : Window
             }
             Text(d, "橙：核心／塑形附着点   蓝：真实质量质心   红：区域合力", 12);
             Text(d, owner.fault ? "物理失败，已暂停" : owner.replaying ? "同输入回放中" : owner.paused ? "已暂停" : "原始显示 · 步态关闭", 34);
+        }
+        private sealed class DebugOverlay(Surface surface) : FrameworkElement
+        {
+            protected override void OnRender(DrawingContext drawingContext) => surface.DrawOverlay(drawingContext);
         }
         private void Text(DrawingContext d, string text, double y) => d.DrawText(new FormattedText(text, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
             new Typeface(owner.FontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal), 12, LabWindow.Ink, VisualTreeHelper.GetDpi(this).PixelsPerDip), new Point(12, y));

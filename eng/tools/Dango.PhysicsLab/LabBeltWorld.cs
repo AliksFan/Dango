@@ -44,7 +44,11 @@ internal sealed class LabBeltWorld : IDisposable
     private readonly ReadDelegate read;
     private readonly BoundsDelegate bounds;
     private readonly DestroyDelegate destroy;
-    public LabBeltWorld(string module,DangoSelfPhysicsParameters config,bool shortBones=true)
+    private readonly DiagnosticsDelegate? diagnostics;
+    private readonly OriginalGroundJumpDelegate? originalGroundJump;
+    public bool OriginalGroundJumpEnabled { get; private set; }
+    public string? CalibrationSchema { get; }
+    public LabBeltWorld(string module,DangoSelfPhysicsParameters config,bool shortBones=true,LabBeltCalibrationParameters? calibration=null)
     {
         config.Validate();
         library=NativeLibrary.Load(Path.GetFullPath(module));
@@ -53,8 +57,23 @@ internal sealed class LabBeltWorld : IDisposable
             if(Export<VersionDelegate>("dango_belt_version")()!=1) throw new InvalidOperationException("Unsupported belt ABI");
             step=Export<StepDelegate>("dango_belt_step"); read=Export<ReadDelegate>("dango_belt_read");
             bounds=Export<BoundsDelegate>("dango_belt_set_bounds"); destroy=Export<DestroyDelegate>("dango_belt_destroy");
+            if(NativeLibrary.TryGetExport(library,"dango_belt_set_original_ground_jump",out var originalJumpAddress))
+                originalGroundJump=Marshal.GetDelegateForFunctionPointer<OriginalGroundJumpDelegate>(originalJumpAddress);
             var native=NativeConfiguration.From(config);
-            Check(Export<CreateDelegate>("dango_belt_create")(in native,0,0,shortBones?1:0,out handle),"create");
+            if(NativeLibrary.TryGetExport(library,"dango_belt_calibration_schema",out var schemaAddress) &&
+                NativeLibrary.TryGetExport(library,"dango_belt_read_diagnostics",out var diagnosticsAddress) &&
+                NativeLibrary.TryGetExport(library,"dango_belt_create_calibrated",out var createAddress))
+            {
+                CalibrationSchema=Marshal.PtrToStringUTF8(Marshal.GetDelegateForFunctionPointer<SchemaDelegate>(schemaAddress)());
+                diagnostics=Marshal.GetDelegateForFunctionPointer<DiagnosticsDelegate>(diagnosticsAddress);
+                if(calibration is not null)
+                {
+                    var values=calibration.ToNative();
+                    Check(Marshal.GetDelegateForFunctionPointer<CreateCalibratedDelegate>(createAddress)(in native,0,0,shortBones?1:0,values,values.Length,out handle),"create calibrated");
+                }
+            }
+            else if(calibration is not null) throw new NotSupportedException("Native belt module does not support calibration; calibrated parameters were not applied.");
+            if(calibration is null) Check(Export<CreateDelegate>("dango_belt_create")(in native,0,0,shortBones?1:0,out handle),"create");
             if(handle==0) throw new InvalidOperationException("Belt create returned null handle");
         }
         catch { NativeLibrary.Free(library); library=0; throw; }
@@ -78,6 +97,22 @@ internal sealed class LabBeltWorld : IDisposable
         if(scaffold.Concat(curve).Concat(stats).Any(x=>!float.IsFinite(x))) throw new InvalidOperationException("Belt returned nonfinite state");
         return new(scaffold,curve,stats);
     }
+    public void SetOriginalGroundJump(bool enabled=true)
+    {
+        VerifyAccess();
+        if(originalGroundJump is null)throw new NotSupportedException("Native belt module does not support the original grounded jump setting.");
+        Check(originalGroundJump(handle,enabled?1:0),"set original grounded jump");
+        OriginalGroundJumpEnabled=enabled;
+    }
+    public float[] ReadDiagnostics()
+    {
+        VerifyAccess();
+        if(diagnostics is null)throw new NotSupportedException("Native belt module does not export calibration diagnostics.");
+        float[] values=new float[48];
+        Check(diagnostics(handle,values,values.Length),"read diagnostics");
+        if(values.Any(x=>!float.IsFinite(x)))throw new InvalidOperationException("Belt returned nonfinite diagnostics");
+        return values;
+    }
     public void SetBounds(double left,double right)
     {
         VerifyAccess();
@@ -99,6 +134,10 @@ internal sealed class LabBeltWorld : IDisposable
     private static void Check(int result,string operation)
     { if(result!=0) throw new InvalidOperationException($"Belt {operation} failed ({result}); native rejected step preserves prior state"); }
     private T Export<T>(string name) where T:Delegate => Marshal.GetDelegateForFunctionPointer<T>(NativeLibrary.GetExport(library,name));
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int OriginalGroundJumpDelegate(nint handle,int enabled);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate nint SchemaDelegate();
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int DiagnosticsDelegate(nint handle,[Out]float[] values,int count);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int CreateCalibratedDelegate(in NativeConfiguration config,float x,float y,int bones,[In]float[] parameters,int count,out nint handle);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int VersionDelegate();
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int CreateDelegate(in NativeConfiguration config,float x,float y,int bones,out nint handle);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int StepDelegate(nint handle,float dt,[In]float[] controls,int count);

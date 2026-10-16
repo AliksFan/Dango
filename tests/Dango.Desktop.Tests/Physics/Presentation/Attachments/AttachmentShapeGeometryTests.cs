@@ -7,6 +7,41 @@ namespace Dango.Desktop.Tests.Physics.Presentation.Attachments;
 public sealed class AttachmentShapeGeometryTests
 {
     [TestMethod]
+    public void SampledBoundaryKeepsEveryExactPointAndStraightSegmentAt512Samples()
+    {
+        var points = Enumerable.Range(0, 512).Select(index =>
+        {
+            var angle = index * 2 * Math.PI / 512;
+            return new AttachmentPoint(.4 * Math.Cos(angle), .3 * Math.Sin(angle));
+        }).ToArray();
+        var snapshot = points.ToArray();
+        var shape = AttachmentShapeGeometry.FromBoundary(points);
+        Assert.AreEqual(512, shape.Boundary.Count);
+        for (var i = 0; i < points.Length; i++)
+        {
+            Assert.AreEqual(points[i], shape.Boundary[i]);
+            Assert.AreEqual((points[i] + points[(i + 1) % points.Length]) * .5, shape.Evaluate(i, .5));
+        }
+        points[0] = new(100, 100);
+        Assert.AreEqual(snapshot[0], shape.Boundary[0]);
+    }
+
+    [TestMethod]
+    public void SampledBoundaryRejectsReversalDegeneracyTouchingAndNonfiniteCoordinates()
+    {
+        AttachmentPoint[] rectangle = [new(-1, -1), new(1, -1), new(1, 1), new(-1, 1)];
+        Assert.ThrowsExactly<ArgumentException>(() => AttachmentShapeGeometry.FromBoundary(rectangle.Reverse().ToArray()));
+        Assert.ThrowsExactly<ArgumentException>(() => AttachmentShapeGeometry.FromBoundary([new(0, 0), new(1, 0), new(2, 0)]));
+        Assert.ThrowsExactly<ArgumentException>(() => AttachmentShapeGeometry.FromBoundary([new(0, 0), new(1, 0), new(1, 0), new(0, 1)]));
+        Assert.ThrowsExactly<ArgumentException>(() => AttachmentShapeGeometry.FromBoundary([new(0, 0), new(1, 0), new(double.NaN, 1)]));
+        Assert.ThrowsExactly<ArgumentException>(() => AttachmentShapeGeometry.FromBoundary([
+            new(0, 0), new(2, 0), new(1, 1), new(1, 0), new(0, 1)]));
+        // The original spline entry point retains its 128-control limit.
+        Assert.ThrowsExactly<ArgumentException>(() => AttachmentShapeGeometry.Create(Enumerable.Range(0, 256)
+            .Select(index => new PresentationPoint(Math.Cos(index * 2 * Math.PI / 256), Math.Sin(index * 2 * Math.PI / 256))).ToArray()));
+    }
+
+    [TestMethod]
     public void NearCircularNoiseStaysNeutralAndInvalidGeometryIsRejected()
     {
         var noisy = Oval(width: 0.65, height: 0.65).Select((p, i) => new PresentationPoint(p.X + 0.00001 * Math.Sin(i * 3), p.Y)).ToArray();

@@ -30,6 +30,15 @@ public sealed class AttachmentMotionController(AttachmentCommandRouter router, A
     }
     public bool Paused { get => clock.Paused; set { if (clock.Paused != value) { hat?.ResetSignals(); previousBodyY = null; } clock.Paused = value; } }
     public AttachmentPresentationFrame? Update(PhysicsPresentationFrame body, long stepIndex, double seconds, DangoFacingDirection facing = DangoFacingDirection.Center, HatBodySample? bodyMotion = null, bool hatBodyFollowEnabled = true)
+        => UpdateCore(body, stepIndex, seconds, facing, bodyMotion, hatBodyFollowEnabled, null);
+
+    /// <summary>Presentation-only diagnostics can supply an exact sampled body boundary without fitting a second curve.</summary>
+    internal AttachmentPresentationFrame? UpdateBoundary(PhysicsPresentationFrame body, AttachmentShapeGeometry shape,
+        long stepIndex, double seconds, DangoFacingDirection facing, HatBodySample bodyMotion)
+        => UpdateCore(body, stepIndex, seconds, facing, bodyMotion, false, shape);
+
+    private AttachmentPresentationFrame? UpdateCore(PhysicsPresentationFrame body, long stepIndex, double seconds,
+        DangoFacingDirection facing, HatBodySample? bodyMotion, bool hatBodyFollowEnabled, AttachmentShapeGeometry? sourceShape)
     {
         if (!double.IsFinite(seconds) || seconds is <= 0 or > 0.1 || stepIndex < 0) throw new ArgumentOutOfRangeException(nameof(seconds));
         if (Paused || stepIndex <= clock.StepIndex) return Current;
@@ -39,7 +48,7 @@ public sealed class AttachmentMotionController(AttachmentCommandRouter router, A
         previousBodyY = bodyMotion?.Y;
         // Physics Y points upward. A small deadzone suppresses resting-body jitter.
         var defaultY = Math.Sign(verticalVelocity) * Math.Clamp((Math.Abs(verticalVelocity) - 0.15) / 3, 0, 1);
-        var shape = AttachmentShapeGeometry.Create(body.Contour);
+        var shape = sourceShape ?? AttachmentShapeGeometry.Create(body.Contour);
         var signal = shape.EstimateTilt();
         var commands = router.CommitStep(target);
         AttachmentChannelIntent? Command(AttachmentChannel channel) => commands.FirstOrDefault(c => c.Channel == channel);

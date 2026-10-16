@@ -21,9 +21,12 @@ internal static class Program
         var regionEnvelopeModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "arc-native", "Release", "dango_physics_lab_half_envelope.dll");
         var arcModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "arc-native", "Release", "dango_physics_lab_arcs.dll");
         var beltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "belt-native", "Release", "dango_physics_lab_belt.dll");
-        var useBelt = args.Contains("--belt") || args.Contains("--belt-experiments");
-        if (useBelt && (args.Any(a => a is not ("--belt" or "--belt-experiments" or "--smoke")) ||
-            args.Contains("--belt-experiments") && args.Contains("--smoke")))
+        var calibratedBeltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "belt-calibration-native", "Release", "dango_physics_lab_belt.dll");
+        var originalJumpBeltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "belt-calibration-v2-native", "Release", "dango_physics_lab_belt.dll");
+        var beltBatches = new[] { "--belt-experiments", "--belt-calibration", "--belt-candidates", "--belt-refinement", "--belt-dynamics" };
+        var useBelt = args.Contains("--belt") || args.Any(beltBatches.Contains);
+        if (useBelt && (args.Any(a => a is not ("--belt" or "--belt-experiments" or "--belt-calibration" or "--belt-candidates" or "--belt-refinement" or "--belt-dynamics" or "--smoke" or "--saved-appearance")) ||
+            args.Count(beltBatches.Contains) > 1 || args.Any(beltBatches.Contains) && args.Contains("--smoke")))
         { Console.Error.WriteLine("闭合带请单独使用 --belt [--smoke] 或 --belt-experiments；本轮仅原始显示。"); return 7; }
         if (args.Contains("--arcs") || args.Contains("--arc-experiments"))
         { Console.Error.WriteLine("弹性弧段方案已废弃；请用 --belt 或 --belt-experiments。历史代码与结果已保留。"); return 8; }
@@ -38,7 +41,10 @@ internal static class Program
         if (useRegions && useEnvelope && !File.Exists(regionEnvelopeModule)) return 6;
         if ((useArcs || args.Contains("--arc-experiments")) && !File.Exists(arcModule)) return 8;
         if (useBelt && !File.Exists(beltModule)) return 9;
-        var session = Path.Combine(root.FullName, "artifacts", "physics-lab", "sessions", DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff"));
+        if ((args.Contains("--belt-calibration") || args.Contains("--belt-candidates") || args.Contains("--belt-refinement")) && !File.Exists(calibratedBeltModule)) return 9;
+        if ((args.Contains("--belt-dynamics") || useBelt && !args.Any(beltBatches.Contains)) && !File.Exists(originalJumpBeltModule)) return 9;
+        var session = Path.Combine(root.FullName, "artifacts", "physics-lab", "sessions",
+            DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff") + "-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(session);
         File.WriteAllText(Path.Combine(session, "manifest.json"), JsonSerializer.Serialize(new
         {
@@ -49,17 +55,29 @@ internal static class Program
             regionEnvelopeNativeSha256 = File.Exists(regionEnvelopeModule) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(regionEnvelopeModule))) : null,
             arcNativeSha256 = File.Exists(arcModule) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(arcModule))) : null,
             beltNativeSha256 = File.Exists(beltModule) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(beltModule))) : null,
+            calibratedBeltNativeSha256 = File.Exists(calibratedBeltModule) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(calibratedBeltModule))) : null,
+            originalJumpBeltNativeSha256 = File.Exists(originalJumpBeltModule) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(originalJumpBeltModule))) : null,
             initialGroundModel = useBelt ? "continuous-belt" : useEnvelope ? "continuous-envelope" : "discrete-nodes",
             initialDrive = useRegions ? "direction-half-region" : "core", regionDenominator = 2,
             initialDisplaySmoothing = useSmoothing, displaySmoothingTauSeconds = LabDisplaySmoothing.TimeConstantSeconds,
             fixedDt = LabWindow.FixedDt, measurementDipPerWorld = 72, displayDipPerWorld = 120,
             floorBounds = new[] { -256, 256 }, createdUtc = DateTime.UtcNow,
         }, new JsonSerializerOptions { WriteIndented = true }));
-        if (args.Contains("--experiments") || args.Contains("--ground-experiments") || args.Contains("--belt-experiments"))
+        if (args.Contains("--experiments") || args.Contains("--ground-experiments") || args.Any(beltBatches.Contains))
         {
             try
             {
-                if (args.Contains("--belt-experiments")) LabBeltExperiments.Run(module, regionModule, beltModule, session);
+                if (args.Contains("--belt-dynamics")) LabBeltDynamics.Run(regionModule, originalJumpBeltModule, session);
+                else if (args.Contains("--belt-candidates") || args.Contains("--belt-refinement"))
+                {
+                    var reference = Directory.EnumerateFiles(Path.GetDirectoryName(session)!, "calibration-results.json", SearchOption.AllDirectories)
+                        .OrderByDescending(file => Directory.GetParent(file)!.Name).FirstOrDefault()
+                        ?? throw new InvalidOperationException("请先运行 --belt-calibration 生成同模块参考。");
+                    if (args.Contains("--belt-refinement")) LabBeltCalibration.RunRefinement(regionModule, beltModule, calibratedBeltModule, session, reference);
+                    else LabBeltCalibration.RunCandidates(regionModule, beltModule, calibratedBeltModule, session, reference);
+                }
+                else if (args.Contains("--belt-calibration")) LabBeltCalibration.Run(regionModule, beltModule, calibratedBeltModule, session);
+                else if (args.Contains("--belt-experiments")) LabBeltExperiments.Run(module, regionModule, beltModule, session);
                 else if (args.Contains("--ground-experiments")) LabGroundExperiments.Run(module, envelopeModule, session);
                 else LabExperiments.Run(module, session);
                 return 0;
@@ -79,7 +97,11 @@ internal static class Program
         };
         if (useBelt)
         {
-            var beltWindow = new LabBeltWindow(regionModule, beltModule, session);
+            var useTestAppearance = args.Contains("--smoke") || !args.Contains("--saved-appearance");
+            var appearanceSettingsPath = useTestAppearance ? LabAppearanceFixture.Create(session) :
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Dango", "settings.json");
+            var beltWindow = new LabBeltWindow(regionModule, beltModule, originalJumpBeltModule, session, appearanceSettingsPath,
+                useTestAppearance ? "内置测试搭配 · 不代表日常佩戴" : "当前已保存外观 · 只读快照");
             if (args.Contains("--smoke")) beltWindow.Loaded += async (_, _) => await beltWindow.Smoke();
             return app.Run(beltWindow);
         }

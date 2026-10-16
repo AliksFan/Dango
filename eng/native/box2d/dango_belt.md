@@ -4,6 +4,13 @@ This isolated experiment replaces all sixteen peripheral Box2D bodies with one
 continuous Cartesian Fourier belt. It does not change any existing DLL target.
 It is a candidate under investigation, not an accepted replacement.
 
+Correction recorded 2026-10-16: references below to the "original core impulse"
+describe the preserved pre-correction experiment, not the actual old-half
+world's Space implementation. The actual ground rule adds 7.7m/s to every
+peripheral body's and the core's vy. The optional corrected mode and verified
+call chain are documented in `dango_belt_calibration.md`; the default remains
+the old experiment for reproducible comparisons.
+
 ## State, mass and material
 
 `B(theta)=T+sum(A_n cos(n theta)+B_n sin(n theta)), n=1..8`.

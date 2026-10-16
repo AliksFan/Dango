@@ -19,6 +19,12 @@ typedef struct dango_belt_config {
  float downward_force,jump_impulse,jump_cooldown_seconds,maximum_speed,minimum_area;
 } dango_belt_config;
 enum { DANGO_BELT_SCAFFOLD_FLOATS=68,DANGO_BELT_CURVE_FLOATS=512,DANGO_BELT_STATS_FLOATS=64 };
+enum { DANGO_BELT_CALIBRATION_FLOATS=11,DANGO_BELT_DIAGNOSTIC_FLOATS=48 };
+/* Optional, additive ABI. Arrays and their units are described by schema JSON. */
+DANGO_BELT_API const char* dango_belt_calibration_schema(void);
+DANGO_BELT_API int dango_belt_create_calibrated(const dango_belt_config*,float,float,int,const float*,int,void**);
+DANGO_BELT_API int dango_belt_read_diagnostics(void*,float*,int);
+DANGO_BELT_API int dango_belt_set_original_ground_jump(void*,int);
 DANGO_BELT_API int dango_belt_version(void);
 DANGO_BELT_API int dango_belt_create(const dango_belt_config*,float,float,int,void**);
 DANGO_BELT_API int dango_belt_step(void*,float,const float*,int);
