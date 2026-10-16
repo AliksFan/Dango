@@ -200,7 +200,7 @@ requires separate visual acceptance.
 
 With current bounding-box normalized coordinates x/y and signed input gain u,
 the current traction is `Fx=0.10*horizontal_force*abs(u)*x` and
-`Fy=horizontal_force*u*(0.64*x*y+0.08*x*x*x)`. A 64-point material-angle integral
+`Fy=horizontal_force*u*(1.6*x*y+0.08*x*x*x)`. A 64-point material-angle integral
 removes mean force and the rigid rotational component before Fourier mapping.
 The added traction has zero net force/torque to numerical precision; it can
 still change ground/friction response. Existing drive speed gating does not
@@ -216,8 +216,11 @@ ledger again. Snapshot slots 177/178 record enablement and signed gain. Rejected
 steps restore that state and Whale16 telemetry, except its attempt counter.
 
 `dango_belt_read_whale_drive(handle,double[16])` and the full schema are in the
-header. The module is built separately in `artifacts/physics-lab/belt-whale-v2-native`;
-the initial smaller-force candidate and accepted robust module remain available. The experiment checkbox takes
+header. The current preview is built separately in `artifacts/physics-lab/belt-whale-head-tail-native`;
+the earlier candidates and accepted robust module remain available. Only the
+80/100/0 endpoint is used for this stronger-head/tail visual preview; the prior
+eight-corner result belongs to the 0.64-inflate candidate, whose appearance the
+user rejected as too subtle. The experiment checkbox takes
 effect on reset and can compare the same F body with original driving forces.
 
 ## ABI and diagnostics

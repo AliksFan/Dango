@@ -193,13 +193,13 @@ static int belt_region_force(belt_body* b,double* force,int axis,int sign,double
  action[0]=mean.x;action[1]=mean.y;return 1;
 }
 /* A material traction only: no target geometry, mass, or extra energy term.
-   Second visual candidate: stretch .10, front/rear inflate .64, lift .08. */
+   Head/tail preview: stretch .10, front/rear inflate 1.6, lift .08. */
 static int belt_whale_force(belt_body* b,double* force){
  double bounds[4],foot;belt_bounds(b->q,bounds,&foot);double hx=.5*(bounds[2]-bounds[0]),hy=.5*(bounds[3]-bounds[1]);
  if(!isfinite(hx)||!isfinite(hy)||hx<=1e-8*b->radius||hy<=1e-8*b->radius)return 0;
  double cx=.5*(bounds[0]+bounds[2]),cy=.5*(bounds[1]+bounds[3]);belt_v p[64],t[64],meanp={0},meant={0};
  for(int i=0;i<64;++i){p[i]=belt_eval(b->q,2*BELT_PI*i/64,0);double x=(p[i].x-cx)/hx,y=(p[i].y-cy)/hy;
-  t[i].x=.10*b->cfg.horizontal_force*fabs(b->whale_gain)*x;t[i].y=b->cfg.horizontal_force*b->whale_gain*(.64*x*y+.08*x*x*x);
+  t[i].x=.10*b->cfg.horizontal_force*fabs(b->whale_gain)*x;t[i].y=b->cfg.horizontal_force*b->whale_gain*(1.6*x*y+.08*x*x*x);
   meanp.x+=p[i].x/64;meanp.y+=p[i].y/64;meant.x+=t[i].x/64;meant.y+=t[i].y/64;}
  double inertia=0,torque=0;for(int i=0;i<64;++i){p[i].x-=meanp.x;p[i].y-=meanp.y;t[i].x-=meant.x;t[i].y-=meant.y;inertia+=(p[i].x*p[i].x+p[i].y*p[i].y)/64;torque+=(p[i].x*t[i].y-p[i].y*t[i].x)/64;}
  if(!isfinite(inertia)||inertia<=1e-16*b->radius*b->radius||!isfinite(torque))return 0;

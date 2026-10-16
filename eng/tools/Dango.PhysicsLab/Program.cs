@@ -23,7 +23,7 @@ internal static class Program
         var beltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "belt-native", "Release", "dango_physics_lab_belt.dll");
         var calibratedBeltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "belt-calibration-native", "Release", "dango_physics_lab_belt.dll");
         var originalJumpBeltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "belt-calibration-v2-native", "Release", "dango_physics_lab_belt.dll");
-        var guardedBeltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "belt-whale-v2-native", "Release", "dango_physics_lab_belt.dll");
+        var guardedBeltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "belt-whale-head-tail-native", "Release", "dango_physics_lab_belt.dll");
         var beltBatches = new[] { "--belt-experiments", "--belt-calibration", "--belt-candidates", "--belt-refinement", "--belt-dynamics", "--belt-guard-experiments" };
         var useBelt = args.Contains("--belt") || args.Any(beltBatches.Contains);
         if (useBelt && (args.Any(a => a is not ("--belt" or "--belt-experiments" or "--belt-calibration" or "--belt-candidates" or "--belt-refinement" or "--belt-dynamics" or "--belt-guard-experiments" or "--smoke" or "--saved-appearance")) ||

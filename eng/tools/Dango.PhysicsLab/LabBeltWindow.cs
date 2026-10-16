@@ -76,7 +76,7 @@ internal sealed class LabBeltWindow : Window
         size.Value = 80; softness.Value = 100; build.Value = 0;
         appearance = new PhysicsLabAppearancePresenter(appearanceSettingsPath);
         showSkeleton.IsChecked = false; showReference.IsChecked = false;
-        Title = "团子 · 鲸形行走受力实验 · 无周期摆动";
+        Title = "团子 · 鲸形行走 · 头尾差异预览";
         Width = Math.Min(1220, SystemParameters.WorkArea.Width - 32);
         Height = Math.Min(850, SystemParameters.WorkArea.Height - 32); MinWidth = 940; MinHeight = 660;
         Background = new SolidColorBrush(Color.FromRgb(253, 252, 249)); Foreground = LabWindow.Ink;
@@ -173,7 +173,7 @@ internal sealed class LabBeltWindow : Window
                 }
             }
             activePreset = model.SelectedItem?.ToString() ?? "";
-            Title = "团子 · " + activePreset + (model.SelectedIndex == 0 ? whaleDrive.IsChecked == true ? " · 鲸形行走受力实验" : " · 原推动对照" : " · 身体参数校准");
+            Title = "团子 · " + activePreset + (model.SelectedIndex == 0 ? whaleDrive.IsChecked == true ? " · 鲸形行走·头尾差异预览" : " · 原推动对照" : " · 身体参数校准");
             activeCalibration = model.SelectedIndex == 0
                 ? LabBeltCalibrationParameters.Default with { RadialStiffnessScale = 1.4, AreaScale = 1.4, BeltBendScale = 4, OverallDamping = config.OverallDamping, GroundedBrake = 35, GroundedHorizontalDamping = 60 }
                 : null;
