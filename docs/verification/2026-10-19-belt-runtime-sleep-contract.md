@@ -58,6 +58,14 @@ native 源码顺序说明绝对系数 v 不等于整个 tick 的净坐标变化�
 
 最初完整 Desktop test 命令被既有 NU1903 阻挡；上述定向运行使用 `-p:NuGetAudit=false`，不记作默认审计通过。随后更强原始字节断言＋全部确定性 worker 用例针对性运行 26/26 通过，证据为 `trend-gate/raw-state-and-deterministic.trx`。增加失败末窗诊断后，5 个活动工况的原始字节复验为 4 通过／拖动 1 失败，见 `activity-raw-state-and-drag-window.trx` 和 `activity-drag-release-window.json`；失败没有通过更换断言或放宽门消失。
 
+### 独立延长观察
+
+主 Agent 随后明确授权相同拖动脚本、相同冻结门、释放后最多 12000 tick 的独立长观察；原 3600 tick 失败 case 保持原样。每 120 tick 写一条完整 q/v/curve/core 窗口上界，共 100 条。结果为 **UNSTABLE_AT_CAP**：释放后 12000 tick（总 tick12314）仍未睡；最后 q 窗 `0.000230212243`、curve 窗 `0.00021181256` 仍超过 `1e-4`，v 窗 `1.29196628e-5`、core 窗 `5.66244e-7`。这再次确认严格形变门正确拒睡，但没有建立拖动后节能入睡覆盖。
+
+独立测量测试执行成功只表示完整观测至上限且未出现物理故障，不能写成拖动节能目标通过。证据是 `trend-gate/drag-release-extended-observation.json`（100 个窗口）和独立 `drag-release-extended-observation.trx`。
+
+另补一条生命周期取证修复：在途 Step 返回失败时，即使已被 Pause／Close 使 epoch 失效，也保留旧 epoch 的 `LastFailure`；既不发布旧外观，也不将旧失败锁存为新 epoch 的故障。没有改变成功 tick、native 调用、配置或休眠门。加入该真实反例后的全部 26 项 worker 控制用例通过，证据为 `trend-gate/worker-lifecycle-evidence.trx`。
+
 ## 证据与交付边界
 
 候选 native SHA256：`4871642B25107FAA3D794AC16FA04837D342BF4646627B0AF103D4B1679C3C4A`。只加载隔离候选，未替换受保护生产 DLL。

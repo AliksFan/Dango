@@ -100,6 +100,23 @@ public sealed class BeltBodyRuntimeTests
     }
 
     [TestMethod]
+    public async Task InFlightFailureCrossingPauseRetainsOldEpochEvidenceWithoutPoisoningNewEpoch()
+    {
+        var native = new FakeSession { BlockStep = true, RejectStep = true };
+        await using var runtime = new BeltBodyRuntime(_ => native, true);
+        await Configured(runtime); var failedEpoch = runtime.Epoch;
+        var step = runtime.AdvanceAsync(); Assert.IsTrue(native.Entered.Wait(TimeSpan.FromSeconds(3)));
+        var pause = runtime.PauseAsync(); native.Release.Set();
+        Assert.IsFalse(await step); await pause;
+        Assert.IsNotNull(runtime.LastFailure); Assert.AreEqual(failedEpoch, runtime.LastFailure.Epoch);
+        Assert.IsNotNull(runtime.LastFailure.Error); Assert.IsNull(runtime.Metrics.Error);
+        native.RejectStep = native.BlockStep = false;
+        await runtime.ConfigureAsync(DangoBodyControls.Default, 1, 1);
+        Assert.IsTrue(await runtime.AdvanceAsync()); Assert.IsNull(Take(runtime).Error);
+        Assert.AreEqual(failedEpoch, runtime.LastFailure.Epoch);
+    }
+
+    [TestMethod]
     public async Task ChangedBodyEpochInvalidatesQueuedAndLateDisplayAndRestoresWhilePaused()
     {
         var native = new FakeSession();

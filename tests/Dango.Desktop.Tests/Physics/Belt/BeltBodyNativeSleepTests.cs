@@ -220,6 +220,57 @@ public sealed class BeltBodyNativeSleepTests
     }
 
     [TestMethod]
+    public async Task NativeDragReleaseExtendedObservationPreservesShortFailureAndFrozenGate()
+    {
+        await using var runtime = new BeltBodyRuntime(body => new BeltNativeSession(Module, body), true);
+        runtime.SleepEnabled = true;
+        await runtime.ConfigureAsync(DangoBodyControls.Default, 0, 0);
+        BeltBodySnapshot? current = null;
+        for (var i = 0; i < 300 && !runtime.Metrics.Sleeping; i++)
+        { Assert.IsTrue(await runtime.AdvanceAsync(), runtime.Metrics.Error?.ToString()); runtime.TryDequeue(out current); }
+        Assert.IsTrue(runtime.Metrics.Sleeping);
+        runtime.PublishInput(new(DragActive: true, DragTargetX: current!.Frame!.CoreX + .12,
+            DragTargetY: current.Frame.CoreY + .1, InputActive: true));
+        for (var i = 0; i < 90; i++)
+        { Assert.IsTrue(await runtime.AdvanceAsync(), runtime.Metrics.Error?.ToString()); runtime.TryDequeue(out current); }
+        runtime.ClearInput();
+        var releasedAt = current!.Tick;
+        var reports = new List<object>(); var window = new Queue<BeltBodySnapshot>();
+        var directory = Path.Combine(TestRepository.Root, "artifacts", "belt-runtime", "trend-gate"); Directory.CreateDirectory(directory);
+        for (var i = 1; i <= 12000 && !runtime.Metrics.Sleeping; i++)
+        {
+            Assert.IsTrue(await runtime.AdvanceAsync(), runtime.Metrics.Error?.ToString());
+            Assert.IsTrue(runtime.TryDequeue(out current));
+            window.Enqueue(current!); if (window.Count > 121) window.Dequeue();
+            if (i % 120 != 0 && !runtime.Metrics.Sleeping) continue;
+            var rows = window.ToArray();
+            double Envelope(int offset, int count) => Enumerable.Range(offset, count).Max(j => rows.Max(row => row.DebugState![j]) - rows.Min(row => row.DebugState![j]));
+            var report = new
+            {
+                ReleasedAt = releasedAt, ReleasedTicks = i, PhysicalTick = current!.Tick,
+                Sleeping = runtime.Metrics.Sleeping, QWindow = Envelope(2, 36), VWindow = Envelope(38, 36),
+                CurveWindow = Enumerable.Range(0, 512).Max(j => rows.Max(row => row.Frame!.Curve[j]) - rows.Min(row => row.Frame!.Curve[j])),
+                CoreWindow = Math.Max(rows.Max(row => row.Frame!.CoreX) - rows.Min(row => row.Frame!.CoreX), rows.Max(row => row.Frame!.CoreY) - rows.Min(row => row.Frame!.CoreY)),
+            };
+            reports.Add(report);
+            File.WriteAllText(Path.Combine(directory, "drag-release-extended-observation.json"),
+                System.Text.Json.JsonSerializer.Serialize(reports, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+            if (i == 3600) Assert.IsFalse(runtime.Metrics.Sleeping, "The original short observation must remain reproducible, not be overwritten by the extension.");
+        }
+        var releaseTicks = current!.Tick - releasedAt;
+        Console.WriteLine($"DRAG EXTENDED status={(runtime.Metrics.Sleeping ? "SLEEP" : "UNSTABLE_AT_CAP")} releaseTick={releasedAt} firstSleepAfterRelease={(runtime.Metrics.Sleeping ? releaseTicks : -1)} lastPhysicalTick={current.Tick} cap=12000; original3600Goal=FAIL");
+        if (runtime.Metrics.Sleeping)
+        {
+            Assert.IsGreaterThan(3600, releaseTicks);
+            var before = await runtime.CaptureStateAsync(); var calls = runtime.Metrics.NativeStepCalls;
+            await Task.Delay(50); var after = await runtime.CaptureStateAsync();
+            CollectionAssert.AreEqual(Bytes(before.State), Bytes(after.State)); Assert.AreEqual(calls, runtime.Metrics.NativeStepCalls);
+            runtime.PublishInput(new(InputActive: true)); Assert.IsTrue(await runtime.AdvanceAsync());
+            Assert.IsFalse(runtime.Metrics.Sleeping);
+        }
+    }
+
+    [TestMethod]
     public async Task AutomaticOwnerCpuComparisonSameRestStateAndWallDuration()
     {
         var module = Module;

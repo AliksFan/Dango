@@ -252,6 +252,7 @@ public sealed class BeltBodyRuntime : IAsyncDisposable
     private bool Produce()
     {
         long currentEpoch, currentBodyEpoch, revision, eventSequence;
+        long previousSequence; int previousTick;
         DangoBodyControls currentBody; DangoBeltInput input;
         lock (gate)
         {
@@ -260,6 +261,7 @@ public sealed class BeltBodyRuntime : IAsyncDisposable
             if (snapshots.Count >= Capacity) { BeginBackpressureLocked(); CheckBackpressureLocked(); return false; }
             currentEpoch = epoch; currentBodyEpoch = bodyEpoch; revision = configurationRevision;
             currentBody = body; eventSequence = wakeSequence;
+            previousTick = tick; previousSequence = sequence;
             var jump = consumedJump < jumpSequence; if (jump) consumedJump++;
             var cancel = consumedCancel < cancelSequence; if (cancel) consumedCancel++;
             input = latest with { JumpPressed = jump, CancelForces = cancel || latest.CancelForces };
@@ -270,7 +272,19 @@ public sealed class BeltBodyRuntime : IAsyncDisposable
         lock (gate)
         {
             stepCalls++; stepMilliseconds += result.StepMilliseconds; readMilliseconds += result.ReadMilliseconds;
-            if (currentEpoch != epoch || closing) { invalidated++; return false; }
+            if (currentEpoch != epoch || closing)
+            {
+                invalidated++;
+                // A lifecycle barrier may reject presentation, never the evidence of an
+                // in-flight native failure. Keep the old epoch without poisoning the new one.
+                if (result.Error is not null)
+                    lastFailure = new(currentEpoch, currentBodyEpoch, revision, previousSequence, previousTick + 1,
+                        currentBody, input, result.Frame, result.State, result.Error, result.StepMilliseconds,
+                        result.ReadMilliseconds, Stopwatch.GetTimestamp())
+                    { Guard = result.Guard, Speed = result.Speed, Radial = result.Radial, Rear = result.Rear,
+                        Ledger = result.Ledger, PreState = result.PreState, SolverFailure = result.SolverFailure };
+                return false;
+            }
             var successful = result.Error is null && result.Frame is not null && result.State is not null;
             if (successful) { tick++; produced++; sequence++; }
             var asleep = successful && sleepEnabled && eventSequence == wakeSequence && pending is null &&
