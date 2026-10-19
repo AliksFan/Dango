@@ -16,6 +16,66 @@ public sealed class GaitGeometryReferenceEquivalenceTests
     private static readonly LogicalRect Viewport = new(0, 0, 1000, 800);
 
     [TestMethod]
+    public void SingleFrameBuilderKeepsEveryFrozenBitAcrossRepeatedStrainsAndScreenGates()
+    {
+        var accepted = 0; var rejected = 0;
+        foreach (var shear in new[] { -.12, 0, .12 })
+            foreach (var expression in new[] { EyeShape.Round, EyeShape.NaturalClosed })
+            {
+                var frame = CreateFrame(shear, EyeLayoutParameters.Default, expression);
+                foreach (var scale in new[] { .5, 1, 1.2 })
+                    foreach (var autonomous in new[] { false, true })
+                        foreach (var clip in new[] { false, true })
+                            foreach (var hatSize in new[] { .5, 1, 1.35 })
+                            {
+                                var bounds = new LogicalRect(100, 100, 160 * scale, 120 * scale);
+                                var left = frame.Attachments!.SourceShape!.Boundary.Min(p => GaitGeometry.Canvas(p).X) * scale;
+                                foreach (var viewport in new[] { Viewport,
+                                    new LogicalRect(bounds.X + left - .2 - (autonomous ? 16 : 0), 0, 1000, 800),
+                                    new LogicalRect(bounds.X + left + .2 - (autonomous ? 16 : 0), 0, 1000, 800) })
+                                {
+                                    var builder = GaitGeometry.CreateBuilder(frame, new(11), bounds, viewport, autonomous, hatSize, clip);
+                                    foreach (var strain in new[] { 0d, -.02, .01, -.008, Math.BitIncrement(.01), 0, .005, -.02 })
+                                    {
+                                        var expected = FrozenGaitGeometryAd59ed2.Create(frame, new(11), bounds, viewport, strain, autonomous, hatSize, clip);
+                                        var actual = builder.Create(strain);
+                                        AssertBits(expected, actual);
+                                        if (actual is null) rejected++; else accepted++;
+                                    }
+                                }
+                            }
+            }
+        Assert.IsTrue(accepted > 0 && rejected > 0);
+    }
+
+    [TestMethod]
+    public void SingleFrameBuilderKeepsNullGatesAndZeroStrainLazy()
+    {
+        var frame = CreateFrame(0, EyeLayoutParameters.Default, EyeShape.Round);
+        var hidden = new PhysicsPresentationFrame(false, frame.Contour, frame.Eyes, frame.Hat, frame.FallbackReason, frame.Diagnostics)
+            { Attachments = frame.Attachments };
+        var fallback = new PhysicsPresentationFrame(true, frame.Contour, frame.Eyes, frame.Hat,
+            Enum.GetValues<PhysicsPresentationFallbackReason>().First(reason => reason != PhysicsPresentationFallbackReason.None), frame.Diagnostics)
+            { Attachments = frame.Attachments };
+        foreach (var invalid in new[] { hidden, fallback, frame with { Attachments = null },
+            frame with { Attachments = frame.Attachments! with { SourceShape = null } },
+            frame with { Attachments = frame.Attachments! with { Hat = null } } })
+        {
+            var builder = GaitGeometry.CreateBuilder(invalid, new(11), Bounds, Viewport, false, 1);
+            foreach (var strain in new[] { 0d, -.02, .01, 0, -.008 })
+                AssertBits(FrozenGaitGeometryAd59ed2.Create(invalid, new(11), Bounds, Viewport, strain, false, 1), builder.Create(strain));
+        }
+        // A zero request must retain the original early return before dereferencing frame.
+        Assert.IsNull(GaitGeometry.CreateBuilder(null!, new(11), Bounds, Viewport, false, 1).Create(0));
+        {
+            var bounds = default(LogicalRect);
+            var builder = GaitGeometry.CreateBuilder(frame, new(11), bounds, Viewport, false, 1);
+            foreach (var strain in new[] { 0d, -.02, .01 })
+                AssertBits(FrozenGaitGeometryAd59ed2.Create(frame, new(11), bounds, Viewport, strain, false, 1), builder.Create(strain));
+        }
+    }
+
+    [TestMethod]
     public void CompleteGeometryKeepsEveryBitOfFrozenTransformsAndClippingDecisions()
     {
         var accepted = 0; var rejected = 0; var reduced = 0;

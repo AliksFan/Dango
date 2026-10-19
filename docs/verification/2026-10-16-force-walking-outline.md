@@ -274,3 +274,61 @@ Radial16 schema3只统计主8点；新增Rear16只读接口记录独立预算、
 Release托管构建0警告0错误，新增及受影响原生构建/检查通过；独立代码审查未发现数值问题。原生helper窄测试本身未单独构造接地第32轮边界，但八角全轨迹、接地fallback合同与六故障合同共同覆盖实际调用路径；不把有限回归写成所有任意状态已证明。当前仅实验树的本地交付，未合并main、推送、安装、部署或替换正式DLL，原9448树保持干净，`grounded`保留。全部自动检查进程退出，无服务、端口或数据库资源；人工完整帧率/全范围手感仍未验收，C5整体未关闭。
 
 完成后另开一个80/100/0交互实验窗口供用户试用，主动保留该预览进程；会话`20261019-041012-756-8a838a12`的manifest确认加载D444候选、原上下步态启用，started记录visible/nativeLoaded为true、两件配饰实际渲染、error=false。这次打开不算人工通过。
+
+## 14. 完整窗口定位、帧同步候选与稳定57帧目标（2026-10-19）
+
+用户确认D444首轮优化版“手感没有变化”，继续授权性能定位/等价优化，随后明确目标“稳定57帧+即可”。本轮仍只在独立实验树实施；基线ad59ed2，未跟踪grounded保留。身体/材质、8点主推Fy2/3、后半净Fy绝对值1/3下压、W/S/Space、4子步、40/20求解预算、残差、32轮接地投影、300轮接触速度、52次求根二分、限速12及步态幅度/安全门保持。
+
+观测为默认关闭的UI线程分桶，逐样本缓存在内存，结束才写盘；计时桶包含子调用，不能相加。native-reads每步采两次，其Mean不代表整步读取成本。窗口仍执行原rest300/right600/stop180/left600/stop180，初始化Reset自带一步排除，完整运行允许末回调补至1860..1863步；实际左右输入各600且UnexpectedInput为0。自动测量专用入口保持可见/置顶、跨失焦继续脚本、拦截用户键/鼠标干扰；普通交互仍失焦取消暂停。最小化/不可见即失败；提前手动关闭也写失败报告。Passed只表示测量有效，性能目标另看PerformanceTargetPassed/Steady57.Passed。
+
+完整证据索引：artifacts/physics-lab/sessions/window-performance-history-20261019.json及各会话window-performance.json/manifest.json。以下均为真实WPF回调，不是GPU/DWM present或scanout，也不是OS硬件输入。不同轮机器负载有变化，不能以跨轮百分比宣称整窗收益。
+
+|会话短标识|时钟/诊断层|测量步|step均值/P95 ms|回调P95 ms|丢弃积压秒|判断|
+|---|---|---:|---:|---:|---:|---|
+|050157-1c1fedb4|原timer/显示|924|不采信|不采信|不采信|失焦暂停，150秒超时，无效|
+|050614-59483ae3|原timer/显示|1861|15.93/23.18|93.37|4.83594|测量有效，长帧明显|
+|050653-be76a8d2|原timer/隐藏|1862|19.10/29.48|114.03|10.54928|当时隐藏层仍OnRender，非绘制零成本|
+|051434-877cdcdd|原timer/隐藏|0|无样本|不采信|0|最小化，150秒超时，无效|
+|051922-8ebc31ea|原timer/隐藏|1862|14.10/20.97|86.22|2.69263|中间候选，隐藏层绘制调用已为0|
+|051958-4bcf3d74|原timer/显示|1861|17.10/26.22|103.45|7.41758|中间候选，尚未达目标|
+|053309-dc19c1f1|帧同步/显示|1860|14.05/18.13|63.20|0.28334|57门失败|
+|053943-bcfade28|帧同步/显示|1860|12.38/15.86|28.31|0|57门失败，稳定段最少35更新/秒|
+|054821-5b01619c|帧同步/显示|1860|15.60/21.13|82.67|1.79277|57门失败，稳定段最少11更新/秒|
+
+原timer常在一次回调连续处理约4个物理步，UI线程长时被占。增加独立--render-clock候选，以去重Rendering回调运行原固定Tick；仍按真实时间累积、保留固定dt/最多4步追赶/积压规则，普通入口默认原timer不切换。clock事件在关闭和Smoke时退订；性能observer在clock之后，使用clock入口timestamp计算间隔并读取本回调推进后的steps。首次静置300步是显式预热，冷样本完整保留。严格稳定门为每个完整(t-1000,t]窗口回调与有新成功物理tick的帧均至少57，检查到达及到期边界、时间戳epsilon1e-7ms，间隔P95<=1000/57ms、稳定段无积压丢弃；不能用多个补步冒充多个可见更新。纯判定测试覆盖恰57Hz、短暂降至56、长空隙、旧帧重复、4步批发和丢弃。
+
+已采用的等价优化：
+
+- Surface在完整外观已绘身体时不再构造丢弃的第二份身体几何；Hidden调试层不再实际DrawOverlay，诊断读取/验证和侧栏仍完整执行。
+- UpdateGait每成功tick建立一次lazy builder，重复应变搜索复用本tick身体/眼睛/帽子/净空准备；所有候选倍率、MeshesSafe及几何安全搜索照旧。GaitGeometry保留原Create入口，冻结ad59ed2与原5bc参考对照通过，包括50/100/120%尺寸、两个clip模式、视口边界、hatSize、零/相邻应变和无效门；未跨tick缓存。
+- DampedSpring仅在相同切片checkpoint==seconds时复用已有end，转折点/检查顺序/48次碰界二分不变；完整冻结原类，涵盖三种阻尼、无turn/turn、越界后回入、镜像、signed zero与480tick轨迹。
+- guard中心from/to共用相同角度0/1/2阶basis，进一步以1024条精确角度位+导数TLS缓存复用跨certify的basis与叶端点；碰撞回退原生成并copy-out。一次certify局部from/to各自复用同n两hypot之和，hypot从130降至34，四阶仍按原n顺序及pow表达式独立累加。原norm/eval oracle保留，256项norm逐字节及309例完整certify结果对照通过。
+- roots的2×9 chart模板由原表达式逐线程一次生成；六个axis/derivative槽仅在完整q36 doubles和level的全部字节相等时复用原roots。输出owned copy，仅写used个根，尾部与零root输出保持；不支持selector绕过memo。3445项完整roots数组/计数与冻结原实现按字节一致，覆盖q每字段最低位、±0、NaN payload、不同caller尾部/缓冲覆盖、驱逐和非有限输入。原polynomial_roots未改。TLS隔离已静态审查，未专门执行多线程测试。
+
+眼睛AABB捷径已撤出源：虽然14项功能/边界对照与微基准通过，但校准56-byte edge stride、两侧typed delegate及Tiered JIT后，IsSafe微基准省约7–21us/call、36/36配对较快，没有足够整窗证据抵销每edge额外40 bytes与构建成本。补丁、临时benchmark、TRX和范围说明保存在artifacts/face-clearance-microbench-20261019；051922/051958两个中间应用曾包含它，不能作为最终源码的独立收益证据。
+
+原生独立产物和同轮AB/BA串行对照（均1890步11通道逐帧字节相同，Stopwatch仅包围Step，无profile，退出0）：
+
+|候选与证据目录|同轮基线均值/P95 ms|候选均值/P95 ms|均值减少|
+|---|---:|---:|---:|
+|8D656E…；window-perf-native-serial/results|12.6484/20.4079 (D444)|11.0702/18.0309|12.5%|
+|3C80A4…；belt-57-native-serial/results|9.1204/12.7319 (8D65)|8.5036/12.0432|6.8%|
+|C455EA…；belt-57-memo-serial/results|12.5763/20.3177 (3C80)|11.4670/19.2041|8.8%|
+
+C455EA完整SHA256为C455EAD0272CA847AE05B2FDCBCC4D09662A1D16886CF6CD3EDC3DAA151DDDCA，位于artifacts/physics-lab/belt-57-memo-native/Release/dango_physics_lab_belt.dll；未覆盖E34、D444、8D65或3C80。不同轮基线也明显波动，百分比只适用同轮配对，不相乘推算整窗FPS。
+
+Release托管定向29/29通过：Gait非native冻结对照、DampedSpring及严格cadence；证据artifacts/physics-lab/belt-57-managed-tests/targeted.trx。C455的八角逐字节回归、最终原生合同和真实WPF检查另见以下追加结果；此处尚不将正在运行的项目标为通过。当前稳定57门仍未通过，新的帧同步手感也未人工验收，C5整体未关闭。
+
+最终托管应用位于artifacts/physics-lab/app-window-perf-complete，Release构建0警告0错误，实际加载C455模块。EyeArtwork另外只将同一Angle的cos/sin提前计算一次，原坐标乘除加减顺序保持；3960份完整fills/holes与冻结原类逐位相同。独占AB/BA微基准normal/mixed中位减少6.9%/11.9%，绝对仅约0.27–0.75us/artwork且有噪声，不能算作解决整窗瓶颈；新closure多16 bytes/artwork。证据artifacts/eye-artwork-trig-reuse-20261019/，临时benchmark已归档删除。
+
+最终应用实窗会话20261019-055612-505-90a4a95b：1860步，左右各600，物理无故障，测量有效但PerformanceTargetPassed=false。native均值/P95为12.19/16.05ms，完整step为15.55/19.77ms，Rendering回调P95为79.37ms；稳定段最少11次更新/秒、间隔P95为77.46ms、丢弃1.09104秒。完整脚本丢弃1.65314秒。此结果明确未达稳定57，不用前一轮更好的均值替代最终判定；也不能将跨轮波动归因于某一个缓存。
+
+C455原八角回归8/8通过，隔离进程并行15120步，每帧11通道与D444按字节一致；root核对完整角点集合、每组1890步和统一hash，证据artifacts/physics-lab/sessions/belt-57-memo-eight/summary.json。并发耗时不作性能证据。最终原生perf/radial/guard/solver/whale五类合同均退出0，包含六份真实失败状态、实际超速拒绝/回滚和启用限速持续拖压；连同新增guard-basis/root-chart两类，日志保存在artifacts/physics-lab/belt-57-memo-native/。没有用降低12上限或屏蔽原错误过关。
+
+最终帧同步模式80/100/0真实WPF Smoke会话20261019-055744-576-57d2f4cf，44项均通过、进程退出0。覆盖焦点/无虚线、A/D/W/S/Space、撤力与跳跃、两件配饰/正式眼睛、原步态两相与1.99DIP门、只读/重画不推进、旧水平对照和关闭时钟。root查看右行及释放截图，未见明显外观/裁切问题。此为WPF事件注入，manualAcceptance=false，不能代替OS硬件输入、新调度人工手感或57门。CLI五种非法组合均退出7，含render-clock混入joint、saved-appearance及非法overlay，证据artifacts/physics-lab/belt-57-cli-rejections.json。
+
+下一步设计建议已独立写入[物理线程调度候选](../planning/2026-10-19-belt-worker-scheduling-proposal.md)，状态为未批准/未实施。原因是当前物理与外观串行占用UI线程，慢步后多步追赶会进一步拉长画面间隔；此因果不等于保证worker达标。worker需要明确输入时序、Space一次消费、generation取消、handle单一所有者、有界FIFO及眼睛/配饰逐tick推进，属于需确认的调度机制变化。当前有效等价优化可独立保留，未自动扩大为并发架构实现。
+
+最终真实WPF联合会话20261019-055824-125-3b2e184d：8/8角点、15120步、physical/appearance均通过，进程退出0。每组1890步/12阶段完整，左右各自出现压缩与舒展；眼睛隐藏0帧、Errors=0，最大显示位移1.9899999612DIP。manifest确认C455模块和原FixedDt=0.0166666。该检查逐tick比较外观前后的完整200项状态及活动力账本，不冒充所有native内存都已独立比较。root已核对各组结果及hash；用户全范围实时手感未因此自动通过。
+
+本轮沿用桌面规范v0.1（2026-10-10）§§2–6，暖白/棕色资源、原布局、固定操作区、细滚条和无虚线焦点保持；本轮没有新增正式页面。全部自动测试窗口和PhysicsLab进程已退出，无服务、端口或数据库变更。原9448树保持干净，grounded保留。仅本地实验交付，未合并main、推送、安装、部署或替换正式DLL。57性能门未通过、帧同步候选未人工验收，C5整体未关闭。

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -138,6 +139,8 @@ public sealed class PhysicsLabAppearancePresenter : IDisposable
     public string Status => runtimeError is null ? loadStatus : loadStatus + "；" + runtimeError;
     public string EyeDiagnostic { get; private set; } = "眼睛等待物理帧";
     public string MeshDiagnostic { get; private set; } = "配饰等待物理帧";
+    /// <summary>Optional laboratory timings in milliseconds. No samples or clock reads when unset.</summary>
+    public Action<string, double>? PerformanceSample { get; set; }
     internal AttachmentPresentationFrame? CurrentAttachments => currentBody?.Attachments;
     internal IReadOnlyList<AccessoryMeshFrame> AccessoryFrames => accessoryFrames;
 
@@ -195,6 +198,7 @@ public sealed class PhysicsLabAppearancePresenter : IDisposable
 
     public void Update(PhysicsLabAppearanceFrame frame)
     {
+        using var timing = PerformanceSample is { } sample ? new PerformanceStages(sample, "appearance-geometry") : null;
         VerifyAccess(); ArgumentNullException.ThrowIfNull(frame);
         if (paused || frame.Tick <= lastTick) return;
         if (frame.Tick < 0 || !double.IsFinite(frame.Seconds) || frame.Seconds is <= 0 or > .1 ||
@@ -221,6 +225,7 @@ public sealed class PhysicsLabAppearancePresenter : IDisposable
         else if (frame.Horizontal > 0) facing = DangoFacingDirection.Right;
         var eligible = frame.Horizontal == 0 && !frame.Down && !frame.Stretch && !frame.Jump && !frame.Drag &&
             Math.Sqrt(frame.VelocityX * frame.VelocityX + frame.VelocityY * frame.VelocityY) <= .15;
+        timing?.Next("appearance-eyes-motion");
         if (!quiet.BeforeStep(new(frame.Grounded, frame.CoreX, frame.CoreY), frame.Seconds, eligible,
             action => Submit(action == QuietIdleAction.Blink ? Blink.Default(EyeSelection.Both) :
                 new SetGaze(EyeSelection.Both, action == QuietIdleAction.LookLeft ? -.4 : .4, 0)), ReleaseQuiet))
@@ -233,10 +238,27 @@ public sealed class PhysicsLabAppearancePresenter : IDisposable
         currentBody = presentation with { Attachments = attachments };
         lastTick = frame.Tick;
         runtimeError = null;
+        timing?.Next("appearance-body-draw");
         DrawBody(shape);
+        timing?.Next("appearance-eyes-draw");
         DrawEyes(attachments!.Face);
+        timing?.Next("appearance-accessories");
         UpdateAccessories(frame);
+        timing?.Next("appearance-gait");
         UpdateGait(frame);
+    }
+
+    private sealed class PerformanceStages(Action<string, double> sample, string category) : IDisposable
+    {
+        private long started = Stopwatch.GetTimestamp();
+        private string current = category;
+        public void Next(string next)
+        {
+            var now = Stopwatch.GetTimestamp();
+            sample(current, Stopwatch.GetElapsedTime(started, now).TotalMilliseconds);
+            current = next; started = Stopwatch.GetTimestamp();
+        }
+        public void Dispose() => sample(current, Stopwatch.GetElapsedTime(started).TotalMilliseconds);
     }
 
     public void Reset()
@@ -317,7 +339,11 @@ public sealed class PhysicsLabAppearancePresenter : IDisposable
                 entry.Visual.ClearFrame(); runtimeError = $"配饰运动失败（{error.GetType().Name}）";
             }
         }
-        foreach (var (_, error) in AccessoryMeshVisual.ApplyBatch(requests).Errors)
+        var batch = AccessoryMeshVisual.ApplyBatch(requests);
+        PerformanceSample?.Invoke("accessories-prepare", batch.PreparationMilliseconds);
+        PerformanceSample?.Invoke("accessories-raster", batch.RasterMilliseconds);
+        PerformanceSample?.Invoke("accessories-upload", batch.UploadMilliseconds);
+        foreach (var (_, error) in batch.Errors)
             runtimeError = $"配饰网格呈现失败（{error.GetType().Name}）";
         MeshDiagnostic = $"已佩戴 {EquippedCount} · 呈现 {RenderedAccessoryCount} · 顶点 {accessoryFrames.Sum(mesh => mesh.Vertices.Count)}";
     }
@@ -381,17 +407,18 @@ public sealed class PhysicsLabAppearancePresenter : IDisposable
             baseline = gait.NeutralDimensions;
             var bounds = new LogicalRect(context.Left, context.Top, 160 * context.DisplayScale, 120 * context.DisplayScale);
             var viewport = new LogicalRect(0, 0, context.ViewportWidth, context.ViewportHeight);
-            var candidate = GaitGeometry.Create(currentBody!, target.Entity, bounds, viewport, requested, false, 1, clipToTemplate: false);
+            var geometry = GaitGeometry.CreateBuilder(currentBody!, target.Entity, bounds, viewport, false, 1, clipToTemplate: false);
+            var candidate = geometry.Create(requested);
             if (candidate is not null && !MeshesSafe(candidate, context))
             {
                 double lo = 0, hi = 1;
                 for (var i = 0; i < 12; i++)
                 {
                     var mid = (lo + hi) / 2;
-                    var smaller = GaitGeometry.Create(currentBody!, target.Entity, bounds, viewport, requested * mid, false, 1, clipToTemplate: false);
+                    var smaller = geometry.Create(requested * mid);
                     if (smaller is not null && MeshesSafe(smaller, context)) lo = mid; else hi = mid;
                 }
-                candidate = lo < 1e-6 ? null : GaitGeometry.Create(currentBody!, target.Entity, bounds, viewport, requested * lo, false, 1, clipToTemplate: false);
+                candidate = lo < 1e-6 ? null : geometry.Create(requested * lo);
             }
             if (candidate is not null && candidate.Matches(currentBody!, target.Entity) && MeshesSafe(candidate, context))
             {

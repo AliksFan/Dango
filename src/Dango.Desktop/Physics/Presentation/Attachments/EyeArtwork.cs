@@ -58,11 +58,12 @@ public sealed record EyeArtwork(IReadOnlyList<IReadOnlyList<AttachmentPoint>> Fi
                     path = path.Select(p => eye.IsRight ? p * (2d / 3) + P(0, -2) : p).ToArray();
                 fills.Add(path); break;
         }
+        var cos = Math.Cos(eye.Angle); var sin = Math.Sin(eye.Angle);
         IReadOnlyList<IReadOnlyList<AttachmentPoint>> Map(List<AttachmentPoint[]> paths) => Array.AsReadOnly(paths.Select(path =>
             (IReadOnlyList<AttachmentPoint>)Array.AsReadOnly(path.Select(p =>
             {
                 var x = p.X / 12 * eye.Width; var y = -p.Y / 12 * eye.Height;
-                return eye.Center + P(x * Math.Cos(eye.Angle) - y * Math.Sin(eye.Angle), x * Math.Sin(eye.Angle) + y * Math.Cos(eye.Angle));
+                return eye.Center + P(x * cos - y * sin, x * sin + y * cos);
             }).ToArray())).ToArray());
         return new(Map(fills), Map(holes));
     }
