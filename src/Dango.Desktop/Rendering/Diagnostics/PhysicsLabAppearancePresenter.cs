@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Dango.Core.Animation;
+using Dango.Core.Coordinates;
 using Dango.Desktop.Accessories;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.Physics.Presentation;
@@ -18,11 +19,18 @@ namespace Dango.Desktop.Rendering.Diagnostics;
 
 public readonly record struct PhysicsLabBoundaryPoint(double X, double Y);
 
+public sealed record PhysicsLabGaitContext(double DisplayScale, double Left, double Top,
+    double ViewportWidth, double ViewportHeight);
+
+public sealed record PhysicsLabGaitState(bool Enabled, long Tick, double Phase, double RequestedStrain,
+    double DisplayedStrain, double MaximumDisplacementDip, string? Error, string? SuppressionReason = null,
+    double? HeightRatio = null, double? WidthRatio = null, double? AreaRatio = null);
+
 /// <summary>An externally owned successful physics tick. World Y points upwards.</summary>
 public sealed record PhysicsLabAppearanceFrame(long Tick, double Seconds,
     IReadOnlyList<PhysicsLabBoundaryPoint> Boundary, double CoreX, double CoreY,
     double VelocityX, double VelocityY, bool Grounded, double Horizontal,
-    bool Down, bool Stretch, bool Jump, bool Drag);
+    bool Down, bool Stretch, bool Jump, bool Drag, PhysicsLabGaitContext? GaitContext = null);
 
 /// <summary>
 /// Read-only local appearance snapshot and display-only attachment consumer for physics laboratories.
@@ -32,7 +40,11 @@ public sealed record PhysicsLabAppearanceFrame(long Tick, double Seconds,
 public sealed class PhysicsLabAppearancePresenter : IDisposable
 {
     public const double WorldToCanvas = 72;
-    private readonly Canvas root = Layer();
+    private readonly Canvas root = Layer(), gaitLayer = Layer();
+    // This lab's accepted force-driven outline exceeds the original host's
+    // 8%/10% presentation gate. Product callers retain the original defaults.
+    private readonly GaitController gait = new(maximumCompression: .15, maximumWidthDeviation: .15);
+    private bool gaitEnabled;
     private readonly Canvas behind = Layer(), front = Layer();
     private readonly Path body = new() { IsHitTestVisible = false };
     private readonly Path leftEye = new() { IsHitTestVisible = false };
@@ -40,7 +52,7 @@ public sealed class PhysicsLabAppearancePresenter : IDisposable
     private readonly DangoAppearanceConfiguration appearance;
     private readonly List<EquippedEntry> equipped = [];
     private readonly string loadStatus;
-    private readonly AttachmentCommandRouter router = new();
+    private readonly AttachmentCommandRouter router = new(enableHatMotion: true);
     private AttachmentTarget target;
     private AttachmentToken quietToken;
     private AttachmentMotionController motion = null!;
@@ -68,8 +80,9 @@ public sealed class PhysicsLabAppearancePresenter : IDisposable
         notices.Add(loadedAppearance.Warning ?? (File.Exists(appearancePath) ? "已读取保存外观" : "未找到保存外观，使用默认外观"));
         body.Fill = Brush(appearance.BodyColor);
         leftEye.Fill = rightEye.Fill = Brush(appearance.EyeColor);
-        root.Children.Add(behind); root.Children.Add(body); root.Children.Add(leftEye);
-        root.Children.Add(rightEye); root.Children.Add(front);
+        root.Children.Add(gaitLayer);
+        gaitLayer.Children.Add(behind); gaitLayer.Children.Add(body); gaitLayer.Children.Add(leftEye);
+        gaitLayer.Children.Add(rightEye); gaitLayer.Children.Add(front);
 
         var store = new AccessorySettingsStore();
         var loaded = store.Load(directory);
@@ -121,6 +134,25 @@ public sealed class PhysicsLabAppearancePresenter : IDisposable
     public string MeshDiagnostic { get; private set; } = "配饰等待物理帧";
     internal AttachmentPresentationFrame? CurrentAttachments => currentBody?.Attachments;
     internal IReadOnlyList<AccessoryMeshFrame> AccessoryFrames => accessoryFrames;
+
+    public GaitPresentationFrame? GaitFrame { get; private set; }
+    public PhysicsLabGaitState GaitState { get; private set; } = new(false, -1, 0, 0, 0, 0, null);
+    public bool GaitEnabled
+    {
+        get => gaitEnabled;
+        set
+        {
+            VerifyAccess();
+            if (gaitEnabled == value) return;
+            gaitEnabled = value;
+            ResetGait();
+        }
+    }
+
+    public void InvalidateGaitSampling()
+    {
+        VerifyAccess(); gait.InvalidateSampling();
+    }
 
     public bool Paused
     {
@@ -179,11 +211,12 @@ public sealed class PhysicsLabAppearancePresenter : IDisposable
         DrawBody(shape);
         DrawEyes(attachments!.Face);
         UpdateAccessories(frame);
+        UpdateGait(frame);
     }
 
     public void Reset()
     {
-        VerifyAccess(); ClearMotion(); lastTick = -1;
+        VerifyAccess(); ClearMotion(); lastTick = -1; ResetGait();
         currentBody = null; currentShape = null; accessoryFrames.Clear();
         body.Data = leftEye.Data = rightEye.Data = Geometry.Empty;
         foreach (var entry in equipped) entry.Visual.ClearFrame();
@@ -199,6 +232,7 @@ public sealed class PhysicsLabAppearancePresenter : IDisposable
 
     private void ClearMotion()
     {
+        ResetGait();
         target = router.Reset(target); sequence = 0; facing = DangoFacingDirection.Center;
         InitializeMotion();
         foreach (var entry in equipped) entry.Motion.Reset();
@@ -279,6 +313,112 @@ public sealed class PhysicsLabAppearancePresenter : IDisposable
         }
         foreach (var (_, error) in AccessoryMeshVisual.ApplyBatch(requests).Errors)
             runtimeError = $"配饰网格呈现失败（{error.GetType().Name}）";
+    }
+
+    private void ResetGait()
+    {
+        gait.Reset();
+        GaitFrame = null; gaitLayer.RenderTransform = Transform.Identity;
+        GaitState = new(gaitEnabled, lastTick, 0, 0, 0, 0, null);
+    }
+
+    private void UpdateGait(PhysicsLabAppearanceFrame frame)
+    {
+        if (!gaitEnabled) return;
+        GaitFrame = null; gaitLayer.RenderTransform = Transform.Identity;
+        double requested = 0;
+        try
+        {
+            var context = frame.GaitContext;
+            if (context is null || !double.IsFinite(context.DisplayScale) || context.DisplayScale <= 0 ||
+                !double.IsFinite(context.Left) || !double.IsFinite(context.Top) ||
+                !double.IsFinite(context.ViewportWidth) || context.ViewportWidth <= 0 ||
+                !double.IsFinite(context.ViewportHeight) || context.ViewportHeight <= 0)
+                throw new ArgumentException("InvalidGaitContext");
+            var shape = currentShape!;
+            var width = shape.Width * 160; var height = shape.Height * 160;
+            // Keep area in world square units; only ratios are used by the original controller.
+            var area = Math.Abs(frame.Boundary.Select((p, i) =>
+            {
+                var q = frame.Boundary[(i + 1) % frame.Boundary.Count];
+                return (p.X - frame.CoreX) * (q.Y - frame.CoreY) - (p.Y - frame.CoreY) * (q.X - frame.CoreX);
+            }).Sum()) / 2;
+            var unsafeInput = frame.Down || frame.Stretch || frame.Jump || frame.Drag;
+            var reason = unsafeInput ? "InputOrVerticalRamp" : !frame.Grounded ? "Airborne" : null;
+            var baseline = gait.NeutralDimensions;
+            if (gait.OutsideNeutralShape(width, height, area)) reason ??= "LabShapeGate15Percent";
+            requested = gait.Advance(new(frame.CoreX * WorldToCanvas,
+                frame.Boundary.Min(point => point.Y) * WorldToCanvas, frame.Grounded,
+                width, height, area, Math.Sign(frame.Horizontal), !unsafeInput, unsafeInput), frame.Seconds);
+            if (unsafeInput || !frame.Grounded) gait.InvalidateSampling();
+            // Read the controller's actual neutral baseline; diagnostic sampling
+            // must not invent a different baseline or alter its safety thresholds.
+            baseline = gait.NeutralDimensions;
+            var bounds = new LogicalRect(context.Left, context.Top, 160 * context.DisplayScale, 120 * context.DisplayScale);
+            var viewport = new LogicalRect(0, 0, context.ViewportWidth, context.ViewportHeight);
+            var candidate = GaitGeometry.Create(currentBody!, target.Entity, bounds, viewport, requested, false, 1, clipToTemplate: false);
+            if (candidate is not null && !MeshesSafe(candidate, context))
+            {
+                double lo = 0, hi = 1;
+                for (var i = 0; i < 12; i++)
+                {
+                    var mid = (lo + hi) / 2;
+                    var smaller = GaitGeometry.Create(currentBody!, target.Entity, bounds, viewport, requested * mid, false, 1, clipToTemplate: false);
+                    if (smaller is not null && MeshesSafe(smaller, context)) lo = mid; else hi = mid;
+                }
+                candidate = lo < 1e-6 ? null : GaitGeometry.Create(currentBody!, target.Entity, bounds, viewport, requested * lo, false, 1, clipToTemplate: false);
+            }
+            if (candidate is not null && candidate.Matches(currentBody!, target.Entity) && MeshesSafe(candidate, context))
+            {
+                GaitFrame = candidate;
+                gaitLayer.RenderTransform = DeformableDangoVisual.CreateGaitTransform(currentBody!, candidate);
+            }
+            var displayed = GaitFrame is null ? 0 : GaitFrame.ScaleY - 1;
+            gait.AcceptDisplayed(displayed);
+            if (requested != 0 && GaitFrame is null) reason ??= currentBody!.Attachments?.Hat?.Pose is null
+                ? "OriginalGeometryRequiresHatPose" : "OriginalGeometryOrMeshSafety";
+            if (baseline.Height == 0) reason ??= "AwaitingNeutralBaseline";
+            GaitState = new(true, frame.Tick, gait.Phase, requested, displayed,
+                GaitFrame is null ? 0 : MaximumDisplacement(GaitFrame, context.DisplayScale), gait.Error, reason,
+                baseline.Height > 0 ? height / baseline.Height : null,
+                baseline.Width > 0 ? width / baseline.Width : null, baseline.Area > 0 ? area / baseline.Area : null);
+        }
+        catch (Exception error) when (IsAppearanceFault(error))
+        {
+            gait.Fail(); GaitFrame = null; gaitLayer.RenderTransform = Transform.Identity;
+            GaitState = new(true, frame.Tick, gait.Phase, requested, 0, 0, "InvalidGaitFrame");
+        }
+    }
+
+    private bool MeshesSafe(GaitPresentationFrame transform, PhysicsLabGaitContext context)
+    {
+        foreach (var mesh in accessoryFrames)
+            foreach (var point in mesh.Vertices)
+            {
+                var mapped = transform.Map(new(point.X, point.Y));
+                var dx = mapped.X - point.X; var dy = mapped.Y - point.Y;
+                var x = mapped.X * context.DisplayScale; var y = mapped.Y * context.DisplayScale;
+                if (!double.IsFinite(x) || !double.IsFinite(y) ||
+                    Math.Sqrt(dx * dx + dy * dy) * context.DisplayScale > 1.99 ||
+                    x + context.Left < 0 || x + context.Left > context.ViewportWidth ||
+                    y + context.Top < 0 || y + context.Top > context.ViewportHeight) return false;
+                // Actual accessory meshes use the unclipped lab layers. Their visible
+                // envelope is the surface viewport, not the legacy hat's 16 DIP overlay.
+            }
+        return true;
+    }
+
+    private double MaximumDisplacement(GaitPresentationFrame transform, double scale)
+    {
+        var points = currentShape!.Boundary.Select(GaitGeometry.Canvas)
+            .Concat(new[] { currentBody!.Attachments!.Face.Left, currentBody.Attachments.Face.Right }
+                .Where(eye => eye.Visible).SelectMany(EyeOutline.Create).Select(GaitGeometry.Canvas))
+            .Concat(accessoryFrames.SelectMany(mesh => mesh.Vertices).Select(point => new LogicalPoint(point.X, point.Y)));
+        return points.Max(point =>
+        {
+            var mapped = transform.Map(point);
+            return Math.Sqrt(Math.Pow(mapped.X - point.X, 2) + Math.Pow(mapped.Y - point.Y, 2)) * scale;
+        });
     }
 
     private static (double Width, double Height) Size(AccessoryItem item)

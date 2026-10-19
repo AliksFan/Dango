@@ -51,7 +51,9 @@ internal static class Program
         Directory.CreateDirectory(session);
         File.WriteAllText(Path.Combine(session, "manifest.json"), JsonSerializer.Serialize(new
         {
-            kind = "isolated-physics-lab", gait = false, restSleep = false,
+            kind = "isolated-physics-lab", gait = useBelt && !args.Any(beltBatches.Contains),
+            gaitMode = useBelt && !args.Any(beltBatches.Contains) ? "original-grounded-presentation-preview" : "disabled",
+            restSleep = false,
             nativeSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(module))),
             envelopeNativeSha256 = File.Exists(envelopeModule) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(envelopeModule))) : null,
             regionNativeSha256 = File.Exists(regionModule) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(regionModule))) : null,

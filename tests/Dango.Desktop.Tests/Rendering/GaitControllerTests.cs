@@ -126,4 +126,90 @@ public sealed class GaitControllerTests
         controller.Fail(); controller.ClearMotion();
         Assert.IsNotNull(controller.Error, "Entity changes cannot clear a gait fault.");
     }
+
+    [TestMethod]
+    public void ExperimentalProfileAllowsConfirmedOutlineAndProducesBothGaitPhases()
+    {
+        var ordinary = Ready();
+        for (var i = 0; i < 100; i++)
+            Assert.AreEqual(0, ordinary.Advance(Outline(i * .8, 1), .02),
+                "Real walking with the confirmed outline remains outside the default profile.");
+
+        var experimental = new GaitController(.15, .15);
+        Warm(experimental);
+        var values = new List<double>();
+        double x = 0;
+        for (var i = 0; i < 6 / .02; i++)
+            values.Add(experimental.Advance(Outline(x += 40 * .02, 1), .02));
+
+        Assert.IsTrue(values.Min() < -.005, "The experimental outline must produce compression.");
+        Assert.IsTrue(values.Max() > .003, "The experimental outline must also produce extension.");
+    }
+
+    [TestMethod]
+    [DataRow(91d, 100d)]
+    [DataRow(100d, 111d)]
+    [DataRow(100d, 89d)]
+    public void ProductDefaultsStillRejectEachOriginalShapeLimit(double height, double width)
+    {
+        var controller = Ready();
+        for (var i = 0; i < 100; i++)
+            Assert.AreEqual(0, controller.Advance(Sample(i * .8, 1) with { Height = height, Width = width }, .02));
+        Assert.AreEqual(0d, controller.Phase);
+    }
+
+    [TestMethod]
+    [DataRow(84.9, 100d, 8000d)]
+    [DataRow(100d, 115.1, 8000d)]
+    [DataRow(100d, 84.9, 8000d)]
+    [DataRow(100d, 100d, 8801d)]
+    [DataRow(100d, 100d, 7199d)]
+    public void ExperimentalProfileSuppressesOutOfRangeDimensionsWithoutLearningThem(
+        double height, double width, double area)
+    {
+        var controller = new GaitController(.15, .15);
+        Warm(controller);
+        for (var i = 0; i < 40; i++)
+            controller.Advance(Sample(i * .8, 1) with { Height = height, Width = width, Area = area }, .02);
+
+        Assert.AreEqual(0, controller.Strain, 1e-12, "A dimension beyond its configured limit suppresses gait.");
+        for (var i = 0; i < 40; i++)
+            controller.Advance(Sample(32, 0) with { Height = height, Width = width, Area = area }, .02);
+        Assert.AreEqual((100d, 100d, 8000d), controller.NeutralDimensions,
+            "A suppressed contour cannot become the new neutral reference.");
+        for (var i = 0; i < 40; i++)
+            controller.Advance(Outline(33 + i * .8, 1), .02);
+        Assert.IsTrue(Math.Abs(controller.Strain) > .001,
+            "The confirmed outline remains valid after an out-of-range contour was rejected.");
+    }
+
+    [TestMethod]
+    public void ResetAndClearMotionPreserveExperimentalLimits()
+    {
+        var controller = new GaitController(.15, .15);
+        Warm(controller);
+        controller.Advance(Outline(0, 1), .02);
+        Assert.IsTrue(Math.Abs(controller.Advance(Outline(.8, 1), .02)) > 0,
+            "Experimental limits allow the confirmed outline before reset.");
+
+        controller.Reset();
+        Warm(controller);
+        controller.Advance(Outline(0, 1), .02);
+        Assert.IsTrue(Math.Abs(controller.Advance(Outline(.8, 1), .02)) > 0,
+            "Reset clears samples but retains the experimental profile.");
+
+        controller.ClearMotion();
+        Warm(controller);
+        controller.Advance(Outline(0, 1), .02);
+        Assert.IsTrue(Math.Abs(controller.Advance(Outline(.8, 1), .02)) > 0,
+            "ClearMotion also retains the experimental profile.");
+    }
+
+    private static MotionSample Outline(double x, int direction = 0) =>
+        new(x, 0, true, 112, 88.5, 8000, direction);
+
+    private static void Warm(GaitController controller)
+    {
+        for (var i = 0; i < 50; i++) controller.Advance(Sample(0), .02);
+    }
 }

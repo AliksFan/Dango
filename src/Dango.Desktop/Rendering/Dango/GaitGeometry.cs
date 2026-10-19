@@ -12,7 +12,8 @@ internal static class GaitGeometry
     // than waiting for tier promotion while the user is already walking.
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     internal static GaitPresentationFrame? Create(PhysicsPresentationFrame frame, DangoEntityId entity,
-        LogicalRect bounds, LogicalRect viewport, double strain, bool autonomous, double hatSize)
+        LogicalRect bounds, LogicalRect viewport, double strain, bool autonomous, double hatSize,
+        bool clipToTemplate = true)
     {
         if (strain == 0 || !frame.IsVisible || frame.FallbackReason != PhysicsPresentationFallbackReason.None ||
             frame.Attachments is not { SourceShape: { } shape, Hat.Pose: { } pose } attachment) return null;
@@ -56,12 +57,14 @@ internal static class GaitGeometry
                 var screenX = mapped.X * bodySizeScale;
                 var screenY = mapped.Y * bodySizeScale;
                 // The extra hat overlay remains 16 screen DIP at every body size.
-                if (screenX < 0 || screenX > bounds.Width || screenY < -16 || screenY > bounds.Height) return false;
+                // Unclipped laboratory layers can contain a core that has shifted
+                // within the body. Their actual clipping boundary is the viewport.
+                if (clipToTemplate && (screenX < 0 || screenX > bounds.Width || screenY < -16 || screenY > bounds.Height)) return false;
                 if (screenX + bounds.X < viewport.X + (autonomous ? 16 : 0) ||
                     screenX + bounds.X > viewport.Right - (autonomous ? 16 : 0) ||
                     screenY + bounds.Y < viewport.Y || screenY + bounds.Y > viewport.Bottom) return false;
             }
-            if (body.Any(p => { var q = transform.Map(p); return q.X < 0 || q.X * bodySizeScale > bounds.Width || q.Y < 0 || q.Y * bodySizeScale > bounds.Height; })) return false;
+            if (clipToTemplate && body.Any(p => { var q = transform.Map(p); return q.X < 0 || q.X * bodySizeScale > bounds.Width || q.Y < 0 || q.Y * bodySizeScale > bounds.Height; })) return false;
             if (eyeClearance * bodySizeScale * Math.Min(transform.ScaleX, transform.ScaleY) < 1.024 || eyeGap * bodySizeScale * transform.ScaleX < 2) return false;
             return true;
         }

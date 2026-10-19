@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using Dango.Core.Coordinates;
 using Dango.Desktop.Physics.Tuning;
 using Dango.Desktop.Rendering.Diagnostics;
 using Dango.Physics;
@@ -16,7 +17,7 @@ using Dango.Physics.Configuration;
 
 namespace Dango.PhysicsLab;
 
-/// <summary>Isolated single-body, flat-ground experiment. No display deformation or filtering.</summary>
+/// <summary>Isolated single-body physics with optional original, presentation-only grounded gait.</summary>
 internal sealed class LabBeltWindow : Window
 {
     private static readonly JsonSerializerOptions EvidenceJson = new() { NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals };
@@ -33,6 +34,7 @@ internal sealed class LabBeltWindow : Window
     private readonly Slider forceScale = new() { Minimum = 30, Maximum = 600, Value = 300, TickFrequency = 30, IsSnapToTickEnabled = true };
     private readonly CheckBox showReference = new() { Content = "叠加原版静置轮廓", IsChecked = true };
     private readonly CheckBox showAppearance = new() { Content = "正式眼睛与已佩戴配饰", IsChecked = true };
+    private readonly CheckBox showGait = new() { Content = "原有上下步态（仅显示）", ToolTip = "实验步态：高度压缩／宽度变化门槛15%，面积10%；额外显示位移不超过1.99 DIP", IsChecked = true };
     private readonly TextBlock appearanceStatus = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(0, 5, 0, 4) };
     private readonly PhysicsLabAppearancePresenter appearance;
     private readonly string appearanceSource;
@@ -78,7 +80,7 @@ internal sealed class LabBeltWindow : Window
         size.Value = 80; softness.Value = 100; build.Value = 0;
         appearance = new PhysicsLabAppearancePresenter(appearanceSettingsPath);
         showSkeleton.IsChecked = true; showReference.IsChecked = false;
-        Title = "团子·8点推动·后半下压";
+        Title = "团子·原有上下步态·后半下压";
         Width = Math.Min(1220, SystemParameters.WorkArea.Width - 32);
         Height = Math.Min(850, SystemParameters.WorkArea.Height - 32); MinWidth = 940; MinHeight = 660;
         Background = new SolidColorBrush(Color.FromRgb(253, 252, 249)); Foreground = LabWindow.Ink;
@@ -91,7 +93,7 @@ internal sealed class LabBeltWindow : Window
         var heading = new StackPanel { Margin = new Thickness(0, 0, 0, 14) };
         heading.Children.Add(new TextBlock { Text = "连续闭合带实验", FontSize = 21, Margin = new Thickness(0, 0, 0, 6) });
         heading.Children.Add(new TextBlock { Text = "A / D 左右半区   W / S 上半区向上／向下   Space 跳跃   鼠标拖动", Foreground = LabWindow.Accent });
-        heading.Children.Add(new TextBlock { Text = "正式眼睛与配饰 · 原始物理显示 · 无周期摆动 · 外观仅用于实验，不写回日常设置", FontSize = 12, Margin = new Thickness(0, 5, 0, 0) });
+        heading.Children.Add(new TextBlock { Text = "原有上下步态可对照 · 真实物理独立记录 · 正式眼睛与测试配饰 · 不写回日常设置", FontSize = 12, Margin = new Thickness(0, 5, 0, 0) });
         DockPanel.SetDock(heading, Dock.Top); root.Children.Add(heading);
         var grid = new Grid(); grid.ColumnDefinitions.Add(new() { Width = new GridLength(280) });
         grid.ColumnDefinitions.Add(new() { Width = new GridLength(18) }); grid.ColumnDefinitions.Add(new());
@@ -110,7 +112,8 @@ internal sealed class LabBeltWindow : Window
         tools.Children.Add(new TextBlock { Text = "A/D半圈8点主力：水平保持旧64点参考，竖直取2/3。后半骨架端点均分向下力，总量为主力净Fy绝对值的1/3。D压左、A压右；关闭对照原水平推动。更改后应用。", FontSize = 12, TextWrapping = TextWrapping.Wrap });
         model.DropDownOpened += (_, _) => Cancel(); model.DropDownClosed += (_, _) => input.ReconcileHeld(HeldKeys());
         Label(tools, "材料"); AddSlider(tools, "大小", size); AddSlider(tools, "柔软度", softness); AddSlider(tools, "落地体态", build);
-        Label(tools, "观察"); showAppearance.Content = "正式眼睛与测试配饰"; tools.Children.Add(showAppearance); tools.Children.Add(appearanceStatus); tools.Children.Add(showSkeleton); tools.Children.Add(showForces); tools.Children.Add(showReference);
+        Label(tools, "观察"); tools.Children.Add(showGait); showAppearance.Content = "正式眼睛与测试配饰"; tools.Children.Add(showAppearance); tools.Children.Add(appearanceStatus); tools.Children.Add(showSkeleton); tools.Children.Add(showForces); tools.Children.Add(showReference);
+        showGait.Click += (_, _) => { appearance.GaitEnabled = model.SelectedIndex == 0 && showGait.IsChecked == true; surface.Refresh(); WriteStarted(); };
         AddSlider(tools, "施力箭头 DIP / N（仅显示）", forceScale);
         forceScale.ValueChanged += (_, _) => surface.Refresh();
         showForces.Click += (_, _) => surface.Refresh();
@@ -151,7 +154,7 @@ internal sealed class LabBeltWindow : Window
         Refresh(); slider.ValueChanged += (_, _) => Refresh(); p.Children.Add(label); p.Children.Add(slider);
     }
     private void WriteStarted() => File.WriteAllText(Path.Combine(session, "started.json"), JsonSerializer.Serialize(new
-    { pid = Environment.ProcessId, visible = IsVisible, nativeLoaded = belt is not null || old is not null, model = ActiveBelt ? "continuous-belt" : "old-half", preset = activePreset, calibration = activeCalibration, originalGroundJump = belt?.OriginalGroundJumpEnabled, shapeGuard = GuardState(), speedLimit = SpeedLimitState(), radialDrive = RadialDriveState(), rearDrive = RearDriveState(), forceLedger = ForceLedgerState(false), failureReason, shortBones = beltFrame?.Stats[40] == 1, displaySmoothing = false, gait = false, formalAppearance = true, equippedCount = appearance.EquippedCount, renderedAccessories = appearance.RenderedAccessoryCount, error = fault }));
+    { pid = Environment.ProcessId, visible = IsVisible, nativeLoaded = belt is not null || old is not null, model = ActiveBelt ? "continuous-belt" : "old-half", preset = activePreset, calibration = activeCalibration, originalGroundJump = belt?.OriginalGroundJumpEnabled, shapeGuard = GuardState(), speedLimit = SpeedLimitState(), radialDrive = RadialDriveState(), rearDrive = RearDriveState(), forceLedger = ForceLedgerState(false), failureReason, shortBones = beltFrame?.Stats[40] == 1, displaySmoothing = false, gait = appearance.GaitEnabled, presentationGait = appearance.GaitState, formalAppearance = true, equippedCount = appearance.EquippedCount, renderedAccessories = appearance.RenderedAccessoryCount, error = fault }));
 
     private object RadialDriveState() => new { available = belt?.RadialDriveAvailable ?? false, enabled = belt?.RadialDriveEnabled ?? false,
         requested = model.SelectedIndex == 0 && radialDrive.IsChecked == true, schema = LabBeltWorld.RadialDriveSchema, diagnostics = radialDriveDiagnostics, legacyWhaleShapingForceEnabled = belt?.WhaleDriveEnabled ?? false };
@@ -210,7 +213,8 @@ internal sealed class LabBeltWindow : Window
                 }
             }
             activePreset = model.SelectedItem?.ToString() ?? "";
-            Title = model.SelectedIndex == 0 ? radialDrive.IsChecked == true ? "团子·8点推动·后半下压" : "团子·原水平推动·无塑形力" : "团子 · " + activePreset;
+            Title = model.SelectedIndex == 0 ? radialDrive.IsChecked == true ? "团子·原有上下步态·后半下压" : "团子·原水平推动对照" : "团子 · " + activePreset;
+            appearance.GaitEnabled = model.SelectedIndex == 0 && showGait.IsChecked == true;
             activeCalibration = model.SelectedIndex == 0
                 ? LabBeltCalibrationParameters.Default with { RadialStiffnessScale = 1.4, AreaScale = 1.4, BeltBendScale = 4, OverallDamping = config.OverallDamping, GroundedBrake = 35, GroundedHorizontalDamping = 60 }
                 : null;
@@ -236,7 +240,7 @@ internal sealed class LabBeltWindow : Window
             status.Text = activeCalibration is not null ? belt!.RadialDriveEnabled ? "A/D主8点Fy取参考2/3，水平保持；后半身均分下压（主力净Fy绝对值1/3）。旧whale力关闭。" : "原水平推动对照，无额外塑形力；F身体、形状保护与限速保持开启。" :
                 ActiveBelt ? "旧对照：校正前闭合带，旧跳跃接线。" : "旧对照：原外围半区驱动。";
             File.AppendAllText(Path.Combine(session, "body-presets.jsonl"), JsonSerializer.Serialize(new
-            { preset = activePreset, config, calibration = activeCalibration, originalGroundJump = belt?.OriginalGroundJumpEnabled, shapeGuard = GuardState(), speedLimit = SpeedLimitState(), radialDrive = RadialDriveState(), rearDrive = RearDriveState(),
+            { preset = activePreset, config, calibration = activeCalibration, originalGroundJump = belt?.OriginalGroundJumpEnabled, shapeGuard = GuardState(), speedLimit = SpeedLimitState(), radialDrive = RadialDriveState(), rearDrive = RearDriveState(), gait = appearance.GaitEnabled,
                 nativeSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(selectedModule))) }) + Environment.NewLine);
             StepOnce(); WriteStarted();
         }
@@ -330,9 +334,9 @@ internal sealed class LabBeltWindow : Window
                 if (steps % 6 == 0) details.Text = FormattableString.Invariant($"高 {(ex.Maximum - ex.Minimum) * 72:0.00} DIP\n真实质心Y {comY:0.0000} / 核心Y {oldFrame.CoreY:0.0000}\n原外围独立碰撞体 16 / 帧 {steps}");
             }
             if (steps % 6 == 0) UpdateForceDetails();
+            if (Math.Abs(CoreX - cameraX) > 1.5) cameraX = CoreX - Math.Sign(CoreX - cameraX) * 1.5;
             UpdateAppearance();
             while (trace.Count > 1200) trace.Dequeue(); steps++;
-            if (Math.Abs(CoreX - cameraX) > 1.5) cameraX = CoreX - Math.Sign(CoreX - cameraX) * 1.5;
             surface.Refresh();
             if (lastInput.InteractPressed) status.Text = "闭合带本轮只实验单体平地，平台交互未接入。";
         }
@@ -355,8 +359,9 @@ internal sealed class LabBeltWindow : Window
             boundary = LegacyBoundary(o); vx = oldNodes[0].VelocityX; vy = oldNodes[0].VelocityY; grounded = o.IsGrounded; jump = lastInput.JumpPressed;
         }
         else return;
-        appearance.Update(new(steps, LabWindow.FixedDt, boundary, CoreX, CoreY, vx, vy, grounded,
-            lastInput.Horizontal, lastInput.Downward > 0, lastInput.Stretch > 0, jump, dragging));
+        appearance.Update(new(steps + 1, LabWindow.FixedDt, boundary, CoreX, CoreY, vx, vy, grounded,
+            lastInput.Horizontal, lastInput.Downward > 0, lastInput.Stretch > 0 || (beltFrame?.Stats[17] ?? 0) > 0,
+            jump || lastInput.JumpPressed, dragging, surface.GaitContext()));
         appearanceStatus.Text = appearanceSource + "\n" + appearance.Status;
     }
     private static PhysicsLabBoundaryPoint[] LegacyBoundary(DangoBodyState b)
@@ -372,7 +377,7 @@ internal sealed class LabBeltWindow : Window
     }
     private object StepEvidence() => new
     {
-        speedLimit = SpeedLimitState(), radialDrive = RadialDriveState(), rearDrive = RearDriveState(), forceLedger = ForceLedgerState(),
+        speedLimit = SpeedLimitState(), radialDrive = RadialDriveState(), rearDrive = RearDriveState(), forceLedger = ForceLedgerState(), presentationGait = appearance.GaitState,
         tick = preStepTick, dt = actualBeltDt, nativeDt = actualBeltDt is { } dt ? (float?)dt : null,
         actualInput = actualBeltInput,
         nativeControls = actualBeltInput is { } nativeInput ? LabBeltWorld.NativeControls(nativeInput) : null,
@@ -439,12 +444,13 @@ internal sealed class LabBeltWindow : Window
     private void Cancel()
     {
         input.Cancel(); replaying = false;
+        appearance.InvalidateGaitSampling();
         if (dragging) { dragging = false; surface.ReleaseMouseCapture(); }
     }
     private void Export()
     {
         Cancel(); File.WriteAllText(Path.Combine(session, $"belt-trace-{DateTime.UtcNow:HHmmss-fff}.json"), JsonSerializer.Serialize(new
-        { model = ActiveBelt ? "continuous-belt" : "old-half", preset = activePreset, calibration = activeCalibration, config, fixedDt = LabWindow.FixedDt, displaySmoothing = false, gait = false, discardedSeconds, shapeGuard = GuardState(), speedLimit = SpeedLimitState(), radialDrive = RadialDriveState(), rearDrive = RearDriveState(), failureReason, stepEvidence = StepEvidence(), trace = trace.ToArray() }, EvidenceJson));
+        { model = ActiveBelt ? "continuous-belt" : "old-half", preset = activePreset, calibration = activeCalibration, config, fixedDt = LabWindow.FixedDt, displaySmoothing = false, gait = appearance.GaitEnabled, presentationGait = appearance.GaitState, discardedSeconds, shapeGuard = GuardState(), speedLimit = SpeedLimitState(), radialDrive = RadialDriveState(), rearDrive = RearDriveState(), failureReason, stepEvidence = StepEvidence(), trace = trace.ToArray() }, EvidenceJson));
         status.Text = fault ? "已导出失败记录。" + failureReason + " 点击应用并重置可恢复。" : $"已导出 {trace.Count} 帧物理诊断。";
     }
     private bool Blocked() => IsText(Keyboard.FocusedElement as DependencyObject) || dragging || Mouse.Captured is not null || model.IsDropDownOpen;
@@ -489,11 +495,37 @@ internal sealed class LabBeltWindow : Window
     {
         var checks = new List<string>();
         var walkingFrames = new List<object>();
+        var gaitSamples = new List<object>();
+        var gaitStrains = new List<double>();
+        void SaveWalkingReview() => File.WriteAllText(Path.Combine(session, "walking-review.json"), JsonSerializer.Serialize(new
+        {
+            material = new { size = size.Value, softness = softness.Value, build = build.Value },
+            scope = "actual physics at 80/100/0; unchanged eight-force/rear-pressure native drive; original grounded presentation gait preview; raw physical diagnostics remain separate; manual acceptance pending",
+            frames = walkingFrames, gaitSamples,
+        }, new JsonSerializerOptions { WriteIndented = true }));
         try
         {
             timer.Stop(); Cancel();
-            size.Value = 80; softness.Value = 100; build.Value = 0; model.SelectedIndex = 0; radialDrive.IsChecked = true; Reset();
+            size.Value = 80; softness.Value = 100; build.Value = 0; model.SelectedIndex = 0; radialDrive.IsChecked = true; showGait.IsChecked = true; Reset();
+            // This shown-window harness explicitly drives physics even if another app takes foreground.
+            void StepSmoke() { appearance.Paused = false; StepOnce(); }
             void Check(bool ok, string label) { if (!ok) throw new InvalidOperationException(label); checks.Add(label); }
+            void SampleGait()
+            {
+                var state = appearance.GaitState;
+                if (fault || !state.Enabled || state.Tick != steps || state.Error is not null ||
+                    state.MaximumDisplacementDip > 1.99 + 1e-8)
+                    throw new InvalidOperationException("原步态与成功物理帧、实际位移上限或独立显示状态不一致");
+                if (appearance.GaitFrame is { } gait)
+                {
+                    var minimumY = Enumerable.Range(0, beltFrame!.Curve.Length / 2).Min(i => (double)beltFrame.Curve[2 * i + 1]);
+                    var bottom = 66 - (minimumY - beltFrame.CoreY) * PhysicsLabAppearancePresenter.WorldToCanvas;
+                    if (!gait.IsValid || Math.Abs(gait.BottomY - bottom) > 1e-7)
+                        throw new InvalidOperationException("原步态脚底锚不对应本帧实际显示边界");
+                }
+                gaitSamples.Add(new { steps, direction = lastInput.Horizontal, state });
+                if (lastInput.Horizontal != 0) gaitStrains.Add(state.DisplayedStrain);
+            }
             async Task Capture(string name)
             {
                 sidebarScroll.ScrollToTop(); UpdateForceDetails(); surface.Refresh();
@@ -502,9 +534,8 @@ internal sealed class LabBeltWindow : Window
                 var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
                 using var file = File.Create(Path.Combine(session, name + ".png")); encoder.Save(file);
                 walkingFrames.Add(new { name, steps, input = lastInput, frame = beltFrame, radialDrive = RadialDriveState(), rearDrive = RearDriveState(), forceLedger = ForceLedgerState(),
-                    appearance = appearance.Status });
-                File.WriteAllText(Path.Combine(session, "walking-review.json"), JsonSerializer.Serialize(new { material = new { size = size.Value, softness = softness.Value, build = build.Value },
-                    scope = "actual physics frames at material 80/100/0; eight actual grouped forces with horizontal reference preserved and vertical reference scaled by 2/3; rear endpoint downward force equals abs(main netFy)/3; no legacy whale shaping force; no render deformation or manual acceptance", frames = walkingFrames }, new JsonSerializerOptions { WriteIndented = true }));
+                    appearance = appearance.Status, presentationGait = appearance.GaitState });
+                SaveWalkingReview();
             }
             bool VerifyRadialFrame(int direction)
             {
@@ -550,44 +581,56 @@ internal sealed class LabBeltWindow : Window
                 "8点推动schema3与后压启用且同帧，旧whale关闭");
             Check(belt.ForceLedgerAvailable && forceLedger is { Length: 1024 } ledger && ledger[0] == 1 && ledger[1] == 1024 && ledger[6] == 6 && ledger[7] == 64 && !string.IsNullOrWhiteSpace(LabBeltWorld.ForceLedgerSchema), "原生施力ledger可读且格式版本明确");
             Check(forceLedger![2] == steps, "施力ledger与成功身体帧同帧");
-            for (var i = 0; i < 300; i++) StepOnce(); Check(!fault && beltFrame!.Stats[14] == 1, "闭合带落稳接地");
+            for (var i = 0; i < 300; i++) StepSmoke(); Check(!fault && beltFrame!.Stats[14] == 1, "闭合带落稳接地");
+            Check(appearance.GaitEnabled && appearance.GaitState.Tick == steps && appearance.GaitState.Error is null,
+                "原有上下呈现步态默认启用并消费成功物理帧");
             Check(appearance.EquippedCount == 2 && appearance.RenderedAccessoryCount == 2, "虚构已佩戴前后配饰使用正式柔性网格");
             Check(!appearance.EyeDiagnostic.Contains("等待", StringComparison.Ordinal), "正式眼睛布局已消费真实身体帧");
             var snapshot = beltFrame; var beforeToggle = steps;
             var forceSnapshot = forceLedger?.ToArray(); var rearSnapshot = rearDriveDiagnostics?.ToArray();
             var physicalSnapshot = belt!.ReadDebugState();
+            var gaitSnapshot = appearance.GaitState;
             showForces.IsChecked = false; surface.Refresh(); forceScale.Value = 150; surface.Refresh(); forceScale.Value = 300; showForces.IsChecked = true; surface.Refresh();
             Check(steps == beforeToggle && forceSnapshot is not null && belt!.ReadForceLedger().SequenceEqual(forceSnapshot) && belt.ReadDebugState().SequenceEqual(physicalSnapshot) && rearSnapshot is not null && belt.ReadRearDrive().SequenceEqual(rearSnapshot), "详细施力显示倍率与只读读取不推进或改变物理");
+            Check(appearance.GaitState == gaitSnapshot, "重画与箭头倍率不推进原步态相位或外观tick");
+            showGait.IsChecked = false; showGait.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            Check(!appearance.GaitEnabled && appearance.GaitFrame is null && steps == beforeToggle && belt.ReadDebugState().SequenceEqual(physicalSnapshot),
+                "关闭原步态立即显示原轮廓且不重置物理");
+            showGait.IsChecked = true; showGait.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            Check(appearance.GaitEnabled && steps == beforeToggle && belt.ReadDebugState().SequenceEqual(physicalSnapshot) && belt.ReadForceLedger().SequenceEqual(forceSnapshot!),
+                "开启原步态只恢复呈现采样，原生状态与施力记录不变");
             Check(showForces.IsChecked == true && showSkeleton.IsChecked == true, "详细施力与骨架默认同时开启");
             showAppearance.IsChecked = false; surface.Refresh(); showAppearance.IsChecked = true; surface.Refresh();
             Check(ReferenceEquals(snapshot, beltFrame) && steps == beforeToggle, "完整形象开关不推进或重建物理");
-            Inject(Key.D, true, ApplyButton); StepOnce(); Check(lastInput.Horizontal == 1 && beltFrame!.Stats[18] > 0, "按钮焦点D驱动真实半区力");
-            Inject(Key.D, false, ApplyButton); StepOnce();
-            Inject(Key.W, true, size); StepOnce(); Check(lastInput.Stretch == 1 && beltFrame!.Stats[19] > 0, "滑条焦点W仍向上施力");
+            Inject(Key.D, true, ApplyButton); StepSmoke(); Check(lastInput.Horizontal == 1 && beltFrame!.Stats[18] > 0, "按钮焦点D驱动真实半区力");
+            Inject(Key.D, false, ApplyButton); StepSmoke();
+            Inject(Key.W, true, size); StepSmoke(); Check(lastInput.Stretch == 1 && beltFrame!.Stats[19] > 0, "滑条焦点W仍向上施力");
+            Check(appearance.GaitState.DisplayedStrain == 0, "W主动体态期间原步态不叠加额外变形");
             Check(ForceRowCount(2) is > 0 and <= 16 && ((int)forceLedger![5] & 2) != 0 && ForceRowCount(3) == 0 && ForceRowCount(5) == 0 && ForceRowCount(6) == 0, "W保持真实上半区分段合力，无主推动、后压或旧whale力");
-            Inject(Key.S, true, size); StepOnce(); Check(lastInput.CancelForces && beltFrame!.Stats[19] == 0, "W加S撤销垂直力");
-            Inject(Key.W, false, size); Inject(Key.S, false, size); StepOnce();
-            Inject(Key.A, true, Notes); StepOnce(); Check(!lastInput.InputActive && beltFrame!.Stats[18] == 0, "文字输入不驱动"); Inject(Key.A, false, Notes);
-            Reset(); for (var i = 0; i < 300; i++) StepOnce();
-            ApplyButton.Focus(); var c = clicks; Inject(Key.Space, true, ApplyButton); StepOnce();
+            Inject(Key.S, true, size); StepSmoke(); Check(lastInput.CancelForces && beltFrame!.Stats[19] == 0, "W加S撤销垂直力");
+            Inject(Key.W, false, size); Inject(Key.S, false, size); StepSmoke();
+            Inject(Key.A, true, Notes); StepSmoke(); Check(!lastInput.InputActive && beltFrame!.Stats[18] == 0, "文字输入不驱动"); Inject(Key.A, false, Notes);
+            Reset(); for (var i = 0; i < 300; i++) StepSmoke();
+            ApplyButton.Focus(); var c = clicks; Inject(Key.Space, true, ApplyButton); StepSmoke();
             Check(lastInput.JumpPressed && beltFrame!.Stats[15] == 1 && beltFrame.Stats[47] > 0, "按钮焦点Space接受原版整身起跳");
-            StepOnce(); Check(!lastInput.JumpPressed, "Space不自动重复"); Inject(Key.Space, false, ApplyButton); Check(clicks == c, "Space不误点应用");
+            Check(appearance.GaitState.DisplayedStrain == 0, "Space起跳立即抑制原步态显示");
+            StepSmoke(); Check(!lastInput.JumpPressed, "Space不自动重复"); Inject(Key.Space, false, ApplyButton); Check(clicks == c, "Space不误点应用");
             var wholeBodyAirborne = false;
-            for (var i = 0; i < 90; i++) { StepOnce(); wholeBodyAirborne |= beltFrame!.Gap > 1e-4; }
+            for (var i = 0; i < 90; i++) { StepSmoke(); wholeBodyAirborne |= beltFrame!.Gap > 1e-4; }
             Check(!fault && wholeBodyAirborne, "原版整身起跳规则使真实连续最低点离地");
             Check(ApplyButton.FocusVisualStyle is null && size.FocusVisualStyle is null, "按钮滑条无虚线焦点");
-            Inject(Key.D, true, ApplyButton); StepOnce(); Cancel(); StepOnce(); Check(lastInput.CancelForces && lastInput.Horizontal == 0, "取消清除玩法状态");
-            Inject(Key.D, true, ApplyButton); StepOnce(); Check(lastInput.Horizontal == 0, "取消后按住的键不补发"); Inject(Key.D, false, ApplyButton);
-            model.SelectedIndex = 1; Reset(); for (var i = 0; i < 300; i++) StepOnce(); Check(!fault && !ActiveBelt && oldFrame!.IsGrounded, "原外围半区对照真实落地");
+            Inject(Key.D, true, ApplyButton); StepSmoke(); Cancel(); StepSmoke(); Check(lastInput.CancelForces && lastInput.Horizontal == 0, "取消清除玩法状态");
+            Inject(Key.D, true, ApplyButton); StepSmoke(); Check(lastInput.Horizontal == 0, "取消后按住的键不补发"); Inject(Key.D, false, ApplyButton);
+            model.SelectedIndex = 1; Reset(); for (var i = 0; i < 300; i++) StepSmoke(); Check(!fault && !ActiveBelt && oldFrame!.IsGrounded, "原外围半区对照真实落地");
             UpdateForceDetails(); Check(forceLedger is null && forceDetails.Text.Contains("未提供", StringComparison.Ordinal), "旧模块明确显示未提供真实施力");
             model.SelectedIndex = 0;
-            Reset(); for (var i = 0; i < 300; i++) StepOnce(); Check(!fault && appearance.RenderedAccessoryCount == 2, "最终落稳和正式配饰恢复无故障");
+            Reset(); for (var i = 0; i < 300; i++) StepSmoke(); Check(!fault && appearance.RenderedAccessoryCount == 2, "最终落稳和正式配饰恢复无故障");
             var restingHeight = beltFrame!.Height; var restingWidth = beltFrame.Width;
             await Capture("window-rest-before");
             Inject(Key.D, true, ApplyButton); var rightDriveApplied = false; var rightRearApplied = false;
             for (var i = 0; i < 90; i++)
             {
-                StepOnce(); var active = VerifyRadialFrame(1);
+                StepSmoke(); var active = VerifyRadialFrame(1); SampleGait();
                 if (active && !rightDriveApplied) await Capture("window-walk-right-forceoverlay");
                 rightDriveApplied |= active; rightRearApplied |= rearDriveDiagnostics is { } rr && rr[4] > 0 && rr[14] == 1;
             }
@@ -600,7 +643,7 @@ internal sealed class LabBeltWindow : Window
             Inject(Key.D, false, ApplyButton); Inject(Key.A, true, ApplyButton); var leftDriveApplied = false; var leftRearApplied = false;
             for (var i = 0; i < 90; i++)
             {
-                StepOnce(); var active = VerifyRadialFrame(-1);
+                StepSmoke(); var active = VerifyRadialFrame(-1); SampleGait();
                 if (active && !leftDriveApplied) await Capture("window-walk-left-forceoverlay");
                 leftDriveApplied |= active; leftRearApplied |= rearDriveDiagnostics is { } lr && lr[4] > 0 && lr[14] == -1;
             }
@@ -608,20 +651,27 @@ internal sealed class LabBeltWindow : Window
                 "A切换对应侧半圈8点力，水平参考保持与竖向2/3且后压来源独立、旧whale关闭");
             Check(leftRearApplied, "A主力期间后压镜像切到预积分右半身、均分且零水平力");
             await Capture("window-walk-left");
-            Inject(Key.A, false, ApplyButton); StepOnce(); VerifyRadialFrame(0);
+            // Reversal spends part of the first 90 frames braking. Observe enough
+            // real distance for the unchanged 60 DIP cycle without accelerating it.
+            for (var i = 0; i < 240; i++) { StepSmoke(); VerifyRadialFrame(-1); SampleGait(); }
+            await Capture("window-walk-left-sustained");
+            Check(gaitStrains.Any(s => s < -1e-6) && gaitStrains.Any(s => s > 1e-6),
+                "实际行走帧出现原步态压缩与舒展两相");
+            Inject(Key.A, false, ApplyButton); StepSmoke(); VerifyRadialFrame(0);
             Check(!fault && ForceRowCount(1) == 0 && ForceRowCount(3) == 0 && ForceRowCount(5) == 0 && ForceRowCount(6) == 0 && radialDriveDiagnostics is { } immediateRelease && immediateRelease[3] == 0 && immediateRelease[4] == 0 && immediateRelease[6] == 0 && rearDriveDiagnostics is { } immediateRear && immediateRear[3] == 0 && immediateRear[4] == 0 && immediateRear[6] == 0,
                 "松键下一帧立即停止主推动与后压");
-            for (var i = 0; i < 180; i++) { StepOnce(); VerifyRadialFrame(0); }
+            for (var i = 0; i < 180; i++) { StepSmoke(); VerifyRadialFrame(0); SampleGait(); }
+            Check(Math.Abs(appearance.GaitState.DisplayedStrain) < 1e-10, "松手后原步态按原释放规则恢复中性");
             Check(!fault && radialDriveDiagnostics is { } release && release[3] == 0 && release[4] == 0 &&
                 Math.Abs(beltFrame!.Height / restingHeight - 1) < .02 && Math.Abs(beltFrame.Width / restingWidth - 1) < .02,
                 "松手后主动推动撤除且高宽恢复至自身静置2%内");
             await Capture("window-release");
-            radialDrive.IsChecked = false; Reset(); for (var i = 0; i < 300; i++) StepOnce();
+            radialDrive.IsChecked = false; Reset(); for (var i = 0; i < 300; i++) StepSmoke();
             Inject(Key.D, false, ApplyButton);
             Inject(Key.D, true, ApplyButton); var originalDriveApplied = false;
             for (var i = 0; i < 90; i++)
             {
-                StepOnce();
+                StepSmoke();
                 if (fault || forceLedger is not { } originalLedger || originalLedger[2] != steps ||
                     ForceRowCount(3) != 0 || ForceRowCount(5) != 0 || ForceRowCount(6) != 0 ||
                     (beltFrame!.HorizontalForce > 0 ? ForceRowCount(1) is < 1 or > 16 : ForceRowCount(1) != 0))
@@ -634,15 +684,15 @@ internal sealed class LabBeltWindow : Window
                 belt.ShapeGuardEnabled && belt.SpeedSaturationEnabled && originalDriveApplied && ForceRowCount(3) == 0 && ForceRowCount(5) == 0 && ForceRowCount(6) == 0,
                 "关闭8点开关后原水平推动运行且后压来源独立、旧whale关闭，保留F和安全保护");
             await Capture("window-original-drive-right");
-            Inject(Key.D, false, ApplyButton); radialDrive.IsChecked = true; Reset(); for (var i = 0; i < 300; i++) StepOnce();
+            Inject(Key.D, false, ApplyButton); radialDrive.IsChecked = true; Reset(); for (var i = 0; i < 300; i++) StepSmoke();
             Check(!fault && belt!.RadialDriveEnabled && appearance.RenderedAccessoryCount == 2, "恢复8点推动开关与外观无故障");
             await Capture("window");
-            File.WriteAllText(Path.Combine(session, "walking-review.json"), JsonSerializer.Serialize(new { material = new { size = size.Value, softness = softness.Value, build = build.Value },
-                scope = "actual physics frames at material 80/100/0; eight actual grouped forces with horizontal reference preserved and vertical reference scaled by 2/3; rear endpoint downward force equals abs(main netFy)/3; no legacy whale shaping force; no render deformation or manual acceptance", frames = walkingFrames }, new JsonSerializerOptions { WriteIndented = true }));
-            File.WriteAllText(Path.Combine(session, "wpf-smoke.json"), JsonSerializer.Serialize(new { passed = true, material = new { size = size.Value, softness = softness.Value, build = build.Value }, shapeGuard = GuardState(), speedLimit = SpeedLimitState(), radialDrive = RadialDriveState(), rearDrive = RearDriveState(), checks, method = "shown WPF routed events; not OS keyboard automation", manualAcceptance = false }, new JsonSerializerOptions { WriteIndented = true })); Close();
+            SaveWalkingReview();
+            File.WriteAllText(Path.Combine(session, "wpf-smoke.json"), JsonSerializer.Serialize(new { passed = true, material = new { size = size.Value, softness = softness.Value, build = build.Value }, shapeGuard = GuardState(), speedLimit = SpeedLimitState(), radialDrive = RadialDriveState(), rearDrive = RearDriveState(), presentationGait = appearance.GaitState, checks, method = "shown WPF routed events; not OS keyboard automation", manualAcceptance = false }, new JsonSerializerOptions { WriteIndented = true })); Close();
         }
         catch (Exception e)
         {
+            SaveWalkingReview();
             File.WriteAllText(Path.Combine(session, "wpf-smoke.json"), JsonSerializer.Serialize(new { passed = false, checks, error = e.ToString(), speedLimit = SpeedLimitState(), radialDrive = RadialDriveState(), rearDrive = RearDriveState(), stepEvidence = StepEvidence() }, new JsonSerializerOptions { WriteIndented = true })); Application.Current.Shutdown(11);
         }
     }
@@ -669,13 +719,28 @@ internal sealed class LabBeltWindow : Window
             overlay.Width = ActualWidth; overlay.Height = ActualHeight;
             InvalidateVisual(); overlay.InvalidateVisual();
         }
+        internal PhysicsLabGaitContext? GaitContext()
+        {
+            if (ActualWidth <= 0 || ActualHeight <= 0) return null;
+            var scale = Scale / PhysicsLabAppearancePresenter.WorldToCanvas;
+            var core = Map(owner.CoreX, owner.CoreY);
+            return new(scale, core.X - 80 * scale, core.Y - 66 * scale, ActualWidth, ActualHeight);
+        }
+        private Point Displayed(Point raw)
+        {
+            if (owner.appearance.GaitFrame is not { } gait) return raw;
+            var scale = Scale / PhysicsLabAppearancePresenter.WorldToCanvas;
+            var core = Map(owner.CoreX, owner.CoreY);
+            var point = gait.Map(new LogicalPoint(80 + (raw.X - core.X) / scale, 66 + (raw.Y - core.Y) / scale));
+            return new(core.X + (point.X - 80) * scale, core.Y + (point.Y - 66) * scale);
+        }
         private const double Scale = 120;
         private double Floor => ActualHeight * .78;
         private Point Map(double x, double y) => new(ActualWidth / 2 + (x - owner.cameraX) * Scale, Floor - (y - owner.config.GroundHeight) * Scale);
         private Point Unmap(Point p) => new((p.X - ActualWidth / 2) / Scale + owner.cameraX, owner.config.GroundHeight - (p.Y - Floor) / Scale);
-        private StreamGeometry Shape(IReadOnlyList<float> xy, double x = 0, double y = 0, bool spline = false)
+        private StreamGeometry Shape(IReadOnlyList<float> xy, double x = 0, double y = 0, bool spline = false, bool gait = false)
         {
-            var points = Enumerable.Range(0, xy.Count / 2).Select(i => Map(x + xy[2 * i], y + xy[2 * i + 1])).ToArray();
+            var points = Enumerable.Range(0, xy.Count / 2).Select(i => Map(x + xy[2 * i], y + xy[2 * i + 1])).Select(p => gait ? Displayed(p) : p).ToArray();
             var g = new StreamGeometry(); using var c = g.Open();
             if (spline)
             {
@@ -694,8 +759,8 @@ internal sealed class LabBeltWindow : Window
             for (var i = (int)Math.Floor(owner.cameraX - ActualWidth / Scale); i < owner.cameraX + ActualWidth / Scale; i++)
             { var p = Map(i, owner.config.GroundHeight); d.DrawLine(new Pen(LabWindow.LineBrush, 1), p, p + new Vector(0, 10)); }
             StreamGeometry? geometry = null;
-            if (owner.beltFrame is { } b) geometry = Shape(b.Curve);
-            else if (owner.oldFrame is { } o) geometry = Shape(o.Contour, o.CoreX, o.CoreY, true);
+            if (owner.beltFrame is { } b) geometry = Shape(b.Curve, gait: true);
+            else if (owner.oldFrame is { } o) geometry = Shape(o.Contour, o.CoreX, o.CoreY, true, true);
             if (geometry is null) return;
             if (owner.showAppearance.IsChecked != true)
                 d.DrawGeometry(new SolidColorBrush(Color.FromRgb(245, 226, 190)), new Pen(LabWindow.Accent, 1.2), geometry);
@@ -737,6 +802,9 @@ internal sealed class LabBeltWindow : Window
             Text(d, owner.showForces.IsChecked == true ? owner.forceLedger is { } f ? $"主动施力 · 末子步积分前位置 · {owner.forceScale.Value:0} DIP/N · 帧 {f[2]:0}" : "详细施力：当前模块未提供" : "详细施力已隐藏", 34);
             Text(d, "后半下压已标深绿 · 不含重力/接触反力 · 橙 核心 · 蓝十字 质心", 56);
             Text(d, owner.fault ? "物理失败，已暂停" : owner.replaying ? "同输入回放中" : owner.paused ? "已暂停" : owner.belt?.RadialDriveEnabled == true ? "8点主力Fy 2/3 · 后半下压" : "原始显示 · 原推动对照", 78);
+            var gaitState = owner.appearance.GaitState;
+            Text(d, $"原有上下步态 {(gaitState.Enabled ? "开" : "关")} · 显示应变 {gaitState.DisplayedStrain:+0.0000;-0.0000;0.0000} · 骨架/箭头保留物理坐标", 100);
+            if (gaitState.Error is { } error) Text(d, "步态显示已停用：" + error, 122);
         }
         private sealed class DebugOverlay(Surface surface) : FrameworkElement
         {

@@ -41,11 +41,12 @@ public sealed class PhysicsLabAppearanceTests
         Assert.AreEqual(2, presenter.RenderedAccessoryCount, presenter.Status);
         Assert.IsFalse(presenter.Status.Contains("失败", StringComparison.Ordinal));
         var view = (Canvas)presenter.View;
+        var layer = (Canvas)view.Children[0];
         Assert.AreEqual(160d, view.Width); Assert.AreEqual(120d, view.Height);
-        Assert.AreEqual(1, ((Canvas)view.Children[0]).Children.Count);
-        Assert.AreEqual(1, ((Canvas)view.Children[4]).Children.Count);
-        Assert.AreEqual(Color.FromRgb(1, 2, 3), ((SolidColorBrush)((VisualPath)view.Children[1]).Fill).Color);
-        Assert.AreEqual(Color.FromRgb(4, 5, 6), ((SolidColorBrush)((VisualPath)view.Children[2]).Fill).Color);
+        Assert.AreEqual(1, ((Canvas)layer.Children[0]).Children.Count);
+        Assert.AreEqual(1, ((Canvas)layer.Children[4]).Children.Count);
+        Assert.AreEqual(Color.FromRgb(1, 2, 3), ((SolidColorBrush)((VisualPath)layer.Children[1]).Fill).Color);
+        Assert.AreEqual(Color.FromRgb(4, 5, 6), ((SolidColorBrush)((VisualPath)layer.Children[2]).Fill).Color);
         Assert.AreEqual(before.Count, Directory.GetFiles(fixture.Root).Length);
         foreach (var (path, bytes) in before) CollectionAssert.AreEqual(bytes, File.ReadAllBytes(path));
         Assert.IsFalse(File.Exists(fixture.Settings));
@@ -117,7 +118,7 @@ public sealed class PhysicsLabAppearanceTests
             Assert.AreEqual((first.Boundary[i].X - 4) * 72 / 160, shape.Boundary[i].X, 1e-12);
             Assert.AreEqual(first.Boundary[i].Y * 72 / 160, shape.Boundary[i].Y, 1e-12);
         }
-        var body = (VisualPath)((Canvas)presenter.View).Children[1];
+        var body = (VisualPath)((Canvas)((Canvas)presenter.View).Children[0]).Children[1];
         var figure = body.Data.GetFlattenedPathGeometry().Figures.Single();
         // WPF StreamGeometry stores rendered coordinates as single-precision values.
         Assert.AreEqual(80 + shape.Boundary[0].X * 160, figure.StartPoint.X, 1e-4);
@@ -140,7 +141,7 @@ public sealed class PhysicsLabAppearanceTests
         {
             presenter.Update(sample with { Tick = tick });
             if (presenter.CurrentAttachments!.Face.Left.Openness >= .9) continue;
-            var eye = (VisualPath)((Canvas)presenter.View).Children[2];
+            var eye = (VisualPath)((Canvas)((Canvas)presenter.View).Children[0]).Children[2];
             Assert.IsFalse(eye.Data is EllipseGeometry);
             Assert.IsTrue(eye.Data.GetArea() > 0);
             blinkObserved = true;
