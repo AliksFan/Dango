@@ -10,6 +10,30 @@ namespace Dango.Desktop.Tests.Physics.Belt;
 public sealed class BeltBodyNativeSleepTests
 {
     private static byte[] Bytes(double[] values) => System.Runtime.InteropServices.MemoryMarshal.AsBytes(values.AsSpan()).ToArray();
+    private static string EvidenceRoot => Path.Combine(TestRepository.Root, "artifacts", "belt-runtime", "visible-deformation-v2");
+    private sealed record WindowBounds(double QTick, double QWindow, double VTick, double VWindow,
+        double CurveTick, double CoreTick, double CurveDiagonal, double CoreDiagonal, double PresentationDiagonal);
+    private static WindowBounds Bounds(BeltBodySnapshot[] rows)
+    {
+        double Tick(int start, int count) => Enumerable.Range(start, count).Max(j => Enumerable.Range(1, rows.Length - 1).Max(k => Math.Abs(rows[k].DebugState![j] - rows[k - 1].DebugState![j])));
+        double Range(int start, int count) => Enumerable.Range(start, count).Max(j => rows.Max(row => row.DebugState![j]) - rows.Min(row => row.DebugState![j]));
+        double Diagonal(Func<BeltBodySnapshot, double> x, Func<BeltBodySnapshot, double> y)
+        {
+            var dx = rows.Max(x) - rows.Min(x); var dy = rows.Max(y) - rows.Min(y); return Math.Sqrt(dx * dx + dy * dy);
+        }
+        return new(Tick(2, 36), Range(2, 36), Tick(38, 36), Range(38, 36),
+            Enumerable.Range(0, 512).Max(j => Enumerable.Range(1, rows.Length - 1).Max(k => Math.Abs(rows[k].Frame!.Curve[j] - rows[k - 1].Frame!.Curve[j]))),
+            Enumerable.Range(1, rows.Length - 1).Max(k => Math.Max(Math.Abs(rows[k].Frame!.CoreX - rows[k - 1].Frame!.CoreX), Math.Abs(rows[k].Frame!.CoreY - rows[k - 1].Frame!.CoreY))),
+            Enumerable.Range(0, 256).Max(j => Diagonal(row => row.Frame!.Curve[2 * j], row => row.Frame!.Curve[2 * j + 1])),
+            Diagonal(row => row.Frame!.CoreX, row => row.Frame!.CoreY),
+            Enumerable.Range(0, 256).Max(j => Diagonal(row => row.Frame!.Curve[2 * j] - row.Frame.CoreX, row => row.Frame!.Curve[2 * j + 1])));
+    }
+    private static void Save(string name, object value)
+    {
+        Directory.CreateDirectory(EvidenceRoot);
+        File.WriteAllText(Path.Combine(EvidenceRoot, name), System.Text.Json.JsonSerializer.Serialize(value,
+            new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+    }
     private static string Module
     {
         get
@@ -58,7 +82,7 @@ public sealed class BeltBodyNativeSleepTests
                 var report = new { Size = size, Softness = softness, Build = build, Tick = i, MaxV = v.Max(), MaxTickV = vTick.Max(), MaxWindowV = vEnvelope.Max(), MaxTickQ = qTick.Max(), MaxWindowQ = qEnvelope.Max(), TickCurve = tickCurve, TickCore = tickCore, WindowCurve = curveEnvelope, WindowCore = coreEnvelope, AllVelocityBounds = v, AllTickVelocityBounds = vTick, AllWindowVelocityBounds = vEnvelope, AllTickQBounds = qTick, AllWindowQBounds = qEnvelope };
                 reports.Add(report);
                 Console.WriteLine($"REST MOTION body={size}/{softness}/{build} tick={i} maxV={v.Max():G9} tickV={vTick.Max():G9} window120V={vEnvelope.Max():G9} tickQ={qTick.Max():G9} tickCurve={tickCurve:G9} tickCore={tickCore:G9} window120Q={qEnvelope.Max():G9} window120Curve={curveEnvelope:G9} window120Core={coreEnvelope:G9}");
-                var folder = Path.Combine(TestRepository.Root, "artifacts", "belt-runtime", "sleep-motion");
+                var folder = Path.Combine(TestRepository.Root, "artifacts", "belt-runtime", "visible-deformation-v2", "motion");
                 Directory.CreateDirectory(folder);
                 File.WriteAllText(Path.Combine(folder, $"natural-{size}-{softness}-{build}.json"), System.Text.Json.JsonSerializer.Serialize(reports, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
             }
@@ -66,7 +90,7 @@ public sealed class BeltBodyNativeSleepTests
     }
 
     [TestMethod]
-    public async Task ActualNativeNaturalRestSleepsFreezesFullNumericStateAndWakesWithOneJump()
+    public async Task V2ActualNativeNaturalRestSleepsFreezesFullNumericStateAndWakesWithOneJump()
     {
         await using var runtime = new BeltBodyRuntime(body => new BeltNativeSession(Module, body), true);
         runtime.SleepEnabled = true;
@@ -88,6 +112,7 @@ public sealed class BeltBodyNativeSleepTests
         CollectionAssert.AreEqual(before.Frame.Stats, after.Frame.Stats);
         Assert.AreEqual(calls, runtime.Metrics.NativeStepCalls);
         await using var reference = new BeltBodyRuntime(body => new BeltNativeSession(Module, body), true);
+        reference.SleepEnabled = false;
         await reference.ConfigureAsync(DangoBodyControls.Default, 0, 0);
         for (var i = 0; i < last.Tick; i++) { Assert.IsTrue(await reference.AdvanceAsync()); reference.TryDequeue(out _); }
         var same = await reference.CaptureStateAsync();
@@ -116,7 +141,7 @@ public sealed class BeltBodyNativeSleepTests
     [DataRow(120d, 0d, 100d)]
     [DataRow(120d, 100d, 0d)]
     [DataRow(120d, 100d, 100d)]
-    public async Task NativeCornersSleepOnlyAfterMeasuredStableFullState(double size, double softness, double build)
+    public async Task V2NativeCornersSleepOnlyAfterMeasuredStableFullState(double size, double softness, double build)
     {
         await using var runtime = new BeltBodyRuntime(body => new BeltNativeSession(Module, body), true);
         runtime.SleepEnabled = true;
@@ -128,8 +153,14 @@ public sealed class BeltBodyNativeSleepTests
             Assert.IsTrue(runtime.TryDequeue(out current));
             window.Enqueue(current!); if (window.Count > 121) window.Dequeue();
         }
+        var bounds = Bounds(window.ToArray());
+        Save($"corner-{size}-{softness}-{build}.json", new { Contract = "visible-deformation-v2", Size = size, Softness = softness, Build = build,
+            Sleeping = runtime.Metrics.Sleeping, Tick = current!.Tick, Bounds = bounds });
         if (runtime.Metrics.Sleeping)
         {
+            Assert.IsTrue(bounds.QWindow <= .0005 && bounds.VWindow <= .0005 && bounds.QTick <= .00001 && bounds.VTick <= .0005);
+            Assert.IsTrue(bounds.CurveDiagonal <= .0005 && bounds.CoreDiagonal <= .0005 && bounds.PresentationDiagonal <= .0005);
+            Assert.IsTrue(bounds.CurveTick <= .00001 && bounds.CoreTick <= .00001);
             Assert.IsTrue(current!.IsSleeping);
             var state = await runtime.CaptureStateAsync(); var calls = runtime.Metrics.NativeStepCalls;
             await Task.Delay(30);
@@ -144,7 +175,8 @@ public sealed class BeltBodyNativeSleepTests
             var vEnvelope = Enumerable.Range(38, 36).Max(j => rows.Max(row => row.DebugState![j]) - rows.Min(row => row.DebugState![j]));
             var curveEnvelope = Enumerable.Range(0, 512).Max(j => rows.Max(row => row.Frame!.Curve[j]) - rows.Min(row => row.Frame!.Curve[j]));
             // An unsettled corner is a correct refusal, never a reason to widen the envelope.
-            Assert.IsTrue(qEnvelope > BeltSleepPolicy.MaximumWindowDelta || curveEnvelope > BeltSleepPolicy.MaximumWindowDelta ||
+            Assert.IsTrue(bounds.QWindow > .0005 || bounds.CurveDiagonal > .0005 || bounds.CoreDiagonal > .0005 || bounds.PresentationDiagonal > .0005 ||
+                bounds.QTick > .00001 || bounds.CurveTick > .00001 || bounds.CoreTick > .00001 || bounds.VTick > .0005 ||
                 vEnvelope > BeltSleepPolicy.MaximumVelocityWindowDelta || !current!.Frame!.Grounded || current.Frame.ActiveContacts == 0,
                 "A fully stable final 120-tick state should already have slept.");
             Console.WriteLine($"CORNER {size}/{softness}/{build} CORRECT_REFUSAL tick={current!.Tick} qWindow={qEnvelope:G9} curveWindow={curveEnvelope:G9} vWindow={vEnvelope:G9}");
@@ -157,40 +189,65 @@ public sealed class BeltBodyNativeSleepTests
     [DataRow("jump-release")]
     [DataRow("hot-edit")]
     [DataRow("cancel")]
-    public async Task NativeRestAfterActivitySleepsFreezesAndWakes(string activity)
+    public async Task V2NativeRestAfterActivitySleepsFreezesAndWakes(string activity)
     {
         await using var runtime = new BeltBodyRuntime(body => new BeltNativeSession(Module, body), true);
+        await using var reference = new BeltBodyRuntime(body => new BeltNativeSession(Module, body), true);
+        reference.SleepEnabled = false;
         runtime.SleepEnabled = true;
         await runtime.ConfigureAsync(DangoBodyControls.Default, 0, 0);
+        await reference.ConfigureAsync(DangoBodyControls.Default, 0, 0);
         BeltBodySnapshot? current = null;
+        async Task StepBoth()
+        {
+            Assert.IsTrue(await runtime.AdvanceAsync(), runtime.Metrics.Error?.ToString()); Assert.IsTrue(runtime.TryDequeue(out current));
+            reference.PublishInput(current!.ActualInput);
+            Assert.IsTrue(await reference.AdvanceAsync(), reference.Metrics.Error?.ToString()); Assert.IsTrue(reference.TryDequeue(out var expected));
+            CollectionAssert.AreEqual(Bytes(expected!.DebugState!), Bytes(current.DebugState!), "Physical next step must match the never-slept same-state reference.");
+        }
         for (var i = 0; i < 300 && !runtime.Metrics.Sleeping; i++)
-        { Assert.IsTrue(await runtime.AdvanceAsync(), runtime.Metrics.Error?.ToString()); runtime.TryDequeue(out current); }
+            await StepBoth();
         if (activity == "walk-stop")
         {
             runtime.PublishInput(new(Horizontal: 1, InputActive: true));
-            for (var i = 0; i < 120; i++) { Assert.IsTrue(await runtime.AdvanceAsync(), runtime.Metrics.Error?.ToString()); runtime.TryDequeue(out current); }
+            for (var i = 0; i < 120; i++) await StepBoth();
             runtime.ClearInput();
         }
         else if (activity == "drag-release")
         {
             runtime.PublishInput(new(DragActive: true, DragTargetX: current!.Frame!.CoreX + .12, DragTargetY: current.Frame.CoreY + .1, InputActive: true));
-            for (var i = 0; i < 90; i++) { Assert.IsTrue(await runtime.AdvanceAsync(), runtime.Metrics.Error?.ToString()); runtime.TryDequeue(out current); }
+            for (var i = 0; i < 90; i++) await StepBoth();
             runtime.ClearInput();
         }
         else if (activity == "jump-release")
         { runtime.PublishInput(new(JumpPressed: true, InputActive: true)); runtime.PublishInput(default); }
         else if (activity == "hot-edit")
+        {
             await runtime.ConfigureAsync(new(110, 60, 40), 1, 0);
+            await reference.ConfigureAsync(new(110, 60, 40), 1, 0);
+        }
         else
+        {
             await runtime.ConfigureAsync(DangoBodyControls.Default, 1, 1);
+            await reference.ConfigureAsync(DangoBodyControls.Default, 1, 1);
+        }
 
         var window = new Queue<BeltBodySnapshot>();
         for (var i = 0; i < 3600 && !runtime.Metrics.Sleeping; i++)
         {
-            Assert.IsTrue(await runtime.AdvanceAsync(), runtime.Metrics.Error?.ToString()); runtime.TryDequeue(out current);
+            await StepBoth();
             window.Enqueue(current!); if (window.Count > 121) window.Dequeue();
         }
         Console.WriteLine($"ACTIVITY {activity} sleeping={runtime.Metrics.Sleeping} tick={current?.Tick} calls={runtime.Metrics.NativeStepCalls}");
+        var bounds = Bounds(window.ToArray());
+        Save($"activity-{activity}.json", new { Contract = "visible-deformation-v2", Activity = activity, Tick = current!.Tick,
+            Sleeping = runtime.Metrics.Sleeping, Bounds = bounds });
+        if (runtime.Metrics.Sleeping)
+        {
+            Assert.IsTrue(bounds.QWindow <= .0005 && bounds.VWindow <= .0005 && bounds.QTick <= .00001 && bounds.VTick <= .0005);
+            Assert.IsTrue(bounds.CurveDiagonal <= .0005 && bounds.CoreDiagonal <= .0005 && bounds.PresentationDiagonal <= .0005);
+            Assert.IsTrue(bounds.CurveTick <= .00001 && bounds.CoreTick <= .00001);
+        }
         if (!runtime.Metrics.Sleeping)
         {
             var rows = window.ToArray();
@@ -207,7 +264,7 @@ public sealed class BeltBodyNativeSleepTests
             };
             var text = System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
             Console.WriteLine(text);
-            var directory = Path.Combine(TestRepository.Root, "artifacts", "belt-runtime", "trend-gate"); Directory.CreateDirectory(directory);
+            var directory = Path.Combine(TestRepository.Root, "artifacts", "belt-runtime", "visible-deformation-v2"); Directory.CreateDirectory(directory);
             File.WriteAllText(Path.Combine(directory, $"activity-{activity}-window.json"), text);
         }
         Assert.IsTrue(runtime.Metrics.Sleeping, $"Activity {activity} did not establish the frozen 120-tick stable-state gate.");
@@ -215,58 +272,55 @@ public sealed class BeltBodyNativeSleepTests
         await Task.Delay(50);
         var after = await runtime.CaptureStateAsync();
         CollectionAssert.AreEqual(Bytes(before.State), Bytes(after.State)); Assert.AreEqual(calls, runtime.Metrics.NativeStepCalls);
-        runtime.PublishInput(new(InputActive: true)); Assert.IsTrue(await runtime.AdvanceAsync());
+        runtime.PublishInput(new(InputActive: true)); await StepBoth();
         Assert.IsFalse(runtime.Metrics.Sleeping);
     }
 
     [TestMethod]
-    public async Task NativeDragReleaseExtendedObservationPreservesShortFailureAndFrozenGate()
+    public async Task StrictProfileNativeDragReleaseExtendedObservationPreservesShortFailureAndFrozenGate()
     {
         await using var runtime = new BeltBodyRuntime(body => new BeltNativeSession(Module, body), true);
-        runtime.SleepEnabled = true;
+        runtime.SleepEnabled = false;
+        var policy = new BeltSleepPolicy(BeltSleepProfile.StrictStateTrendV1); var eligible = false;
         await runtime.ConfigureAsync(DangoBodyControls.Default, 0, 0);
         BeltBodySnapshot? current = null;
-        for (var i = 0; i < 300 && !runtime.Metrics.Sleeping; i++)
-        { Assert.IsTrue(await runtime.AdvanceAsync(), runtime.Metrics.Error?.ToString()); runtime.TryDequeue(out current); }
-        Assert.IsTrue(runtime.Metrics.Sleeping);
+        for (var i = 0; i < 300 && !eligible; i++)
+        { Assert.IsTrue(await runtime.AdvanceAsync(), runtime.Metrics.Error?.ToString()); runtime.TryDequeue(out current); eligible = policy.Observe(current!.Frame!, current.DebugState!, current.ActualInput, current.Error is null); }
+        Assert.IsTrue(eligible);
         runtime.PublishInput(new(DragActive: true, DragTargetX: current!.Frame!.CoreX + .12,
             DragTargetY: current.Frame.CoreY + .1, InputActive: true));
         for (var i = 0; i < 90; i++)
-        { Assert.IsTrue(await runtime.AdvanceAsync(), runtime.Metrics.Error?.ToString()); runtime.TryDequeue(out current); }
-        runtime.ClearInput();
+        { Assert.IsTrue(await runtime.AdvanceAsync(), runtime.Metrics.Error?.ToString()); runtime.TryDequeue(out current); eligible = policy.Observe(current!.Frame!, current.DebugState!, current.ActualInput, current.Error is null); }
+        runtime.ClearInput(); policy.Reset(); eligible = false;
         var releasedAt = current!.Tick;
         var reports = new List<object>(); var window = new Queue<BeltBodySnapshot>();
-        var directory = Path.Combine(TestRepository.Root, "artifacts", "belt-runtime", "trend-gate"); Directory.CreateDirectory(directory);
-        for (var i = 1; i <= 12000 && !runtime.Metrics.Sleeping; i++)
+        var directory = Path.Combine(EvidenceRoot, "strict-profile-recheck"); Directory.CreateDirectory(directory);
+        for (var i = 1; i <= 12000 && !eligible; i++)
         {
             Assert.IsTrue(await runtime.AdvanceAsync(), runtime.Metrics.Error?.ToString());
             Assert.IsTrue(runtime.TryDequeue(out current));
+            eligible = policy.Observe(current!.Frame!, current.DebugState!, current.ActualInput, current.Error is null);
             window.Enqueue(current!); if (window.Count > 121) window.Dequeue();
-            if (i % 120 != 0 && !runtime.Metrics.Sleeping) continue;
+            if (i % 120 != 0 && !eligible) continue;
             var rows = window.ToArray();
             double Envelope(int offset, int count) => Enumerable.Range(offset, count).Max(j => rows.Max(row => row.DebugState![j]) - rows.Min(row => row.DebugState![j]));
             var report = new
             {
                 ReleasedAt = releasedAt, ReleasedTicks = i, PhysicalTick = current!.Tick,
-                Sleeping = runtime.Metrics.Sleeping, QWindow = Envelope(2, 36), VWindow = Envelope(38, 36),
+                Contract = policy.ContractId, Eligible = eligible, QWindow = Envelope(2, 36), VWindow = Envelope(38, 36),
                 CurveWindow = Enumerable.Range(0, 512).Max(j => rows.Max(row => row.Frame!.Curve[j]) - rows.Min(row => row.Frame!.Curve[j])),
                 CoreWindow = Math.Max(rows.Max(row => row.Frame!.CoreX) - rows.Min(row => row.Frame!.CoreX), rows.Max(row => row.Frame!.CoreY) - rows.Min(row => row.Frame!.CoreY)),
             };
             reports.Add(report);
             File.WriteAllText(Path.Combine(directory, "drag-release-extended-observation.json"),
                 System.Text.Json.JsonSerializer.Serialize(reports, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
-            if (i == 3600) Assert.IsFalse(runtime.Metrics.Sleeping, "The original short observation must remain reproducible, not be overwritten by the extension.");
+            if (i == 3600) Assert.IsFalse(eligible, "The original short observation must remain reproducible, not be overwritten by the extension.");
         }
         var releaseTicks = current!.Tick - releasedAt;
-        Console.WriteLine($"DRAG EXTENDED status={(runtime.Metrics.Sleeping ? "SLEEP" : "UNSTABLE_AT_CAP")} releaseTick={releasedAt} firstSleepAfterRelease={(runtime.Metrics.Sleeping ? releaseTicks : -1)} lastPhysicalTick={current.Tick} cap=12000; original3600Goal=FAIL");
-        if (runtime.Metrics.Sleeping)
+        Console.WriteLine($"STRICT PROFILE DRAG status={(eligible ? "ELIGIBLE" : "UNSTABLE_AT_CAP")} releaseTick={releasedAt} firstEligibleAfterRelease={(eligible ? releaseTicks : -1)} lastPhysicalTick={current.Tick} cap=12000; original3600EnergyGoal=FAIL");
+        if (eligible)
         {
             Assert.IsGreaterThan(3600, releaseTicks);
-            var before = await runtime.CaptureStateAsync(); var calls = runtime.Metrics.NativeStepCalls;
-            await Task.Delay(50); var after = await runtime.CaptureStateAsync();
-            CollectionAssert.AreEqual(Bytes(before.State), Bytes(after.State)); Assert.AreEqual(calls, runtime.Metrics.NativeStepCalls);
-            runtime.PublishInput(new(InputActive: true)); Assert.IsTrue(await runtime.AdvanceAsync());
-            Assert.IsFalse(runtime.Metrics.Sleeping);
         }
     }
 

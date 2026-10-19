@@ -45,9 +45,9 @@ public sealed class BeltSleepProfileTests
     [DataRow(true)]
     public void EachAxisBelowBoundCannotHideDiagonalMotion(bool core)
     {
-        Assert.IsFalse(Sweep(new(), (i, _, curve, stats) =>
+        Assert.IsFalse(Sweep(new(), (i, state, curve, stats) =>
         {
-            if (core) stats[0] = stats[1] = .0004f * i / 120;
+            if (core) { stats[0] = stats[1] = .0004f * i / 120; state[36] = stats[0]; state[37] = stats[1]; }
             else curve[510] = curve[511] = .0004f * i / 120;
         }));
     }
@@ -55,8 +55,8 @@ public sealed class BeltSleepProfileTests
     [TestMethod]
     public void CameraRelativeCurveRejectsOpposingRawCurveAndCoreMotion()
     {
-        Assert.IsFalse(Sweep(new(), (i, _, curve, stats) =>
-        { curve[510] = .0003f * i / 120; stats[0] = -.0003f * i / 120; }));
+        Assert.IsFalse(Sweep(new(), (i, state, curve, stats) =>
+        { curve[510] = .0003f * i / 120; stats[0] = -.0003f * i / 120; state[36] = stats[0]; }));
     }
 
     [TestMethod]
