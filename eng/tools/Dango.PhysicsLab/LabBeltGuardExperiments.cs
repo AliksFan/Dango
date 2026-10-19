@@ -6,6 +6,9 @@ using Dango.Desktop.Physics.Tuning;
 
 namespace Dango.PhysicsLab;
 
+internal sealed record LabBeltValidationFrame(DangoBodyControls Controls, DangoSelfPhysicsParameters Configuration,
+    string Phase, int PhaseTick, int Tick, double Seconds, LabBeltInput Input, LabBeltFrame Body);
+
 /// <summary>Exactly eight material corners, with independent sampled geometry checks beside the native certificate.</summary>
 public static class LabBeltGuardExperiments
 {
@@ -19,7 +22,9 @@ public static class LabBeltGuardExperiments
         double RadialHorizontalReferenceError, double RadialVerticalTwoThirdsReferenceError, double RadialReferenceNetFx64,
         double RadialReferenceNetFy64, double RadialEndpointWork, double[] RearDrive, double? FrontThickness, double? RearThickness);
 
-    public static bool Run(string guardedModule, string output)
+    public static bool Run(string guardedModule, string output) => Run(guardedModule, output, null);
+
+    internal static bool Run(string guardedModule, string output, Action<LabBeltValidationFrame>? observe)
     {
         Directory.CreateDirectory(output);
         var phases = new[] { new Phase("rest", 300), new Phase("right", 180, Horizontal: 1), new Phase("stop-right", 180),
@@ -65,9 +70,10 @@ public static class LabBeltGuardExperiments
                         phaseTick = i;
                         var before = world.Read(); lastSafe = new { Tick = ticks, Phase = phase.Name, before.Scaffold, before.Curve, before.Stats };
                         var started = Stopwatch.GetTimestamp();
-                        world.Step(Dt, new LabBeltInput(Horizontal: phase.Horizontal, Downward: phase.Down, Stretch: phase.Up,
+                        var input = new LabBeltInput(Horizontal: phase.Horizontal, Downward: phase.Down, Stretch: phase.Up,
                             JumpPressed: phase.Jump && i == 0, DragActive: phase.Drag, DragTargetX: dragX, DragTargetY: dragY,
-                            InputActive: phase.Horizontal != 0 || phase.Down != 0 || phase.Up != 0 || phase.Drag || phase.Jump && i == 0));
+                            InputActive: phase.Horizontal != 0 || phase.Down != 0 || phase.Up != 0 || phase.Drag || phase.Jump && i == 0);
+                        world.Step(Dt, input);
                         var elapsed = Stopwatch.GetElapsedTime(started).TotalMilliseconds; timings.Add(elapsed);
                         var frame = world.Read(); var guard = world.ReadShapeGuard(); ticks++;
                         var radial = world.ReadRadialDrive(); var rear = world.ReadRearDrive();
@@ -153,6 +159,13 @@ public static class LabBeltGuardExperiments
                             clearance, guard[12], guard[11], elapsed, radial[3], radial[4], radial[5], radial[6], radial[7], radial[8], radial[9],
                             radial[10], radial[11], radial[12], radial[15], radial[13], rear,
                             frontThickness, rearThickness); samples.Add(sample);
+                        if (observe is not null)
+                        {
+                            var physicalState = world.ReadDebugState();
+                            observe(new(controls, config, phase.Name, i, ticks, Dt, input, frame));
+                            if (!physicalState.SequenceEqual(world.ReadDebugState()) || !ledger.SequenceEqual(world.ReadForceLedger()))
+                                throw new InvalidOperationException("Presentation observer changed native state or active force ledger.");
+                        }
                         if (i % 30 == 0) trace.WriteLine(JsonSerializer.Serialize(new { Tick = ticks, Phase = phase.Name, Sample = sample, Guard = guard }));
                     }
                     var tail = samples.TakeLast(Math.Min(60, samples.Count)).ToArray(); var height = tail.Average(x => x.Height);
@@ -212,7 +225,7 @@ public static class LabBeltGuardExperiments
             File.WriteAllText(Path.Combine(output, "guard-eight-corner-results.json"), JsonSerializer.Serialize(new { Kind = "guard-eight-material-corners",
                 NativeSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(guardedModule))), FixedDt = Dt, Substeps = 4,
                 ExpectedCases = 8, AttemptedCases = results.Count, CompletedCases = completedCases, Passed = allPassed && completedCases == 8, GuardSchema = LabBeltWorld.ShapeGuardSchema,
-                Scope = "exactly 80/120 x 0/100 x 0/100; no intermediate materials; A/D eight actual grouped forces, horizontal 64-point reference preserved, vertical reference scaled by 2/3, rear endpoint downforce abs(main netFy)/3, natural torque allowed, short bones, whole-body Space, explicit speed saturation; no periodic gait; no appearance or OS input",
+                Scope = "exactly 80/120 x 0/100 x 0/100; no intermediate materials; A/D eight actual grouped forces, horizontal 64-point reference preserved, vertical reference scaled by 2/3, rear endpoint downforce abs(main netFy)/3, natural torque allowed, short bones, whole-body Space, explicit speed saturation; no periodic physical force; " + (observe is null ? "no appearance or OS input" : "same-step WPF appearance/gait observer; complete native state and force ledger checked unchanged; no OS input"),
                 RadialDriveSchema = LabBeltWorld.RadialDriveSchema, RearDriveSchema = LabBeltWorld.RearDriveSchema,
                 RearEndpointWorkNote = "Rear work is a distinct endpoint subset, not added to energy diagnostics again.",
                 RadialEndpointWorkNote = "Per-phase sum of diagnostic frameEndpointWorkSubset; this is a subset of total external work and is not added to the energy ledger again.",

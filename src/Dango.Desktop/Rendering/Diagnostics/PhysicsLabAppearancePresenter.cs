@@ -26,6 +26,12 @@ public sealed record PhysicsLabGaitState(bool Enabled, long Tick, double Phase, 
     double DisplayedStrain, double MaximumDisplacementDip, string? Error, string? SuppressionReason = null,
     double? HeightRatio = null, double? WidthRatio = null, double? AreaRatio = null);
 
+public sealed record PhysicsLabAccessoryInspection(AccessoryLayer Layer, AccessoryMeshFrame Frame,
+    Point RawBodyAnchor, double Width, double Height, double MaximumConnectionTravelDip, bool AllowFolding);
+
+public sealed record PhysicsLabAppearanceInspection(long Tick, PhysicsPresentationFrame? Body,
+    AttachmentShapeGeometry? Shape, IReadOnlyList<PhysicsLabAccessoryInspection> Accessories, string? RuntimeError);
+
 /// <summary>An externally owned successful physics tick. World Y points upwards.</summary>
 public sealed record PhysicsLabAppearanceFrame(long Tick, double Seconds,
     IReadOnlyList<PhysicsLabBoundaryPoint> Boundary, double CoreX, double CoreY,
@@ -152,6 +158,25 @@ public sealed class PhysicsLabAppearancePresenter : IDisposable
     public void InvalidateGaitSampling()
     {
         VerifyAccess(); gait.InvalidateSampling();
+    }
+
+    /// <summary>Returns the current presentation snapshot without advancing any motion state.</summary>
+    public PhysicsLabAppearanceInspection Inspect()
+    {
+        VerifyAccess();
+        var bodyFrame = currentBody;
+        var accessories = bodyFrame is null
+            ? Array.Empty<PhysicsLabAccessoryInspection>()
+            : equipped.Select(entry =>
+            {
+                var mesh = entry.Visual.Frame;
+                if (mesh is null) return null;
+                var anchor = AccessoryBodyMapper.Map(bodyFrame, null, entry.Item.BodyAnchorX, entry.Item.BodyAnchorY);
+                var (width, height) = Size(entry.Item);
+                var travel = Math.Sqrt(width * width + height * height) * entry.Item.MaxConnectionTravelPercent / 100;
+                return new PhysicsLabAccessoryInspection(entry.Item.Layer, mesh, anchor, width, height, travel, entry.Item.AllowFolding);
+            }).Where(item => item is not null).Select(item => item!).ToArray();
+        return new(lastTick, bodyFrame, currentShape, Array.AsReadOnly(accessories), runtimeError);
     }
 
     public bool Paused

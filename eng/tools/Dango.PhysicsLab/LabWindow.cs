@@ -21,6 +21,7 @@ internal sealed class LabWindow : Window
     internal static readonly Brush Ink = new SolidColorBrush(Color.FromRgb(68, 61, 52));
     internal static readonly Brush Accent = new SolidColorBrush(Color.FromRgb(136, 94, 62));
     internal static readonly Brush LineBrush = new SolidColorBrush(Color.FromRgb(233, 228, 218));
+    internal static readonly Brush BackgroundBrush = new SolidColorBrush(Color.FromRgb(253, 252, 249));
     private readonly LabModules modules;
     private readonly string session;
     private readonly LabInput input = new();
@@ -91,7 +92,7 @@ internal sealed class LabWindow : Window
         Title = "团子 · 物理实验室 · 步态关闭";
         Width = Math.Min(1220, SystemParameters.WorkArea.Width - 32);
         Height = Math.Min(860, SystemParameters.WorkArea.Height - 32); MinWidth = 940; MinHeight = 660;
-        Background = new SolidColorBrush(Color.FromRgb(253, 252, 249));
+        Background = BackgroundBrush;
         Foreground = Ink; FontFamily = new FontFamily("Segoe UI, Microsoft YaHei"); FontSize = 14;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         InputMethod.SetIsInputMethodEnabled(this, false);
