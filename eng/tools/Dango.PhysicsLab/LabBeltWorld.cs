@@ -48,22 +48,25 @@ internal sealed class LabBeltWorld : IDisposable
     private readonly OriginalGroundJumpDelegate? originalGroundJump;
     private readonly OriginalGroundJumpDelegate? shapeGuard;
     private readonly DiagnosticsDelegate? shapeGuardDiagnostics;
-    private readonly DoubleDiagnosticsDelegate? debugState, solverDiagnostics, speedLimitDiagnostics, whaleDriveDiagnostics, radialDriveDiagnostics, forceLedgerDiagnostics;
+    private readonly DoubleDiagnosticsDelegate? debugState, solverDiagnostics, speedLimitDiagnostics, whaleDriveDiagnostics, radialDriveDiagnostics, rearDriveDiagnostics, forceLedgerDiagnostics;
     private readonly OriginalGroundJumpDelegate? speedSaturation, whaleDrive, radialDrive;
     public bool WhaleDriveAvailable => whaleDrive is not null && whaleDriveDiagnostics is not null;
     public bool WhaleDriveEnabled { get; private set; }
     public bool RadialDriveAvailable => radialDrive is not null && radialDriveDiagnostics is not null;
     public bool RadialDriveEnabled { get; private set; }
-    public const string RadialDriveSchema = "v2:16;0=version2,1=enabled,2=attemptTick,3=activeSubsteps,4=lastPointCount8,5=lastOriginalMagnitudeBudget,6=lastAppliedMagnitudeSum,7=lastNetFx,8=lastNetFy,9=maxAbsActualTorqueCore,10=maxHorizontalReferenceError,11=maxVerticalHalfReferenceError,12=lastReferenceNetFx64,13=frameEndpointWorkSubset,14=guardWorkPeak,15=lastReferenceNetFy64;rejectedFrame=rollbackExceptAttempt;lastFields=lastSubstep;zeroBudget=clear4..8and12and15;frameAggregates=3and9..11";
+    public const string RadialDriveSchema = "v3:16;0=version3,1=enabled,2=attemptTick,3=activeSubsteps,4=lastPointCount8,5=lastOriginalMagnitudeBudget,6=lastAppliedMagnitudeSum,7=lastNetFx,8=lastNetFy,9=maxAbsActualTorqueCore,10=maxHorizontalReferenceError,11=maxVerticalTwoThirdsReferenceError,12=lastReferenceNetFx64,13=mainEndpointWorkSubset,14=guardWorkPeak,15=lastReferenceNetFy64;scope=mainEightForcesOnly;rejectedFrame=rollbackExceptAttempt;lastFields=lastSubstep;zeroBudget=clear4..8and12and15;frameAggregates=3and9..11";
+    public bool RearDriveAvailable => rearDriveDiagnostics is not null;
+    public bool RearDriveEnabled => RadialDriveEnabled && RearDriveAvailable;
+    public const string RearDriveSchema = "v1:16;0=version1,1=enabledWithRadial,2=attemptTick,3=activeSubsteps,4=lastPointCount0to16,5=lastRequestedDownMagnitude,6=lastAppliedDownMagnitude,7=lastNetFxZero,8=lastNetFyNonpositive,9=maxAbsActualTorqueCore,10=maxBudgetError,11=lastSourceEightPushFy,12=rearEndpointWorkSubset,13=guardWorkPeak,14=lastMovementSign,15=lastBodyMidX;budget=abs(mainEightPushFy)/3;position=actualScaffoldAttachment;mapping=scaleCurvePlusOneMinusScaleCore;rejectedFrame=rollbackExceptAttempt;zeroBudget=clear4..8and11and14and15;frameAggregates=3and9and10";
     public bool ForceLedgerAvailable => forceLedgerDiagnostics is not null;
-    public const string ForceLedgerSchema = "v1:1024;header0=version,1=capacity,2=lastSuccessfulSolverAttemptTick,3=lastSubstepZeroBased,4=rowCount,5=sourceMask,6=rowWidth6,7=referenceMaterialQuadrature64;rowsFrom8:x,y,fx,fy,kind,thetaOrPart;kind1=horizontal16MaterialBinResultants,2=vertical16MaterialBinResultants,3=shape64ActualQuadratureForces,4=dragActualPointForce,5=8ActualGroupedForces;positions=actualPreIntegration;scope=activeForcesOnly,noGravityOrContact;rejectedFrame=previousSuccessfulLedger";
+    public const string ForceLedgerSchema = "v1:1024;header0=version,1=capacity,2=lastSuccessfulSolverAttemptTick,3=lastSubstepZeroBased,4=rowCount,5=sourceMask,6=rowWidth6,7=referenceMaterialQuadrature64;rowsFrom8:x,y,fx,fy,kind,thetaOrPart;kind1=horizontal16MaterialBinResultants,2=vertical16MaterialBinResultants,3=shape64ActualQuadratureForces,4=dragActualPointForce,5=8ActualGroupedForces,6=rearScaffoldActualPointForce;positions=actualPreIntegration;scope=activeForcesOnly,noGravityOrContact;rejectedFrame=previousSuccessfulLedger";
     public const string WhaleDriveSchema = "v1:16;0=version,1=enabled,2=attemptTick,3=signedGain,4=activeSubsteps,5=maxAbsNetFx,6=maxAbsNetFy,7=maxAbsTorque,8=shapeEndpointWorkSubset,9=maxPointTraction,10=maxGeneralizedForce,11=suppressionBits,12=gainBefore,13=gainAfter,14=guardWorkPeak,15=reserved;suppression:1=air,2=drag,4=jump,8=WSramp,16=cancel";
     public bool SpeedSaturationAvailable => speedSaturation is not null && speedLimitDiagnostics is not null;
     public bool SpeedSaturationEnabled { get; private set; }
     public const string SpeedLimitSchema = "v1:12;0=version,1=enabled,2=attemptTick,3=limitedSubsteps,4=minScale,5=maxBeforeUpper,6=maxAfterUpper,7=deltaKE,8=deltaPx,9=deltaPy,10=deltaL,11=reserved";
     public const string DebugStateSchema = "v1:200;0=version,1=count,2..37=q36,38..73=v36,74=radius,75=scale,76=left,77=right,78=ramp,79=cooldown,80=dragTheta,81=shortBones,82=grounded,83=dragging,84=originalJump,85=hasStepped,86=shapeGuard,87..127=config41,128..138=calibration11,139=guardAttemptTick,140..175=mass36,176=speedSaturation,177=whaleDrive,178=whaleSignedGain,179=radialDrive,180..199=reserved";
     public const string SolverDiagnosticsSchema = "v1:24;0=version,1=attemptTick,2=returnCode,3=returnSite,4=substep,5=GNiteration,6=lineSearch,7=residual,8=objective,9=directional,10=trialObjective,11=factor,12=contactResidual,13=penetration,14=speed,15=stage,16=residualValidatedLineSearchStops,17=dampedBfgsUpdates,18=gaussNewtonResets,19=speedCertificateSamples,20=speedCoreOrCurveSampleMaximum,21=speedCertifiedUpper,22=lastRefinementCoarseUpper,23=lastRefinementCertifiedUpper";
-    public const string SolverFailureSites = "1=initialResidual,2=nonfiniteObjective,3=Cholesky,4=ArmijoExhausted,5=GNResidualCap,6=integratedPathGuard,7=NewtonWorkBudget,8=groundWorkBudget,9=groundFallbackGuard,10=groundPenetration,11=contactResidual,12=contactEnergy,13=speed,14=bounds,15=finalResidual,16=area,17=statsNonfinite,18=energyDiagNonfinite,19=initialGuard,20=regionForce,21=speedSaturationUnresolved,22=whaleForce,23=radialForceDomain,31=initialDerivative,32=initialRadialLength,33=initialShortEdge,34=initialArea,35=initialBarrierMaterialDomain;stage:1=forces,2=integration,3=contact,4=speedBounds,5=final";
+    public const string SolverFailureSites = "1=initialResidual,2=nonfiniteObjective,3=Cholesky,4=ArmijoExhausted,5=GNResidualCap,6=integratedPathGuard,7=NewtonWorkBudget,8=groundWorkBudget,9=groundFallbackGuard,10=groundPenetration,11=contactResidual,12=contactEnergy,13=speed,14=bounds,15=finalResidual,16=area,17=statsNonfinite,18=energyDiagNonfinite,19=initialGuard,20=regionForce,21=speedSaturationUnresolved,22=whaleForce,23=radialForceDomain,24=rearForceDomain,31=initialDerivative,32=initialRadialLength,33=initialShortEdge,34=initialArea,35=initialBarrierMaterialDomain;stage:1=forces,2=integration,3=contact,4=speedBounds,5=final";
     public bool DebugStateAvailable => ShapeGuardEnabled && debugState is not null;
     public bool SolverDiagnosticsAvailable => ShapeGuardEnabled && solverDiagnostics is not null;
     public const string ShapeGuardSchema = "v1:version,enabled,stepAttemptTick,lastStepReturnCode,certificateWork,certificateCalls,maxDepth,certifiedLeaves,refusedCandidates,lastRefusalReason,refusalStage,acceptedCrossLower,acceptedClearanceLower,winding,initialGuardElastic,finalGuardElastic,peakGuardCoreForce,guardEndpointForceWork,groundRigidFallbacks,hardClearance,hardCross,workBudget,acceptedSubsteps,reserved;refusalReason:1=cross,2=clearance,3=budget,4=winding,5=nonfinite,6=solver,7=ground,8=uncertain,9=materialDomain";
@@ -102,12 +105,16 @@ internal sealed class LabBeltWorld : IDisposable
                 radialDrive=Marshal.GetDelegateForFunctionPointer<OriginalGroundJumpDelegate>(radialAddress);
             if(NativeLibrary.TryGetExport(library,"dango_belt_read_radial_drive",out var radialDiagnosticsAddress))
                 radialDriveDiagnostics=Marshal.GetDelegateForFunctionPointer<DoubleDiagnosticsDelegate>(radialDiagnosticsAddress);
+            if(NativeLibrary.TryGetExport(library,"dango_belt_read_rear_drive",out var rearDiagnosticsAddress))
+                rearDriveDiagnostics=Marshal.GetDelegateForFunctionPointer<DoubleDiagnosticsDelegate>(rearDiagnosticsAddress);
             if(NativeLibrary.TryGetExport(library,"dango_belt_read_force_ledger",out var forceLedgerAddress))
                 forceLedgerDiagnostics=Marshal.GetDelegateForFunctionPointer<DoubleDiagnosticsDelegate>(forceLedgerAddress);
             if(enableWhaleDrive && !WhaleDriveAvailable)
                 throw new NotSupportedException("此模块缺少行走受力 ABI；请构建本轮鲸形行走实验组件。");
             if(enableRadialDrive && !RadialDriveAvailable)
                 throw new NotSupportedException("此模块缺少径向推动 ABI；请构建本轮沿骨架推动实验组件。");
+            if(enableRadialDrive && !RearDriveAvailable)
+                throw new NotSupportedException("此模块缺少后半身下压 ABI；请构建本轮8点推动与后半下压组件。");
             if(enableRadialDrive && enableWhaleDrive)
                 throw new ArgumentException("Radial driving and extra shaping forces are mutually exclusive.");
             if(enableSpeedSaturation && !SpeedSaturationAvailable)
@@ -219,7 +226,7 @@ internal sealed class LabBeltWorld : IDisposable
         for(var i=0;i<(int)values[4];i++)
         {
             var kind=values[8+6*i+4];
-            if(kind is <1 or >5 || kind!=Math.Truncate(kind)) throw new InvalidOperationException("Invalid active-force source.");
+            if(kind is <1 or >6 || kind!=Math.Truncate(kind)) throw new InvalidOperationException("Invalid active-force source.");
             mask|=1<<((int)kind-1);
         }
         if(values[5]!=mask) throw new InvalidOperationException("Active-force ledger source mask disagrees with its rows.");
@@ -238,7 +245,15 @@ internal sealed class LabBeltWorld : IDisposable
         VerifyAccess();
         if(!RadialDriveAvailable) throw new NotSupportedException("Native belt module does not export the complete radial drive ABI.");
         var values=ReadDoubleDiagnostics(radialDriveDiagnostics!,16,"read radial drive");
-        if(values[0]!=2) throw new NotSupportedException("Unsupported radial drive diagnostic schema (expected v2).");
+        if(values[0]!=3) throw new NotSupportedException("Unsupported radial drive diagnostic schema (expected v3).");
+        return values;
+    }
+    public double[] ReadRearDrive()
+    {
+        VerifyAccess();
+        if(!RearDriveAvailable) throw new NotSupportedException("Native belt module does not export rear endpoint-force diagnostics.");
+        var values=ReadDoubleDiagnostics(rearDriveDiagnostics!,16,"read rear endpoint drive");
+        if(values[0]!=1) throw new NotSupportedException("Unsupported rear endpoint-force diagnostic schema.");
         return values;
     }
     public double[] ReadDebugState()

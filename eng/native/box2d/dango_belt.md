@@ -188,7 +188,36 @@ the first solver candidate, original guard and diagnostic-only builds remain
 available for comparison. Six actual numerical fixtures and bounded follow-on
 drag/release sequences are kept in the private solver regression executable.
 
-### Current preview: eight grouped forces with half vertical component
+### Current preview: two-thirds vertical drive and rear endpoint pressure
+
+The user requested the eight-force drive's world-Y factor increase from 1/2 to
+2/3, keeping same-state old64 reference net Fx. A separate downward budget is
+`abs(mainEightNetFy)/3`, shared equally by existing scaffold endpoints in the
+rear half of the current body. Rightward input selects the left rear and vice
+versa. Main-drive gating, cancel or release also removes rear pressure.
+
+For the sixteen existing attachment points
+`P_i=scale*B(theta_i)+(1-scale)*Core`, select
+`moveSign*(P_i.x-bodyAabbMidX)<-1e-9*radius`. The new loads act at these actual P
+points, not the outer curve B. Their generalized-force mapping follows virtual
+work: `scale*basis*F` on curve coordinates and `(1-scale)*F` on core coordinates.
+The core share is part of applying an external load at the interpolated point,
+not an added reaction or a mass-based split. No structure or collision is added.
+
+Radial16 schema3 reports only the main eight loads and their two-thirds error.
+The separate read-only Rear16 and kind6 ledger rows report actual rear loads,
+same-substep main-Fy source, budget, selection and work. Total control stats and
+COM torque include both sources and W/S. The two work subsets are already in
+the original external-work ledger and are not added again. Failed frames roll
+back both diagnostic payloads except attempt counters and retain the ledger.
+
+The total vertical control force is main Fy minus the downward budget; for
+upward reference Fy it is 4/9 of the old reference, not 2/3. No torque correction
+is applied. Materials, W/S, Space and all safety limits remain unchanged.
+The new outputs are `belt-rear-pressure-native` and `app-rear-pressure`; previous
+outputs are retained. The same 80/100/0 preview precedes manual hand-feel review.
+
+### Historical eight grouped forces with half vertical component
 
 The user accepted the outward-drive direction but requested fewer actual forces
 and half the ground-normal (world Y) component, keeping the horizontal net force

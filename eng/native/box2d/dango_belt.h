@@ -60,19 +60,29 @@ DANGO_BELT_API int dango_belt_set_whale_drive(void*,int);
 DANGO_BELT_API int dango_belt_read_whale_drive(void*,double*,int);
 /* Optional A/D direction replacement, default off, before first successful
    step, requires shape guard and mutually exclusive with whale mode.
-   Radial16: 0 schema2,1 enabled,2 attempt,3 activeSubsteps,4 lastPointCount8,
+   Radial16: 0 schema3,1 enabled,2 attempt,3 activeSubsteps,4 lastPointCount8,
    5 lastOriginalMagnitudeBudget,6 lastAppliedMagnitudeSum (may differ),7 lastNetFx,
    8 lastNetFy,9 maxAbsActualTorqueAboutCore,10 maxHorizontalReferenceError,
-   11 maxVerticalHalfReferenceError,12 lastReferenceNetFx64,
+   11 twoThirdsReferenceError,12 lastReferenceNetFx64,
    13 frameEndpointWorkSubset (original external work),14 guardWorkPeak,
    15 lastReferenceNetFy64. References are 64 equal material midpoint radial
    samples in the selected world half. Eight consecutive groups each retain
-   summed Fx and half summed Fy, applied at their material midpoint; actual
+   summed Fx and two-thirds summed Fy, applied at their material midpoint; actual
    forces need not be radial and no torque correction or core reaction exists.
    Zero final budget clears 4..8/12/15; peaks cover the frame.
    Failed frames roll back all except attempt[2]. */
 DANGO_BELT_API int dango_belt_set_radial_drive(void*,int);
 DANGO_BELT_API int dango_belt_read_radial_drive(void*,double*,int);
+/* Rear16 schema1: 0 version,1 radialEnabled,2 attempt,3 activeSubsteps,
+   4 lastPointCount,5 requestedDown,6 appliedDown,7 netFx,8 netFy,
+   9 maxAbsTorqueCore,10 maxBudgetError,11 sourceEightPushFy,
+   12 endpointWorkSubset,13 guardWorkPeak,14 movementSign,15 bodyMidX.
+   Existing endpoint P=scale*B(theta)+(1-scale)*Core, theta=2pi*i/16,
+   selected by sign*(P.x-bodyMidX)<-1e-9*radius. Equal pure downward loads
+   total abs(mainFy)/3. Both curve and core receive endpoint J^T shares.
+   Zero final budget clears 4..8/11/14/15; frame peaks 3/9/10 remain.
+   Same readonly/capacity/lifetime and failed-frame rollback as Radial16. */
+DANGO_BELT_API int dango_belt_read_rear_drive(void*,double*,int);
 /* Read-only last successful substep active-force evaluation, pre-integration.
    Ledger1024 header: 0 schema1,1 capacity1024,2 successful frame attemptTick,
    3 zero-based lastSubstep (-1 before step),4 rowCount (max97),5 sourceMask,
@@ -80,7 +90,8 @@ DANGO_BELT_API int dango_belt_read_radial_drive(void*,double*,int);
    Kind1 horizontal and kind2 vertical are exact resultants of 16 material bins,
    material=binIndex (not physical nodes); kind3 is actual projected whale point
    weight t/64, material=theta; kind4 actual drag point, material=theta.
-   Kind5 eight actual grouped point loads (Fx preserved/Fy halved), material=theta.
+   Kind5 eight actual grouped point loads (Fx preserved/Fy two-thirds), material=theta.
+   Kind6 actual rear scaffold endpoint force, material=theta, mask32.
    SourceMask uses 1<<(kind-1). Gravity/contact omitted. Unused slots zero.
    Read capacity failure writes nothing. Failed frames retain previous ledger. */
 DANGO_BELT_API int dango_belt_read_force_ledger(void*,double*,int);
@@ -103,7 +114,7 @@ DANGO_BELT_API int dango_belt_read_force_ledger(void*,double*,int);
    8 ground work budget,9 rigid ground fallback guard,10 ground penetration,
    11 contact residual,12 contact energy,13 speed,14 bounds,15 final residual,
    16 area,17 stats finite,18 energy diagnostics finite,19 initial guard,
-   20 region force,21 speed saturation nonfinite/unresolved,22 whale traction domain,23 radial direction/interval domain,
+   20 region force,21 speed saturation nonfinite/unresolved,22 whale traction domain,23 radial direction/interval domain,24 rear endpoint domain,
    31 initial derivative,32 initial radial length,33 initial short edge,
    34 initial area,35 initial barrier material domain.
    Solver diagnostics retain the rejected attempt. */

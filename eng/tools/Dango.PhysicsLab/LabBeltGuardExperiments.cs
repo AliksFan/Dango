@@ -16,8 +16,8 @@ public static class LabBeltGuardExperiments
         double CoreClearance, double GuardClearance, double GuardCross, double StepMilliseconds,
         double RadialActiveSubsteps, double RadialPointCount, double RadialOriginalMagnitudeBudget,
         double RadialAppliedMagnitudeSum, double RadialNetFx, double RadialNetFy, double RadialTorque,
-        double RadialHorizontalReferenceError, double RadialVerticalHalfReferenceError, double RadialReferenceNetFx64,
-        double RadialReferenceNetFy64, double RadialEndpointWork, double? FrontThickness, double? RearThickness);
+        double RadialHorizontalReferenceError, double RadialVerticalTwoThirdsReferenceError, double RadialReferenceNetFx64,
+        double RadialReferenceNetFy64, double RadialEndpointWork, double[] RearDrive, double? FrontThickness, double? RearThickness);
 
     public static bool Run(string guardedModule, string output)
     {
@@ -44,7 +44,7 @@ public static class LabBeltGuardExperiments
             try
             {
                 world = new LabBeltWorld(guardedModule, config, true, calibration, enableShapeGuard: true, enableSpeedSaturation: true, enableWhaleDrive: false, enableRadialDrive: true);
-                if (!world.RadialDriveAvailable || !world.RadialDriveEnabled || world.WhaleDriveEnabled)
+                if (!world.RadialDriveAvailable || !world.RearDriveAvailable || !world.RadialDriveEnabled || world.WhaleDriveEnabled)
                     throw new InvalidOperationException("Radial drive must be available and enabled while whale drive remains disabled.");
                 world.SetOriginalGroundJump(); world.SetBounds(-256, 256);
                 foreach (var phase in phases)
@@ -58,7 +58,8 @@ public static class LabBeltGuardExperiments
                     var limitedSubsteps = 0d; var speedLimitEnergy = 0d; var maxSpeedAfterLimit = 0d; var bfgsUpdates = 0d;
                     var radialActiveSubsteps = 0d; var radialEndpointWork = 0d; var radialMaxBudget = 0d; var radialMaxApplied = 0d;
                     var radialMaxNetFx = 0d; var radialMaxNetFy = 0d; var radialMaxTorque = 0d; var radialMaxHorizontalReferenceError = 0d;
-                    var radialMaxVerticalHalfReferenceError = 0d; var radialMaxReferenceNetFx = 0d; var radialMaxReferenceNetFy = 0d; var radialFinalActiveSubsteps = 0d;
+                    var rearActiveSubsteps = 0d; var rearWork = 0d; var rearBudgetPeak = 0d; var rearTorquePeak = 0d; var rearBudgetErrorPeak = 0d;
+                    var radialMaxVerticalTwoThirdsReferenceError = 0d; var radialMaxReferenceNetFx = 0d; var radialMaxReferenceNetFy = 0d; var radialFinalActiveSubsteps = 0d;
                     for (var i = 0; i < phase.Frames; i++)
                     {
                         phaseTick = i;
@@ -69,10 +70,10 @@ public static class LabBeltGuardExperiments
                             InputActive: phase.Horizontal != 0 || phase.Down != 0 || phase.Up != 0 || phase.Drag || phase.Jump && i == 0));
                         var elapsed = Stopwatch.GetElapsedTime(started).TotalMilliseconds; timings.Add(elapsed);
                         var frame = world.Read(); var guard = world.ReadShapeGuard(); ticks++;
-                        var radial = world.ReadRadialDrive();
+                        var radial = world.ReadRadialDrive(); var rear = world.ReadRearDrive();
                         if (radial.Length != 16 || radial.Any(x => !double.IsFinite(x)))
                             throw new InvalidOperationException("Radial drive diagnostics must contain 16 finite values.");
-                        if (radial[0] != 2 || radial[1] != 1 || radial[2] != ticks)
+                        if (radial[0] != 3 || radial[1] != 1 || radial[2] != ticks)
                             throw new InvalidOperationException("Radial drive was not enabled in the same attempted frame.");
                         var nativeHorizontalForce = (double)(float)config.HorizontalForce;
                         var nativeAirControlRatio = (double)(float)config.AirControlRatio;
@@ -83,7 +84,7 @@ public static class LabBeltGuardExperiments
                         if (!allowedBudgets.Any(allowed => Math.Abs(radial[5] - allowed) <= radialBudgetTolerance))
                             throw new InvalidOperationException("Original 64-point reference magnitude budget changed.");
                         if (radial[10] >= 1e-9 || radial[11] >= 1e-9)
-                            throw new InvalidOperationException("Horizontal reference preservation or vertical half-reference error exceeded tolerance.");
+                            throw new InvalidOperationException("Horizontal reference preservation or vertical two-thirds-reference error exceeded tolerance.");
                         if (radial[5] == 0 && (radial[4] != 0 || radial[6] != 0 || radial[7] != 0 || radial[8] != 0 || radial[12] != 0 || radial[15] != 0))
                             throw new InvalidOperationException("Zero final-substep budget left nonzero actual or reference force records.");
                         if (phase.Horizontal == 0 && (radial[5] != 0 || radial[3] != 0))
@@ -110,13 +111,16 @@ public static class LabBeltGuardExperiments
                         const double ledgerTolerance = 1e-9;
                         if (Math.Abs(ledgerMagnitudeSum - radial[6]) >= ledgerTolerance ||
                             Math.Abs(ledgerNetFx - radial[7]) >= ledgerTolerance || Math.Abs(ledgerNetFy - radial[8]) >= ledgerTolerance ||
-                            Math.Abs(ledgerNetFx - radial[12]) >= ledgerTolerance || Math.Abs(ledgerNetFy - .5 * radial[15]) >= ledgerTolerance)
+                            Math.Abs(ledgerNetFx - radial[12]) >= ledgerTolerance || Math.Abs(ledgerNetFy - (2d / 3) * radial[15]) >= ledgerTolerance)
                             throw new InvalidOperationException("Radial ledger force totals disagree with same-frame diagnostics.");
+                        ValidateRearLedger(rear, radial, ledger, ticks, true, phase.Horizontal, frame.Stats[62], frame.HorizontalForce, frame.VerticalForce);
+                        rearActiveSubsteps += rear[3]; rearWork += rear[12]; rearBudgetPeak = Math.Max(rearBudgetPeak, rear[5]);
+                        rearTorquePeak = Math.Max(rearTorquePeak, rear[9]); rearBudgetErrorPeak = Math.Max(rearBudgetErrorPeak, rear[10]);
                         radialActiveSubsteps += radial[3]; radialEndpointWork += radial[13]; radialFinalActiveSubsteps = radial[3];
                         radialMaxBudget = Math.Max(radialMaxBudget, radial[5]); radialMaxApplied = Math.Max(radialMaxApplied, radial[6]);
                         radialMaxNetFx = Math.Max(radialMaxNetFx, Math.Abs(radial[7])); radialMaxNetFy = Math.Max(radialMaxNetFy, Math.Abs(radial[8]));
                         radialMaxTorque = Math.Max(radialMaxTorque, radial[9]); radialMaxHorizontalReferenceError = Math.Max(radialMaxHorizontalReferenceError, radial[10]);
-                        radialMaxVerticalHalfReferenceError = Math.Max(radialMaxVerticalHalfReferenceError, radial[11]); radialMaxReferenceNetFx = Math.Max(radialMaxReferenceNetFx, Math.Abs(radial[12]));
+                        radialMaxVerticalTwoThirdsReferenceError = Math.Max(radialMaxVerticalTwoThirdsReferenceError, radial[11]); radialMaxReferenceNetFx = Math.Max(radialMaxReferenceNetFx, Math.Abs(radial[12]));
                         radialMaxReferenceNetFy = Math.Max(radialMaxReferenceNetFy, Math.Abs(radial[15]));
                         var solver = world.SolverDiagnosticsAvailable ? world.ReadSolverDiagnostics() : null;
                         var speedLimit = world.ReadSpeedLimit();
@@ -147,7 +151,7 @@ public static class LabBeltGuardExperiments
                         var (frontThickness, rearThickness) = BodyThickness(frame.Curve, phase.Horizontal);
                         var sample = new Sample(frame.Height, frame.Width, frame.CoreY, frame.ComY, frame.Stats[43] / frame.TotalMass,
                             clearance, guard[12], guard[11], elapsed, radial[3], radial[4], radial[5], radial[6], radial[7], radial[8], radial[9],
-                            radial[10], radial[11], radial[12], radial[15], radial[13],
+                            radial[10], radial[11], radial[12], radial[15], radial[13], rear,
                             frontThickness, rearThickness); samples.Add(sample);
                         if (i % 30 == 0) trace.WriteLine(JsonSerializer.Serialize(new { Tick = ticks, Phase = phase.Name, Sample = sample, Guard = guard }));
                     }
@@ -167,9 +171,11 @@ public static class LabBeltGuardExperiments
                     if (phase.Jump && (!acceptedJump || longestAir < 3)) gates.Add("Space: no accepted true airborne jump");
                     measurements.Add(new { phase.Name, phase.Frames, TailHeight = height, TailWidth = width,
                         RadialNetFxPeak = radialMaxNetFx, RadialNetFyPeak = radialMaxNetFy, RadialTorquePeak = radialMaxTorque,
+                        RearActiveSubsteps = rearActiveSubsteps, RearEndpointWorkSubset = rearWork, RearBudgetPeak = rearBudgetPeak,
+                        RearTorquePeak = rearTorquePeak, RearBudgetErrorPeak = rearBudgetErrorPeak,
                         RadialActiveSubsteps = radialActiveSubsteps, RadialEndpointWork = radialEndpointWork,
                         RadialOriginalMagnitudeBudgetPeak = radialMaxBudget, RadialAppliedMagnitudeSumPeak = radialMaxApplied,
-                        RadialHorizontalReferenceErrorPeak = radialMaxHorizontalReferenceError, RadialVerticalHalfReferenceErrorPeak = radialMaxVerticalHalfReferenceError,
+                        RadialHorizontalReferenceErrorPeak = radialMaxHorizontalReferenceError, RadialVerticalTwoThirdsReferenceErrorPeak = radialMaxVerticalTwoThirdsReferenceError,
                         RadialReferenceNetFx64Peak = radialMaxReferenceNetFx, RadialReferenceNetFy64Peak = radialMaxReferenceNetFy,
                         TailFrontThickness = tail.All(x => x.FrontThickness.HasValue) ? tail.Average(x => x.FrontThickness!.Value) : (double?)null,
                         TailRearThickness = tail.All(x => x.RearThickness.HasValue) ? tail.Average(x => x.RearThickness!.Value) : (double?)null,
@@ -206,8 +212,9 @@ public static class LabBeltGuardExperiments
             File.WriteAllText(Path.Combine(output, "guard-eight-corner-results.json"), JsonSerializer.Serialize(new { Kind = "guard-eight-material-corners",
                 NativeSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(guardedModule))), FixedDt = Dt, Substeps = 4,
                 ExpectedCases = 8, AttemptedCases = results.Count, CompletedCases = completedCases, Passed = allPassed && completedCases == 8, GuardSchema = LabBeltWorld.ShapeGuardSchema,
-                Scope = "exactly 80/120 x 0/100 x 0/100; no intermediate materials; A/D eight actual grouped forces, horizontal 64-point reference preserved, vertical reference halved, natural torque allowed, short bones, whole-body Space, explicit speed saturation; no periodic gait; no appearance or OS input",
-                RadialDriveSchema = LabBeltWorld.RadialDriveSchema,
+                Scope = "exactly 80/120 x 0/100 x 0/100; no intermediate materials; A/D eight actual grouped forces, horizontal 64-point reference preserved, vertical reference scaled by 2/3, rear endpoint downforce abs(main netFy)/3, natural torque allowed, short bones, whole-body Space, explicit speed saturation; no periodic gait; no appearance or OS input",
+                RadialDriveSchema = LabBeltWorld.RadialDriveSchema, RearDriveSchema = LabBeltWorld.RearDriveSchema,
+                RearEndpointWorkNote = "Rear work is a distinct endpoint subset, not added to energy diagnostics again.",
                 RadialEndpointWorkNote = "Per-phase sum of diagnostic frameEndpointWorkSubset; this is a subset of total external work and is not added to the energy ledger again.",
                 Geometry = "native continuous interval/path certificate plus independent sampled polygon core and crossing screening",
                 Performance = "wall-clock duration around each native Step only, excludes reads, output, independent screening and WPF; not a hard realtime guarantee",
@@ -215,6 +222,49 @@ public static class LabBeltGuardExperiments
                 Results = results }, Json));
         }
         return allPassed;
+    }
+
+    // Ledger positions and rear midline describe pre-integration forces. Never reconstruct them from the post-step Core.
+    internal static void ValidateRearLedger(double[] rear, double[] main, double[] ledger, int tick, bool enabled,
+        double movement, double radius, double statsFx, double statsFy)
+    {
+        const double tolerance = 1e-9;
+        if (main.Length != 16 || main.Any(x => !double.IsFinite(x)) || main[0] != 3 || main[1] != (enabled ? 1 : 0) ||
+            rear.Length != 16 || rear.Any(x => !double.IsFinite(x)) || rear[0] != 1 || rear[1] != (enabled ? 1 : 0) ||
+            rear[2] != (enabled ? tick : 0) || main[2] != (enabled ? tick : 0) || ledger[2] != tick || rear[4] != Math.Truncate(rear[4]) || rear[4] < 0 || rear[4] > 16 ||
+            rear[5] < 0 || rear[6] < 0 || rear[10] >= tolerance || rear[7] != 0 || !(radius > 0))
+            throw new InvalidOperationException("Rear drive schema, frame, point count, horizontal force or budget error contract failed.");
+        var expected = enabled ? Math.Abs(main[8]) / 3 : 0;
+        if (Math.Abs(rear[5] - expected) >= tolerance || Math.Abs(rear[6] - rear[5]) >= tolerance ||
+            Math.Abs(rear[8] + rear[6]) >= tolerance || Math.Abs(rear[11] - main[8]) >= tolerance)
+            throw new InvalidOperationException("Rear downforce must be abs(main eight-force netFy)/3.");
+        if ((!enabled || movement == 0 || main[3] == 0) && (rear[3] != 0 || rear[5] != 0))
+            throw new InvalidOperationException("Rear force survived release or main-drive gating.");
+        if (rear[5] == 0 && (Enumerable.Range(4, 5).Any(i => rear[i] != 0) || rear[11] != 0 || rear[14] != 0 || rear[15] != 0))
+            throw new InvalidOperationException("Zero rear budget retained final-substep force fields.");
+        if (rear[5] > 0 && (rear[4] < 1 || rear[3] <= 0 || main[4] != 8 || rear[14] != Math.Sign(movement)))
+            throw new InvalidOperationException("Rear downforce lacks active eight-force source or correct movement sign.");
+        double rearFx = 0, rearFy = 0, controlFx = 0, controlFy = 0, absoluteControl = 0;
+        var rearCount = 0; var endpointIndices = new HashSet<int>();
+        for (var i = 0; i < (int)ledger[4]; i++)
+        {
+            var row = 8 + 6 * i; var kind = (int)ledger[row + 4]; var fx = ledger[row + 2]; var fy = ledger[row + 3];
+            if (kind is 1 or 2 or 5 or 6) { controlFx += fx; controlFy += fy; absoluteControl += Math.Abs(fx) + Math.Abs(fy); }
+            if (kind != 6) continue;
+            rearCount++; rearFx += fx; rearFy += fy;
+            var materialIndex = ledger[row + 5] * 16 / (2 * Math.PI);
+            var index = (int)Math.Round(materialIndex);
+            if (rear[4] < 1 || fx != 0 || fy >= 0 || Math.Abs(fy + rear[5] / rear[4]) >= tolerance ||
+                rear[14] * (ledger[row] - rear[15]) >= -1e-9 * radius ||
+                index < 0 || index >= 16 || Math.Abs(materialIndex - index) >= tolerance || !endpointIndices.Add(index))
+                throw new InvalidOperationException("Rear force is not an equal downward load on unique rear-half skeleton endpoints.");
+        }
+        if (rearCount != rear[4] || Math.Abs(rearFx - rear[7]) >= tolerance || Math.Abs(rearFy - rear[8]) >= tolerance ||
+            (((int)ledger[5] & 32) != 0) != (rearCount > 0))
+            throw new InvalidOperationException("Rear ledger count, mask or net force disagrees with diagnostics.");
+        var statsTolerance = 1e-6 * (1 + absoluteControl);
+        if (Math.Abs(controlFx - statsFx) > statsTolerance || Math.Abs(controlFy - statsFy) > statsTolerance)
+            throw new InvalidOperationException("Stats control force must total main eight forces, rear load and W/S, excluding drag.");
     }
 
     private static (bool Inside, double Clearance) CoreGeometry(LabBeltFrame f)
