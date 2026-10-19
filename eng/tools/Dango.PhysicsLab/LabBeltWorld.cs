@@ -54,9 +54,9 @@ internal sealed class LabBeltWorld : IDisposable
     public bool WhaleDriveEnabled { get; private set; }
     public bool RadialDriveAvailable => radialDrive is not null && radialDriveDiagnostics is not null;
     public bool RadialDriveEnabled { get; private set; }
-    public const string RadialDriveSchema = "v1:16;0=version,1=enabled,2=attemptTick,3=activeSubsteps,4=lastPointCount,5=lastRequestedMagnitudeBudget,6=lastAppliedMagnitudeSum,7=lastNetFx,8=lastNetFy,9=maxAbsTorqueAboutCore,10=maxUnitCrossAlignmentError,11=minUnitDotAlignmentDefault1,12=maxAbsBudgetError,13=radialEndpointWorkSubset,14=guardWorkPeak,15=reserved;rejectedFrame=rollbackExceptAttempt;lastFields=lastSubstep";
+    public const string RadialDriveSchema = "v2:16;0=version2,1=enabled,2=attemptTick,3=activeSubsteps,4=lastPointCount8,5=lastOriginalMagnitudeBudget,6=lastAppliedMagnitudeSum,7=lastNetFx,8=lastNetFy,9=maxAbsActualTorqueCore,10=maxHorizontalReferenceError,11=maxVerticalHalfReferenceError,12=lastReferenceNetFx64,13=frameEndpointWorkSubset,14=guardWorkPeak,15=lastReferenceNetFy64;rejectedFrame=rollbackExceptAttempt;lastFields=lastSubstep;zeroBudget=clear4..8and12and15;frameAggregates=3and9..11";
     public bool ForceLedgerAvailable => forceLedgerDiagnostics is not null;
-    public const string ForceLedgerSchema = "v1:1024;header0=version,1=capacity,2=lastSuccessfulSolverAttemptTick,3=lastSubstepZeroBased,4=rowCount,5=sourceMask,6=rowWidth6,7=materialQuadrature64;rowsFrom8:x,y,fx,fy,kind,thetaOrPart;kind1=horizontal16MaterialBinResultants,2=vertical16MaterialBinResultants,3=shape64ActualQuadratureForces,4=dragActualPointForce,5=radial64ActualQuadratureForces;positions=actualPreIntegration;scope=activeForcesOnly,noGravityOrContact;rejectedFrame=previousSuccessfulLedger";
+    public const string ForceLedgerSchema = "v1:1024;header0=version,1=capacity,2=lastSuccessfulSolverAttemptTick,3=lastSubstepZeroBased,4=rowCount,5=sourceMask,6=rowWidth6,7=referenceMaterialQuadrature64;rowsFrom8:x,y,fx,fy,kind,thetaOrPart;kind1=horizontal16MaterialBinResultants,2=vertical16MaterialBinResultants,3=shape64ActualQuadratureForces,4=dragActualPointForce,5=8ActualGroupedForces;positions=actualPreIntegration;scope=activeForcesOnly,noGravityOrContact;rejectedFrame=previousSuccessfulLedger";
     public const string WhaleDriveSchema = "v1:16;0=version,1=enabled,2=attemptTick,3=signedGain,4=activeSubsteps,5=maxAbsNetFx,6=maxAbsNetFy,7=maxAbsTorque,8=shapeEndpointWorkSubset,9=maxPointTraction,10=maxGeneralizedForce,11=suppressionBits,12=gainBefore,13=gainAfter,14=guardWorkPeak,15=reserved;suppression:1=air,2=drag,4=jump,8=WSramp,16=cancel";
     public bool SpeedSaturationAvailable => speedSaturation is not null && speedLimitDiagnostics is not null;
     public bool SpeedSaturationEnabled { get; private set; }
@@ -238,7 +238,7 @@ internal sealed class LabBeltWorld : IDisposable
         VerifyAccess();
         if(!RadialDriveAvailable) throw new NotSupportedException("Native belt module does not export the complete radial drive ABI.");
         var values=ReadDoubleDiagnostics(radialDriveDiagnostics!,16,"read radial drive");
-        if(values[0]!=1) throw new NotSupportedException("Unsupported radial drive diagnostic schema.");
+        if(values[0]!=2) throw new NotSupportedException("Unsupported radial drive diagnostic schema (expected v2).");
         return values;
     }
     public double[] ReadDebugState()

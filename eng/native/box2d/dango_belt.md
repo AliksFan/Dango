@@ -188,7 +188,31 @@ the first solver candidate, original guard and diagnostic-only builds remain
 available for comparison. Six actual numerical fixtures and bounded follow-on
 drag/release sequences are kept in the private solver regression executable.
 
-### Current preview: outward radial driving
+### Current preview: eight grouped forces with half vertical component
+
+The user accepted the outward-drive direction but requested fewer actual forces
+and half the ground-normal (world Y) component, keeping the horizontal net force
+of the 64-point radial preview at the same physical state. The historical
+64-point reference below remains the comparison definition, not 64 active loads.
+
+The same selected material intervals and their 64 reference midpoints are split
+into eight consecutive groups. Each group contributes one actual force at its
+material-measure midpoint: Fx is the sum of the group's reference Fx, and Fy is
+half the sum of its reference Fy. Only these eight actual forces are mapped to
+generalized forces and recorded as ledger kind5. This preserves reference net Fx
+and halves reference net Fy without dividing by a potentially small net force.
+The force directions and torque are naturally changed; there is no torque
+projection or core reaction. Materials, W/S, Space and safety limits are kept.
+
+Radial16 schema2 documents original budget, actual magnitude sum, actual net
+force, reference net Fx/Fy and conservation errors separately. A magnitude-sum
+equality or zero-core-torque assertion is no longer valid. Ledger header7 remains
+64 (reference quadrature count); the actual point count is eight in its rows and
+Radial16[4]. Last-substep zero budget clears both actual and reference fields.
+The new outputs are `belt-drive8-native` and `app-drive8`; the old radial outputs
+remain available. Only the same 80/100/0 preview is verified before manual review.
+
+### Historical 64-point outward radial driving
 
 The user cancelled all extra shaping traction. The current window and guarded
 eight-corner runner explicitly disable whale driving. Its old optional ABI and

@@ -26,7 +26,7 @@ internal sealed class LabBeltWindow : Window
     private readonly Stopwatch clock = Stopwatch.StartNew();
     private readonly ComboBox model = new();
     private readonly CheckBox shortBones = new() { Content = "保留内侧短骨架（不碰撞）", IsChecked = true };
-    private readonly CheckBox radialDrive = new() { Content = "沿内骨架向外推", IsChecked = true };
+    private readonly CheckBox radialDrive = new() { Content = "8点推动 · 竖向减半", IsChecked = true };
     private readonly CheckBox showSkeleton = new() { Content = "骨架与质心", IsChecked = true };
     private readonly CheckBox showForces = new() { Content = "详细施力", IsChecked = true };
     private readonly TextBlock forceDetails = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap, Focusable = false };
@@ -78,7 +78,7 @@ internal sealed class LabBeltWindow : Window
         size.Value = 80; softness.Value = 100; build.Value = 0;
         appearance = new PhysicsLabAppearancePresenter(appearanceSettingsPath);
         showSkeleton.IsChecked = true; showReference.IsChecked = false;
-        Title = "团子·沿骨架推动·无塑形力";
+        Title = "团子·8点推动·竖向减半";
         Width = Math.Min(1220, SystemParameters.WorkArea.Width - 32);
         Height = Math.Min(850, SystemParameters.WorkArea.Height - 32); MinWidth = 940; MinHeight = 660;
         Background = new SolidColorBrush(Color.FromRgb(253, 252, 249)); Foreground = LabWindow.Ink;
@@ -107,14 +107,14 @@ internal sealed class LabBeltWindow : Window
         model.Items.Add("当前身体 · F 基础＋形状保护");
         model.Items.Add("旧对照 · 原外围半侧驱动"); model.Items.Add("旧对照 · 闭合带校正前"); model.SelectedIndex = 0;
         tools.Children.Add(model); tools.Children.Add(shortBones); tools.Children.Add(radialDrive);
-        tools.Children.Add(new TextBlock { Text = "A/D在对应侧半圈沿核心向外施力；总分力大小预算不变。取消后对照原水平推动；两者均无额外塑形力。更改后点击应用。", FontSize = 12, TextWrapping = TextWrapping.Wrap });
+        tools.Children.Add(new TextBlock { Text = "A/D在对应半圈施加8个真实力；水平合力保持旧64点径向参考，地面竖直分量减半。无塑形力。关闭可对照原水平推动，更改后点击应用。", FontSize = 12, TextWrapping = TextWrapping.Wrap });
         model.DropDownOpened += (_, _) => Cancel(); model.DropDownClosed += (_, _) => input.ReconcileHeld(HeldKeys());
         Label(tools, "材料"); AddSlider(tools, "大小", size); AddSlider(tools, "柔软度", softness); AddSlider(tools, "落地体态", build);
         Label(tools, "观察"); showAppearance.Content = "正式眼睛与测试配饰"; tools.Children.Add(showAppearance); tools.Children.Add(appearanceStatus); tools.Children.Add(showSkeleton); tools.Children.Add(showForces); tools.Children.Add(showReference);
         AddSlider(tools, "施力箭头 DIP / N（仅显示）", forceScale);
         forceScale.ValueChanged += (_, _) => surface.Refresh();
         showForces.Click += (_, _) => surface.Refresh();
-        tools.Children.Add(new TextBlock { Text = "主动施力；末子步积分前位置；不含重力/接触反力。原水平小段合力与径向积分力同尺度。", FontSize = 12, TextWrapping = TextWrapping.Wrap });
+        tools.Children.Add(new TextBlock { Text = "主动施力；末子步积分前位置；不含重力/接触反力。原水平小段合力与8点实际力同尺度。", FontSize = 12, TextWrapping = TextWrapping.Wrap });
         tools.Children.Add(new Expander { Header = "施力明细 · N", Content = new ScrollViewer { Content = forceDetails, MaxHeight = 220, Focusable = false, VerticalScrollBarVisibility = ScrollBarVisibility.Visible, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled } });
         showAppearance.Click += (_, _) => surface.Refresh();
         showSkeleton.Click += (_, _) => surface.Refresh(); showReference.Click += (_, _) => surface.Refresh();
@@ -169,7 +169,7 @@ internal sealed class LabBeltWindow : Window
     };
     private int ForceRowCount(int kind) => forceLedger is not { } ledger ? 0 :
         Enumerable.Range(0, (int)ledger[4]).Count(i => (int)ledger[8 + 6*i + 4] == kind);
-    private static string ForceSource(int kind) => kind switch { 1 => "A/D段", 2 => "W/S段", 3 => "已禁用历史力", 4 => "拖动点", 5 => "径向推动点", _ => "未知" };
+    private static string ForceSource(int kind) => kind switch { 1 => "A/D段", 2 => "W/S段", 3 => "已禁用历史力", 4 => "拖动点", 5 => "8点实际力", _ => "未知" };
     private void UpdateForceDetails()
     {
         if (forceLedger is not { } ledger) { forceDetails.Text = "当前模块未提供真实施力明细。"; return; }
@@ -207,7 +207,7 @@ internal sealed class LabBeltWindow : Window
                 }
             }
             activePreset = model.SelectedItem?.ToString() ?? "";
-            Title = model.SelectedIndex == 0 ? radialDrive.IsChecked == true ? "团子·沿骨架推动·无塑形力" : "团子·原水平推动·无塑形力" : "团子 · " + activePreset;
+            Title = model.SelectedIndex == 0 ? radialDrive.IsChecked == true ? "团子·8点推动·竖向减半" : "团子·原水平推动·无塑形力" : "团子 · " + activePreset;
             activeCalibration = model.SelectedIndex == 0
                 ? LabBeltCalibrationParameters.Default with { RadialStiffnessScale = 1.4, AreaScale = 1.4, BeltBendScale = 4, OverallDamping = config.OverallDamping, GroundedBrake = 35, GroundedHorizontalDamping = 60 }
                 : null;
@@ -228,7 +228,7 @@ internal sealed class LabBeltWindow : Window
                 if (old.LabRegionDenominator != 2) throw new InvalidOperationException("原版模块不是半区驱动");
                 oldId = old.Add(0, 0); old.SetHorizontalBounds(-256, 256);
             }
-            status.Text = activeCalibration is not null ? belt!.RadialDriveEnabled ? "A/D沿对应侧内骨架向外推；总分力大小预算不变，额外塑形力已取消。" : "原水平推动对照，无额外塑形力；F身体、形状保护与限速保持开启。" :
+            status.Text = activeCalibration is not null ? belt!.RadialDriveEnabled ? "A/D对应半圈8个实际力；水平合力保持64点径向参考，地面竖直分量减半，无塑形力。" : "原水平推动对照，无额外塑形力；F身体、形状保护与限速保持开启。" :
                 ActiveBelt ? "旧对照：校正前闭合带，旧跳跃接线。" : "旧对照：原外围半区驱动。";
             File.AppendAllText(Path.Combine(session, "body-presets.jsonl"), JsonSerializer.Serialize(new
             { preset = activePreset, config, calibration = activeCalibration, originalGroundJump = belt?.OriginalGroundJumpEnabled, shapeGuard = GuardState(), speedLimit = SpeedLimitState(), radialDrive = RadialDriveState(),
@@ -276,9 +276,24 @@ internal sealed class LabBeltWindow : Window
                 if (forceLedger is { } forces && (forces.Length != 1024 || forces[0] != 1 || forces[1] != 1024 ||
                     forces[2] != steps + 1 || forces[4] < 0 || forces[4] > 97 || forces[6] != 6 || forces[7] != 64))
                     throw new InvalidOperationException("真实施力明细格式或同帧诊断失败");
-                if (belt.RadialDriveEnabled && (radialDriveDiagnostics is not { } radial || radial[0] != 1 || radial[1] != 1 || radial[2] != steps + 1 ||
-                    radial[10] > 1e-9 || radial[11] <= 0 || radial[12] > 1e-9))
-                    throw new InvalidOperationException("沿骨架推动同帧、方向或分力预算诊断失败");
+                if (belt.RadialDriveEnabled && (radialDriveDiagnostics is not { } radial || radial.Any(x => !double.IsFinite(x)) || radial[0] != 2 || radial[1] != 1 || radial[2] != steps + 1 ||
+                    (radial[4] != 0 && radial[4] != 8) || radial[10] >= 1e-9 || radial[11] >= 1e-9))
+                    throw new InvalidOperationException("8点推动同帧、点数或参考合力诊断失败");
+                if (belt.RadialDriveEnabled && radialDriveDiagnostics is { } drive && forceLedger is { } actualForces)
+                {
+                    double fx = 0, fy = 0, magnitude = 0;
+                    for (var i = 0; i < (int)actualForces[4]; i++)
+                    {
+                        var row = 8 + 6 * i;
+                        if (actualForces[row + 4] != 5) continue;
+                        var x = actualForces[row + 2]; var y = actualForces[row + 3];
+                        fx += x; fy += y; magnitude += Math.Sqrt(x * x + y * y);
+                    }
+                    if (ForceRowCount(5) != drive[4] || Math.Abs(fx - drive[7]) >= 1e-9 || Math.Abs(fy - drive[8]) >= 1e-9 ||
+                        Math.Abs(fx - drive[12]) >= 1e-9 || Math.Abs(fy - .5 * drive[15]) >= 1e-9 || Math.Abs(magnitude - drive[6]) >= 1e-9 ||
+                        drive[5] == 0 && (Enumerable.Range(4, 5).Any(i => drive[i] != 0) || drive[12] != 0 || drive[15] != 0))
+                        throw new InvalidOperationException("8点实际施力与水平保持、竖向减半参考不一致");
+                }
                 if (belt.WhaleDriveEnabled || ForceRowCount(3) != 0 || (belt.RadialDriveEnabled && ForceRowCount(1) != 0))
                     throw new InvalidOperationException("当前实验出现已取消塑形力或错误水平推动来源");
                 if (speedLimitDiagnostics is { } cap && (cap[1] != 1 || cap[2] != steps + 1 || cap[6] > config.MaximumSpeed))
@@ -289,7 +304,7 @@ internal sealed class LabBeltWindow : Window
                 if (s[36] != 0 || s[31] > .0001 || s[39] != 0) throw new InvalidOperationException("闭合带本帧安全诊断失败");
                 trace.Enqueue(new { tick = steps, model = "belt", stats = s,
                     diagnostics = activeCalibration is null ? null : belt.ReadDiagnostics(), shapeGuard = guardDiagnostics, speedLimit = speedLimitDiagnostics, radialDrive = radialDriveDiagnostics });
-                if (steps % 6 == 0) details.Text = FormattableString.Invariant($"高 {(s[11] - s[9]) * 72:0.00} DIP / 宽 {(s[10] - s[8]) * 72:0.00} DIP\n真实质心Y {s[5]:0.0000} / 核心Y {s[1]:0.0000}\n接触 {s[25]:0} / 间隙 {s[12] * 72:0.00000} DIP\n合力 ({s[18]:0.000}, {s[19]:0.000})\nKKT残差 {s[30]:0.0e+0} / 36自由度\n独立外围碰撞体 {s[39]:0} / 帧 {steps}") + GuardSummary() + (belt.SpeedSaturationEnabled ? "\n限速：已启用，真实超速后限速继续运行" : "\n限速：旧对照未启用") + (belt.RadialDriveEnabled ? FormattableString.Invariant($"\n沿骨架推动：预算 {radialDriveDiagnostics?[5]:0.0000} / 实际 {radialDriveDiagnostics?[6]:0.0000} N\n额外塑形力：已取消") : "\n原水平推动 · 无额外塑形力");
+                if (steps % 6 == 0) details.Text = FormattableString.Invariant($"高 {(s[11] - s[9]) * 72:0.00} DIP / 宽 {(s[10] - s[8]) * 72:0.00} DIP\n真实质心Y {s[5]:0.0000} / 核心Y {s[1]:0.0000}\n接触 {s[25]:0} / 间隙 {s[12] * 72:0.00000} DIP\n合力 ({s[18]:0.000}, {s[19]:0.000})\nKKT残差 {s[30]:0.0e+0} / 36自由度\n独立外围碰撞体 {s[39]:0} / 帧 {steps}") + GuardSummary() + (belt.SpeedSaturationEnabled ? "\n限速：已启用，真实超速后限速继续运行" : "\n限速：旧对照未启用") + (belt.RadialDriveEnabled ? FormattableString.Invariant($"\n8点推动：原预算 {radialDriveDiagnostics?[5]:0.0000} / 实际模长和 {radialDriveDiagnostics?[6]:0.0000} N\n实际Fx/Fy ({radialDriveDiagnostics?[7]:0.0000}, {radialDriveDiagnostics?[8]:0.0000})\n64点参考Fx/Fy ({radialDriveDiagnostics?[12]:0.0000}, {radialDriveDiagnostics?[15]:0.0000}) · Fy取半\n额外塑形力：已取消") : "\n原水平推动 · 无额外塑形力");
             }
             else if (old is not null)
             {
@@ -373,7 +388,7 @@ internal sealed class LabBeltWindow : Window
         if (belt?.RadialDriveAvailable == true)
         {
             try { radialDriveDiagnostics = belt.ReadRadialDrive(); }
-            catch (Exception diagnosticError) { failureReason += "；读取沿骨架推动诊断失败：" + diagnosticError.Message; }
+            catch (Exception diagnosticError) { failureReason += "；读取8点推动诊断失败：" + diagnosticError.Message; }
         }
         if (belt?.ForceLedgerAvailable == true)
         {
@@ -393,7 +408,7 @@ internal sealed class LabBeltWindow : Window
             6 or 9 or 19 => "本次变形无法通过形状安全检查",
             21 => "本次速度无法安全限制在上限内",
             22 => "主动推动受力计算失败",
-            23 => "沿骨架推动受力计算失败",
+            23 => "8点推动受力计算失败",
             31 or 32 or 33 or 34 or 35 => "身体几何不满足材料计算条件",
             _ => null,
         } : null;
@@ -473,36 +488,38 @@ internal sealed class LabBeltWindow : Window
                 walkingFrames.Add(new { name, steps, input = lastInput, frame = beltFrame, radialDrive = RadialDriveState(), forceLedger = ForceLedgerState(),
                     appearance = appearance.Status });
                 File.WriteAllText(Path.Combine(session, "walking-review.json"), JsonSerializer.Serialize(new { material = new { size = size.Value, softness = softness.Value, build = build.Value },
-                    scope = "actual physics frames at material 80/100/0; radial driving without extra shaping force; no render deformation or manual acceptance", frames = walkingFrames }, new JsonSerializerOptions { WriteIndented = true }));
+                    scope = "actual physics frames at material 80/100/0; eight actual grouped forces with horizontal reference preserved and vertical reference halved; no extra shaping force; no render deformation or manual acceptance", frames = walkingFrames }, new JsonSerializerOptions { WriteIndented = true }));
             }
             bool VerifyRadialFrame(int direction)
             {
                 if (fault || radialDriveDiagnostics is not { } r || forceLedger is not { } ledger ||
-                    r[0] != 1 || r[1] != 1 || r[2] != steps || ledger[2] != steps ||
-                    ForceRowCount(1) != 0 || ForceRowCount(3) != 0 || r[10] > 1e-9 || r[11] <= 0 || r[12] > 1e-9)
-                    throw new InvalidOperationException("逐帧径向推动同帧、方向或来源合同失败");
+                    r.Any(x => !double.IsFinite(x)) || r[0] != 2 || r[1] != 1 || r[2] != steps || ledger[2] != steps ||
+                    ForceRowCount(1) != 0 || ForceRowCount(3) != 0 || r[10] >= 1e-9 || r[11] >= 1e-9)
+                    throw new InvalidOperationException("逐帧8点推动同帧、参考合力或来源合同失败");
                 if (r[4] == 0)
                 {
-                    if (Enumerable.Range(4, 5).Any(i => r[i] != 0) || ForceRowCount(5) != 0 || ((int)ledger[5] & 16) != 0)
-                        throw new InvalidOperationException("末子步零预算时径向诊断或ledger未清零");
+                    if (Enumerable.Range(4, 5).Any(i => r[i] != 0) || r[12] != 0 || r[15] != 0 || ForceRowCount(5) != 0 || ((int)ledger[5] & 16) != 0)
+                        throw new InvalidOperationException("末子步零预算时8点诊断或ledger未清零");
                     return false;
                 }
-                if (r[3] <= 0 || r[4] != 64 || r[5] <= 0 || Math.Abs(r[5] - r[6]) > 1e-9 ||
-                    direction * r[7] <= 0 || ForceRowCount(5) != 64 || ((int)ledger[5] & 16) == 0)
-                    throw new InvalidOperationException("实际径向推动帧的64点、方向或预算合同失败");
+                var baseBudget = Math.Abs((double)(float)config.HorizontalForce * direction);
+                var airBudget = baseBudget * (double)(float)config.AirControlRatio;
+                var budgetTolerance = 1e-7 * (1 + baseBudget);
+                if (r[3] <= 0 || r[4] != 8 || r[5] <= 0 ||
+                    !new[] { baseBudget, airBudget }.Any(b => Math.Abs(r[5] - b) <= budgetTolerance) ||
+                    direction * r[7] <= 0 || ForceRowCount(5) != 8 || ((int)ledger[5] & 16) == 0)
+                    throw new InvalidOperationException("实际推动帧的8点、方向或原参考预算合同失败");
                 double netX = 0, netY = 0, magnitude = 0;
                 for (var i = 0; i < (int)ledger[4]; i++)
                 {
                     var row = 8 + 6 * i;
                     if (ledger[row + 4] != 5) continue;
                     var fx = ledger[row + 2]; var fy = ledger[row + 3];
-                    var length = Math.Sqrt(fx * fx + fy * fy);
-                    if (Math.Abs(length - r[5] / 64) > 1e-9)
-                        throw new InvalidOperationException("径向ledger单点模长不等于总预算的1/64");
-                    netX += fx; netY += fy; magnitude += length;
+                    netX += fx; netY += fy; magnitude += Math.Sqrt(fx * fx + fy * fy);
                 }
-                if (Math.Abs(netX - r[7]) > 1e-9 || Math.Abs(netY - r[8]) > 1e-9 || Math.Abs(magnitude - r[6]) > 1e-9)
-                    throw new InvalidOperationException("径向ledger合力与末子步诊断不一致");
+                if (Math.Abs(netX - r[7]) >= 1e-9 || Math.Abs(netY - r[8]) >= 1e-9 || Math.Abs(magnitude - r[6]) >= 1e-9 ||
+                    Math.Abs(netX - r[12]) >= 1e-9 || Math.Abs(netY - .5 * r[15]) >= 1e-9)
+                    throw new InvalidOperationException("8点ledger实际模长或水平保持、竖向减半参考合同失败");
                 return true;
             }
             Check(IsLoaded && IsVisible && !fault && ActiveBelt, "真实WPF已显示且连接闭合带DLL");
@@ -510,8 +527,8 @@ internal sealed class LabBeltWindow : Window
                 "80/100/0形状保护启用且核心在内诊断与身体同帧");
             Check(belt.SpeedSaturationEnabled && speedLimitDiagnostics is { } cap && cap[1] == 1 && cap[2] == steps && cap[6] <= config.MaximumSpeed,
                 "80/100/0限速显式启用且同帧速度上界合法");
-            Check(belt.RadialDriveAvailable && belt.RadialDriveEnabled && !belt.WhaleDriveEnabled && radialDriveDiagnostics is { } radial && radial[0] == 1 && radial[1] == 1 && radial[2] == steps,
-                "沿骨架推动启用且同帧，额外塑形力关闭");
+            Check(belt.RadialDriveAvailable && belt.RadialDriveEnabled && !belt.WhaleDriveEnabled && radialDriveDiagnostics is { } radial && radial[0] == 2 && radial[1] == 1 && radial[2] == steps,
+                "8点推动schema2启用且同帧，额外塑形力关闭");
             Check(belt.ForceLedgerAvailable && forceLedger is { Length: 1024 } ledger && ledger[0] == 1 && ledger[1] == 1024 && ledger[6] == 6 && ledger[7] == 64 && !string.IsNullOrWhiteSpace(LabBeltWorld.ForceLedgerSchema), "原生施力ledger可读且格式版本明确");
             Check(forceLedger![2] == steps, "施力ledger与成功身体帧同帧");
             for (var i = 0; i < 300; i++) StepOnce(); Check(!fault && beltFrame!.Stats[14] == 1, "闭合带落稳接地");
@@ -556,9 +573,9 @@ internal sealed class LabBeltWindow : Window
                 rightDriveApplied |= active;
             }
             Check(!fault && rightDriveApplied && appearance.RenderedAccessoryCount == 2,
-                "D沿核心向外推动，分力大小预算一致并保留正式外观");
+                "D施加8点实际力，水平参考保持与竖向减半并保留正式外观");
             Check(rightDriveApplied,
-                "右行ledger含64个真实径向推动点且无塑形力和水平替代力");
+                "右行ledger含8个真实分组合力点且无塑形力和水平替代力");
             await Capture("window-walk-right");
             Inject(Key.D, false, ApplyButton); Inject(Key.A, true, ApplyButton); var leftDriveApplied = false;
             for (var i = 0; i < 90; i++)
@@ -568,7 +585,7 @@ internal sealed class LabBeltWindow : Window
                 leftDriveApplied |= active;
             }
             Check(!fault && leftDriveApplied,
-                "A切换对应侧半圈向外推，方向与预算合法且无塑形力");
+                "A切换对应侧半圈8点力，水平参考保持与竖向减半且无塑形力");
             await Capture("window-walk-left");
             Inject(Key.A, false, ApplyButton); StepOnce(); VerifyRadialFrame(0);
             Check(!fault && ForceRowCount(1) == 0 && ForceRowCount(3) == 0 && ForceRowCount(5) == 0 && radialDriveDiagnostics is { } immediateRelease && immediateRelease[3] == 0 && immediateRelease[4] == 0 && immediateRelease[6] == 0,
@@ -594,13 +611,13 @@ internal sealed class LabBeltWindow : Window
             }
             Check(!fault && !belt!.RadialDriveEnabled && !belt.WhaleDriveEnabled && radialDriveDiagnostics is { } disabled && disabled[1] == 0 && disabled[4] == 0 &&
                 belt.ShapeGuardEnabled && belt.SpeedSaturationEnabled && originalDriveApplied && ForceRowCount(3) == 0 && ForceRowCount(5) == 0,
-                "关闭径向开关后原水平推动运行且无塑形力，保留F和安全保护");
+                "关闭8点开关后原水平推动运行且无塑形力，保留F和安全保护");
             await Capture("window-original-drive-right");
             Inject(Key.D, false, ApplyButton); radialDrive.IsChecked = true; Reset(); for (var i = 0; i < 300; i++) StepOnce();
-            Check(!fault && belt!.RadialDriveEnabled && appearance.RenderedAccessoryCount == 2, "恢复沿骨架推动开关与外观无故障");
+            Check(!fault && belt!.RadialDriveEnabled && appearance.RenderedAccessoryCount == 2, "恢复8点推动开关与外观无故障");
             await Capture("window");
             File.WriteAllText(Path.Combine(session, "walking-review.json"), JsonSerializer.Serialize(new { material = new { size = size.Value, softness = softness.Value, build = build.Value },
-                scope = "actual physics frames at material 80/100/0; radial driving without extra shaping force; no render deformation or manual acceptance", frames = walkingFrames }, new JsonSerializerOptions { WriteIndented = true }));
+                scope = "actual physics frames at material 80/100/0; eight actual grouped forces with horizontal reference preserved and vertical reference halved; no extra shaping force; no render deformation or manual acceptance", frames = walkingFrames }, new JsonSerializerOptions { WriteIndented = true }));
             File.WriteAllText(Path.Combine(session, "wpf-smoke.json"), JsonSerializer.Serialize(new { passed = true, material = new { size = size.Value, softness = softness.Value, build = build.Value }, shapeGuard = GuardState(), speedLimit = SpeedLimitState(), radialDrive = RadialDriveState(), checks, method = "shown WPF routed events; not OS keyboard automation", manualAcceptance = false }, new JsonSerializerOptions { WriteIndented = true })); Close();
         }
         catch (Exception e)
@@ -695,10 +712,10 @@ internal sealed class LabBeltWindow : Window
                     Arrow(d, Map(ledger[r], ledger[r+1]), ledger[r+2], ledger[r+3], brush, owner.forceScale.Value);
                 }
             }
-            Text(d, "棕红 A/D径向力（或原水平段合力）· 蓝 W/S · 紫 拖动", 12);
+            Text(d, "棕红 A/D八点实际力（或原水平段合力）· 蓝 W/S · 紫 拖动", 12);
             Text(d, owner.showForces.IsChecked == true ? owner.forceLedger is { } f ? $"主动施力 · 末子步积分前位置 · {owner.forceScale.Value:0} DIP/N · 帧 {f[2]:0}" : "详细施力：当前模块未提供" : "详细施力已隐藏", 34);
             Text(d, "塑形力已取消 · 不含重力/接触反力 · 橙 核心 · 蓝十字 质心", 56);
-            Text(d, owner.fault ? "物理失败，已暂停" : owner.replaying ? "同输入回放中" : owner.paused ? "已暂停" : owner.belt?.RadialDriveEnabled == true ? "沿内骨架向外推 · 无额外塑形力" : "原始显示 · 原推动对照", 78);
+            Text(d, owner.fault ? "物理失败，已暂停" : owner.replaying ? "同输入回放中" : owner.paused ? "已暂停" : owner.belt?.RadialDriveEnabled == true ? "8点推动 · 竖向减半 · 无额外塑形力" : "原始显示 · 原推动对照", 78);
         }
         private sealed class DebugOverlay(Surface surface) : FrameworkElement
         {

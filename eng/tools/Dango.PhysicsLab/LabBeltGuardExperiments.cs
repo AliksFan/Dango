@@ -14,10 +14,10 @@ public static class LabBeltGuardExperiments
     private sealed record Phase(string Name, int Frames, double Horizontal = 0, double Down = 0, double Up = 0, bool Jump = false, bool Drag = false);
     private sealed record Sample(double Height, double Width, double CoreY, double ComY, double ComVx,
         double CoreClearance, double GuardClearance, double GuardCross, double StepMilliseconds,
-        double RadialActiveSubsteps, double RadialPointCount, double RadialRequestedMagnitudeBudget,
+        double RadialActiveSubsteps, double RadialPointCount, double RadialOriginalMagnitudeBudget,
         double RadialAppliedMagnitudeSum, double RadialNetFx, double RadialNetFy, double RadialTorque,
-        double RadialUnitCrossError, double RadialUnitDotMinimum, double RadialBudgetError,
-        double RadialEndpointWork, double? FrontThickness, double? RearThickness);
+        double RadialHorizontalReferenceError, double RadialVerticalHalfReferenceError, double RadialReferenceNetFx64,
+        double RadialReferenceNetFy64, double RadialEndpointWork, double? FrontThickness, double? RearThickness);
 
     public static bool Run(string guardedModule, string output)
     {
@@ -57,8 +57,8 @@ public static class LabBeltGuardExperiments
                     var maxAcceptedResidual = 0d; var maxIterations = 0d; var residualValidatedStops = 0d;
                     var limitedSubsteps = 0d; var speedLimitEnergy = 0d; var maxSpeedAfterLimit = 0d; var bfgsUpdates = 0d;
                     var radialActiveSubsteps = 0d; var radialEndpointWork = 0d; var radialMaxBudget = 0d; var radialMaxApplied = 0d;
-                    var radialMaxNetFx = 0d; var radialMaxNetFy = 0d; var radialMaxTorque = 0d; var radialMaxUnitCrossError = 0d;
-                    var radialMinUnitDot = 1d; var radialMaxBudgetError = 0d; var radialFinalActiveSubsteps = 0d;
+                    var radialMaxNetFx = 0d; var radialMaxNetFy = 0d; var radialMaxTorque = 0d; var radialMaxHorizontalReferenceError = 0d;
+                    var radialMaxVerticalHalfReferenceError = 0d; var radialMaxReferenceNetFx = 0d; var radialMaxReferenceNetFy = 0d; var radialFinalActiveSubsteps = 0d;
                     for (var i = 0; i < phase.Frames; i++)
                     {
                         phaseTick = i;
@@ -72,7 +72,7 @@ public static class LabBeltGuardExperiments
                         var radial = world.ReadRadialDrive();
                         if (radial.Length != 16 || radial.Any(x => !double.IsFinite(x)))
                             throw new InvalidOperationException("Radial drive diagnostics must contain 16 finite values.");
-                        if (radial[0] != 1 || radial[1] != 1 || radial[2] != ticks)
+                        if (radial[0] != 2 || radial[1] != 1 || radial[2] != ticks)
                             throw new InvalidOperationException("Radial drive was not enabled in the same attempted frame.");
                         var nativeHorizontalForce = (double)(float)config.HorizontalForce;
                         var nativeAirControlRatio = (double)(float)config.AirControlRatio;
@@ -80,18 +80,16 @@ public static class LabBeltGuardExperiments
                         var airBudget = Math.Abs(nativeHorizontalForce * nativeAirControlRatio * phase.Horizontal);
                         var radialBudgetTolerance = 1e-7 * (1 + baseBudget);
                         var allowedBudgets = phase.Horizontal == 0 ? new[] { 0d } : new[] { 0d, baseBudget, airBudget };
-                        if (!allowedBudgets.Any(allowed => Math.Abs(radial[5] - allowed) <= radialBudgetTolerance) ||
-                            Math.Abs(radial[6] - radial[5]) > radialBudgetTolerance ||
-                            radial[12] > radialBudgetTolerance)
-                            throw new InvalidOperationException("Radial drive magnitude budget was not conserved.");
-                        if (radial[10] > 1e-9 || radial[11] < 1 - 1e-9 || radial[9] > 1e-8 * (1 + radial[5]))
-                            throw new InvalidOperationException("Radial force direction or torque exceeded its radial alignment tolerance.");
-                        if (radial[5] == 0 && (radial[4] != 0 || radial[6] != 0 || radial[7] != 0 || radial[8] != 0))
-                            throw new InvalidOperationException("Zero final-substep budget left nonzero radial force records.");
+                        if (!allowedBudgets.Any(allowed => Math.Abs(radial[5] - allowed) <= radialBudgetTolerance))
+                            throw new InvalidOperationException("Original 64-point reference magnitude budget changed.");
+                        if (radial[10] >= 1e-9 || radial[11] >= 1e-9)
+                            throw new InvalidOperationException("Horizontal reference preservation or vertical half-reference error exceeded tolerance.");
+                        if (radial[5] == 0 && (radial[4] != 0 || radial[6] != 0 || radial[7] != 0 || radial[8] != 0 || radial[12] != 0 || radial[15] != 0))
+                            throw new InvalidOperationException("Zero final-substep budget left nonzero actual or reference force records.");
                         if (phase.Horizontal == 0 && (radial[5] != 0 || radial[3] != 0))
-                            throw new InvalidOperationException("Radial force remained active after horizontal input stopped or during a non-horizontal phase.");
-                        if (radial[5] != 0 && radial[4] != 64)
-                            throw new InvalidOperationException("Radial drive did not use exactly 64 quadrature points.");
+                            throw new InvalidOperationException("Grouped force remained active after horizontal input stopped or during a non-horizontal phase.");
+                        if ((radial[4] != 0 && radial[4] != 8) || (radial[5] != 0 && radial[4] != 8))
+                            throw new InvalidOperationException("Grouped drive did not use exactly eight actual force points.");
                         var ledger = world.ReadForceLedger();
                         if (ledger[2] != ticks) throw new InvalidOperationException("Radial force ledger was not from the same attempted frame.");
                         var radialLedgerPoints = 0; var ledgerMagnitudeSum = 0d; var ledgerNetFx = 0d; var ledgerNetFy = 0d;
@@ -109,15 +107,17 @@ public static class LabBeltGuardExperiments
                         }
                         if (radialLedgerPoints != radial[4])
                             throw new InvalidOperationException("Radial diagnostics and active-force ledger point counts disagree.");
-                        var ledgerTolerance = 1e-8 * (1 + radial[5]);
-                        if (Math.Abs(ledgerMagnitudeSum - radial[6]) > ledgerTolerance ||
-                            Math.Abs(ledgerNetFx - radial[7]) > ledgerTolerance || Math.Abs(ledgerNetFy - radial[8]) > ledgerTolerance)
+                        const double ledgerTolerance = 1e-9;
+                        if (Math.Abs(ledgerMagnitudeSum - radial[6]) >= ledgerTolerance ||
+                            Math.Abs(ledgerNetFx - radial[7]) >= ledgerTolerance || Math.Abs(ledgerNetFy - radial[8]) >= ledgerTolerance ||
+                            Math.Abs(ledgerNetFx - radial[12]) >= ledgerTolerance || Math.Abs(ledgerNetFy - .5 * radial[15]) >= ledgerTolerance)
                             throw new InvalidOperationException("Radial ledger force totals disagree with same-frame diagnostics.");
                         radialActiveSubsteps += radial[3]; radialEndpointWork += radial[13]; radialFinalActiveSubsteps = radial[3];
                         radialMaxBudget = Math.Max(radialMaxBudget, radial[5]); radialMaxApplied = Math.Max(radialMaxApplied, radial[6]);
                         radialMaxNetFx = Math.Max(radialMaxNetFx, Math.Abs(radial[7])); radialMaxNetFy = Math.Max(radialMaxNetFy, Math.Abs(radial[8]));
-                        radialMaxTorque = Math.Max(radialMaxTorque, radial[9]); radialMaxUnitCrossError = Math.Max(radialMaxUnitCrossError, radial[10]);
-                        radialMinUnitDot = Math.Min(radialMinUnitDot, radial[11]); radialMaxBudgetError = Math.Max(radialMaxBudgetError, radial[12]);
+                        radialMaxTorque = Math.Max(radialMaxTorque, radial[9]); radialMaxHorizontalReferenceError = Math.Max(radialMaxHorizontalReferenceError, radial[10]);
+                        radialMaxVerticalHalfReferenceError = Math.Max(radialMaxVerticalHalfReferenceError, radial[11]); radialMaxReferenceNetFx = Math.Max(radialMaxReferenceNetFx, Math.Abs(radial[12]));
+                        radialMaxReferenceNetFy = Math.Max(radialMaxReferenceNetFy, Math.Abs(radial[15]));
                         var solver = world.SolverDiagnosticsAvailable ? world.ReadSolverDiagnostics() : null;
                         var speedLimit = world.ReadSpeedLimit();
                         if (speedLimit[0] != 1 || speedLimit[1] != 1 || speedLimit[2] != ticks || speedLimit[6] > config.MaximumSpeed || speedLimit[7] > 1e-10)
@@ -147,7 +147,7 @@ public static class LabBeltGuardExperiments
                         var (frontThickness, rearThickness) = BodyThickness(frame.Curve, phase.Horizontal);
                         var sample = new Sample(frame.Height, frame.Width, frame.CoreY, frame.ComY, frame.Stats[43] / frame.TotalMass,
                             clearance, guard[12], guard[11], elapsed, radial[3], radial[4], radial[5], radial[6], radial[7], radial[8], radial[9],
-                            radial[10], radial[11], radial[12], radial[13],
+                            radial[10], radial[11], radial[12], radial[15], radial[13],
                             frontThickness, rearThickness); samples.Add(sample);
                         if (i % 30 == 0) trace.WriteLine(JsonSerializer.Serialize(new { Tick = ticks, Phase = phase.Name, Sample = sample, Guard = guard }));
                     }
@@ -168,9 +168,9 @@ public static class LabBeltGuardExperiments
                     measurements.Add(new { phase.Name, phase.Frames, TailHeight = height, TailWidth = width,
                         RadialNetFxPeak = radialMaxNetFx, RadialNetFyPeak = radialMaxNetFy, RadialTorquePeak = radialMaxTorque,
                         RadialActiveSubsteps = radialActiveSubsteps, RadialEndpointWork = radialEndpointWork,
-                        RadialRequestedMagnitudeBudgetPeak = radialMaxBudget, RadialAppliedMagnitudeSumPeak = radialMaxApplied,
-                        RadialUnitCrossErrorPeak = radialMaxUnitCrossError, RadialUnitDotAlignmentMinimum = radialMinUnitDot,
-                        RadialBudgetErrorPeak = radialMaxBudgetError,
+                        RadialOriginalMagnitudeBudgetPeak = radialMaxBudget, RadialAppliedMagnitudeSumPeak = radialMaxApplied,
+                        RadialHorizontalReferenceErrorPeak = radialMaxHorizontalReferenceError, RadialVerticalHalfReferenceErrorPeak = radialMaxVerticalHalfReferenceError,
+                        RadialReferenceNetFx64Peak = radialMaxReferenceNetFx, RadialReferenceNetFy64Peak = radialMaxReferenceNetFy,
                         TailFrontThickness = tail.All(x => x.FrontThickness.HasValue) ? tail.Average(x => x.FrontThickness!.Value) : (double?)null,
                         TailRearThickness = tail.All(x => x.RearThickness.HasValue) ? tail.Average(x => x.RearThickness!.Value) : (double?)null,
                         TailFrontRearThicknessDifferenceOverHeight = tail.All(x => x.FrontThickness.HasValue && x.RearThickness.HasValue)
@@ -206,9 +206,9 @@ public static class LabBeltGuardExperiments
             File.WriteAllText(Path.Combine(output, "guard-eight-corner-results.json"), JsonSerializer.Serialize(new { Kind = "guard-eight-material-corners",
                 NativeSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(guardedModule))), FixedDt = Dt, Substeps = 4,
                 ExpectedCases = 8, AttemptedCases = results.Count, CompletedCases = completedCases, Passed = allPassed && completedCases == 8, GuardSchema = LabBeltWorld.ShapeGuardSchema,
-                Scope = "exactly 80/120 x 0/100 x 0/100; no intermediate materials; A/D radial outward drive, short bones, whole-body Space, explicit speed saturation; no periodic gait; no appearance or OS input",
+                Scope = "exactly 80/120 x 0/100 x 0/100; no intermediate materials; A/D eight actual grouped forces, horizontal 64-point reference preserved, vertical reference halved, natural torque allowed, short bones, whole-body Space, explicit speed saturation; no periodic gait; no appearance or OS input",
                 RadialDriveSchema = LabBeltWorld.RadialDriveSchema,
-                RadialEndpointWorkNote = "Per-phase sum of diagnostic radialEndpointWork; this is a subset of total external work and is not added to the energy ledger again.",
+                RadialEndpointWorkNote = "Per-phase sum of diagnostic frameEndpointWorkSubset; this is a subset of total external work and is not added to the energy ledger again.",
                 Geometry = "native continuous interval/path certificate plus independent sampled polygon core and crossing screening",
                 Performance = "wall-clock duration around each native Step only, excludes reads, output, independent screening and WPF; not a hard realtime guarantee",
                 RecoveryGate = "last 60 frames of each S/W/drag release: height and width each within 2% of own initial rest tail; separate from manual softness acceptance",

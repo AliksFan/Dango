@@ -60,22 +60,27 @@ DANGO_BELT_API int dango_belt_set_whale_drive(void*,int);
 DANGO_BELT_API int dango_belt_read_whale_drive(void*,double*,int);
 /* Optional A/D direction replacement, default off, before first successful
    step, requires shape guard and mutually exclusive with whale mode.
-   Radial16: 0 schema1,1 enabled,2 attempt,3 activeSubsteps,4 lastPointCount,
-   5 lastRequestedMagnitudeBudget,6 lastAppliedMagnitudeSum,7 lastNetFx,
-   8 lastNetFy,9 maxAbsTorqueAboutCore,10 maxUnitCrossAlignmentError,
-   11 minUnitDotAlignment(default1),12 maxAbsBudgetError,
-   13 radialEndpointWork (subset of original external work),14 guardWorkPeak,
-   15 reserved0. Failed frames roll back all except attempt[2]. */
+   Radial16: 0 schema2,1 enabled,2 attempt,3 activeSubsteps,4 lastPointCount8,
+   5 lastOriginalMagnitudeBudget,6 lastAppliedMagnitudeSum (may differ),7 lastNetFx,
+   8 lastNetFy,9 maxAbsActualTorqueAboutCore,10 maxHorizontalReferenceError,
+   11 maxVerticalHalfReferenceError,12 lastReferenceNetFx64,
+   13 frameEndpointWorkSubset (original external work),14 guardWorkPeak,
+   15 lastReferenceNetFy64. References are 64 equal material midpoint radial
+   samples in the selected world half. Eight consecutive groups each retain
+   summed Fx and half summed Fy, applied at their material midpoint; actual
+   forces need not be radial and no torque correction or core reaction exists.
+   Zero final budget clears 4..8/12/15; peaks cover the frame.
+   Failed frames roll back all except attempt[2]. */
 DANGO_BELT_API int dango_belt_set_radial_drive(void*,int);
 DANGO_BELT_API int dango_belt_read_radial_drive(void*,double*,int);
 /* Read-only last successful substep active-force evaluation, pre-integration.
    Ledger1024 header: 0 schema1,1 capacity1024,2 successful frame attemptTick,
    3 zero-based lastSubstep (-1 before step),4 rowCount (max97),5 sourceMask,
-   6 rowWidth6,7 materialQuadrature64. Rows from8: x,y,fx,fy,sourceKind,material.
+   6 rowWidth6,7 referenceIntegrationCount64 (not actual load count). Rows from8: x,y,fx,fy,sourceKind,material.
    Kind1 horizontal and kind2 vertical are exact resultants of 16 material bins,
    material=binIndex (not physical nodes); kind3 is actual projected whale point
    weight t/64, material=theta; kind4 actual drag point, material=theta.
-   Kind5 actual radial push quadrature point, material=theta.
+   Kind5 eight actual grouped point loads (Fx preserved/Fy halved), material=theta.
    SourceMask uses 1<<(kind-1). Gravity/contact omitted. Unused slots zero.
    Read capacity failure writes nothing. Failed frames retain previous ledger. */
 DANGO_BELT_API int dango_belt_read_force_ledger(void*,double*,int);
