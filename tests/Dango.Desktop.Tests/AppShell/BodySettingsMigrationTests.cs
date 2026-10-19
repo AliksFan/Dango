@@ -34,13 +34,14 @@ public sealed class BodySettingsMigrationTests
             Assert.AreEqual(schema < 4 ? DangoBodyControls.Default : body, result.Settings.Configuration.Body);
             Assert.AreEqual(schema == 4 ? DangoBodyMaterial.LegacyModelVersion : schema == 5 ? DangoBodyMaterial.ModelVersion : null, result.SourceBodyPhysicsModel);
             CollectionAssert.AreEqual(original, File.ReadAllBytes(path));
-            var session = new AppearanceSettingsSession(path);
+            var diagnostics = new AppearanceSaveDiagnostics();
+            var session = new AppearanceSettingsSession(path, new AppearanceSettingsStore(diagnostics));
             if (schema == 4)
             {
                 Assert.IsFalse(session.TrySave());
                 Assert.IsTrue(session.MarkBodyApplied(body, DangoBodyMaterial.ModelVersion, session.BodyConfigurationRevision, session.BodyEpoch));
             }
-            Assert.IsTrue(session.TrySave(), $"Schema {schema}: {session.StatusMessage}");
+            Assert.IsTrue(session.TrySave(), $"Schema {schema}: {session.StatusMessage}; {diagnostics.LastFailure}");
             if (schema < 5) StringAssert.Contains(File.ReadAllText(path), "continuous-belt-v1");
             Assert.AreEqual(result.Settings.Configuration.Body, store.Load(path).Configuration.Body);
         }
@@ -129,6 +130,21 @@ public sealed class BodySettingsMigrationTests
         {
             if (Fail) throw new IOException("test write failure");
             new AtomicTextFileWriter().Write(path, content);
+        }
+    }
+}
+
+/// <summary>Capture the real atomic writer failure without retrying or changing its behavior.</summary>
+internal sealed class AppearanceSaveDiagnostics : IAtomicTextWriter
+{
+    public string? LastFailure { get; private set; }
+    public void Write(string path, string content)
+    {
+        try { new AtomicTextFileWriter().Write(path, content); }
+        catch (Exception exception)
+        {
+            LastFailure = $"HResult={exception.HResult:X8}; {exception}";
+            throw;
         }
     }
 }

@@ -74,7 +74,8 @@ public sealed class AppearanceSettingsSessionTests
     {
         var path = NewPath();
         Write(path, original);
-        var session = new AppearanceSettingsSession(path);
+        var diagnostics = new AppearanceSaveDiagnostics();
+        var session = new AppearanceSettingsSession(path, new AppearanceSettingsStore(diagnostics));
 
         Assert.AreEqual("#000000", session.SavedBodyColor.ToHex());
         Assert.AreEqual(expectedEyes, session.SavedEyeColor.ToHex());
@@ -86,7 +87,7 @@ public sealed class AppearanceSettingsSessionTests
         Assert.IsFalse(session.IsDirty);
         Assert.IsTrue(session.HasPendingSave);
 
-        Assert.IsTrue(session.TrySave());
+        Assert.IsTrue(session.TrySave(), $"{session.StatusMessage}; {diagnostics.LastFailure}");
         Assert.IsFalse(session.HasPendingSave);
         Assert.AreEqual("#000000", new AppearanceSettingsStore().Load(path).BodyColor.ToHex());
         Assert.AreEqual(expectedEyes, new AppearanceSettingsStore().Load(path).EyeColor.ToHex());
