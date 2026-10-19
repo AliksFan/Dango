@@ -25,7 +25,9 @@
 | `native/face-body-material/dango_physics_module.dll` | 旧 F5 已验候选对照；SHA256 `5A555470A26943A8929A3C38D926859987738D4AEF6873058291C71ABD12C51B` |
 | `grounded` | 实验树既有的空未跟踪文件，额外副本；原文件保持未跟踪、未修改 |
 | `receipt.json`、`handoff-complete.json` | 原始来源／状态／哈希与收口后的提交和核对结果；收尾收据只有验证完成后才生成 |
-| `closeout-history.bundle` | 追加两个源分支收口提交及新分支计划交付后的可恢复历史，收尾时另行校验 |
+| `closeout-history.bundle` | 首次计划交付及两个源分支收口的完整历史，已校验；保留该版本 |
+| `closeout-history-final.bundle` | 追加恢复说明后的最终交付历史，收尾另行校验并绑定完成收据 |
+| `recovery-check.git/` | 从源码 bundle 实际恢复的隔离镜像；两个冻结 ref 和代表性源码／计划对象已读取核对 |
 
 bundle 保存已跟踪的 Git 历史，不包含所有忽略的 `artifacts`、运行目录和缓存。本次只额外复制明确的冻结模块及既有 `grounded`；所有原忽略产物和失败日志仍保留在原工作树。**这不是完整工作树备份，不足以授权或支持直接删除旧工作树。** 本地保全也不是远端备份，本轮不推送。
 
@@ -68,7 +70,9 @@ git show refs/archive/2026-10-19/face-body-material:docs/planning/2026-10-13-fac
 git log refs/archive/2026-10-19/continuous-belt-lab -- eng/native/box2d/dango_belt.c
 ```
 
-本机先定位 Git common dir，再核对 `receipt.json`、bundle 和模块 SHA256。bundle 自含完整历史，必要时可在新的隔离目录以 `git clone <bundle路径> <新目录>` 恢复，再从明确的冻结提交创建工作分支；不得覆盖正在工作的目录或恢复到 main。本轮没有执行恢复、没有删除或重建任何旧工作树。
+本机先定位 Git common dir，再核对 `receipt.json`、bundle 和模块 SHA256。源码 bundle 使用自定义 `refs/archive`，因此以 `git clone --mirror <bundle路径> <新的镜像目录>` 恢复全部引用和 Git 对象，再从镜像的明确冻结提交创建新的独立工作树／任务分支；普通 clone 的默认分支发现不能替代自定义 ref 核对。不得覆盖正在工作的目录或恢复到 main。
+
+本轮已在保全目录中的全新 `recovery-check.git/` 实际执行上述镜像恢复，核对两个 ref 的完整提交号，并读取连续外圈源码和旧 F5 计划对象成功。未检出或运行产品，也未删除、重建任何原工作树。
 
 ## 6. 归档完成的含义
 
