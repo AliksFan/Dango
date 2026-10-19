@@ -35,13 +35,16 @@ public partial class ProductHomeView
     internal BeltBodyAppearancePresenter? BoundBeltPresenter => beltPresenter;
     internal BeltBodySnapshot? DisplayedBeltSnapshot => beltSnapshot;
     internal event Action<BeltBodySnapshot>? BeltBodyDisplayConfirmed;
+    internal event Action<BeltBodySnapshot>? BeltBodyPoseApplied;
     internal long BeltBodyConsumedSnapshots { get; private set; }
+    private readonly List<BeltBodySnapshot> beltRenderBatch = new(2);
+    internal double BeltBodyPresentationSeconds { get; private set; }
 
     internal void BindBeltBody(string settingsPath)
     {
         if (beltRuntime is not null || BoundRuntime is not null) throw new InvalidOperationException("主页已绑定实时场景。");
         beltSettingsPath = settingsPath;
-        beltRuntime = new BeltBodyRuntime(Path.Combine(AppContext.BaseDirectory, "dango_belt_product.dll"));
+        beltRuntime = new BeltBodyRuntime(Path.Combine(AppContext.BaseDirectory, "dango_belt_product.dll")) { SleepEnabled = true };
         InputMethod.SetIsInputMethodEnabled(Stage, false);
         OptionsBody.Resources[typeof(System.Windows.Controls.Primitives.ScrollBar)] = Resources["SettingsScrollBar"];
         HomeContent.Resources[typeof(System.Windows.Controls.Primitives.ScrollBar)] = Resources["SettingsScrollBar"];
@@ -115,13 +118,19 @@ public partial class ProductHomeView
         catch (OperationCanceledException) { /* A newer complete draft superseded this request before its next physics step. */ }
         catch (Exception error) when (error is InvalidOperationException or ArgumentException or IOException or DllNotFoundException or EntryPointNotFoundException or BadImageFormatException or ObjectDisposedException)
         {
-            if (beltRuntime is null || !ReferenceEquals(origin, beltRuntime) || revision != beltRequestedRevision || epoch != beltRequestedBodyEpoch) return;
-            beltDiagnosticError = error.ToString();
-            beltError = "身体参数暂未生效，请调整重试或在设置中重新初始化。";
-            LiveSceneStatusText.Text = beltError;
-            LiveSceneStatusText.Visibility = Visibility.Visible;
-            ClearBeltInput();
-            RefreshAppearanceControls();
+            // Binding can start before a window installs a DispatcherSynchronizationContext.
+            // Revalidate ownership on the UI thread, rather than relying on await's context.
+            if (!Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
+                _ = Dispatcher.InvokeAsync(() =>
+                {
+                    if (beltRuntime is null || !ReferenceEquals(origin, beltRuntime) || revision != beltRequestedRevision || epoch != beltRequestedBodyEpoch) return;
+                    beltDiagnosticError = error.ToString();
+                    beltError = "身体参数暂未生效，请调整重试或在设置中重新初始化。";
+                    LiveSceneStatusText.Text = beltError;
+                    LiveSceneStatusText.Visibility = Visibility.Visible;
+                    ClearBeltInput();
+                    RefreshAppearanceControls();
+                });
         }
     }
 
@@ -140,10 +149,14 @@ public partial class ProductHomeView
     private async Task ConfigureBeltDraftAsync(BeltBodyRuntime runtime, DangoBodyControls body, long revision, long epoch)
     {
         await runtime.ConfigureAsync(body, revision, epoch);
-        if (!ReferenceEquals(runtime, beltRuntime) || !beltVisible) return;
-        if (revision == beltRequestedRevision && epoch == beltRequestedBodyEpoch && runtime.Metrics.Error is null)
-            beltError = null;
-        if (!runtime.Metrics.Running) await runtime.ResumeAsync();
+        var resume = await Dispatcher.InvokeAsync(() =>
+        {
+            if (!ReferenceEquals(runtime, beltRuntime) || !beltVisible) return Task.CompletedTask;
+            if (revision == beltRequestedRevision && epoch == beltRequestedBodyEpoch && runtime.Metrics.Error is null)
+                beltError = null;
+            return runtime.Metrics.Running ? Task.CompletedTask : runtime.ResumeAsync();
+        });
+        await resume;
     }
 
     private void RestoreBeltBodyDraft()
@@ -212,22 +225,31 @@ public partial class ProductHomeView
         var now = Stopwatch.GetTimestamp();
         var dt = Math.Clamp(Stopwatch.GetElapsedTime(beltRenderStamp, now).TotalSeconds, .001, .05);
         beltRenderStamp = now;
-        var applied = false;
+        beltRenderBatch.Clear();
         for (var index = 0; index < consume && beltRuntime.TryDequeue(out var snapshot); index++)
         {
             if (snapshot is null) break;
             if (snapshot.Frame is null || snapshot.Error is not null) continue;
             if (appearanceSession is not null && snapshot.BodyEpoch != appearanceSession.BodyEpoch) continue;
+            beltRenderBatch.Add(snapshot);
+        }
+        PresentBeltBodyBatch(beltRenderBatch, dt);
+    }
+
+    internal void PresentBeltBodyBatch(IReadOnlyList<BeltBodySnapshot> batch, double dt)
+    {
+        // Rendering owns one wall-clock budget, independently of physical tick availability.
+        // Every catch-up pose is consumed, but physical dt must not be added to this budget.
+        foreach (var snapshot in batch)
+        {
             beltSnapshot = snapshot;
-            beltBoundary = Enumerable.Range(0, snapshot.Frame.Curve.Length / 2)
+            beltBoundary = Enumerable.Range(0, snapshot.Frame!.Curve.Length / 2)
                 .Select(i => new BeltBodyBoundaryPoint(snapshot.Frame.Curve[2 * i], snapshot.Frame.Curve[2 * i + 1])).ToArray();
-            // Catch-up may consume two successful snapshots, but both feed the appearance pipeline in order.
-            ApplyBeltPose(snapshot, DangoBeltWorld.FixedDt);
+            ApplyBeltPose(snapshot, dt / batch.Count);
             BeltBodyConsumedSnapshots++;
-            applied = true;
             if (beltFatalError) return;
         }
-        if (!applied && beltSnapshot is { } previous && previous.BodyEpoch == appearanceSession?.BodyEpoch)
+        if (batch.Count == 0 && beltSnapshot is { } previous && previous.BodyEpoch == appearanceSession?.BodyEpoch)
             ApplyBeltPose(previous, dt);
     }
 
@@ -246,6 +268,7 @@ public partial class ProductHomeView
             frame.Scaffold[2], frame.Scaffold[3], frame.Grounded, input.Horizontal, input.Downward > 0,
             input.Stretch > 0, input.JumpPressed, input.DragActive, gaitContext, current.Tick);
         beltPresenter.Update(beltAppearanceFrame);
+        BeltBodyPresentationSeconds += beltAppearanceFrame.Seconds;
         if (beltPresenter.RuntimeError is { } presentationError)
         {
             LatchBeltFailure(presentationError);
@@ -253,6 +276,7 @@ public partial class ProductHomeView
         }
         if (beltLastPresentedSequence != current.Sequence)
         {
+            BeltBodyPoseApplied?.Invoke(current);
             beltPendingDisplay = current;
             beltLastPresentedSequence = current.Sequence;
         }

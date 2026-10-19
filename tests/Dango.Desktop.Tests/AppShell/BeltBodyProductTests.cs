@@ -12,6 +12,7 @@ using System.Windows.Threading;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.Physics.Tuning;
+using Dango.Desktop.Physics.Belt;
 using Dango.Desktop.Rendering.Visuals;
 using Dango.Desktop.Accessories;
 using Dango.Physics;
@@ -286,13 +287,24 @@ public sealed class BeltBodyProductTests
         new AccessorySettingsStore().Save(root, new([new AccessoryItem("fictional-sleep-hat", "Fictional sleep hat", "builtin-sprout", 64, 64)]));
         var startup = Stopwatch.StartNew();
         var home = CreateHome(root, new(Path.Combine(root, "appearance.json"))); var window = Show(home, 1280, 720);
-        var outlines = new Queue<Point[]>();
-        home.BeltBodyDisplayConfirmed += _ =>
+        var outlines = new Queue<(int Tick, Point[] Points)>();
+        var confirmedTick = -1;
+        home.BeltBodyDisplayConfirmed += snapshot => confirmedTick = snapshot.Tick;
+        home.BeltBodyPoseApplied += snapshot =>
         {
             var presenter = home.BoundBeltPresenter!;
             var contour = presenter.Inspect().Body!.Contour;
-            var transform = ((Canvas)presenter.View.Children[0]).TransformToAncestor(home);
-            outlines.Enqueue(contour.Select(point => transform.Transform(new Point(80 + point.X * 160, 66 - point.Y * 160))).ToArray());
+            var layer = (Canvas)presenter.View.Children[0];
+            var transform = ((Visual)presenter.View.Parent).TransformToAncestor(home);
+            // Canvas.Top is queued for layout here; compose its actual set value explicitly so
+            // both poses in a catch-up callback are measured, including the intermediate extreme.
+            var top = Canvas.GetTop(presenter.View);
+            outlines.Enqueue((snapshot.Tick, contour.Select(point =>
+            {
+                var local = layer.RenderTransform.Transform(new Point(80 + point.X * BeltBodyAppearancePresenter.WorldToCanvas,
+                    66 - point.Y * BeltBodyAppearancePresenter.WorldToCanvas));
+                return transform.Transform(new Point(local.X, local.Y + top));
+            }).ToArray()));
             if (outlines.Count > 121) outlines.Dequeue();
         };
         try
@@ -319,14 +331,21 @@ public sealed class BeltBodyProductTests
             var startupToSleepMilliseconds = startup.Elapsed.TotalMilliseconds;
             Assert.IsNull(runtime.Metrics.Error, home.ReadBeltBodySettingsScene().Diagnostics);
             Pump(100); // Consume the final real physical snapshots before sampling the sleeping period.
-            Assert.AreEqual(121, outlines.Count, "Observe all 120 final physical intervals, including the last displayed pose.");
+            var terminalTick = runtime.Metrics.NativeStepCalls;
+            Wait(() => confirmedTick == terminalTick && runtime.Metrics.QueueDepth == 0, 2000, "final sleeping pose successfully display-confirmed");
+            Assert.AreEqual(121, outlines.Count, "Observe every one of the final 120 physical intervals.");
             var rows = outlines.ToArray();
+            var outlineTickSpan = rows[^1].Tick - rows[0].Tick;
+            Assert.AreEqual(120, outlineTickSpan);
+            Assert.IsTrue(rows.Zip(rows.Skip(1)).All(pair => pair.Second.Tick == pair.First.Tick + 1), "Catch-up must feed both complete successful poses to the measured appearance pipeline.");
+            Assert.AreEqual(terminalTick, (long)rows[^1].Tick);
             var maximumOutlineWindowDip = Enumerable.Range(0, 256).Max(i =>
             {
-                var dx = rows.Max(row => row[i].X) - rows.Min(row => row[i].X);
-                var dy = rows.Max(row => row[i].Y) - rows.Min(row => row[i].Y);
+                var dx = rows.Max(row => row.Points[i].X) - rows.Min(row => row.Points[i].X);
+                var dy = rows.Max(row => row.Points[i].Y) - rows.Min(row => row.Points[i].Y);
                 return Math.Sqrt(dx * dx + dy * dy);
             });
+            TestContext.WriteLine(JsonSerializer.Serialize(new { condition, enabledToSleepMilliseconds, releaseToSleepMilliseconds, startupToSleepMilliseconds, maximumOutlineWindowDip, outlineTickSpan }));
             Assert.IsLessThanOrEqualTo(.1, maximumOutlineWindowDip, "The actual camera, gait and Viewbox transforms must preserve the visible 2D budget.");
             var stateBefore = runtime.CaptureStateAsync(); Wait(() => stateBefore.IsCompleted, 2000, "sleep state snapshot");
             var visualBefore = home.BoundBeltPresenter!.Inspect(); var physicsTick = home.DisplayedBeltSnapshot!.Tick;
@@ -334,7 +353,8 @@ public sealed class BeltBodyProductTests
             Assert.IsTrue(runtime.Metrics.Sleeping, "An eye comparison may animate without waking a fully quiet body.");
             var sleeping = SampleProductCpu(home, 10000);
             var stateAfter = runtime.CaptureStateAsync(); Wait(() => stateAfter.IsCompleted, 2000, "sleep state after comparison");
-            CollectionAssert.AreEqual(stateBefore.Result.State, stateAfter.Result.State, "Sleep must preserve all native q/v/contact/config/telemetry.");
+            CollectionAssert.AreEqual(System.Runtime.InteropServices.MemoryMarshal.AsBytes(stateBefore.Result.State.AsSpan()).ToArray(),
+                System.Runtime.InteropServices.MemoryMarshal.AsBytes(stateAfter.Result.State.AsSpan()).ToArray(), "Sleep must preserve every native state byte.");
             Assert.AreEqual(physicsTick, home.DisplayedBeltSnapshot!.Tick);
             var visualAfter = home.BoundBeltPresenter.Inspect();
             Assert.IsGreaterThan(visualBefore.Tick, visualAfter.Tick);
@@ -343,20 +363,28 @@ public sealed class BeltBodyProductTests
             Assert.IsGreaterThan(visualBefore.Accessories.Single().Frame.StepIndex, visualAfter.Accessories.Single().Frame.StepIndex);
             // Same configuration and comparison animation, ten seconds each; the body resumes from its frozen state.
             runtime.SleepEnabled = false;
+            Click(home, "PreviewBlinkButton");
             var baseline = SampleProductCpu(home, 10000);
             Assert.IsGreaterThanOrEqualTo(500L, baseline.NativeCalls, "The off side must really keep solving.");
             runtime.SleepEnabled = true;
             Wait(() => runtime.Metrics.Sleeping, 60000, "v2 sleep after off-side comparison");
             Pump(100);
             physicsTick = home.DisplayedBeltSnapshot!.Tick;
-            var cpuReduction = 1 - sleeping.CpuMilliseconds / baseline.CpuMilliseconds;
+            var cpuReduction = 1 - (sleeping.CpuMilliseconds / sleeping.Seconds) / (baseline.CpuMilliseconds / baseline.Seconds);
             var callsReduction = 1 - sleeping.NativeCalls / (double)baseline.NativeCalls;
             Assert.IsGreaterThanOrEqualTo(.30, cpuReduction, "Frozen whole product process CPU reduction gate.");
             Assert.IsGreaterThanOrEqualTo(.99, callsReduction, "Frozen solver-call reduction gate.");
             // Opposing keys are an active occupation and must wake, with no synthetic catch-up.
             FocusOwnedWindow(window); Element<FrameworkElement>(home, "Stage").Focus();
+            var wakeConfirmed = false;
+            void OnWake(Dango.Desktop.Physics.Belt.BeltBodySnapshot snapshot)
+            {
+                if (snapshot.Tick > physicsTick && snapshot.ActualInput is { InputActive: true, Horizontal: 0 }) wakeConfirmed = true;
+            }
+            home.BeltBodyDisplayConfirmed += OnWake;
             var wake = Stopwatch.StartNew(); KeyDown(0x41); KeyDown(0x44);
-            Wait(() => home.DisplayedBeltSnapshot!.Tick > physicsTick, 2000, "wake after opposing-key occupation");
+            Wait(() => wakeConfirmed, 2000, "successful display confirmation contains opposing-key occupation");
+            home.BeltBodyDisplayConfirmed -= OnWake;
             wake.Stop(); Assert.IsLessThanOrEqualTo(100d, wake.Elapsed.TotalMilliseconds, "Frozen wake to successful displayed body gate.");
             var awakeTick = home.DisplayedBeltSnapshot!.Tick; Pump(250);
             Assert.IsFalse(runtime.Metrics.Sleeping);
@@ -364,7 +392,7 @@ public sealed class BeltBodyProductTests
             Assert.IsTrue(home.DisplayedBeltSnapshot!.ActualInput.InputActive);
             Assert.AreEqual(0d, home.DisplayedBeltSnapshot!.ActualInput.Horizontal);
             var receipt = new { contract = "visible-deformation-v2", condition, recoveryObservationSeconds = recoverySeconds,
-                enabledToSleepMilliseconds, releaseToSleepMilliseconds, startupToSleepMilliseconds, maximumOutlineWindowDip,
+                enabledToSleepMilliseconds, releaseToSleepMilliseconds, startupToSleepMilliseconds, maximumOutlineWindowDip, outlineTickSpan,
                 wakeToDisplayMilliseconds = wake.Elapsed.TotalMilliseconds, baseline, sleeping, cpuReduction, callsReduction,
                 physicsTick, presentationTicks = visualAfter.Tick - visualBefore.Tick };
             TestContext.WriteLine(JsonSerializer.Serialize(receipt));
@@ -397,10 +425,15 @@ public sealed class BeltBodyProductTests
             Assert.AreEqual(DangoBodyControls.Default, home.DisplayedBeltSnapshot!.Body);
             Assert.IsGreaterThan(original.Epoch, home.DisplayedBeltSnapshot!.Epoch);
             WaitSleep();
+            home.ShowEditor(HomeEditor.Face); Click(home, "AppearanceBodyTab");
+            var restoredRevision = home.DisplayedBeltSnapshot!.ConfigurationRevision;
             Set(home, "BodySizeSlider", 80); Set(home, "BodySoftnessSlider", 0); Set(home, "BodyLandingBuildSlider", 0);
             WaitReady(home); WaitSleep();
+            Assert.AreEqual(new DangoBodyControls(80, 0, 0), home.DisplayedBeltSnapshot!.Body);
+            Assert.IsGreaterThan(restoredRevision, home.DisplayedBeltSnapshot.ConfigurationRevision);
             Click(home, "DefaultAppearanceButton"); WaitReady(home);
             Assert.AreEqual(DangoAppearanceConfiguration.Default, session.DraftAppearance);
+            Assert.AreEqual(DangoBodyControls.Default, home.DisplayedBeltSnapshot!.Body);
             WaitSleep();
             window.Hide(); Pump(100); Assert.IsFalse(runtime.Metrics.Running);
             window.Show(); window.Activate(); WaitReady(home); WaitSleep();
@@ -417,13 +450,72 @@ public sealed class BeltBodyProductTests
         finally { home.UnbindBeltBody(); window.Close(); }
     }
 
+    [STATestMethod]
+    public void AsyncFailureWithoutSynchronizationContextReportsOnOwningDispatcher()
+    {
+        RequireModule();
+        var root = NewRoot(); var home = CreateHome(root, new(Path.Combine(root, "appearance.json"))); var window = Show(home);
+        try
+        {
+            WaitReady(home);
+            var failure = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var originalContext = SynchronizationContext.Current;
+            try
+            {
+                SynchronizationContext.SetSynchronizationContext(null);
+                typeof(ProductHomeView).GetMethod("ObserveBeltOperation", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(home, [failure.Task]);
+            }
+            finally { SynchronizationContext.SetSynchronizationContext(originalContext); }
+            Task.Run(() => failure.SetException(new InvalidOperationException("Fictional asynchronous body failure"))).GetAwaiter().GetResult();
+            Wait(() => home.ReadBeltBodySettingsScene().CanReinitialize, 2000, "asynchronous failure reaches the actual UI owner");
+            StringAssert.Contains(Element<TextBlock>(home, "LiveSceneStatusText").Text, "重新初始化");
+        }
+        finally { home.UnbindBeltBody(); window.Close(); }
+    }
+
+    [STATestMethod]
+    [DataRow(60)]
+    [DataRow(120)]
+    public void AppearanceClockUsesOneWallSecondAcrossPhysicalCatchUpAndEmptyRenders(int refreshRate)
+    {
+        RequireModule();
+        var root = NewRoot(); var home = CreateHome(root, new(Path.Combine(root, "appearance.json"))); var window = Show(home);
+        try
+        {
+            WaitReady(home);
+            var template = home.DisplayedBeltSnapshot!;
+            using var native = new BeltNativeSession(Path.Combine(AppContext.BaseDirectory, "dango_belt_product.dll"), template.Body);
+            var start = home.BeltBodyPresentationSeconds;
+            var sequence = template.Sequence + 10000;
+            // A synthetic render schedule consumes real independent native snapshots. No WPF
+            // dispatcher pumping occurs inside this schedule, so real Rendering cannot add time.
+            for (var render = 0; render < refreshRate; render++)
+            {
+                var count = refreshRate == 120 ? render % 4 == 0 ? 2 : 0 : render % 4 == 0 ? 2 : render % 4 == 1 ? 0 : 1;
+                var batch = new List<BeltBodySnapshot>();
+                for (var pose = 0; pose < count; pose++)
+                {
+                    var step = native.Step(default); Assert.IsNull(step.Error);
+                    batch.Add(template with { Sequence = ++sequence, Tick = (int)sequence, Frame = step.Frame, DebugState = step.State });
+                }
+                home.PresentBeltBodyBatch(batch, 1d / refreshRate);
+            }
+            Assert.AreEqual(1d, home.BeltBodyPresentationSeconds - start, 1e-10,
+                "Complete physical poses and empty renders must share one wall-clock budget.");
+            Assert.IsNull(home.BoundBeltPresenter!.RuntimeError);
+        }
+        finally { home.UnbindBeltBody(); window.Close(); }
+    }
+
     private sealed record CpuSample(double Seconds, double CpuMilliseconds, long NativeCalls, double NativeMilliseconds,
         long AllocatedBytes, int Gen0, int Gen1, int Gen2, int QueueDepth, long InvalidatedSnapshots);
     private static CpuSample SampleProductCpu(ProductHomeView home, int ms)
     {
         using var process = Process.GetCurrentProcess(); var before = home.BoundBeltBody!.Metrics;
         var allocations = GC.GetTotalAllocatedBytes(); var gc0 = GC.CollectionCount(0); var gc1 = GC.CollectionCount(1); var gc2 = GC.CollectionCount(2);
-        var cpu = process.TotalProcessorTime; var watch = Stopwatch.StartNew(); Pump(ms); watch.Stop(); process.Refresh();
+        var cpu = process.TotalProcessorTime; var watch = Stopwatch.StartNew();
+        do { Pump(Math.Max(1, ms - (int)watch.ElapsedMilliseconds)); } while (watch.Elapsed.TotalMilliseconds < ms);
+        watch.Stop(); process.Refresh();
         var after = home.BoundBeltBody.Metrics;
         return new(watch.Elapsed.TotalSeconds, (process.TotalProcessorTime - cpu).TotalMilliseconds, after.NativeStepCalls - before.NativeStepCalls,
             after.NativeStepMilliseconds - before.NativeStepMilliseconds, GC.GetTotalAllocatedBytes() - allocations,

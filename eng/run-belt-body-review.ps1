@@ -39,4 +39,4 @@ if (-not (Test-Path -LiteralPath $executable) -or -not (Test-Path -LiteralPath (
 }
 # This explicitly requested review is an interactive window. It does not install or replace daily files.
 $candidate = Start-Process -FilePath $executable -ArgumentList @('--belt-body-review', '--belt-body-review-settings', ('"' + $ReviewDirectory + '"')) -PassThru
-[pscustomobject]@{ ProcessId = $candidate.Id; SettingsDirectory = $ReviewDirectory; SleepDefault = 'disabled-pending-F6'; Installed = $false }
+[pscustomobject]@{ ProcessId = $candidate.Id; SettingsDirectory = $ReviewDirectory; SleepDefault = 'visible-deformation-v2-enabled'; Installed = $false }
