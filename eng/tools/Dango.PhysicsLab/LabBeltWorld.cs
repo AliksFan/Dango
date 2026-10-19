@@ -50,6 +50,9 @@ internal sealed class LabBeltWorld : IDisposable
     private readonly DiagnosticsDelegate? shapeGuardDiagnostics;
     private readonly DoubleDiagnosticsDelegate? debugState, solverDiagnostics, speedLimitDiagnostics, whaleDriveDiagnostics, radialDriveDiagnostics, rearDriveDiagnostics, forceLedgerDiagnostics;
     private readonly OriginalGroundJumpDelegate? speedSaturation, whaleDrive, radialDrive;
+    private readonly ResetProfileDelegate? resetProfile;
+    private readonly DoubleDiagnosticsDelegate? readProfile;
+    public bool ProfileAvailable => resetProfile is not null && readProfile is not null;
     public bool WhaleDriveAvailable => whaleDrive is not null && whaleDriveDiagnostics is not null;
     public bool WhaleDriveEnabled { get; private set; }
     public bool RadialDriveAvailable => radialDrive is not null && radialDriveDiagnostics is not null;
@@ -109,6 +112,10 @@ internal sealed class LabBeltWorld : IDisposable
                 rearDriveDiagnostics=Marshal.GetDelegateForFunctionPointer<DoubleDiagnosticsDelegate>(rearDiagnosticsAddress);
             if(NativeLibrary.TryGetExport(library,"dango_belt_read_force_ledger",out var forceLedgerAddress))
                 forceLedgerDiagnostics=Marshal.GetDelegateForFunctionPointer<DoubleDiagnosticsDelegate>(forceLedgerAddress);
+            if(NativeLibrary.TryGetExport(library,"dango_belt_reset_profile",out var resetProfileAddress))
+                resetProfile=Marshal.GetDelegateForFunctionPointer<ResetProfileDelegate>(resetProfileAddress);
+            if(NativeLibrary.TryGetExport(library,"dango_belt_read_profile",out var readProfileAddress))
+                readProfile=Marshal.GetDelegateForFunctionPointer<DoubleDiagnosticsDelegate>(readProfileAddress);
             if(enableWhaleDrive && !WhaleDriveAvailable)
                 throw new NotSupportedException("此模块缺少行走受力 ABI；请构建本轮鲸形行走实验组件。");
             if(enableRadialDrive && !RadialDriveAvailable)
@@ -279,6 +286,46 @@ internal sealed class LabBeltWorld : IDisposable
         if(requireFinite && values.Any(x=>!double.IsFinite(x))) throw new InvalidOperationException("Belt returned nonfinite numeric diagnostics");
         return values;
     }
+    // Profile counters belong to the calling thread, rather than a body or its rollback state.
+    public void ResetProfile()
+    {
+        VerifyAccess();
+        if(!ProfileAvailable) throw new NotSupportedException("Native belt module does not export the optional profile ABI.");
+        Check(resetProfile!(handle),"reset profile");
+    }
+    public double[] ReadProfile()
+    {
+        VerifyAccess();
+        if(!ProfileAvailable) throw new NotSupportedException("Native belt module does not export the optional profile ABI.");
+        var values=ReadDoubleDiagnostics(readProfile!,48,"read profile");
+        if(values[0]!=1 || values[1]!=16) throw new NotSupportedException("Unsupported belt profile schema.");
+        return values;
+    }
+    // Raw bytes preserve signed zero and NaN payloads, including rejected-step telemetry.
+    internal Dictionary<string,byte[]> ReadPerformanceState()
+    {
+        VerifyAccess();
+        float[] scaffold=new float[68],curve=new float[512],stats=new float[64],energy=new float[48],guard=new float[24];
+        Check(read(handle,scaffold,scaffold.Length,curve,curve.Length,stats,stats.Length),"read performance frame");
+        if(diagnostics is null || shapeGuardDiagnostics is null || debugState is null || solverDiagnostics is null ||
+            speedLimitDiagnostics is null || radialDriveDiagnostics is null || rearDriveDiagnostics is null || forceLedgerDiagnostics is null)
+            throw new NotSupportedException("Performance comparison requires every rear-pressure diagnostic export.");
+        Check(diagnostics(handle,energy,energy.Length),"read performance diagnostics");
+        Check(shapeGuardDiagnostics(handle,guard,guard.Length),"read performance guard");
+        byte[] Doubles(DoubleDiagnosticsDelegate reader,int count) =>
+            MemoryMarshal.AsBytes(ReadDoubleDiagnostics(reader,count,"read performance state",requireFinite:false).AsSpan()).ToArray();
+        return new()
+        {
+            ["scaffold"]=MemoryMarshal.AsBytes(scaffold.AsSpan()).ToArray(),
+            ["curve"]=MemoryMarshal.AsBytes(curve.AsSpan()).ToArray(),
+            ["stats"]=MemoryMarshal.AsBytes(stats.AsSpan()).ToArray(),
+            ["diagnostics"]=MemoryMarshal.AsBytes(energy.AsSpan()).ToArray(),
+            ["shape"]=MemoryMarshal.AsBytes(guard.AsSpan()).ToArray(),
+            ["debug"]=Doubles(debugState,200), ["solver"]=Doubles(solverDiagnostics,24),
+            ["speed"]=Doubles(speedLimitDiagnostics,12), ["radial"]=Doubles(radialDriveDiagnostics,16),
+            ["rear"]=Doubles(rearDriveDiagnostics,16), ["ledger"]=Doubles(forceLedgerDiagnostics,1024),
+        };
+    }
     public void SetBounds(double left,double right)
     {
         VerifyAccess();
@@ -304,6 +351,7 @@ internal sealed class LabBeltWorld : IDisposable
         throw new InvalidOperationException($"Belt {operation} failed ({result}): {reason}; prior accepted state preserved");
     }
     private T Export<T>(string name) where T:Delegate => Marshal.GetDelegateForFunctionPointer<T>(NativeLibrary.GetExport(library,name));
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int ResetProfileDelegate(nint handle);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int OriginalGroundJumpDelegate(nint handle,int enabled);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate nint SchemaDelegate();
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int DoubleDiagnosticsDelegate(nint handle,[Out]double[] values,int count);

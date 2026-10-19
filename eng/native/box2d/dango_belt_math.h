@@ -2,6 +2,9 @@
 #define DANGO_BELT_MATH_H
 #include <math.h>
 #include <string.h>
+#if defined(DANGO_BELT_PROFILE) && DANGO_BELT_PROFILE
+#include "dango_belt_profile.h"
+#endif
 #define BELT_K 8
 #define BELT_B 17
 #define BELT_D 36
@@ -44,6 +47,9 @@ static int belt_polynomial_roots(const double* input,int degree,double* roots){
 /* Two bounded tangent-half-angle charts avoid infinity at theta=pi.
    Each degree<=16 polynomial is isolated through its derivative roots,
    rather than relying on fixed-grid sign changes. */
+#if defined(DANGO_BELT_PROFILE) && DANGO_BELT_PROFILE
+#define belt_roots belt_roots_profile_impl
+#endif
 static inline int belt_roots(const double* q,int axis,int derivative,double level,double* roots){
  int used=0;for(int chart=0;chart<2;++chart){double center=(chart+.5)*BELT_PI,p[17]={0};
   double cpoly[17]={1},spoly[17]={0};
@@ -58,15 +64,51 @@ static inline int belt_roots(const double* q,int axis,int derivative,double leve
  }
  return used;
 }
+#if defined(DANGO_BELT_PROFILE) && DANGO_BELT_PROFILE
+#undef belt_roots
+static inline int belt_roots(const double* q,int axis,int derivative,double level,double* roots){double start=belt_profile_now();int result=belt_roots_profile_impl(q,axis,derivative,level,roots);belt_profile_finish(BELT_PROFILE_ROOTS,start);return result;}
+#endif
+
+#if defined(DANGO_BELT_PROFILE) && DANGO_BELT_PROFILE
+#define belt_bounds belt_bounds_profile_impl
+#endif
 static inline void belt_bounds(const double* q,double* bounds,double* foot){
  belt_v start=belt_eval(q,0,0);bounds[0]=bounds[2]=start.x;bounds[1]=bounds[3]=start.y;*foot=0;
  for(int axis=0;axis<2;++axis){double roots[64];int count=belt_roots(q,axis,1,0,roots);
   for(int i=0;i<count;++i){belt_v p=belt_eval(q,roots[i],0);double v=axis?p.y:p.x;
    if(v<bounds[axis]){bounds[axis]=v;if(axis)*foot=roots[i];}if(v>bounds[axis+2])bounds[axis+2]=v;}}
 }
+#if defined(DANGO_BELT_PROFILE) && DANGO_BELT_PROFILE
+#undef belt_bounds
+static inline void belt_bounds(const double* q,double* bounds,double* foot){double start=belt_profile_now();belt_bounds_profile_impl(q,bounds,foot);belt_profile_finish(BELT_PROFILE_BOUNDS,start);}
+#endif
+
+/* Same y-axis initialization, root isolation and evaluation order as
+   belt_bounds. The caller retains x extrema only while all even q stay fixed. */
+#if defined(DANGO_BELT_PROFILE) && DANGO_BELT_PROFILE
+#define belt_bounds_y belt_bounds_y_profile_impl
+#endif
+static inline void belt_bounds_y(const double* q,double* bounds,double* foot){
+ belt_v start=belt_eval(q,0,0);bounds[1]=bounds[3]=start.y;*foot=0;
+ double roots[64];int count=belt_roots(q,1,1,0,roots);
+ for(int i=0;i<count;++i){belt_v p=belt_eval(q,roots[i],0);double v=p.y;
+  if(v<bounds[1]){bounds[1]=v;*foot=roots[i];}if(v>bounds[3])bounds[3]=v;}
+}
+#if defined(DANGO_BELT_PROFILE) && DANGO_BELT_PROFILE
+#undef belt_bounds_y
+static inline void belt_bounds_y(const double* q,double* bounds,double* foot){double start=belt_profile_now();belt_bounds_y_profile_impl(q,bounds,foot);belt_profile_finish(BELT_PROFILE_BOUNDS,start);}
+#endif
+#if defined(DANGO_BELT_PROFILE) && DANGO_BELT_PROFILE
+#define belt_cholesky belt_cholesky_profile_impl
+#endif
 static inline int belt_cholesky(double a[BELT_D][BELT_D],double* rhs,double* result){
  for(int i=0;i<BELT_D;++i)for(int j=0;j<=i;++j){double s=a[i][j];for(int k=0;k<j;++k)s-=a[i][k]*a[j][k];if(i==j){if(!(s>1e-16)||!isfinite(s))return 0;a[i][j]=sqrt(s);}else a[i][j]=s/a[j][j];}
  double y[BELT_D];for(int i=0;i<BELT_D;++i){double s=rhs[i];for(int j=0;j<i;++j)s-=a[i][j]*y[j];y[i]=s/a[i][i];}
  for(int i=BELT_D-1;i>=0;--i){double s=y[i];for(int j=i+1;j<BELT_D;++j)s-=a[j][i]*result[j];result[i]=s/a[i][i];}return 1;
 }
+#if defined(DANGO_BELT_PROFILE) && DANGO_BELT_PROFILE
+#undef belt_cholesky
+static inline int belt_cholesky(double a[BELT_D][BELT_D],double* rhs,double* result){double start=belt_profile_now();int status=belt_cholesky_profile_impl(a,rhs,result);belt_profile_finish(BELT_PROFILE_CHOLESKY,start);return status;}
+#endif
+
 #endif

@@ -15,6 +15,11 @@ internal static class Program
         var root = new DirectoryInfo(AppContext.BaseDirectory);
         while (root is not null && !File.Exists(Path.Combine(root.FullName, "Dango.slnx"))) root = root.Parent;
         if (root is null) return 2;
+        if (args.Contains("--belt-performance"))
+        {
+            try { return LabBeltPerformance.Run(root.FullName, args); }
+            catch (Exception error) { Console.Error.WriteLine(error.Message); return 10; }
+        }
         var module = Path.Combine(root.FullName, "artifacts", "physics-lab", "native", "Release", "dango_physics_lab.dll");
         var envelopeModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "envelope-native", "Release", "dango_physics_lab_envelope.dll");
         var regionModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "arc-native", "Release", "dango_physics_lab_half.dll");
@@ -24,10 +29,20 @@ internal static class Program
         var calibratedBeltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "belt-calibration-native", "Release", "dango_physics_lab_belt.dll");
         var originalJumpBeltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "belt-calibration-v2-native", "Release", "dango_physics_lab_belt.dll");
         var guardedBeltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "belt-rear-pressure-native", "Release", "dango_physics_lab_belt.dll");
+        var beltOverrides = args.Where(a => a.StartsWith("--belt-module=", StringComparison.Ordinal)).ToArray();
+        if (beltOverrides.Length > 0)
+        {
+            var requestedModule = beltOverrides[0]["--belt-module=".Length..];
+            var permitted = args.Contains("--belt-guard-experiments") || args.Contains("--belt-joint-validation") ||
+                args.Contains("--belt");
+            if (beltOverrides.Length != 1 || !permitted || !Path.IsPathFullyQualified(requestedModule))
+            { Console.Error.WriteLine("--belt-module requires one absolute DLL path with --belt, --belt-joint-validation or --belt-guard-experiments."); return 7; }
+            guardedBeltModule = Path.GetFullPath(requestedModule);
+        }
         var beltBatches = new[] { "--belt-experiments", "--belt-calibration", "--belt-candidates", "--belt-refinement", "--belt-dynamics", "--belt-guard-experiments", "--belt-joint-validation" };
         var jointValidation = args.Contains("--belt-joint-validation");
         var useBelt = args.Contains("--belt") || args.Any(beltBatches.Contains);
-        if (useBelt && (args.Any(a => a is not ("--belt" or "--belt-experiments" or "--belt-calibration" or "--belt-candidates" or "--belt-refinement" or "--belt-dynamics" or "--belt-guard-experiments" or "--belt-joint-validation" or "--smoke" or "--saved-appearance")) ||
+        if (useBelt && (args.Any(a => !a.StartsWith("--belt-module=", StringComparison.Ordinal) && a is not ("--belt" or "--belt-experiments" or "--belt-calibration" or "--belt-candidates" or "--belt-refinement" or "--belt-dynamics" or "--belt-guard-experiments" or "--belt-joint-validation" or "--smoke" or "--saved-appearance")) ||
             args.Count(beltBatches.Contains) > 1 || args.Any(beltBatches.Contains) && args.Contains("--smoke")))
         { Console.Error.WriteLine("闭合带请单独使用 --belt [--smoke] 或 --belt-experiments；本轮仅原始显示。"); return 7; }
         if (args.Contains("--arcs") || args.Contains("--arc-experiments"))
@@ -64,6 +79,7 @@ internal static class Program
             calibratedBeltNativeSha256 = File.Exists(calibratedBeltModule) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(calibratedBeltModule))) : null,
             originalJumpBeltNativeSha256 = File.Exists(originalJumpBeltModule) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(originalJumpBeltModule))) : null,
             guardedBeltNativeSha256 = File.Exists(guardedBeltModule) ? Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(guardedBeltModule))) : null,
+            guardedBeltModuleOverride = beltOverrides.Length == 1,
             initialGroundModel = useBelt ? "continuous-belt" : useEnvelope ? "continuous-envelope" : "discrete-nodes",
             initialDrive = useRegions ? "direction-half-region" : "core", regionDenominator = 2,
             initialDisplaySmoothing = useSmoothing, displaySmoothingTauSeconds = LabDisplaySmoothing.TimeConstantSeconds,
@@ -120,6 +136,7 @@ internal static class Program
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Dango", "settings.json");
             var beltWindow = new LabBeltWindow(regionModule, beltModule, guardedBeltModule, session, appearanceSettingsPath,
                 useTestAppearance ? "内置测试搭配 · 不代表日常佩戴" : "当前已保存外观 · 只读快照");
+            if (beltOverrides.Length == 1) beltWindow.Title = "团子·独立性能优化预览";
             if (args.Contains("--smoke")) beltWindow.Loaded += async (_, _) => await beltWindow.Smoke();
             return app.Run(beltWindow);
         }
