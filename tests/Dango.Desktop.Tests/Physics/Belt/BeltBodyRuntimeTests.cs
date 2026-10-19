@@ -115,6 +115,25 @@ public sealed class BeltBodyRuntimeTests
     }
 
     [TestMethod]
+    public async Task OldFifoDisplayCannotUnlockNewDraftOrCancelledSessionSave()
+    {
+        var settings = new Dango.Desktop.AppShell.ControlCenter.AppearanceSettingsSession(
+            Path.Combine(Path.GetTempPath(), "Dango-belt-runtime-tests", Guid.NewGuid().ToString("N"), "appearance.json"));
+        await using var runtime = new BeltBodyRuntime(_ => new FakeSession(), true);
+        await Configured(runtime); await runtime.AdvanceAsync();
+        settings.StageBody(new(110, 60, 40));
+        await runtime.ConfigureAsync(settings.DraftAppearance.Body, settings.BodyConfigurationRevision, settings.BodyEpoch);
+        var old = Take(runtime); Assert.IsTrue(runtime.MarkDisplayed(old));
+        Assert.IsFalse(settings.MarkBodyApplied(old.Body, old.ModelVersion, old.ConfigurationRevision, old.BodyEpoch));
+        Assert.IsTrue(settings.RequiresBodyPreview);
+        await runtime.AdvanceAsync(); var current = Take(runtime);
+        Assert.IsTrue(settings.MarkBodyApplied(current.Body, current.ModelVersion, current.ConfigurationRevision, current.BodyEpoch));
+        Assert.IsFalse(settings.RequiresBodyPreview);
+        settings.CancelPreview();
+        Assert.IsFalse(settings.MarkBodyApplied(current.Body, current.ModelVersion, current.ConfigurationRevision, current.BodyEpoch));
+    }
+
+    [TestMethod]
     public async Task ConfigurationFailureKeepsLastBodyAndDoesNotLatchPhysicsFault()
     {
         var native = new FakeSession { RejectConfiguration = true };
@@ -135,11 +154,13 @@ public sealed class BeltBodyRuntimeTests
         await using var runtime = new BeltBodyRuntime(_ => native, true);
         await Configured(runtime);
         Assert.IsFalse(await runtime.AdvanceAsync()); Assert.IsNotNull(Take(runtime).Error);
+        Assert.IsFalse(runtime.Metrics.Sleeping); Assert.IsNotNull(runtime.LastFailure);
         native.RejectStep = false;
         await runtime.ConfigureAsync(new(110, 50, 50), 1, 0);
         Assert.IsFalse(await runtime.ResumeAsync()); Assert.IsFalse(await runtime.AdvanceAsync());
         await runtime.ConfigureAsync(new(110, 50, 50), 2, 1);
         Assert.IsTrue(await runtime.AdvanceAsync()); Assert.IsNull(Take(runtime).Error);
+        Assert.IsNotNull(runtime.LastFailure, "Explicit recovery must retain the prior forensic failure snapshot.");
     }
 
     [TestMethod]
@@ -157,16 +178,46 @@ public sealed class BeltBodyRuntimeTests
     }
 
     [TestMethod]
-    public async Task InternalVelocityAndCoreCurveMotionPreventSleepEvenWithQuietCom()
+    public async Task InternalVelocityTrendAndCoreCurveMotionPreventSleepEvenWithQuietCom()
     {
-        var native = new FakeSession { InternalVelocity = .0006 };
+        var native = new FakeSession { VelocityDrift = .00001 };
         await using var runtime = new BeltBodyRuntime(_ => native, true);
         await Configured(runtime);
         for (var i = 0; i < 150; i++) { await runtime.AdvanceAsync(); Take(runtime); }
         Assert.IsFalse(runtime.Metrics.Sleeping);
-        native.InternalVelocity = 0; native.MoveCurve = true;
+        native.VelocityDrift = 0; native.MoveCurve = true;
         for (var i = 0; i < 150; i++) { await runtime.AdvanceAsync(); Take(runtime); }
         Assert.IsFalse(runtime.Metrics.Sleeping);
+    }
+
+    [TestMethod]
+    [DataRow("internal-q")]
+    [DataRow("velocity-window")]
+    [DataRow("airborne")]
+    [DataRow("no-contact")]
+    [DataRow("jump-cooldown")]
+    public async Task StrictSleepCounterexamplesRejectQuietCom(string reason)
+    {
+        var native = new FakeSession
+        {
+            MoveInternalQ = reason == "internal-q", VelocityDrift = reason == "velocity-window" ? .00001 : 0,
+            Airborne = reason == "airborne", NoContact = reason == "no-contact", UnexpiredCooldown = reason == "jump-cooldown",
+        };
+        await using var runtime = new BeltBodyRuntime(_ => native, true);
+        await Configured(runtime);
+        for (var i = 0; i < 180; i++) { Assert.IsTrue(await runtime.AdvanceAsync()); Take(runtime); }
+        Assert.IsFalse(runtime.Metrics.Sleeping);
+    }
+
+    [TestMethod]
+    public async Task ConstantSupportedContactVelocityResidualIsPreservedAndMaySleep()
+    {
+        var native = new FakeSession { InternalVelocity = .06 };
+        await using var runtime = new BeltBodyRuntime(_ => native, true);
+        await Configured(runtime); await Stable(runtime);
+        Assert.AreEqual(.06, native.InternalVelocity);
+        runtime.PublishInput(new(InputActive: true)); Assert.IsTrue(await runtime.AdvanceAsync());
+        Assert.AreEqual(.06, Take(runtime).DebugState![48]);
     }
 
     [TestMethod]
@@ -260,6 +311,36 @@ public sealed class BeltBodyRuntimeTests
     }
 
     [TestMethod]
+    public async Task AutomaticSleepingOwnerHasNoTimerPollAndWakeDoesNotCatchUpWallTime()
+    {
+        var native = new FakeSession();
+        await using var runtime = new BeltBodyRuntime(_ => native);
+        await Configured(runtime);
+        long waits = 0; runtime.BeforeSleepWait = () => Interlocked.Increment(ref waits);
+        Assert.IsTrue(await runtime.ResumeAsync());
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        while (!runtime.Metrics.Sleeping && System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalSeconds < 4)
+        {
+            while (runtime.TryDequeue(out var frame)) Assert.IsNull(frame!.Error);
+            await Task.Delay(8);
+        }
+        Assert.IsTrue(runtime.Metrics.Sleeping);
+        while (runtime.TryDequeue(out _)) { }
+        await Task.Delay(20);
+        var calls = runtime.Metrics.NativeStepCalls; var entries = Interlocked.Read(ref waits);
+        await Task.Delay(150);
+        Assert.AreEqual(calls, runtime.Metrics.NativeStepCalls);
+        Assert.AreEqual(entries, Interlocked.Read(ref waits), "Sleeping owner must not poll on a timeout.");
+        runtime.PublishInput(new(JumpPressed: true, InputActive: true)); runtime.PublishInput(default);
+        BeltBodySnapshot? awake = null; started = System.Diagnostics.Stopwatch.GetTimestamp();
+        while (awake is null && System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds < 300)
+        { runtime.TryDequeue(out awake); if (awake is null) await Task.Delay(2); }
+        Assert.IsNotNull(awake); Assert.IsTrue(awake.ActualInput.JumpPressed);
+        Assert.AreEqual(calls + 1, (long)awake.Tick);
+        Assert.AreEqual(0d, runtime.Metrics.DiscardedSeconds);
+    }
+
+    [TestMethod]
     public async Task ResumeUsesAutomaticFixedStepCadenceWithoutUiAdvanceCalls()
     {
         await using var runtime = new BeltBodyRuntime(_ => new FakeSession());
@@ -276,8 +357,8 @@ public sealed class BeltBodyRuntimeTests
         internal readonly List<int> Threads = [];
         internal readonly ManualResetEventSlim Entered = new(), Release = new();
         internal int Disposals, Reconfigurations, Calls, BoundsChanges;
-        internal bool BlockStep, RejectConfiguration, RejectStep, MoveCurve;
-        internal double InternalVelocity;
+        internal bool BlockStep, RejectConfiguration, RejectStep, MoveCurve, MoveInternalQ, Airborne, NoContact, UnexpiredCooldown;
+        internal double InternalVelocity, VelocityDrift;
         public void Reconfigure(DangoBodyControls body)
         {
             Threads.Add(Environment.CurrentManagedThreadId);
@@ -290,9 +371,11 @@ public sealed class BeltBodyRuntimeTests
             Threads.Add(Environment.CurrentManagedThreadId); Calls++; Entered.Set();
             if (BlockStep) Release.Wait(TimeSpan.FromSeconds(3));
             if (RejectStep) throw new InvalidOperationException("rejected physical tick");
-            var stats = new float[64]; stats[14] = 1; stats[25] = 1;
+            var stats = new float[64]; stats[14] = Airborne ? 0 : 1; stats[25] = NoContact ? 0 : 1;
             var curve = new float[512]; if (MoveCurve) curve[0] = Calls * .00002f;
-            var state = new double[200]; state[0] = 1; state[1] = 200; state[38 + 10] = InternalVelocity; state[82] = 1;
+            var state = new double[200]; state[0] = 1; state[1] = 200; state[38 + 10] = InternalVelocity + Calls * VelocityDrift; state[82] = Airborne ? 0 : 1;
+            state[79] = UnexpiredCooldown ? .1 : .45 + Calls * DangoBeltWorld.FixedDt; state[125] = .45;
+            if (MoveInternalQ) state[12] = Calls * .00002;
             return new(new(new float[68], curve, stats), state, null, null, null, null, null, null, null, null, 0, 0);
         }
         public void Dispose() { Threads.Add(Environment.CurrentManagedThreadId); Disposals++; }

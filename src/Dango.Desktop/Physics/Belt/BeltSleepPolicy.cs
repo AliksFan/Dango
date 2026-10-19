@@ -3,50 +3,72 @@ using Dango.Physics;
 namespace Dango.Desktop.Physics.Belt;
 
 /// <summary>
-/// Candidate single-body sleep gate. All 36 generalized velocities and coordinates are checked,
-/// together with actual core/curve motion: a quiet COM alone can never put a deforming body to sleep.
-/// These freeze solver state; they never zero velocities or alter native contact caches.
+/// Supported equilibrium, not a low-COM-speed shortcut. Every generalized q and v, the entire
+/// displayed curve, and the core must remain in the frozen 120-tick envelope. Contact projection
+/// can leave a constant generalized v residual while accepted positions remain stationary; the
+/// separately approved trend contract preserves that residual, including its exact bytes.
 /// </summary>
 internal sealed class BeltSleepPolicy
 {
     internal const int StableTicksRequired = 120;
-    internal const double MaximumGeneralizedSpeed = .0005;
+    internal const double MaximumVelocityTickDelta = .0005;
+    internal const double MaximumVelocityWindowDelta = .0005;
     internal const double MaximumTickDelta = .00001;
     internal const double MaximumWindowDelta = .0001;
-    private double[]? previous, reference;
-    private float[]? previousCurve, referenceCurve;
-    private double previousCoreX, previousCoreY, referenceCoreX, referenceCoreY;
+    private double[]? previous, minimum, maximum;
+    private float[]? previousCurve, minimumCurve, maximumCurve;
+    private double previousCoreX, previousCoreY, minimumCoreX, minimumCoreY, maximumCoreX, maximumCoreY;
     private int stable;
 
     internal void Reset()
     {
-        previous = reference = null; previousCurve = referenceCurve = null; stable = 0;
+        previous = minimum = maximum = null;
+        previousCurve = minimumCurve = maximumCurve = null; stable = 0;
     }
 
     internal bool Observe(DangoBeltFrame frame, double[] state, DangoBeltInput input, bool healthy)
     {
         if (!healthy || Active(input) || !frame.Grounded || frame.ActiveContacts < 1 || state.Length != 200 ||
-            state.Any(x => !double.IsFinite(x)) || state[82] != 1 || state[83] != 0 ||
-            state[78] != 0 || state[79] > 0 ||
-            Enumerable.Range(38, 36).Any(i => Math.Abs(state[i]) > MaximumGeneralizedSpeed))
+            state.Any(x => !double.IsFinite(x)) || state[82] != 1 || state[83] != 0 || state[78] != 0 ||
+            // Snapshot79 is elapsed since jump, not time remaining. Snapshot125 is
+            // cfg.jump_cooldown_seconds (config scalars start89, cooldown scalar36).
+            state[79] < state[125])
         { Reset(); return false; }
 
-        if (previous is null) { CaptureReference(); CapturePrevious(); return false; }
-        var tickStable = Enumerable.Range(2, 36).All(i => Math.Abs(state[i] - previous[i]) <= MaximumTickDelta) &&
-            frame.Curve.Zip(previousCurve!).All(x => Math.Abs(x.First - x.Second) <= MaximumTickDelta) &&
-            Math.Abs(frame.CoreX - previousCoreX) <= MaximumTickDelta && Math.Abs(frame.CoreY - previousCoreY) <= MaximumTickDelta;
-        var windowStable = Enumerable.Range(2, 36).All(i => Math.Abs(state[i] - reference![i]) <= MaximumWindowDelta) &&
-            frame.Curve.Zip(referenceCurve!).All(x => Math.Abs(x.First - x.Second) <= MaximumWindowDelta) &&
-            Math.Abs(frame.CoreX - referenceCoreX) <= MaximumWindowDelta && Math.Abs(frame.CoreY - referenceCoreY) <= MaximumWindowDelta;
-        if (!tickStable || !windowStable) { stable = 0; CaptureReference(); }
-        else stable++;
+        if (previous is null) { CaptureEnvelope(); CapturePrevious(); return false; }
+        var inEnvelope = true;
+        for (var i = 2; i < 74; i++)
+        {
+            var tickBound = i < 38 ? MaximumTickDelta : MaximumVelocityTickDelta;
+            var windowBound = i < 38 ? MaximumWindowDelta : MaximumVelocityWindowDelta;
+            inEnvelope &= Math.Abs(state[i] - previous[i]) <= tickBound &&
+                Math.Max(maximum![i], state[i]) - Math.Min(minimum![i], state[i]) <= windowBound;
+        }
+        for (var i = 0; i < frame.Curve.Length; i++)
+            inEnvelope &= Math.Abs(frame.Curve[i] - previousCurve![i]) <= MaximumTickDelta &&
+                Math.Max(maximumCurve![i], frame.Curve[i]) - Math.Min(minimumCurve![i], frame.Curve[i]) <= MaximumWindowDelta;
+        inEnvelope &= Math.Abs(frame.CoreX - previousCoreX) <= MaximumTickDelta && Math.Abs(frame.CoreY - previousCoreY) <= MaximumTickDelta &&
+            Math.Max(maximumCoreX, frame.CoreX) - Math.Min(minimumCoreX, frame.CoreX) <= MaximumWindowDelta &&
+            Math.Max(maximumCoreY, frame.CoreY) - Math.Min(minimumCoreY, frame.CoreY) <= MaximumWindowDelta;
+
+        if (!inEnvelope) { stable = 0; CaptureEnvelope(); }
+        else
+        {
+            stable++;
+            for (var i = 2; i < 74; i++) { minimum![i] = Math.Min(minimum[i], state[i]); maximum![i] = Math.Max(maximum[i], state[i]); }
+            for (var i = 0; i < frame.Curve.Length; i++)
+            { minimumCurve![i] = Math.Min(minimumCurve[i], frame.Curve[i]); maximumCurve![i] = Math.Max(maximumCurve[i], frame.Curve[i]); }
+            minimumCoreX = Math.Min(minimumCoreX, frame.CoreX); maximumCoreX = Math.Max(maximumCoreX, frame.CoreX);
+            minimumCoreY = Math.Min(minimumCoreY, frame.CoreY); maximumCoreY = Math.Max(maximumCoreY, frame.CoreY);
+        }
         CapturePrevious();
         return stable >= StableTicksRequired;
 
-        void CaptureReference()
+        void CaptureEnvelope()
         {
-            reference = (double[])state.Clone(); referenceCurve = (float[])frame.Curve.Clone();
-            referenceCoreX = frame.CoreX; referenceCoreY = frame.CoreY;
+            minimum = (double[])state.Clone(); maximum = (double[])state.Clone();
+            minimumCurve = (float[])frame.Curve.Clone(); maximumCurve = (float[])frame.Curve.Clone();
+            minimumCoreX = maximumCoreX = frame.CoreX; minimumCoreY = maximumCoreY = frame.CoreY;
         }
         void CapturePrevious()
         {
