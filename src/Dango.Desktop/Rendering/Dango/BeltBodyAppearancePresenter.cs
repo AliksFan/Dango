@@ -75,6 +75,9 @@ public sealed class BeltBodyAppearancePresenter : IDisposable
     private AttachmentShapeGeometry? currentShape;
     private readonly List<AccessoryMeshFrame> accessoryFrames = [];
     private AttachmentPoint[]? cachedPoints;
+    private long? cachedPhysicalTick;
+    private IReadOnlyList<BeltBodyBoundaryPoint>? cachedBoundary;
+    private double cachedCoreX, cachedCoreY;
     private PhysicsPresentationFrame? cachedPresentation;
     private AttachmentToken comparisonToken;
 
@@ -150,6 +153,7 @@ public sealed class BeltBodyAppearancePresenter : IDisposable
     public int EquippedCount { get; }
     public int RenderedAccessoryCount => equipped.Count(entry => entry.Visual.Frame is not null);
     public string Status => runtimeError is null ? loadStatus : loadStatus + "；" + runtimeError;
+    public string? RuntimeError => runtimeError;
     public string EyeDiagnostic { get; private set; } = "眼睛等待物理帧";
     public string MeshDiagnostic { get; private set; } = "配饰等待物理帧";
     /// <summary>Optional presentation timings in milliseconds. No samples or clock reads when unset.</summary>
@@ -217,7 +221,8 @@ public sealed class BeltBodyAppearancePresenter : IDisposable
         body.Fill = Brush(configuration.BodyColor);
         leftEye.Fill = rightEye.Fill = Brush(configuration.EyeColor);
         motion.SetEyeLayout(configuration.EyeLayout);
-        if (currentBody is not null && currentShape is not null) RefreshStill();
+        // Layout joins the existing motion state on its next presentation tick.
+        // A color edit must not replace a sleeping/blinking comparison with neutral eyes.
     }
 
     public bool SubmitAttachment(AttachmentIntent intent)
@@ -243,22 +248,27 @@ public sealed class BeltBodyAppearancePresenter : IDisposable
             !double.IsFinite(frame.Horizontal) || Math.Abs(frame.Horizontal) > 1)
             throw new ArgumentOutOfRangeException(nameof(frame));
         ArgumentNullException.ThrowIfNull(frame.Boundary);
-        var points = frame.Boundary.Select(point => new AttachmentPoint(
+        var unchangedPhysicalSnapshot = cachedPoints is not null && frame.PhysicalTick is not null &&
+            frame.PhysicalTick == cachedPhysicalTick && ReferenceEquals(frame.Boundary, cachedBoundary) &&
+            frame.CoreX == cachedCoreX && frame.CoreY == cachedCoreY;
+        var points = unchangedPhysicalSnapshot ? cachedPoints! : frame.Boundary.Select(point => new AttachmentPoint(
             (point.X - frame.CoreX) * WorldToCanvas / 160,
             (point.Y - frame.CoreY) * WorldToCanvas / 160)).ToArray();
-        var area = points.Select((point, index) =>
+        var area = unchangedPhysicalSnapshot ? 1 : points.Select((point, index) =>
         {
             var next = points[(index + 1) % points.Length];
             return point.X * next.Y - point.Y * next.X;
         }).Sum();
         if (area < 0) Array.Reverse(points);
-        var shapeChanged = cachedPoints is null || !points.AsSpan().SequenceEqual(cachedPoints);
+        var shapeChanged = !unchangedPhysicalSnapshot && (cachedPoints is null || !points.AsSpan().SequenceEqual(cachedPoints));
         var shape = shapeChanged ? AttachmentShapeGeometry.FromBoundary(points) : currentShape!;
         var presentation = shapeChanged ? new PhysicsPresentationFrame(true,
             points.Select(point => PresentationPoint.FromSampledBoundary(point.X * 160 / WorldToCanvas, point.Y * 160 / WorldToCanvas)),
             new(new(0, 0), 0), new(new(0, 0), 0), PhysicsPresentationFallbackReason.None,
-            new(PhysicsPresentationBackend.Box2D, 1, PhysicsPresentationDiagnosticCode.SoftBodyActive)) : cachedPresentation!;
+            new(PhysicsPresentationBackend.ContinuousBelt, 1, PhysicsPresentationDiagnosticCode.ContinuousBeltActive)) : cachedPresentation!;
         if (shapeChanged) { cachedPoints = points; cachedPresentation = presentation; }
+        cachedPhysicalTick = frame.PhysicalTick; cachedBoundary = frame.Boundary;
+        cachedCoreX = frame.CoreX; cachedCoreY = frame.CoreY;
         if (frame.Horizontal < 0) facing = DangoFacingDirection.Left;
         else if (frame.Horizontal > 0) facing = DangoFacingDirection.Right;
         var eligible = frame.Horizontal == 0 && !frame.Down && !frame.Stretch && !frame.Jump && !frame.Drag &&

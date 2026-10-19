@@ -22,6 +22,7 @@ public partial class App : System.Windows.Application
         var acceptanceSettingsFile = ResolveLocalInstallAcceptanceSettingsFile(e.Args);
         var faceReviewSettingsFile = ResolveFaceReviewSettingsFile(e.Args);
         var accessoryReviewSettingsFile = ResolveAccessoryReviewSettingsFile(e.Args);
+        var beltBodySettingsFile = ResolveBeltBodyReviewSettingsFile(e.Args);
 
         var homeUiReview = e.Args.Contains("--home-ui-review", StringComparer.Ordinal);
         var settingsUiReview = e.Args.Contains("--settings-ui-review", StringComparer.Ordinal);
@@ -83,9 +84,10 @@ public partial class App : System.Windows.Application
         var desktopPetRoomReview = e.Args.Contains("--desktop-pet-room-review", StringComparer.Ordinal);
         var faceReview = e.Args.Contains("--face-review", StringComparer.Ordinal);
         var accessoryReview = e.Args.Contains("--accessory-review", StringComparer.Ordinal);
+        var beltBodyReview = e.Args.Contains("--belt-body-review", StringComparer.Ordinal);
         if ((physicsReview ? 1 : 0) + (eyeHatReview ? 1 : 0) + (unifiedHomeReview ? 1 : 0) +
             (porchReview ? 1 : 0) + (localRoomReview ? 1 : 0) + (faceReview ? 1 : 0) +
-            (desktopPetRoomReview ? 1 : 0) + (accessoryReview ? 1 : 0) > 1)
+            (desktopPetRoomReview ? 1 : 0) + (accessoryReview ? 1 : 0) + (beltBodyReview ? 1 : 0) > 1)
             throw new ArgumentException("Choose one isolated review mode.");
         var instanceName = ResolveSingleInstanceName(e.Args);
         singleInstanceCoordinator = SingleInstanceCoordinator.TryBecomePrimary(
@@ -102,12 +104,13 @@ public partial class App : System.Windows.Application
 
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         applicationHost = new DangoApplicationHost(physicsReview, eyeHatReview,
-            settingsFile: accessoryReviewSettingsFile ?? faceReviewSettingsFile ?? acceptanceSettingsFile,
+            settingsFile: beltBodySettingsFile ?? accessoryReviewSettingsFile ?? faceReviewSettingsFile ?? acceptanceSettingsFile,
             isolatedUnifiedHomeReview: unifiedHomeReview,
             isolatedPorchReview: porchReview,
             isolatedLocalRoomReview: localRoomReview || accessoryReview,
             isolatedFaceReview: faceReview,
-            isolatedDesktopPetRoomReview: desktopPetRoomReview);
+            isolatedDesktopPetRoomReview: desktopPetRoomReview,
+            isolatedBeltBodyReview: beltBodyReview);
         applicationHost.Start();
         if (desktopPetRoomReview) applicationHost.EnterDesktopPetRoom();
         if (physicsReview || eyeHatReview) applicationHost.ShowControlCenter();
@@ -140,6 +143,16 @@ public partial class App : System.Windows.Application
         if (args.Length != 3 || args[0] != mode || args[1] != flag || string.IsNullOrWhiteSpace(args[2]))
             throw new ArgumentException("Accessory review requires only its explicit owned settings directory.");
         return ResolveOwnedIsolatedSettingsFile(args[2], ".dango-accessory-review.json", "accessoryReviewFormat");
+    }
+
+    internal static string? ResolveBeltBodyReviewSettingsFile(string[] args)
+    {
+        const string mode = "--belt-body-review";
+        const string flag = "--belt-body-review-settings";
+        if (!args.Contains(mode, StringComparer.Ordinal) && !args.Contains(flag, StringComparer.Ordinal)) return null;
+        if (args.Length != 3 || args[0] != mode || args[1] != flag || string.IsNullOrWhiteSpace(args[2]))
+            throw new ArgumentException("Belt body review requires only its explicit owned fictional settings directory.");
+        return ResolveOwnedIsolatedSettingsFile(args[2], ".dango-belt-body-review.json", "beltBodyReviewFormat");
     }
 
     private static string ResolveOwnedIsolatedSettingsFile(string directory, string ownerFile, string formatProperty)
@@ -196,13 +209,14 @@ public partial class App : System.Windows.Application
     {
         string[] flags = ["--home-ui-review", "--settings-ui-review", "--physics-host-review",
             "--eye-hat-review", "--unified-live-home-review", "--porch-scene-review", "--local-room-review", "--face-review",
-            "--desktop-pet-room-review", "--accessory-review"];
+            "--desktop-pet-room-review", "--accessory-review", "--belt-body-review"];
         if (flags.Count(flag => args.Contains(flag, StringComparer.Ordinal)) > 1)
             throw new ArgumentException("Choose one isolated review mode.");
     }
 
     internal static string ResolveSingleInstanceName(string[] args) =>
-        args.Contains("--accessory-review", StringComparer.Ordinal) ? SingleInstanceName + ".AccessoryReview"
+        args.Contains("--belt-body-review", StringComparer.Ordinal) ? SingleInstanceName + ".BeltBodyReview"
+        : args.Contains("--accessory-review", StringComparer.Ordinal) ? SingleInstanceName + ".AccessoryReview"
         : args.Contains("--face-review", StringComparer.Ordinal) ? SingleInstanceName + ".FaceReview"
         : args.Contains("--desktop-pet-room-review", StringComparer.Ordinal) ? SingleInstanceName + ".DesktopPetRoomReview"
         : args.Contains("--local-room-review", StringComparer.Ordinal) ? SingleInstanceName + ".LocalRoomReview"

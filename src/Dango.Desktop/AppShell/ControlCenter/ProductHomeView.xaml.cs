@@ -85,6 +85,11 @@ public partial class ProductHomeView : UserControl
 
     public void ShowEditor(HomeEditor editor)
     {
+        if (beltRuntime is not null && editor == HomeEditor.Wardrobe)
+        {
+            SetNotice("本次验收：捏脸与身体", "已保存配饰会跟随新身体；配饰编辑与房间接入另批验证。");
+            return;
+        }
         if (IsInPorch || IsDangoAway) return;
         ClearLiveDirectionalInput();
         if (IsEditing && SelectedEditor == HomeEditor.Face) CancelAppearancePreview();
@@ -320,6 +325,7 @@ public partial class ProductHomeView : UserControl
     }
     private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        if (HandleBeltKey(e, true)) return;
         if (IsRoomDialogOpen)
         {
             ClearLiveDirectionalInput();
@@ -387,6 +393,7 @@ public partial class ProductHomeView : UserControl
 
     private void OnPreviewKeyUp(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        if (HandleBeltKey(e, false)) return;
         if (IsRoomDialogOpen) { ClearLiveDirectionalInput(); return; }
         if (IsAccessoryPreview)
         {
@@ -402,6 +409,11 @@ public partial class ProductHomeView : UserControl
 
     private void EnterPorch()
     {
+        if (beltRuntime is not null)
+        {
+            SetNotice("本次验收：单人首页与捏脸", "新身体尚未接入房间。当前候选只验证捏脸、实时调节与身体休眠。");
+            return;
+        }
         if (IsInPorch || IsDangoAway) return;
         ClearLiveDirectionalInput();
         if (IsEditing) CloseEditor(focusStage: false);
@@ -489,7 +501,7 @@ public partial class ProductHomeView : UserControl
     {
         if (!IsEditing || SelectedEditor != HomeEditor.Face || sender is not Button { Tag: string color }) return;
         var value = Dango.Desktop.Rendering.Visuals.OpaqueSrgbColor.Parse(color);
-        StageAppearance(new(value, DraftAppearance.EyeColor, DraftAppearance.EyeLayout));
+        StageAppearance(DraftAppearance.WithBodyColor(value));
         Stage.Focus();
     }
 

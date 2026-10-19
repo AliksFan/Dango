@@ -9,6 +9,7 @@ public enum PhysicsPresentationBackend
     DeterministicFake,
     Box2D,
     AuthoredFallback,
+    ContinuousBelt,
 }
 
 public enum PhysicsPresentationFallbackReason
@@ -36,6 +37,7 @@ public enum PhysicsPresentationDiagnosticCode
     Box2DContractProbe,
     SoftBodyActive,
     Fallback,
+    ContinuousBeltActive,
 }
 
 public readonly record struct SoftBodyConfiguration

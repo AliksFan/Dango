@@ -79,6 +79,21 @@ public sealed class BeltBodyAppearancePresenterTests
         Assert.AreSame(first.Shape, presenter.Inspect().Shape);
     }
 
+    [STATestMethod]
+    public void ColorAndEyeLayoutEditsPreserveSleepingComparison()
+    {
+        using var presenter = new BeltBodyAppearancePresenter(DangoAppearanceConfiguration.Default);
+        presenter.Update(Frame(0));
+        Assert.IsTrue(presenter.SubmitAttachment(new SetEyes(EyeSelection.Both, 0, EyeShape.Sleeping, 1)));
+        for (var i = 1; i <= 60; i++) presenter.Update(Frame(i));
+        var sleeping = presenter.Inspect().Body!.Attachments!.Face.Left.Openness;
+        Assert.IsLessThan(.01, sleeping);
+        presenter.SetAppearance(DangoAppearanceConfiguration.Default.WithBodyColor(OpaqueSrgbColor.Parse("#112233")).WithEyeLayout(new EyeLayoutParameters(120)));
+        Assert.AreEqual(sleeping, presenter.Inspect().Body!.Attachments!.Face.Left.Openness, 1e-9, "A live color/layout edit must not repaint neutral eyes.");
+        presenter.Update(Frame(61));
+        Assert.IsLessThan(.01, presenter.Inspect().Body!.Attachments!.Face.Left.Openness);
+    }
+
     [TestMethod]
     public void BeltGaitAllowsAcceptedShapeRangeButKeepsTenPercentAreaGate()
     {

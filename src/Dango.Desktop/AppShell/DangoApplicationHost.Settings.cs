@@ -8,6 +8,8 @@ internal sealed partial class DangoApplicationHost
 {
     internal ProductSettingsSceneSnapshot ReadProductSettingsScene()
     {
+        if (beltBodyReview) return controlCenterWindow?.ProductHome.ReadBeltBodySettingsScene()
+            ?? new("新身体 · 单人捏脸", "等待窗口启动");
         var pending = LocalHandoffPending;
         var room = localRoomSelected;
         var presentation = roomHandoff.Pending ? roomHandoff.Target
@@ -47,6 +49,7 @@ internal sealed partial class DangoApplicationHost
 
     private void ReinitializeSceneFromSettings()
     {
+        if (beltBodyReview) { controlCenterWindow?.ProductHome.RecoverBeltBody(); return; }
         if (!ReadProductSettingsScene().CanReinitialize) return;
         if (localRoomSelected) { RecoverLocalRoom(); return; }
         // A home/porch failure must not enter the remembered room as a side effect.

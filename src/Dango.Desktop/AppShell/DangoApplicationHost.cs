@@ -28,6 +28,7 @@ internal sealed partial class DangoApplicationHost : IDisposable
     private readonly bool eyeHatReview;
     private readonly bool porchReview;
     private readonly bool faceReview;
+    private readonly bool beltBodyReview;
     private readonly ApplicationUiMode uiMode;
     private readonly DispatcherTimer geometrySaveTimer = new() { Interval = TimeSpan.FromMilliseconds(300) };
     private ControlCenterWindow? controlCenterWindow;
@@ -41,14 +42,18 @@ internal sealed partial class DangoApplicationHost : IDisposable
     public DangoApplicationHost(bool isolatedPhysicsReview = false, bool isolatedEyeHatReview = false,
         string? settingsFile = null, string? nativeLibraryPath = null, ControlCenterWindowSettingsStore? settingsStore = null,
         bool isolatedUnifiedHomeReview = false, bool isolatedPorchReview = false, bool isolatedLocalRoomReview = false,
-        bool isolatedFaceReview = false, bool isolatedDesktopPetRoomReview = false)
+        bool isolatedFaceReview = false, bool isolatedDesktopPetRoomReview = false, bool isolatedBeltBodyReview = false)
     {
         if ((isolatedPhysicsReview ? 1 : 0) + (isolatedEyeHatReview ? 1 : 0) +
             (isolatedUnifiedHomeReview ? 1 : 0) + (isolatedPorchReview ? 1 : 0) +
-            (isolatedLocalRoomReview ? 1 : 0) + (isolatedFaceReview ? 1 : 0) + (isolatedDesktopPetRoomReview ? 1 : 0) > 1)
+            (isolatedLocalRoomReview ? 1 : 0) + (isolatedFaceReview ? 1 : 0) + (isolatedDesktopPetRoomReview ? 1 : 0) +
+            (isolatedBeltBodyReview ? 1 : 0) > 1)
             throw new ArgumentException("Choose one isolated review mode.");
         porchReview = isolatedPorchReview;
         faceReview = isolatedFaceReview;
+        beltBodyReview = isolatedBeltBodyReview;
+        if (beltBodyReview && settingsFile is null)
+            throw new ArgumentException("Belt body candidate requires explicitly owned isolated settings.", nameof(settingsFile));
         eyeHatReview = isolatedEyeHatReview;
         uiMode = isolatedPhysicsReview || isolatedEyeHatReview ? ApplicationUiMode.DeveloperReview : ApplicationUiMode.Product;
         sceneSession = new DesktopSceneSession();
@@ -104,8 +109,8 @@ internal sealed partial class DangoApplicationHost : IDisposable
         started = true;
         // Establish recovery entry points before touching the native module.
         trayIcon = new DangoTrayIcon(commandController, ShowControlCenter, ShowDiagnostics, RequestExit,
-            uiMode == ApplicationUiMode.Product && !porchReview && !faceReview ? CreateLocalRoomTrayActions() : null);
-        var initialized = stackedRuntime.TryInitialize();
+            uiMode == ApplicationUiMode.Product && !porchReview && !faceReview && !beltBodyReview ? CreateLocalRoomTrayActions() : null);
+        var initialized = !beltBodyReview && stackedRuntime.TryInitialize();
         if (uiMode == ApplicationUiMode.Product)
         {
             ShowControlCenter();
@@ -176,6 +181,7 @@ internal sealed partial class DangoApplicationHost : IDisposable
         geometrySaveTimer.Stop();
         if (!exitSettingsHandled) SaveSettings();
         controlCenterWindow?.ProductHome.CancelAppearancePreview();
+        controlCenterWindow?.ProductHome.UnbindBeltBody();
         disposed = true;
         DisposeLocalRoom();
         trayIcon?.Dispose();
@@ -206,11 +212,13 @@ internal sealed partial class DangoApplicationHost : IDisposable
         {
             controlCenterWindow.ProductHome.BindAppearance(appearance);
             controlCenterWindow.ProductHome.BindAccessories(accessories);
-            controlCenterWindow.ProductHome.BindLiveScene(sceneSession, stackedRuntime);
+            if (beltBodyReview) controlCenterWindow.ProductHome.BindBeltBody(settingsPath);
+            else controlCenterWindow.ProductHome.BindLiveScene(sceneSession, stackedRuntime);
             controlCenterWindow.ProductHome.SetPorchReviewMode(porchReview);
-            if (!porchReview && !faceReview) BindLocalRoom(controlCenterWindow);
+            if (!porchReview && !faceReview && !beltBodyReview) BindLocalRoom(controlCenterWindow);
             controlCenterWindow.BindSettingsScene(ReadProductSettingsScene, RestoreRoomDisplayFromSettings, ReinitializeSceneFromSettings);
             if (porchReview) controlCenterWindow.Title = "Dango · 门廊 E1 场景预览";
+            if (beltBodyReview) controlCenterWindow.Title = "Dango · 新身体接入验收";
         }
         controlCenterWindow.OverviewPresented += () =>
         {

@@ -317,7 +317,7 @@
                     <Viewbox x:Name="PetPreview" Width="240" Height="180" HorizontalAlignment="Center" VerticalAlignment="Top" Stretch="Fill" RenderTransformOrigin="0.5,0.5"
                              ToolTip="未绑定实时场景的界面预览" AutomationProperties.Name="团子实时预览">
                         <Viewbox.RenderTransform><ScaleTransform x:Name="PetScale" ScaleX="1" ScaleY="1" /></Viewbox.RenderTransform>
-                        <Canvas x:Name="LiveSceneCanvas" Width="160" Height="120" ClipToBounds="False">
+                        <Canvas x:Name="LiveSceneCanvas" Width="160" Height="120" ClipToBounds="False" Background="Transparent">
                             <Canvas x:Name="LiveEntityLayer" Width="160" Height="120" ClipToBounds="False">
                                 <visuals:DeformableDangoVisual x:Name="LiveDangoVisual" ShowHat="False" IsHitTestVisible="False" />
                                 <visuals:DangoHatVisual x:Name="LiveDangoHat" IsHitTestVisible="False" />
@@ -417,6 +417,17 @@
                                 <Slider x:Name="EyeSpacingSlider" Minimum="12" Maximum="34" Value="24.5" TickFrequency="0.5" SmallChange="0.5" LargeChange="2" IsSnapToTickEnabled="True" ValueChanged="OnEyeSliderChanged" Margin="0,6,0,2" AutomationProperties.Name="眼距" />
                                 <Grid><TextBlock Text="近" FontSize="11" /><TextBlock Text="远" FontSize="11" HorizontalAlignment="Right" /></Grid>
                             </StackPanel>
+                            <StackPanel x:Name="AppearanceBodyPanel" Visibility="Collapsed">
+                                <TextBlock x:Name="BodySizeValue" Text="大小 · 100%" />
+                                <Slider x:Name="BodySizeSlider" Minimum="80" Maximum="120" Value="100" TickFrequency="1" SmallChange="1" LargeChange="5" IsSnapToTickEnabled="True" ValueChanged="OnBodySliderChanged" Margin="0,6,0,2" AutomationProperties.Name="身体大小" />
+                                <Grid Margin="0,0,0,14"><TextBlock Text="80%" FontSize="11" /><TextBlock Text="120%" FontSize="11" HorizontalAlignment="Right" /></Grid>
+                                <TextBlock x:Name="BodySoftnessValue" Text="柔软度 · 50" />
+                                <Slider x:Name="BodySoftnessSlider" Minimum="0" Maximum="100" Value="50" TickFrequency="1" SmallChange="1" LargeChange="10" IsSnapToTickEnabled="True" ValueChanged="OnBodySliderChanged" Margin="0,6,0,2" AutomationProperties.Name="身体柔软度" />
+                                <Grid Margin="0,0,0,14"><TextBlock Text="硬" FontSize="11" /><TextBlock Text="软" FontSize="11" HorizontalAlignment="Right" /></Grid>
+                                <TextBlock x:Name="BodyLandingBuildValue" Text="落地体型 · 50" />
+                                <Slider x:Name="BodyLandingBuildSlider" Minimum="0" Maximum="100" Value="50" TickFrequency="1" SmallChange="1" LargeChange="10" IsSnapToTickEnabled="True" ValueChanged="OnBodySliderChanged" Margin="0,6,0,2" AutomationProperties.Name="落地体型" />
+                                <Grid><TextBlock Text="胖" FontSize="11" /><TextBlock Text="瘦" FontSize="11" HorizontalAlignment="Right" /></Grid>
+                            </StackPanel>
                         </StackPanel>
                         <StackPanel x:Name="WardrobeOptions" Visibility="Collapsed" />
                       </Grid>
@@ -452,10 +463,18 @@
                                 </Canvas></Viewbox>
                             </Button>
                             <Button x:Name="AppearanceEyesTab" Style="{StaticResource FaceIconButton}" Click="OnAppearanceTabClick"
+                                    Margin="0,0,0,8"
                                     ToolTip="眼睛 · 大小、椭圆度、高度、眼距" AutomationProperties.Name="捏脸：眼睛">
                                 <Viewbox Width="20" Height="20"><Canvas Width="24" Height="24" IsHitTestVisible="False">
                                     <Path Data="M2,12 C7,4 17,4 22,12 C17,20 7,20 2,12 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeLineJoin="Round" />
                                     <Ellipse Width="6" Height="6" Canvas.Left="9" Canvas.Top="9" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" />
+                                </Canvas></Viewbox>
+                            </Button>
+                            <Button x:Name="AppearanceBodyTab" Style="{StaticResource FaceIconButton}" Click="OnAppearanceTabClick" Visibility="Collapsed"
+                                    ToolTip="身体 · 大小、柔软度、落地体型" AutomationProperties.Name="捏脸：身体">
+                                <Viewbox Width="20" Height="20"><Canvas Width="24" Height="24" IsHitTestVisible="False">
+                                    <Path Data="M3,16 C3,9 6,4 12,4 C18,4 21,9 21,16 C21,20 3,20 3,16 Z M7,22 L17,22"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeLineJoin="Round" />
                                 </Canvas></Viewbox>
                             </Button>
                         </StackPanel>
