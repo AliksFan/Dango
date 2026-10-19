@@ -22,17 +22,21 @@ internal sealed partial class LabBeltWindow
     private long performanceLastRenderingTimestamp;
     private readonly List<LabWindowCadenceFrame> performanceFrames = [];
     private readonly DispatcherTimer performanceWatchdog = new(DispatcherPriority.Normal);
+    private LabBeltWorkerMetrics? performanceClosingMetrics;
 
     // Uses the selected actual-window clock, original catch-up policy and walk/stop replay.
-    internal void StartWindowPerformance(bool overlayVisible)
+    internal async void StartWindowPerformance(bool overlayVisible)
     {
+        await initializationTask;
+        if (closingWorker) return;
         StopPhysicsClock();
         WindowState = WindowState.Normal;
         size.Value = 120; softness.Value = 100; build.Value = 0;
         model.SelectedIndex = 0; radialDrive.IsChecked = true;
         showAppearance.IsChecked = showGait.IsChecked = true;
         showSkeleton.IsChecked = showForces.IsChecked = true; showReference.IsChecked = false;
-        Reset();
+        await ResetAsync();
+        if (closingWorker) return;
         if (fault) throw new InvalidOperationException("Performance fixture failed to initialize: " + failureReason);
         surface.SetPerformanceOverlayVisible(overlayVisible);
         surface.Refresh();
@@ -42,6 +46,7 @@ internal sealed partial class LabBeltWindow
         Activate();
         if (Content is UIElement content) content.IsHitTestVisible = false;
         performanceOverlay = overlayVisible;
+        performanceClosingMetrics = null;
         performance = new LabWindowPerformance();
         appearance.PerformanceSample = performance.Add;
         performanceRunning = true;
@@ -52,15 +57,6 @@ internal sealed partial class LabBeltWindow
         performanceCollections = Enumerable.Range(0, 3).Select(GC.CollectionCount).ToArray();
         Deactivated += (_, _) => { if (performanceRunning) performanceDeactivations++; };
         StateChanged += (_, _) => { if (performanceRunning && WindowState == WindowState.Minimized) performanceNonVisibleObservations++; };
-        Closing += (_, e) =>
-        {
-            if (!performanceRunning) return;
-            e.Cancel = true;
-            if (performanceFinishing) return;
-            performanceFinishing = true;
-            StopPhysicsClock();
-            Dispatcher.BeginInvoke(new Action(() => FinishWindowPerformance("Measurement window closed before replay completed.")), DispatcherPriority.Normal);
-        };
         Closed += (_, _) =>
         {
             CompositionTarget.Rendering -= PerformanceRendering;
@@ -87,6 +83,15 @@ internal sealed partial class LabBeltWindow
         Title = overlayVisible ? "团子·窗口性能测量·诊断图层开启" : "团子·窗口性能测量·诊断图层隐藏";
     }
 
+    private void RequestPerformanceClose()
+    {
+        if (!performanceRunning || performanceFinishing) return;
+        performanceFinishing = true;
+        performanceClosingMetrics = physicsWorker?.Metrics;
+        StopPhysicsClock();
+        Dispatcher.BeginInvoke(new Action(() => FinishWindowPerformance("Measurement window closed before replay completed.")), DispatcherPriority.Normal);
+    }
+
     private void PerformanceStepCompleted()
     {
         if (performanceRunning)
@@ -107,8 +112,11 @@ internal sealed partial class LabBeltWindow
     {
         if (!performanceRunning || args is not RenderingEventArgs rendering ||
             performanceLastRenderingTime == rendering.RenderingTime) return;
-        var now = useRenderClock && lastClockRenderingTime == rendering.RenderingTime
-            ? renderClockCallbackTimestamp : Stopwatch.GetTimestamp();
+        var observerTimestamp = Stopwatch.GetTimestamp();
+        var usesClockEntry = (useRenderClock || usePhysicsWorker) && lastClockRenderingTime == rendering.RenderingTime;
+        var now = usesClockEntry ? renderClockCallbackTimestamp : observerTimestamp;
+        if (usesClockEntry)
+            performance!.Add("rendering-entry-to-observer", Stopwatch.GetElapsedTime(now, observerTimestamp).TotalMilliseconds);
         if (!IsActive) performanceInactiveRenderFrames++;
         if (performanceLastRenderingTimestamp != 0)
         {
@@ -122,10 +130,13 @@ internal sealed partial class LabBeltWindow
         performanceRenderStep = steps;
     }
 
-    private void FinishWindowPerformance(string? error)
+    private async void FinishWindowPerformance(string? error)
     {
         if (!performanceRunning) return;
+        var workerOwner = physicsWorker;
+        var workerMetrics = performanceClosingMetrics ?? workerOwner?.Metrics;
         performanceRunning = false;
+        performanceFinishing = true;
         StopPhysicsClock(); performanceWatchdog.Stop();
         CompositionTarget.Rendering -= PerformanceRendering;
         appearance.PerformanceSample = null;
@@ -135,7 +146,11 @@ internal sealed partial class LabBeltWindow
         var intervals = performance!.Samples.GetValueOrDefault("rendering-callback-interval") ?? [];
         var completedSteps = steps - performanceStartStep;
         var steady57 = LabWindowCadence.Summarize(performanceFrames, performanceStartStep);
-        var passed = error is null && !fault && completedSteps >= PerformanceReplaySteps &&
+        var workerComplete = !usePhysicsWorker || workerMetrics is not null && completedSteps == PerformanceReplaySteps &&
+            workerMetrics.ProducedTicks - performanceStartStep == PerformanceReplaySteps &&
+            workerAppliedTicks - performanceStartStep == PerformanceReplaySteps &&
+            workerMetrics.AppliedTicks == workerAppliedTicks && workerMetrics.QueueDepth == 0 && workerMetrics.BackpressurePauses == 0;
+        var passed = workerComplete && error is null && !fault && completedSteps >= PerformanceReplaySteps &&
             completedSteps <= PerformanceReplaySteps + 3 && intervals.Count >= 200 && performanceNonVisibleObservations == 0 &&
             performanceRightSteps == 600 && performanceLeftSteps == 600 && performanceUnexpectedInputSteps == 0 &&
             IsVisible && WindowState != WindowState.Minimized;
@@ -154,14 +169,23 @@ internal sealed partial class LabBeltWindow
             InactiveRenderFrames = performanceInactiveRenderFrames, RenderCallbacks = intervals.Count,
             NonVisibleObservations = performanceNonVisibleObservations,
             FinalWindowVisible = IsVisible, FinalWindowState = WindowState.ToString(),
-            ClockMode = useRenderClock ? "rendering-callback-fixed-physics" : "dispatcher-timer-8ms",
+            Worker = workerMetrics, WorkerAppliedTicks = workerAppliedTicks, WorkerMaximumQueueAgeMilliseconds = workerMaximumQueueAgeMs,
+            WorkerPresentation = WorkerPresentationState(),
+            WorkerProducedReplayTicks = workerMetrics is not null ? workerMetrics.ProducedTicks - performanceStartStep : (int?)null,
+            WorkerAppliedReplayTicks = usePhysicsWorker ? workerAppliedTicks - performanceStartStep : (int?)null,
+            ClockMode = usePhysicsWorker ? "dedicated-native-worker-fixed-physics" : useRenderClock ? "rendering-callback-fixed-physics" : "dispatcher-timer-8ms",
             Steady57 = steady57,
             ScriptedRightSteps = performanceRightSteps, ScriptedLeftSteps = performanceLeftSteps,
             UnexpectedInputSteps = performanceUnexpectedInputSteps,
             Playback = "Explicit benchmark only: visible/topmost scripted replay continues across activation changes; ordinary interactive pause/input behavior unchanged.",
             DebugOverlayVisible = performanceOverlay, SidebarDiagnosticsCollectedAndVisible = true,
             NativeParametersAndGaitUnchanged = true,
-            Timing = "Inclusive CPU wall-clock buckets. Rendering callbacks are pre-render cadence, not GPU/DWM present or scanout. No per-sample I/O. No warmup samples removed.",
+            RenderingCadenceTimestamp = useRenderClock || usePhysicsWorker
+                ? "Actual Stopwatch timestamp at RenderClockTick entry; successful UI-applied steps are read afterward in this callback. rendering-entry-to-observer records the UI work before observation. RenderingTime only deduplicates callbacks."
+                : "Actual Stopwatch timestamp at PerformanceRendering observer; RenderingTime only deduplicates callbacks.",
+            Timing = usePhysicsWorker
+                ? "Worker native-step/native-reads buckets are measured on the dedicated owner; native-reads includes native capture and validation. UI step-total covers applying each complete snapshot and appearance only. Cross-thread overlapping buckets cannot be added or subtracted. Rendering callbacks observe new UI-applied physics ticks; not GPU/DWM present. No per-sample I/O or removed cold samples."
+                : "Inclusive UI CPU wall-clock buckets; native-reads includes native capture and validation. Rendering callbacks are pre-render cadence, not GPU/DWM present or scanout. No per-sample I/O. No warmup samples removed.",
             FrameBudgetMilliseconds = 1000d / 60,
             CallbackIntervalsOver16_667Ms = intervals.Count(x => x > 1000d / 60),
             CallbackIntervalsOver25Ms = intervals.Count(x => x > 25),
@@ -170,6 +194,14 @@ internal sealed partial class LabBeltWindow
             ProcessGarbageCollections = collections,
             Buckets = performance.Report(), Samples = performance.Samples, Frames = performanceFrames,
         }, new JsonSerializerOptions { WriteIndented = true }));
+        if (workerOwner is not null)
+        {
+            closingWorker = true;
+            await workerOwner.CloseAsync();
+            await resetGate.WaitAsync(); resetGate.Release();
+            physicsWorker = null;
+        }
+        performanceFinishing = false;
         ((Application)Application.Current).Shutdown(passed ? 0 : 10);
     }
 

@@ -1,3 +1,4 @@
+using System.Buffers;
 using Dango.Core.Animation;
 
 namespace Dango.Desktop.Physics.Presentation.Attachments;
@@ -185,22 +186,75 @@ public static class FaceLayoutSolver
     {
         const double margin = 1d / 160 + EyeOutline.ChordError + AttachmentShapeGeometry.MaximumChordError;
         var edges = shape.BoundaryEdges;
-        foreach (var point in outline)
+        int[]? rented = null;
+        Span<int> selected = edges.Length <= 512 ? stackalloc int[edges.Length] :
+            (rented = ArrayPool<int>.Shared.Rent(edges.Length));
+        try
         {
-            var inside = false;
-            for (var i = 0; i < edges.Length; i++)
+            var count = SelectSafetyEdges(shape, outline, selected);
+            foreach (var point in outline)
             {
-                ref readonly var segment = ref edges[i];
-                var a = segment.Start; var b = segment.End;
-                if ((a.Y > point.Y) != (b.Y > point.Y) && point.X < (b.X - a.X) * (point.Y - a.Y) / (b.Y - a.Y) + a.X) inside = !inside;
-                var edge = segment.Delta;
-                var lengthSquared = segment.LengthSquared;
-                var t = lengthSquared == 0 ? 0 : Math.Clamp((point - a).Dot(edge) / lengthSquared, 0, 1);
-                var difference = point - (a + edge * t);
-                if (difference.Dot(difference) < margin * margin) return false;
+                var inside = false;
+                for (var i = 0; i < count; i++)
+                {
+                    ref readonly var segment = ref edges[selected[i]];
+                    var a = segment.Start; var b = segment.End;
+                    if ((a.Y > point.Y) != (b.Y > point.Y) && point.X < (b.X - a.X) * (point.Y - a.Y) / (b.Y - a.Y) + a.X) inside = !inside;
+                    var edge = segment.Delta;
+                    var lengthSquared = segment.LengthSquared;
+                    var t = lengthSquared == 0 ? 0 : Math.Clamp((point - a).Dot(edge) / lengthSquared, 0, 1);
+                    var difference = point - (a + edge * t);
+                    if (difference.Dot(difference) < margin * margin) return false;
+                }
+                if (!inside) return false;
             }
-            if (!inside) return false;
+            return true;
         }
-        return true;
+        finally
+        {
+            if (rented is not null) ArrayPool<int>.Shared.Return(rented);
+        }
+    }
+
+    internal static int SelectSafetyEdges(AttachmentShapeGeometry shape, IReadOnlyList<AttachmentPoint> outline, Span<int> selected)
+    {
+        const double margin = 1d / 160 + EyeOutline.ChordError + AttachmentShapeGeometry.MaximumChordError;
+        var edges = shape.BoundaryEdges;
+        var eligible = InDomain(shape.Left) && InDomain(shape.Right) && InDomain(shape.Bottom) && InDomain(shape.Top);
+        var minY = double.PositiveInfinity; var maxY = double.NegativeInfinity;
+        if (eligible)
+            foreach (var point in outline)
+            {
+                if (!InDomain(point.X) || !InDomain(point.Y)) { eligible = false; break; }
+                minY = Math.Min(minY, point.Y); maxY = Math.Max(maxY, point.Y);
+            }
+        if (!eligible || outline.Count == 0)
+        {
+            for (var i = 0; i < edges.Length; i++) selected[i] = i;
+            return edges.Length;
+        }
+
+        // In this finite +/-16 domain, Delta and the projection numerator cannot
+        // overflow, and the original clamped t is in [0,1] (or zero for a zero
+        // squared length). Include the actual rounded Start + Delta endpoint.
+        // 1e-9 is far above the <1e-14 Y multiply/add/residual roundoff here;
+        // it only expands candidates and never changes the strict margin test.
+        var lower = Math.BitDecrement(minY - margin - 1e-9);
+        var upper = Math.BitIncrement(maxY + margin + 1e-9);
+        var count = 0;
+        for (var i = 0; i < edges.Length; i++)
+        {
+            ref readonly var edge = ref edges[i];
+            var projectedEndY = edge.Start.Y + edge.Delta.Y;
+            var bottom = Math.Min(edge.Start.Y, Math.Min(edge.End.Y, projectedEndY));
+            var top = Math.Max(edge.Start.Y, Math.Max(edge.End.Y, projectedEndY));
+            // Omitted edges have both original endpoints on one side of every
+            // outline point (no ray crossing), and every projected Y is farther
+            // than the unchanged clearance margin. Retain original edge order.
+            if (top >= lower && bottom <= upper) selected[count++] = i;
+        }
+        return count;
+
+        static bool InDomain(double coordinate) => double.IsFinite(coordinate) && Math.Abs(coordinate) <= 16;
     }
 }

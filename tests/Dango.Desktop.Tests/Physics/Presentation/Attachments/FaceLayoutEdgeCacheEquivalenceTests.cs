@@ -82,6 +82,143 @@ public sealed class FaceLayoutEdgeCacheEquivalenceTests
         }
     }
 
+    [TestMethod]
+    public void YBandFiltersInOriginalOrderAcrossConcaveNarrowAndShearedBoundaries()
+    {
+        AttachmentPoint[] concave = [new(-.5, -.4), new(.5, -.4), new(.5, .4), new(.1, .4),
+            new(.1, .1), new(-.1, .1), new(-.1, .4), new(-.5, .4)];
+        var shapes = new[]
+        {
+            AttachmentShapeGeometry.FromBoundary(SampledOval(256)),
+            AttachmentShapeGeometry.FromBoundary(concave),
+            AttachmentShapeGeometry.FromBoundary(SampledOval(64).Select(p => new AttachmentPoint(p.X * .28, p.Y * .3)).ToArray()),
+            AttachmentShapeGeometry.Create(AttachmentShapeGeometryTests.Oval(shear: .16)),
+        };
+        var omittedEdges = 0;
+        foreach (var shape in shapes)
+        {
+            foreach (var expression in new[] { EyeShape.Round, EyeShape.Angry, EyeShape.NaturalClosed })
+                foreach (var center in new[] { new AttachmentPoint(0, 0), new(.11, .12), new(-.12, -.08), new(.4, .35) })
+                {
+                    var eye = new EyePresentationFrame(center, .075, .0525, .17, .4, expression, .8, true, true);
+                    var outline = EyeOutline.Create(eye);
+                    var selected = new int[shape.Boundary.Count];
+                    var count = FaceLayoutSolver.SelectSafetyEdges(shape, outline, selected);
+                    for (var i = 1; i < count; i++) Assert.IsTrue(selected[i] > selected[i - 1], "Candidate edge order must remain strictly ascending.");
+                    omittedEdges += selected.Length - count;
+                    Assert.AreEqual(FrozenFaceLayoutEdgeCacheBaseline.IsSafe(shape, eye), FaceLayoutSolver.IsSafe(shape, eye),
+                        $"expression={expression}; center={center}; edges={shape.Boundary.Count}");
+                }
+            var sample = new EyeMotionSample(new(1, -1), .4, EyeShape.Soft, .8);
+            var opposite = new EyeMotionSample(new(-1, 1), 1, EyeShape.Round, 0);
+            foreach (var parameters in new[] { EyeLayoutParameters.Default, new(140, -100, 32, 34) })
+                AssertBits(FrozenFaceLayoutEdgeCacheBaseline.Solve(shape, sample, opposite, .17, parameters, 7),
+                    FaceLayoutSolver.Solve(shape, sample, opposite, .17, parameters, 7), "sampled/concave full layout");
+        }
+        Assert.IsTrue(omittedEdges > 0, "This test must exercise actual edge filtering.");
+    }
+
+    [TestMethod]
+    public void YBandRetainsAdjacentYMarginDoublesAndConservativePadding()
+    {
+        var shape = AttachmentShapeGeometry.FromBoundary([new(-.5, -.4), new(.5, -.4), new(.5, .4), new(-.5, .4)]);
+        EyePresentationFrame Eye(double y) => new(new(0, y), .075, .0525, .17, 1, EyeShape.Round, 0, true);
+        var low = 0d; var high = shape.Top;
+        Assert.IsTrue(FrozenFaceLayoutEdgeCacheBaseline.IsSafe(shape, Eye(low)));
+        Assert.IsFalse(FrozenFaceLayoutEdgeCacheBaseline.IsSafe(shape, Eye(high)));
+        for (var iteration = 0; iteration < 80 && Math.BitIncrement(low) < high; iteration++)
+        {
+            var middle = low + (high - low) / 2;
+            if (middle == low || middle == high) break;
+            if (FrozenFaceLayoutEdgeCacheBaseline.IsSafe(shape, Eye(middle))) low = middle; else high = middle;
+        }
+        Assert.AreEqual(Math.BitIncrement(low), high, "Fixture must reach adjacent safe/unsafe doubles in the filtered Y direction.");
+        foreach (var y in new[] { Math.BitDecrement(low), low, high, Math.BitIncrement(high), -low, -high })
+            Assert.AreEqual(FrozenFaceLayoutEdgeCacheBaseline.IsSafe(shape, Eye(y)), FaceLayoutSolver.IsSafe(shape, Eye(y)), $"y={y:R}");
+
+        const double margin = 1d / 160 + EyeOutline.ChordError + AttachmentShapeGeometry.MaximumChordError;
+        var indices = new int[shape.Boundary.Count];
+        // The original top edge remains a candidate just beyond mathematical
+        // clearance, because outward padding must retain uncertain comparisons.
+        var point = new AttachmentPoint(-0d, shape.Top - margin - 1e-10);
+        var count = FaceLayoutSolver.SelectSafetyEdges(shape, [point], indices);
+        Assert.IsTrue(indices.Take(count).Contains(2), "Near-margin top edge must not be removed by the broadphase.");
+    }
+
+    [TestMethod]
+    public void Pooled4096BoundaryAndAllSixSafetyLabelsKeepFrozenOutputBits()
+    {
+        var shape = AttachmentShapeGeometry.FromBoundary(SampledOval(4096));
+        var left = new EyeMotionSample(new(-1, 0), 1, EyeShape.Round, 0);
+        var right = new EyeMotionSample(new(1, 0), .4, EyeShape.Soft, .8);
+        foreach (var parameters in new[] { EyeLayoutParameters.Default, new(137.13, -72.72, 32.17, 12.27) })
+            AssertBits(FrozenFaceLayoutEdgeCacheBaseline.Solve(shape, left, right, .17, parameters, 7),
+                FaceLayoutSolver.Solve(shape, left, right, .17, parameters, 7), "4096-point ArrayPool layout");
+        for (var repeat = 0; repeat < 3; repeat++)
+            foreach (var x in new[] { 0d, .11, .44, .6 })
+            {
+                var eye = new EyePresentationFrame(new(x, .00625), .075, .075, .17, 1, EyeShape.Round, 0, true);
+                Assert.AreEqual(FrozenFaceLayoutEdgeCacheBaseline.IsSafe(shape, eye), FaceLayoutSolver.IsSafe(shape, eye),
+                    "ArrayPool path must remain correct after early unsafe returns and re-rents.");
+            }
+        var indices = new int[shape.Boundary.Count];
+        var outline = EyeOutline.Create(new(new(0, 0), .075, .075, 0, 1, EyeShape.Round, 0, true));
+        var selected = FaceLayoutSolver.SelectSafetyEdges(shape, outline, indices);
+        Assert.IsTrue(selected > 0 && selected < shape.Boundary.Count / 2);
+        for (var i = 1; i < selected; i++) Assert.IsTrue(indices[i] > indices[i - 1]);
+
+        right = new(new(1, 0), 1, EyeShape.Round, 0);
+        foreach (var (width, height, safety) in new[]
+        {
+            (.5, .4, "Normal"), (.38, .4, "GazeReduced"), (.30, .4, "SpacingReduced"),
+            (.26, .4, "SizeReduced"), (.5, .05, "ClosedFallback"), (.5, .006, "EyeHidden"),
+        })
+        {
+            var fixture = AttachmentShapeGeometry.FromBoundary([new(-width / 2, -height / 2), new(width / 2, -height / 2),
+                new(width / 2, height / 2), new(-width / 2, height / 2)]);
+            var expected = FrozenFaceLayoutEdgeCacheBaseline.Solve(fixture, left, right, 0, 7);
+            Assert.AreEqual(safety, expected.Safety, "The frozen fixture must exercise the named safety stage.");
+            AssertBits(expected, FaceLayoutSolver.Solve(fixture, left, right, 0, 7), safety);
+        }
+    }
+
+    [TestMethod]
+    public void YBandFallsBackForExtremeOrNonfiniteOutlineAndShapeCoordinates()
+    {
+        var ordinary = AttachmentShapeGeometry.FromBoundary(SampledOval(64));
+        var translated = AttachmentShapeGeometry.FromBoundary(SampledOval(64).Select(p => new AttachmentPoint(p.X + 100, p.Y)).ToArray());
+        foreach (var shape in new[] { ordinary, translated })
+        {
+            var standard = new EyePresentationFrame(new(shape == ordinary ? 0 : 100, .00625), .075, .0525, 0, 1, EyeShape.Round, 0, true);
+            EyePresentationFrame[] eyes = [standard, standard with { Center = new(double.NaN, 0) },
+                standard with { Center = new(0, double.PositiveInfinity) }, standard with { Center = new(double.MaxValue, 0) },
+                standard with { Width = double.MaxValue }, standard with { Width = double.NaN },
+                standard with { Height = double.PositiveInfinity }, standard with { Width = double.Epsilon, Height = double.Epsilon },
+                standard with { Width = -0d, Height = 0d }, standard with { Angle = double.NaN },
+                standard with { Angle = double.PositiveInfinity }, standard with { Openness = double.NaN },
+                standard with { Shape = EyeShape.Soft, Strength = double.NaN }];
+            foreach (var eye in eyes)
+                Assert.AreEqual(FrozenFaceLayoutEdgeCacheBaseline.IsSafe(shape, eye), FaceLayoutSolver.IsSafe(shape, eye), $"eye={eye}");
+        }
+        foreach (var point in new[] { new AttachmentPoint(double.NaN, 0), new(double.PositiveInfinity, 0),
+            new(0, double.NegativeInfinity), new(Math.BitIncrement(16d), 0), new(0, -double.MaxValue) })
+        {
+            var selected = new int[ordinary.Boundary.Count];
+            var count = FaceLayoutSolver.SelectSafetyEdges(ordinary, [point], selected);
+            Assert.AreEqual(selected.Length, count, "Out-of-domain outline must retain every original edge.");
+            CollectionAssert.AreEqual(Enumerable.Range(0, count).ToArray(), selected);
+        }
+        var translatedIndices = new int[translated.Boundary.Count];
+        Assert.AreEqual(translatedIndices.Length, FaceLayoutSolver.SelectSafetyEdges(translated, [new(100, 0)], translatedIndices));
+        CollectionAssert.AreEqual(Enumerable.Range(0, translatedIndices.Length).ToArray(), translatedIndices);
+    }
+
+    private static AttachmentPoint[] SampledOval(int count) => Enumerable.Range(0, count).Select(index =>
+    {
+        var angle = index * Math.Tau / count;
+        return new AttachmentPoint(.45 * Math.Cos(angle) + .04 * Math.Sin(2 * angle), .4 * Math.Sin(angle));
+    }).ToArray();
+
     private static IEnumerable<PresentationPoint[]> Contours()
     {
         yield return AttachmentShapeGeometryTests.Oval();

@@ -5,6 +5,7 @@
     <UseWPF>true</UseWPF>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Dango.Desktop.Tests" />
     <ProjectReference Include="../../../src/Dango.Physics/Dango.Physics.csproj" />
     <ProjectReference Include="../../../src/Dango.Desktop/Dango.Desktop.csproj" />
   </ItemGroup>

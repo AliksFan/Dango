@@ -30,6 +30,10 @@ internal static class Program
         var originalJumpBeltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", "belt-calibration-v2-native", "Release", "dango_physics_lab_belt.dll");
         var windowPerformance = args.Contains("--belt-window-performance");
         var renderClock = args.Contains("--render-clock");
+        var physicsWorker = args.Contains("--physics-worker");
+        if (physicsWorker && (renderClock || !windowPerformance && !args.Contains("--belt") ||
+            args.Any(a => a is "--belt-experiments" or "--belt-calibration" or "--belt-candidates" or "--belt-refinement" or "--belt-dynamics" or "--belt-guard-experiments" or "--belt-joint-validation")))
+        { Console.Error.WriteLine("--physics-worker is limited to the isolated --belt window or its performance measurement, without --render-clock."); return 7; }
         if (renderClock && (!windowPerformance && !args.Contains("--belt") || args.Any(a => a is "--belt-experiments" or "--belt-calibration" or "--belt-candidates" or "--belt-refinement" or "--belt-dynamics" or "--belt-guard-experiments" or "--belt-joint-validation")))
         { Console.Error.WriteLine("--render-clock is limited to the isolated --belt window or its performance measurement."); return 7; }
         if (windowPerformance && args.Contains("--saved-appearance"))
@@ -37,7 +41,7 @@ internal static class Program
         var overlayOptions = args.Where(a => a.StartsWith("--overlay=", StringComparison.Ordinal)).ToArray();
         if (overlayOptions.Length > 1 || overlayOptions.Length > 0 && (!windowPerformance || overlayOptions[0] is not ("--overlay=visible" or "--overlay=hidden")))
         { Console.Error.WriteLine("--overlay=visible|hidden is limited to --belt-window-performance."); return 7; }
-        var guardedBeltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", windowPerformance ? "belt-perf-native" : "belt-rear-pressure-native", "Release", "dango_physics_lab_belt.dll");
+        var guardedBeltModule = Path.Combine(root.FullName, "artifacts", "physics-lab", physicsWorker ? "belt-57-memo-native" : windowPerformance ? "belt-perf-native" : "belt-rear-pressure-native", "Release", "dango_physics_lab_belt.dll");
         var beltOverrides = args.Where(a => a.StartsWith("--belt-module=", StringComparison.Ordinal)).ToArray();
         if (beltOverrides.Length > 0)
         {
@@ -51,7 +55,7 @@ internal static class Program
         var beltBatches = new[] { "--belt-experiments", "--belt-calibration", "--belt-candidates", "--belt-refinement", "--belt-dynamics", "--belt-guard-experiments", "--belt-joint-validation", "--belt-window-performance" };
         var jointValidation = args.Contains("--belt-joint-validation");
         var useBelt = args.Contains("--belt") || args.Any(beltBatches.Contains);
-        if (useBelt && (args.Any(a => !a.StartsWith("--belt-module=", StringComparison.Ordinal) && !a.StartsWith("--overlay=", StringComparison.Ordinal) && a is not ("--belt" or "--belt-experiments" or "--belt-calibration" or "--belt-candidates" or "--belt-refinement" or "--belt-dynamics" or "--belt-guard-experiments" or "--belt-joint-validation" or "--belt-window-performance" or "--render-clock" or "--smoke" or "--saved-appearance")) ||
+        if (useBelt && (args.Any(a => !a.StartsWith("--belt-module=", StringComparison.Ordinal) && !a.StartsWith("--overlay=", StringComparison.Ordinal) && a is not ("--belt" or "--belt-experiments" or "--belt-calibration" or "--belt-candidates" or "--belt-refinement" or "--belt-dynamics" or "--belt-guard-experiments" or "--belt-joint-validation" or "--belt-window-performance" or "--render-clock" or "--physics-worker" or "--smoke" or "--saved-appearance")) ||
             args.Count(beltBatches.Contains) > 1 || args.Any(beltBatches.Contains) && args.Contains("--smoke")))
         { Console.Error.WriteLine("闭合带请单独使用 --belt [--smoke] 或 --belt-experiments；本轮仅原始显示。"); return 7; }
         if (args.Contains("--arcs") || args.Contains("--arc-experiments"))
@@ -94,7 +98,7 @@ internal static class Program
             initialDisplaySmoothing = useSmoothing, displaySmoothingTauSeconds = LabDisplaySmoothing.TimeConstantSeconds,
             fixedDt = LabWindow.FixedDt, measurementDipPerWorld = 72, displayDipPerWorld = 120,
             floorBounds = new[] { -256, 256 }, createdUtc = DateTime.UtcNow,
-            renderClock,
+            renderClock, physicsWorker,
         }, new JsonSerializerOptions { WriteIndented = true }));
         if (!jointValidation && !windowPerformance && (args.Contains("--experiments") || args.Contains("--ground-experiments") || args.Any(beltBatches.Contains)))
         {
@@ -136,7 +140,7 @@ internal static class Program
         if (windowPerformance)
         {
             var performanceWindow = new LabBeltWindow(regionModule, beltModule, guardedBeltModule, session,
-                LabAppearanceFixture.Create(session), "内置测试搭配 · 不代表日常佩戴", renderClock);
+                LabAppearanceFixture.Create(session), "内置测试搭配 · 不代表日常佩戴", renderClock, physicsWorker);
             performanceWindow.Loaded += (_, _) => performanceWindow.StartWindowPerformance(overlayOptions.FirstOrDefault() != "--overlay=hidden");
             return app.Run(performanceWindow);
         }
@@ -152,7 +156,7 @@ internal static class Program
             var appearanceSettingsPath = useTestAppearance ? LabAppearanceFixture.Create(session) :
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Dango", "settings.json");
             var beltWindow = new LabBeltWindow(regionModule, beltModule, guardedBeltModule, session, appearanceSettingsPath,
-                useTestAppearance ? "内置测试搭配 · 不代表日常佩戴" : "当前已保存外观 · 只读快照", renderClock);
+                useTestAppearance ? "内置测试搭配 · 不代表日常佩戴" : "当前已保存外观 · 只读快照", renderClock, physicsWorker);
             if (args.Contains("--smoke")) beltWindow.Loaded += async (_, _) => await beltWindow.Smoke();
             return app.Run(beltWindow);
         }

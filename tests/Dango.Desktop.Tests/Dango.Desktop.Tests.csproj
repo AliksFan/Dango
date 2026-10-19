@@ -13,10 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="..\..\eng\tools\Dango.PhysicsLab\LabWindowCadence.cs" Link="PhysicsLab\LabWindowCadence.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
+    <ProjectReference Include="..\..\eng\tools\Dango.PhysicsLab\Dango.PhysicsLab.csproj" />
     <ProjectReference Include="..\..\eng\tools\Dango.MultiplayerSample\Dango.MultiplayerSample.csproj" />
     <ProjectReference Include="..\..\eng\tools\Dango.GaitSample\Dango.GaitSample.csproj" />
     <ProjectReference Include="..\..\src\Dango.Physics\Dango.Physics.csproj" />
