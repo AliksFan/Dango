@@ -145,6 +145,13 @@ public sealed class BeltBodyProductTests
             {
                 var b = Bounds(home, name);
                 Assert.IsTrue(b.Left >= 0 && b.Top >= 0 && b.Right <= home.ActualWidth + 1 && b.Bottom <= home.ActualHeight + 1, $"{width}x{height} {name}: {b}");
+                var button = Element<Button>(home, name);
+                foreach (var p in new[] { new Point(b.Left + 4, b.Top + b.Height / 2), new Point(b.Right - 4, b.Top + b.Height / 2) })
+                {
+                    var hit = home.InputHitTest(p) as DependencyObject;
+                    Assert.IsTrue(ReferenceEquals(hit, button) || hit is not null && button.IsAncestorOf(hit),
+                        $"{name} at {p} must remain clickable through ancestor layout clips in {width}x{height}.");
+                }
             }
             Assert.AreEqual(previewWidth, Element<Viewbox>(home, "PetPreview").Width, .01, "Keep the existing product preview size through editor changes.");
             var body = home.BoundBeltPresenter!.Inspect().Body!;

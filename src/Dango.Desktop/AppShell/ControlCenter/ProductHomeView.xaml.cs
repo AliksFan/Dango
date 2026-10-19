@@ -575,6 +575,7 @@ public partial class ProductHomeView : UserControl
         ToolsNavigation.HorizontalAlignment = System.Windows.HorizontalAlignment.Right;
         Stage.Margin = portrait ? new Thickness(16, 4, 16, 8)
             : compactLandscape ? new Thickness(18, 8, 18, 8) : new Thickness(24, 10, 24, 10);
+        if (beltRuntime is not null && portrait) Stage.Margin = new Thickness(4, 4, 4, 8);
         minimumStageHeight = compactPortrait ? 520 : portrait ? 560 : shortLandscape ? 260 : compactLandscape ? 330 : ActualWidth >= 1150 ? 430 : 340;
         GapColumn.Width = new GridLength(portrait ? 0 : compactLandscape ? 18 : 36);
         var previewWidth = BasePreviewWidth;
@@ -702,6 +703,7 @@ public partial class ProductHomeView : UserControl
         Grid.SetColumnSpan(FaceEditorTools, portrait ? 3 : 1);
         Grid.SetRowSpan(FaceEditorTools, portrait ? 1 : 2);
         FaceEditorTools.Margin = portrait ? new Thickness(12, 4, 12, 8) : EditorPanel.Margin;
+        if (beltRuntime is not null && portrait) FaceEditorTools.Margin = new Thickness(2, 4, 2, 8);
         FaceEditorTools.VerticalAlignment = portrait ? System.Windows.VerticalAlignment.Top : System.Windows.VerticalAlignment.Center;
         FaceEditorPreviewRegion.Width = BasePreviewWidth + 76;
         FacePreviewRow.Height = new GridLength(1, GridUnitType.Star);

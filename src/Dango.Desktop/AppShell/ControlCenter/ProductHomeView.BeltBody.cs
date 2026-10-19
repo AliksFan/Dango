@@ -43,6 +43,8 @@ public partial class ProductHomeView
         beltSettingsPath = settingsPath;
         beltRuntime = new BeltBodyRuntime(Path.Combine(AppContext.BaseDirectory, "dango_belt_product.dll"));
         InputMethod.SetIsInputMethodEnabled(Stage, false);
+        OptionsBody.Resources[typeof(System.Windows.Controls.Primitives.ScrollBar)] = Resources["SettingsScrollBar"];
+        HomeContent.Resources[typeof(System.Windows.Controls.Primitives.ScrollBar)] = Resources["SettingsScrollBar"];
         // Slider overrides the inheritable IME metadata; disable only the nontext gameplay controls.
         foreach (var slider in new[] { BodySizeSlider, BodySoftnessSlider, BodyLandingBuildSlider,
             EyeSizeSlider, EyeOvalSlider, EyeHeightSlider, EyeSpacingSlider })

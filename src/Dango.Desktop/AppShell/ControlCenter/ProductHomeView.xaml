@@ -167,6 +167,41 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="BodyParameterSlider" TargetType="Slider">
+            <Setter Property="Height" Value="28" />
+            <Setter Property="IsMoveToPointEnabled" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Border x:Name="FocusOutline" BorderThickness="1" BorderBrush="Transparent" CornerRadius="4" Background="Transparent">
+                            <Track x:Name="PART_Track" Orientation="Horizontal" Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
+                                   Value="{TemplateBinding Value}" IsDirectionReversed="{TemplateBinding IsDirectionReversed}">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="Slider.DecreaseLarge" Focusable="False">
+                                        <RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Height="3" VerticalAlignment="Center" Background="{DynamicResource HomeAccent}" /></ControlTemplate></RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.DecreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Width="28" Height="26">
+                                        <Thumb.Template><ControlTemplate TargetType="Thumb"><Grid Background="Transparent"><Ellipse Width="12" Height="12" Fill="{DynamicResource HomeAccent}" /></Grid></ControlTemplate></Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="Slider.IncreaseLarge" Focusable="False">
+                                        <RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Height="3" VerticalAlignment="Center" Background="{DynamicResource HomeLine}" /></ControlTemplate></RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.IncreaseRepeatButton>
+                            </Track>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="FocusOutline" Property="BorderBrush" Value="{DynamicResource HomeAccent}" /></Trigger>
+                            <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45" /></Trigger>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="FocusOutline" Property="Background" Value="{DynamicResource HomeSoft}" /></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="SettingsRow" TargetType="Border">
             <Setter Property="BorderBrush" Value="{DynamicResource HomeLine}" />
             <Setter Property="BorderThickness" Value="0,0,0,1" />
@@ -418,6 +453,7 @@
                                 <Grid><TextBlock Text="近" FontSize="11" /><TextBlock Text="远" FontSize="11" HorizontalAlignment="Right" /></Grid>
                             </StackPanel>
                             <StackPanel x:Name="AppearanceBodyPanel" Visibility="Collapsed">
+                                <StackPanel.Resources><Style TargetType="Slider" BasedOn="{StaticResource BodyParameterSlider}" /></StackPanel.Resources>
                                 <TextBlock x:Name="BodySizeValue" Text="大小 · 100%" />
                                 <Slider x:Name="BodySizeSlider" Minimum="80" Maximum="120" Value="100" TickFrequency="1" SmallChange="1" LargeChange="5" IsSnapToTickEnabled="True" ValueChanged="OnBodySliderChanged" Margin="0,6,0,2" AutomationProperties.Name="身体大小" />
                                 <Grid Margin="0,0,0,14"><TextBlock Text="80%" FontSize="11" /><TextBlock Text="120%" FontSize="11" HorizontalAlignment="Right" /></Grid>
