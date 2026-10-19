@@ -278,18 +278,31 @@ public sealed class BeltBodyProductTests
     [DataRow("natural")]
     [DataRow("walk-stop")]
     [DataRow("drag-release")]
-    public void ActualProductSleepSavesCpuAndKeepsAppearanceAlive(string condition)
+    public void ActualProductVisibleV2SleepSavesCpuAndKeepsAppearanceAlive(string condition)
     {
         RequireModule();
         if (Environment.GetEnvironmentVariable("DANGO_BELT_LONG_CHECK") != "1") Assert.Inconclusive("Explicit 10-second product CPU comparison requires DANGO_BELT_LONG_CHECK=1.");
         var root = NewRoot();
         new AccessorySettingsStore().Save(root, new([new AccessoryItem("fictional-sleep-hat", "Fictional sleep hat", "builtin-sprout", 64, 64)]));
-        var home = CreateHome(root, new(Path.Combine(root, "appearance.json"))); var window = Show(home);
+        var startup = Stopwatch.StartNew();
+        var home = CreateHome(root, new(Path.Combine(root, "appearance.json"))); var window = Show(home, 1280, 720);
+        var outlines = new Queue<Point[]>();
+        home.BeltBodyDisplayConfirmed += _ =>
+        {
+            var presenter = home.BoundBeltPresenter!;
+            var contour = presenter.Inspect().Body!.Contour;
+            var transform = ((Canvas)presenter.View.Children[0]).TransformToAncestor(home);
+            outlines.Enqueue(contour.Select(point => transform.Transform(new Point(80 + point.X * 160, 66 - point.Y * 160))).ToArray());
+            if (outlines.Count > 121) outlines.Dequeue();
+        };
         try
         {
             WaitReady(home); home.ShowEditor(HomeEditor.Face);
-            var runtime = home.BoundBeltBody!; runtime.SleepEnabled = false;
-            Pump(2000);
+            var runtime = home.BoundBeltBody!;
+            Assert.AreEqual(420d, Element<Viewbox>(home, "PetPreview").ActualWidth, .01, "Validate the maximum contracted product preview.");
+            runtime.SleepEnabled = true;
+            var enabled = Stopwatch.StartNew();
+            if (condition != "natural") Pump(2000);
             if (condition == "walk-stop") { runtime.PublishInput(new(Horizontal: 1, InputActive: true)); Pump(800); runtime.ClearInput(); }
             if (condition == "drag-release")
             {
@@ -297,15 +310,24 @@ public sealed class BeltBodyProductTests
                 runtime.PublishInput(new(DragActive: true, DragTargetX: f.CoreX + .04, DragTargetY: f.CoreY - .04, InputActive: true));
                 Pump(800); runtime.ClearInput();
             }
-            Pump(3000);
-            Click(home, "PreviewBlinkButton");
-            var baseline = SampleProductCpu(home, 10000);
-            runtime.SleepEnabled = true;
+            var released = Stopwatch.StartNew();
             var recoverySeconds = int.TryParse(Environment.GetEnvironmentVariable("DANGO_BELT_RECOVERY_SECONDS"), out var seconds) ? seconds : 60;
-            Assert.IsTrue(recoverySeconds is >= 60 and <= 600, "Recovery observation is bounded; this does not alter the frozen stability gates.");
+            Assert.AreEqual(60, recoverySeconds, "The independent v2 recovery observation is frozen before measurement.");
             Wait(() => runtime.Metrics.Sleeping || runtime.Metrics.Error is not null, recoverySeconds * 1000, condition + " sleep eligibility");
+            var enabledToSleepMilliseconds = enabled.Elapsed.TotalMilliseconds;
+            var releaseToSleepMilliseconds = released.Elapsed.TotalMilliseconds;
+            var startupToSleepMilliseconds = startup.Elapsed.TotalMilliseconds;
             Assert.IsNull(runtime.Metrics.Error, home.ReadBeltBodySettingsScene().Diagnostics);
             Pump(100); // Consume the final real physical snapshots before sampling the sleeping period.
+            Assert.AreEqual(121, outlines.Count, "Observe all 120 final physical intervals, including the last displayed pose.");
+            var rows = outlines.ToArray();
+            var maximumOutlineWindowDip = Enumerable.Range(0, 256).Max(i =>
+            {
+                var dx = rows.Max(row => row[i].X) - rows.Min(row => row[i].X);
+                var dy = rows.Max(row => row[i].Y) - rows.Min(row => row[i].Y);
+                return Math.Sqrt(dx * dx + dy * dy);
+            });
+            Assert.IsLessThanOrEqualTo(.1, maximumOutlineWindowDip, "The actual camera, gait and Viewbox transforms must preserve the visible 2D budget.");
             var stateBefore = runtime.CaptureStateAsync(); Wait(() => stateBefore.IsCompleted, 2000, "sleep state snapshot");
             var visualBefore = home.BoundBeltPresenter!.Inspect(); var physicsTick = home.DisplayedBeltSnapshot!.Tick;
             Click(home, "PreviewBlinkButton");
@@ -319,21 +341,78 @@ public sealed class BeltBodyProductTests
             Assert.AreSame(visualBefore.Shape, visualAfter.Shape, "Sleeping body geometry is reused while eyes and accessories advance.");
             Assert.AreEqual(1, visualAfter.Accessories.Count);
             Assert.IsGreaterThan(visualBefore.Accessories.Single().Frame.StepIndex, visualAfter.Accessories.Single().Frame.StepIndex);
+            // Same configuration and comparison animation, ten seconds each; the body resumes from its frozen state.
+            runtime.SleepEnabled = false;
+            var baseline = SampleProductCpu(home, 10000);
+            Assert.IsGreaterThanOrEqualTo(500L, baseline.NativeCalls, "The off side must really keep solving.");
+            runtime.SleepEnabled = true;
+            Wait(() => runtime.Metrics.Sleeping, 60000, "v2 sleep after off-side comparison");
+            Pump(100);
+            physicsTick = home.DisplayedBeltSnapshot!.Tick;
             var cpuReduction = 1 - sleeping.CpuMilliseconds / baseline.CpuMilliseconds;
             var callsReduction = 1 - sleeping.NativeCalls / (double)baseline.NativeCalls;
-            var receipt = new { condition, recoveryObservationSeconds = recoverySeconds, baseline, sleeping, cpuReduction, callsReduction, physicsTick, presentationTicks = visualAfter.Tick - visualBefore.Tick };
-            TestContext.WriteLine(JsonSerializer.Serialize(receipt));
-            using (var file = TestEvidence.Create("belt-product", "sleep-" + condition + ".json")) JsonSerializer.Serialize(file, receipt);
             Assert.IsGreaterThanOrEqualTo(.30, cpuReduction, "Frozen whole product process CPU reduction gate.");
             Assert.IsGreaterThanOrEqualTo(.99, callsReduction, "Frozen solver-call reduction gate.");
             // Opposing keys are an active occupation and must wake, with no synthetic catch-up.
-            var wake = Stopwatch.StartNew(); runtime.PublishInput(new(InputActive: true));
+            FocusOwnedWindow(window); Element<FrameworkElement>(home, "Stage").Focus();
+            var wake = Stopwatch.StartNew(); KeyDown(0x41); KeyDown(0x44);
             Wait(() => home.DisplayedBeltSnapshot!.Tick > physicsTick, 2000, "wake after opposing-key occupation");
             wake.Stop(); Assert.IsLessThanOrEqualTo(100d, wake.Elapsed.TotalMilliseconds, "Frozen wake to successful displayed body gate.");
             var awakeTick = home.DisplayedBeltSnapshot!.Tick; Pump(250);
             Assert.IsFalse(runtime.Metrics.Sleeping);
             Assert.IsLessThan(30, home.DisplayedBeltSnapshot!.Tick - awakeTick, "Ten seconds of sleeping wall time must not be replayed.");
-            runtime.ClearInput();
+            Assert.IsTrue(home.DisplayedBeltSnapshot!.ActualInput.InputActive);
+            Assert.AreEqual(0d, home.DisplayedBeltSnapshot!.ActualInput.Horizontal);
+            var receipt = new { contract = "visible-deformation-v2", condition, recoveryObservationSeconds = recoverySeconds,
+                enabledToSleepMilliseconds, releaseToSleepMilliseconds, startupToSleepMilliseconds, maximumOutlineWindowDip,
+                wakeToDisplayMilliseconds = wake.Elapsed.TotalMilliseconds, baseline, sleeping, cpuReduction, callsReduction,
+                physicsTick, presentationTicks = visualAfter.Tick - visualBefore.Tick };
+            TestContext.WriteLine(JsonSerializer.Serialize(receipt));
+            using (var file = TestEvidence.Create("belt-product-visible-v2", "sleep-" + condition + ".json")) JsonSerializer.Serialize(file, receipt);
+            KeyUp(0x41); KeyUp(0x44); runtime.ClearInput();
+        }
+        finally { KeyUp(0x41); KeyUp(0x44); home.UnbindBeltBody(); window.Close(); }
+    }
+
+    [STATestMethod]
+    public void VisibleV2SleepingProductHotEditCancelDefaultHideAndCloseRespectLifecycle()
+    {
+        RequireModule();
+        var root = NewRoot(); var session = new AppearanceSettingsSession(Path.Combine(root, "appearance.json"));
+        var home = CreateHome(root, session); var window = Show(home);
+        try
+        {
+            WaitReady(home); home.ShowEditor(HomeEditor.Face); Click(home, "AppearanceBodyTab");
+            var runtime = home.BoundBeltBody!; runtime.SleepEnabled = true;
+            WaitSleep();
+            var original = home.DisplayedBeltSnapshot!;
+            Set(home, "BodySizeSlider", 80); Set(home, "BodySoftnessSlider", 0); Set(home, "BodyLandingBuildSlider", 0);
+            Assert.IsTrue(session.RequiresBodyPreview);
+            WaitReady(home);
+            Assert.AreSame(runtime, home.BoundBeltBody);
+            Assert.AreEqual(original.Epoch, home.DisplayedBeltSnapshot!.Epoch);
+            Assert.AreEqual(new DangoBodyControls(80, 0, 0), home.DisplayedBeltSnapshot!.Body);
+            WaitSleep();
+            Click(home, "CancelAppearanceButton"); WaitReady(home);
+            Assert.AreEqual(DangoBodyControls.Default, home.DisplayedBeltSnapshot!.Body);
+            Assert.IsGreaterThan(original.Epoch, home.DisplayedBeltSnapshot!.Epoch);
+            WaitSleep();
+            Set(home, "BodySizeSlider", 80); Set(home, "BodySoftnessSlider", 0); Set(home, "BodyLandingBuildSlider", 0);
+            WaitReady(home); WaitSleep();
+            Click(home, "DefaultAppearanceButton"); WaitReady(home);
+            Assert.AreEqual(DangoAppearanceConfiguration.Default, session.DraftAppearance);
+            WaitSleep();
+            window.Hide(); Pump(100); Assert.IsFalse(runtime.Metrics.Running);
+            window.Show(); window.Activate(); WaitReady(home); WaitSleep();
+            var close = Stopwatch.StartNew(); home.UnbindBeltBody(); close.Stop();
+            Assert.IsLessThanOrEqualTo(2000d, close.Elapsed.TotalMilliseconds, "Sleeping owner must close through an event barrier.");
+            Assert.IsFalse(File.Exists(Path.Combine(root, "appearance.json")), "Neither cancel, default, hide nor close applies the draft to disk.");
+
+            void WaitSleep()
+            {
+                Wait(() => runtime.Metrics.Sleeping || runtime.Metrics.Error is not null, 60000, "v2 lifecycle sleep");
+                Assert.IsNull(runtime.Metrics.Error); Pump(100);
+            }
         }
         finally { home.UnbindBeltBody(); window.Close(); }
     }
