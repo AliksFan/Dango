@@ -2,7 +2,7 @@
 
 `Dango` 是一个多人联机桌面宠物项目的开发代号。
 
-2026-10-19 新身体接入规划：已从当前 main 建立 `codex/face-body-belt-integration`，固定继承已完成的连续外圈 C5 实验及旧 F5 候选来源，制定[新的 F1～F6 接入计划](docs/planning/2026-10-19-belt-body-product-integration.md)：新内核产品化、版本化存储、真正实时身体调节、捏脸完整闭环和事件唤醒节能休眠。旧内核接入、必须点击预览及旧 Box2D 专属休眠路线被替代；来源历史、冻结模块和失败证据见[归档交接](docs/archive/2026-10-19-body-physics-handoff.md)。本轮仅分支／计划／交接，产品源码尚未移植，房间能力后续单列，未合 main、推送、安装或部署。
+2026-10-19 新身体接入实施：`codex/face-body-belt-integration` 已形成实际单人首页／捏脸候选，接入独立连续外圈内核、Schema5和三个身体参数真正实时调节，自动保存恢复／真实键鼠／短时性能验证通过。事件休眠代码及自然静置CPU收益已验证，但走停／拖压后严格形变门尚未完成全部收益目标，默认关闭；不宣称全计划或人工验收完成。见[当前计划](docs/planning/2026-10-19-belt-body-product-integration.md)、[实施验证](docs/verification/2026-10-19-belt-body-implementation.md)和[来源归档](docs/archive/2026-10-19-body-physics-handoff.md)。房间新内核另案；未合 main、推送、安装或部署。
 
 2026-10-09 DIY 配饰第一版：用户确认当前设计收口、人工验收通过，并授权合并至本地 main。包含透明图创建与编辑、多件图层、柔性／翻折、形变与连接行程上限、旋转／重力及本地保存重载，见[验收记录](docs/verification/2026-10-09-accessory-material-v5.md#2026-10-09-第一版人工通过与本地整合授权)。已完成本地 main 整合，保留现有桌宠房间成果，见[整合记录](docs/verification/2026-10-09-accessory-v1-main-integration.md)；分享和配饰间挂接继续后置，历史自动差异与其它专项边界保留。未授权推送、更新日常安装、部署或替换正式 DLL。
 
