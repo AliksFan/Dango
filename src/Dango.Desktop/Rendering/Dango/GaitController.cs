@@ -6,6 +6,7 @@ internal readonly record struct GaitSample(double X, double Y, bool Grounded, do
 
 internal sealed class GaitController
 {
+    private readonly double maximumCompression, maximumWidthDeviation;
     private GaitSample? previous;
     private double support, neutralTime, neutralWidth, neutralHeight, neutralArea;
     private double filteredSpeed, entering, releaseElapsed, releaseDuration;
@@ -13,6 +14,22 @@ internal sealed class GaitController
     internal double Strain { get; private set; }
     internal double Phase { get; private set; }
     internal string? Error { get; private set; }
+    internal (double Width, double Height, double Area) NeutralDimensions => (neutralWidth, neutralHeight, neutralArea);
+
+    internal GaitController(double maximumCompression = .08, double maximumWidthDeviation = .10)
+    {
+        if (!double.IsFinite(maximumCompression) || maximumCompression is < 0 or >= 1)
+            throw new ArgumentOutOfRangeException(nameof(maximumCompression));
+        if (!double.IsFinite(maximumWidthDeviation) || maximumWidthDeviation is < 0 or >= 1)
+            throw new ArgumentOutOfRangeException(nameof(maximumWidthDeviation));
+        this.maximumCompression = maximumCompression;
+        this.maximumWidthDeviation = maximumWidthDeviation;
+    }
+
+    internal bool OutsideNeutralShape(double width, double height, double area) => neutralHeight > 0 &&
+        (height < neutralHeight * (1 - maximumCompression) ||
+         Math.Abs(width / neutralWidth - 1) > maximumWidthDeviation || Math.Abs(area / neutralArea - 1) > .10);
+
     internal double Advance(GaitSample sample, double seconds)
     {
         if (Error is not null) return 0;
@@ -23,8 +40,7 @@ internal sealed class GaitController
         { Fail(); return 0; }
         var old = previous;
         previous = sample;
-        var compressed = neutralHeight > 0 && (sample.Height < neutralHeight * .92 ||
-            Math.Abs(sample.Width / neutralWidth - 1) > .10 || Math.Abs(sample.Area / neutralArea - 1) > .10);
+        var compressed = OutsideNeutralShape(sample.Width, sample.Height, sample.Area);
         if (sample.Unsafe || !sample.Grounded || compressed)
         { owner = 0; entering = filteredSpeed = support = 0; Strain = 0; releaseDuration = 0; return 0; }
         if (old is null) return Release(seconds, sample.FastRelease ? .12 : .3);

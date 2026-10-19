@@ -85,7 +85,7 @@ public static class DampedSpring
         }
         foreach (var checkpoint in new[] { turn, seconds })
         {
-            var probe = Solve(state, target, frequency, damping, checkpoint);
+            var probe = checkpoint == seconds ? end : Solve(state, target, frequency, damping, checkpoint);
             if (probe.Position >= minimum && probe.Position <= maximum) continue;
             var bound = probe.Position < minimum ? minimum : maximum;
             double lo = 0, hi = checkpoint;

@@ -30,6 +30,15 @@ public sealed class AttachmentMotionController(AttachmentCommandRouter router, A
     }
     public bool Paused { get => clock.Paused; set { if (clock.Paused != value) { hat?.ResetSignals(); previousBodyY = null; } clock.Paused = value; } }
     public AttachmentPresentationFrame? Update(PhysicsPresentationFrame body, long stepIndex, double seconds, DangoFacingDirection facing = DangoFacingDirection.Center, HatBodySample? bodyMotion = null, bool hatBodyFollowEnabled = true)
+        => UpdateCore(body, stepIndex, seconds, facing, bodyMotion, hatBodyFollowEnabled, null);
+
+    /// <summary>Presentation consumers can supply an exact sampled body boundary without fitting a second curve.</summary>
+    internal AttachmentPresentationFrame? UpdateBoundary(PhysicsPresentationFrame body, AttachmentShapeGeometry shape,
+        long stepIndex, double seconds, DangoFacingDirection facing, HatBodySample bodyMotion)
+        => UpdateCore(body, stepIndex, seconds, facing, bodyMotion, false, shape);
+
+    private AttachmentPresentationFrame? UpdateCore(PhysicsPresentationFrame body, long stepIndex, double seconds,
+        DangoFacingDirection facing, HatBodySample? bodyMotion, bool hatBodyFollowEnabled, AttachmentShapeGeometry? sourceShape)
     {
         if (!double.IsFinite(seconds) || seconds is <= 0 or > 0.1 || stepIndex < 0) throw new ArgumentOutOfRangeException(nameof(seconds));
         if (Paused || stepIndex <= clock.StepIndex) return Current;
@@ -39,7 +48,7 @@ public sealed class AttachmentMotionController(AttachmentCommandRouter router, A
         previousBodyY = bodyMotion?.Y;
         // Physics Y points upward. A small deadzone suppresses resting-body jitter.
         var defaultY = Math.Sign(verticalVelocity) * Math.Clamp((Math.Abs(verticalVelocity) - 0.15) / 3, 0, 1);
-        var shape = AttachmentShapeGeometry.Create(body.Contour);
+        var shape = sourceShape ?? AttachmentShapeGeometry.Create(body.Contour);
         var signal = shape.EstimateTilt();
         var commands = router.CommitStep(target);
         AttachmentChannelIntent? Command(AttachmentChannel channel) => commands.FirstOrDefault(c => c.Channel == channel);
@@ -68,15 +77,34 @@ public sealed class AttachmentMotionController(AttachmentCommandRouter router, A
                 boundaries.Add(eye.BlinkStart + blink.Close.TotalSeconds + blink.Hold.TotalSeconds);
                 boundaries.Add(eye.BlinkStart + blink.Close.TotalSeconds + blink.Hold.TotalSeconds + blink.Open.TotalSeconds);
             }
+        // Blink phase boundaries belong only to the eyes. Keep the body tilt
+        // and hat on the same canonical clock slices as a frame with no blink:
+        // sampling their changing target at a blink boundary couples channels.
+        var motionStart = clock.Elapsed;
+        var motionEnd = motionStart + seconds;
+        var motionCount = Math.Max(1, (int)Math.Ceiling((motionEnd - motionStart) * 240));
+        var previousMotionTime = motionStart;
+        for (var i = 1; sourceShape is not null && i <= motionCount; i++)
+        {
+            var next = i == motionCount ? motionEnd : motionStart + (motionEnd - motionStart) * i / motionCount;
+            var motionSeconds = next - previousMotionTime;
+            tilt = DampedSpring.AdvanceBounded(tilt, signal.Angle, 4, 0.9, motionSeconds, -Math.PI / 18, Math.PI / 18);
+            hat?.Advance(motionSeconds, tilt.Position, (Command(AttachmentChannel.HatSlide)?.Intent as SetHatSlide)?.Offset ?? 0);
+            previousMotionTime = next;
+        }
         foreach (var slice in clock.Advance(stepIndex, seconds, boundaries))
         {
-            tilt = DampedSpring.AdvanceBounded(tilt, signal.Angle, 4, 0.9, slice.Seconds, -Math.PI / 18, Math.PI / 18);
-            hat?.Advance(slice.Seconds, tilt.Position, (Command(AttachmentChannel.HatSlide)?.Intent as SetHatSlide)?.Offset ?? 0);
+            if (sourceShape is null)
+            {
+                // Preserve the existing normalized-contour consumer's timing contract.
+                tilt = DampedSpring.AdvanceBounded(tilt, signal.Angle, 4, 0.9, slice.Seconds, -Math.PI / 18, Math.PI / 18);
+                hat?.Advance(slice.Seconds, tilt.Position, (Command(AttachmentChannel.HatSlide)?.Intent as SetHatSlide)?.Offset ?? 0);
+            }
             AdvanceEye(left, AttachmentChannel.LeftGaze, AttachmentChannel.LeftEyePose, slice);
             AdvanceEye(right, AttachmentChannel.RightGaze, AttachmentChannel.RightEyePose, slice);
         }
         EyeMotionSample Sample(EyeState eye) => new(new(eye.X.Position, eye.Y.Position), eye.Open.Position * eye.Envelope.Position, eye.Shape, eye.Soft.Position);
-        var layout = FaceLayoutSolver.Solve(shape, Sample(left), Sample(right), -tilt.Position, eyeLayout, horizontalRange: 7);
+        var layout = FaceLayoutSolver.Solve(shape, Sample(left), Sample(right), sourceShape is null ? -tilt.Position : tilt.Position, eyeLayout, horizontalRange: 7);
         if (layout.GazeScale < 1)
         {
             foreach (var eye in new[] { left, right })

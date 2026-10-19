@@ -17,10 +17,12 @@ public sealed class AttachmentShapeGeometry
     // Tighter than the 0.0005 gate, leaving room for contact-fit error.
     public const double MaximumChordError = 0.00005;
     private readonly AttachmentPoint[] controls;
+    private readonly bool sampledBoundary;
     private readonly AttachmentBoundaryEdge[] boundaryEdges;
-    private AttachmentShapeGeometry(AttachmentPoint[] controls, AttachmentPoint[] boundary)
+    private AttachmentShapeGeometry(AttachmentPoint[] controls, AttachmentPoint[] boundary, bool sampledBoundary = false)
     {
         this.controls = controls;
+        this.sampledBoundary = sampledBoundary;
         Boundary = Array.AsReadOnly(boundary);
         boundaryEdges = new AttachmentBoundaryEdge[boundary.Length];
         for (var index = 0; index < boundary.Length; index++)
@@ -71,6 +73,51 @@ public sealed class AttachmentShapeGeometry
         return new(controls, boundary.Skip(start).Concat(boundary.Take(start)).ToArray());
     }
 
+    /// <summary>
+    /// Accepts an already sampled, counterclockwise closed boundary in reference-width units
+    /// (one unit is 160 DIP). No spline fitting, resampling or vertex displacement occurs.
+    /// The closing edge is implicit; do not repeat the first point at the end.
+    /// </summary>
+    public static AttachmentShapeGeometry FromBoundary(IReadOnlyList<AttachmentPoint> boundary)
+    {
+        ArgumentNullException.ThrowIfNull(boundary);
+        if (boundary.Count is < 3 or > 4096)
+            throw new ArgumentException("Sampled attachment boundary count is invalid.", nameof(boundary));
+        var points = boundary.ToArray();
+        if (points.Any(p => !double.IsFinite(p.X) || !double.IsFinite(p.Y) || Math.Abs(p.X) > 1024 || Math.Abs(p.Y) > 1024))
+            throw new ArgumentException("Sampled attachment boundary coordinates are invalid.", nameof(boundary));
+        var area = 0d;
+        for (var i = 0; i < points.Length; i++)
+        {
+            var a = points[i]; var b = points[(i + 1) % points.Length];
+            if ((b - a).Length <= 1e-12)
+                throw new ArgumentException("Sampled attachment boundary has a zero-length edge.", nameof(boundary));
+            area += a.X * b.Y - a.Y * b.X;
+        }
+        if (area <= 1e-10)
+            throw new ArgumentException("Sampled attachment boundary is degenerate or reversed.", nameof(boundary));
+        for (var i = 0; i < points.Length; i++)
+            for (var j = i + 2; j < points.Length; j++)
+            {
+                if (i == 0 && j == points.Length - 1) continue;
+                if (SegmentsTouch(points[i], points[(i + 1) % points.Length], points[j], points[(j + 1) % points.Length]))
+                    throw new ArgumentException("Sampled attachment boundary intersects itself.", nameof(boundary));
+            }
+        return new(points, points, sampledBoundary: true);
+    }
+
+    private static bool SegmentsTouch(AttachmentPoint a, AttachmentPoint b, AttachmentPoint c, AttachmentPoint d)
+    {
+        if (Math.Max(a.X, b.X) < Math.Min(c.X, d.X) - 1e-12 || Math.Max(c.X, d.X) < Math.Min(a.X, b.X) - 1e-12 ||
+            Math.Max(a.Y, b.Y) < Math.Min(c.Y, d.Y) - 1e-12 || Math.Max(c.Y, d.Y) < Math.Min(a.Y, b.Y) - 1e-12) return false;
+        static double Cross(AttachmentPoint p, AttachmentPoint q, AttachmentPoint r) =>
+            (q.X - p.X) * (r.Y - p.Y) - (q.Y - p.Y) * (r.X - p.X);
+        static bool On(AttachmentPoint p, AttachmentPoint q, AttachmentPoint r) =>
+            Math.Abs(Cross(p, q, r)) <= 1e-14 && r.X >= Math.Min(p.X, q.X) - 1e-12 &&
+            r.X <= Math.Max(p.X, q.X) + 1e-12 && r.Y >= Math.Min(p.Y, q.Y) - 1e-12 && r.Y <= Math.Max(p.Y, q.Y) + 1e-12;
+        return Intersects(a, b, c, d) || On(a, b, c) || On(a, b, d) || On(c, d, a) || On(c, d, b);
+    }
+
     private static void Flatten(AttachmentPoint a, AttachmentPoint b, AttachmentPoint c, List<AttachmentPoint> points)
     {
         if (points.Count >= 1024) throw new ArgumentException("Attachment sampling capacity exceeded.");
@@ -83,6 +130,7 @@ public sealed class AttachmentShapeGeometry
     public AttachmentPoint Evaluate(int segment, double t)
     {
         if (segment < 0 || segment >= controls.Length || !double.IsFinite(t) || t < 0 || t > 1) throw new ArgumentOutOfRangeException(nameof(segment));
+        if (sampledBoundary) return controls[segment] * (1 - t) + controls[(segment + 1) % controls.Length] * t;
         var b = controls[segment];
         var a = (controls[(segment + controls.Length - 1) % controls.Length] + b) * 0.5;
         var c = (b + controls[(segment + 1) % controls.Length]) * 0.5;
