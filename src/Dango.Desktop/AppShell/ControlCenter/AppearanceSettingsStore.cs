@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using Dango.Desktop.Physics.Presentation.Attachments;
+using Dango.Desktop.Physics.Tuning;
 using Dango.Desktop.Rendering.Visuals;
 using Dango.Desktop.Verification;
 
@@ -9,7 +10,7 @@ namespace Dango.Desktop.AppShell.ControlCenter;
 /// <summary>Strict, independent persistence for the local Dango's colors and base eye controls.</summary>
 public sealed record AppearanceSettings
 {
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 5;
     public static OpaqueSrgbColor DefaultEyeColor => DangoAppearanceConfiguration.DefaultEyeColor;
     public DangoAppearanceConfiguration Configuration { get; }
     public OpaqueSrgbColor BodyColor => Configuration.BodyColor;
@@ -34,7 +35,7 @@ public sealed record AppearanceSettingsLoadResult(
     AppearanceSettings Settings,
     string? Warning,
     bool PreserveOriginal = false,
-    bool RequiresMigration = false);
+    bool RequiresMigration = false, string? SourceBodyPhysicsModel = null);
 
 public sealed class AppearanceSettingsStore
 {
@@ -57,10 +58,13 @@ public sealed class AppearanceSettingsStore
         var eyes = settings.EyeLayout;
         _ = new EyeLayoutParameters(eyes.SizePercent, eyes.OvalPercent,
             eyes.HeightControlPercent, eyes.SpacingControlPercent);
+        var body = settings.Configuration.Body;
+        _ = new DangoBodyControls(body.SizePercent, body.Softness, body.LandingBuild);
         writer.Write(path, JsonSerializer.Serialize(
             new PersistedSettings(AppearanceSettings.CurrentSchemaVersion,
                 settings.BodyColor.ToHex(), settings.EyeColor.ToHex(),
-                eyes.SizePercent, eyes.OvalPercent, eyes.HeightControlPercent, eyes.SpacingControlPercent), SerializerOptions));
+                eyes.SizePercent, eyes.OvalPercent, eyes.HeightControlPercent, eyes.SpacingControlPercent,
+                body.SizePercent, body.Softness, body.LandingBuild, settings.Configuration.BodyPhysicsModel), SerializerOptions));
     }
 
     public void Save(string path, DangoAppearanceConfiguration configuration) => Save(path, new AppearanceSettings(configuration));
@@ -84,9 +88,9 @@ public sealed class AppearanceSettingsStore
             if (!fields.TryGetValue("appearanceSchemaVersion", out var schemaElement) ||
                 schemaElement.ValueKind != JsonValueKind.Number || !schemaElement.TryGetInt32(out var schema))
                 return SafeDefault("外观设置版本无法识别，已使用安全默认外观。");
-            if (schema is not 1 and not 2 and not AppearanceSettings.CurrentSchemaVersion)
+            if (schema is not 1 and not 2 and not 3 and not 4 and not AppearanceSettings.CurrentSchemaVersion)
                 return SafeDefault("外观设置版本无法识别，已使用安全默认外观。");
-            var expectedCount = schema switch { 1 => 2, 2 => 3, _ => 7 };
+            var expectedCount = schema switch { 1 => 2, 2 => 3, 3 => 7, 4 => 10, _ => 11 };
             if (fields.Count != expectedCount ||
                 !fields.TryGetValue("bodyColorHex", out var bodyElement) ||
                 bodyElement.ValueKind != JsonValueKind.String ||
@@ -97,12 +101,25 @@ public sealed class AppearanceSettingsStore
             var body = OpaqueSrgbColor.Parse(bodyElement.GetString()!);
             var eye = schema == 1 ? AppearanceSettings.DefaultEyeColor :
                 OpaqueSrgbColor.Parse(fields["eyeColorHex"].GetString()!);
-            var eyes = schema < AppearanceSettings.CurrentSchemaVersion ? EyeLayoutParameters.Default :
+            // Schema 3 already carries the four eye controls; only Schema 1/2 fall back to default eyes.
+            var eyes = schema < 3 ? EyeLayoutParameters.Default :
                 new EyeLayoutParameters(ReadControl(fields, "eyeSizePercent"), ReadControl(fields, "eyeOvalityPercent"),
                     ReadControl(fields, "eyeHeightControlPercent"), ReadControl(fields, "eyeSpacingControlPercent"));
+            var bodyControls = schema < 4 ? DangoBodyControls.Default :
+                new DangoBodyControls(ReadControl(fields, "bodySizePercent"), ReadControl(fields, "bodySoftness"),
+                    ReadControl(fields, "bodyLandingBuild"));
 
-            return new(new AppearanceSettings(body, eye, eyes), null,
-                RequiresMigration: schema < AppearanceSettings.CurrentSchemaVersion);
+            string? sourceModel = schema == 4 ? DangoBodyMaterial.LegacyModelVersion : null;
+            if (schema == 5)
+            {
+                if (!fields.TryGetValue("bodyPhysicsModel", out var model) || model.ValueKind != JsonValueKind.String)
+                    return SafeDefault("身体物理模型字段无效，原文件已保护。");
+                sourceModel = model.GetString();
+                if (sourceModel != DangoBodyMaterial.ModelVersion)
+                    return SafeDefault("身体物理模型不受支持，已拒绝载入并保护原文件。");
+            }
+            return new(new AppearanceSettings(new DangoAppearanceConfiguration(body, eye, eyes, bodyControls)), null,
+                RequiresMigration: schema < AppearanceSettings.CurrentSchemaVersion, SourceBodyPhysicsModel: sourceModel);
         }
         catch (Exception exception) when (exception is FileNotFoundException or DirectoryNotFoundException)
         {
@@ -127,5 +144,6 @@ public sealed class AppearanceSettingsStore
         new(AppearanceSettings.CreateDefault(), warning, PreserveOriginal: true);
 
     private sealed record PersistedSettings(int AppearanceSchemaVersion, string BodyColorHex, string EyeColorHex,
-        double EyeSizePercent, double EyeOvalityPercent, double EyeHeightControlPercent, double EyeSpacingControlPercent);
+        double EyeSizePercent, double EyeOvalityPercent, double EyeHeightControlPercent, double EyeSpacingControlPercent,
+        double BodySizePercent, double BodySoftness, double BodyLandingBuild, string BodyPhysicsModel);
 }

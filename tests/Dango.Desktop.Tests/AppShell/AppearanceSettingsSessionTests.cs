@@ -90,7 +90,7 @@ public sealed class AppearanceSettingsSessionTests
         Assert.IsFalse(session.HasPendingSave);
         Assert.AreEqual("#000000", new AppearanceSettingsStore().Load(path).BodyColor.ToHex());
         Assert.AreEqual(expectedEyes, new AppearanceSettingsStore().Load(path).EyeColor.ToHex());
-        StringAssert.Contains(File.ReadAllText(path), "\"appearanceSchemaVersion\": 3");
+        StringAssert.Contains(File.ReadAllText(path), "\"appearanceSchemaVersion\": 5");
         var reopened = new AppearanceSettingsSession(path);
         Assert.AreEqual(session.SavedAppearance, reopened.SavedAppearance);
         Assert.IsFalse(reopened.HasPendingSave);

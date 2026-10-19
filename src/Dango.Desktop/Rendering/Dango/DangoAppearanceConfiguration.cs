@@ -1,4 +1,5 @@
 using Dango.Desktop.Physics.Presentation.Attachments;
+using Dango.Desktop.Physics.Tuning;
 
 namespace Dango.Desktop.Rendering.Visuals;
 
@@ -12,13 +13,26 @@ public sealed record DangoAppearanceConfiguration
     public OpaqueSrgbColor BodyColor { get; }
     public OpaqueSrgbColor EyeColor { get; }
     public EyeLayoutParameters EyeLayout { get; }
+    /// <summary>Body size, softness and landing build. Physics follows these after successful application and display.</summary>
+    public DangoBodyControls Body { get; }
+    public string BodyPhysicsModel { get; }
 
     public DangoAppearanceConfiguration(OpaqueSrgbColor bodyColor, OpaqueSrgbColor eyeColor,
-        EyeLayoutParameters eyeLayout)
+        EyeLayoutParameters eyeLayout, DangoBodyControls? body = null, string bodyPhysicsModel = DangoBodyMaterial.ModelVersion)
     {
         ArgumentNullException.ThrowIfNull(eyeLayout);
         BodyColor = bodyColor;
         EyeColor = eyeColor;
         EyeLayout = eyeLayout;
+        Body = body ?? DangoBodyControls.Default;
+        if (bodyPhysicsModel != DangoBodyMaterial.ModelVersion)
+            throw new ArgumentException("Unsupported body physics model.", nameof(bodyPhysicsModel));
+        BodyPhysicsModel = bodyPhysicsModel;
     }
+
+    // Partial edits keep every other field, so a colour or eye change never resets the saved body.
+    public DangoAppearanceConfiguration WithBodyColor(OpaqueSrgbColor color) => new(color, EyeColor, EyeLayout, Body, BodyPhysicsModel);
+    public DangoAppearanceConfiguration WithEyeColor(OpaqueSrgbColor color) => new(BodyColor, color, EyeLayout, Body, BodyPhysicsModel);
+    public DangoAppearanceConfiguration WithEyeLayout(EyeLayoutParameters eyes) => new(BodyColor, EyeColor, eyes, Body, BodyPhysicsModel);
+    public DangoAppearanceConfiguration WithBody(DangoBodyControls body) => new(BodyColor, EyeColor, EyeLayout, body, BodyPhysicsModel);
 }
