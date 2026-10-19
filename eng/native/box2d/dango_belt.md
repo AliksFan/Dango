@@ -188,7 +188,40 @@ the first solver candidate, original guard and diagnostic-only builds remain
 available for comparison. Six actual numerical fixtures and bounded follow-on
 drag/release sequences are kept in the private solver regression executable.
 
-### Force-only walking outline
+### Current preview: outward radial driving
+
+The user cancelled all extra shaping traction. The current window and guarded
+eight-corner runner explicitly disable whale driving. Its old optional ABI and
+contracts below are retained as experiment history, not enabled behavior.
+
+`dango_belt_set_radial_drive(handle,1)` is default-off, requires shape protection,
+is mutually exclusive with whale driving, and is configured before the first
+successful step. A/D selects the same world-coordinate directional half-region
+as the original drive. Its analytic intervals are traversed by cumulative
+material-angle measure at 64 equal-measure midpoints. Each actual point force is
+`abs(original horizontal budget)/64 * normalize(B(theta)-Core)`.
+
+The sum of force magnitudes retains the original budget; the horizontal net
+force is generally smaller and natural vertical net force is retained. There
+is no balancing projection, added core reaction, extra shaping force or input
+ramp. The original speed gating, ground/air ratio, cancel, W/S and whole-body
+Space rules remain. Materials, collision and safety limits are unchanged.
+
+Ledger kind5 contains the actual 64 quadrature forces at their pre-integration
+positions. Radial16 diagnostics and snapshot slot179 are documented in the
+header. Diagnostics slots4..8 describe the last substep including zero-budget
+substeps; work slot13 is a subset of existing external work, never added again.
+Rejected frames roll back radial telemetry except its attempt counter.
+In radial mode stats18/19 and57/58 report the actual control net force (including
+W/S), not the sum-of-magnitudes budget. The radial force's equivalent action
+point is the core; individual loads remain applied to the belt, with no core
+reaction force.
+
+The module and application are built separately in `belt-radial-native` and
+`app-radial-drive`. Only 80/100/0 is previewed first; neither the old eight-corner
+result nor prior visual feedback establishes acceptance of this new direction.
+
+### Historical force-only walking outline
 
 The optional `dango_belt_set_whale_drive(handle,1)` is default-off, requires shape
 protection, and is set before the first successful step. The new lab candidate

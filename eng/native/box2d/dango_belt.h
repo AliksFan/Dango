@@ -58,13 +58,24 @@ DANGO_BELT_API int dango_belt_read_speed_limit(void*,double*,int);
    15 reserved0. Entire frame rolls back on failure except attempt[2]. */
 DANGO_BELT_API int dango_belt_set_whale_drive(void*,int);
 DANGO_BELT_API int dango_belt_read_whale_drive(void*,double*,int);
+/* Optional A/D direction replacement, default off, before first successful
+   step, requires shape guard and mutually exclusive with whale mode.
+   Radial16: 0 schema1,1 enabled,2 attempt,3 activeSubsteps,4 lastPointCount,
+   5 lastRequestedMagnitudeBudget,6 lastAppliedMagnitudeSum,7 lastNetFx,
+   8 lastNetFy,9 maxAbsTorqueAboutCore,10 maxUnitCrossAlignmentError,
+   11 minUnitDotAlignment(default1),12 maxAbsBudgetError,
+   13 radialEndpointWork (subset of original external work),14 guardWorkPeak,
+   15 reserved0. Failed frames roll back all except attempt[2]. */
+DANGO_BELT_API int dango_belt_set_radial_drive(void*,int);
+DANGO_BELT_API int dango_belt_read_radial_drive(void*,double*,int);
 /* Read-only last successful substep active-force evaluation, pre-integration.
    Ledger1024 header: 0 schema1,1 capacity1024,2 successful frame attemptTick,
    3 zero-based lastSubstep (-1 before step),4 rowCount (max97),5 sourceMask,
-   6 rowWidth6,7 whaleQuadrature64. Rows from8: x,y,fx,fy,sourceKind,material.
+   6 rowWidth6,7 materialQuadrature64. Rows from8: x,y,fx,fy,sourceKind,material.
    Kind1 horizontal and kind2 vertical are exact resultants of 16 material bins,
    material=binIndex (not physical nodes); kind3 is actual projected whale point
    weight t/64, material=theta; kind4 actual drag point, material=theta.
+   Kind5 actual radial push quadrature point, material=theta.
    SourceMask uses 1<<(kind-1). Gravity/contact omitted. Unused slots zero.
    Read capacity failure writes nothing. Failed frames retain previous ledger. */
 DANGO_BELT_API int dango_belt_read_force_ledger(void*,double*,int);
@@ -73,7 +84,7 @@ DANGO_BELT_API int dango_belt_read_force_ledger(void*,double*,int);
    74 radius,75 scale,76 left,77 right,78 ramp,79 cooldown,80 dragTheta,
    81 shortBones,82 grounded,83 dragging,84 originalJump,85 hasStepped,86 guard,
    87..127 config41 in struct order,128..138 calibration11,139 guardAttemptTick,
-   140..175 mass36,176 speedSaturationEnabled,177 whaleDriveEnabled,178 whaleSignedGain,179..199 reserved zero.
+   140..175 mass36,176 speedSaturationEnabled,177 whaleDriveEnabled,178 whaleSignedGain,179 radialEnabled,180..199 reserved zero.
    JSON doubles preserve binary64.
    Solver24: 0 schema1,1 attemptTick,2 return,3 returnSite,4 substep,5 GNiteration,
    6 lineSearch,7 residual,8 objective,9 directional,10 trialObjective,11 factor,
@@ -87,7 +98,7 @@ DANGO_BELT_API int dango_belt_read_force_ledger(void*,double*,int);
    8 ground work budget,9 rigid ground fallback guard,10 ground penetration,
    11 contact residual,12 contact energy,13 speed,14 bounds,15 final residual,
    16 area,17 stats finite,18 energy diagnostics finite,19 initial guard,
-   20 region force,21 speed saturation nonfinite/unresolved,22 whale traction domain,
+   20 region force,21 speed saturation nonfinite/unresolved,22 whale traction domain,23 radial direction/interval domain,
    31 initial derivative,32 initial radial length,33 initial short edge,
    34 initial area,35 initial barrier material domain.
    Solver diagnostics retain the rejected attempt. */

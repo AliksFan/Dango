@@ -14,8 +14,10 @@ public static class LabBeltGuardExperiments
     private sealed record Phase(string Name, int Frames, double Horizontal = 0, double Down = 0, double Up = 0, bool Jump = false, bool Drag = false);
     private sealed record Sample(double Height, double Width, double CoreY, double ComY, double ComVx,
         double CoreClearance, double GuardClearance, double GuardCross, double StepMilliseconds,
-        double WhaleGain, double WhaleActiveSubsteps, double WhaleNetFx, double WhaleNetFy, double WhaleTorque,
-        double WhaleShapeWork, double WhalePointTraction, double? FrontThickness, double? RearThickness);
+        double RadialActiveSubsteps, double RadialPointCount, double RadialRequestedMagnitudeBudget,
+        double RadialAppliedMagnitudeSum, double RadialNetFx, double RadialNetFy, double RadialTorque,
+        double RadialUnitCrossError, double RadialUnitDotMinimum, double RadialBudgetError,
+        double RadialEndpointWork, double? FrontThickness, double? RearThickness);
 
     public static bool Run(string guardedModule, string output)
     {
@@ -41,9 +43,9 @@ public static class LabBeltGuardExperiments
             LabBeltWorld? world = null;
             try
             {
-                world = new LabBeltWorld(guardedModule, config, true, calibration, enableShapeGuard: true, enableSpeedSaturation: true, enableWhaleDrive: true);
-                if (!world.WhaleDriveAvailable || !world.WhaleDriveEnabled)
-                    throw new InvalidOperationException("Whale drive ABI was not available and enabled for this runner.");
+                world = new LabBeltWorld(guardedModule, config, true, calibration, enableShapeGuard: true, enableSpeedSaturation: true, enableWhaleDrive: false, enableRadialDrive: true);
+                if (!world.RadialDriveAvailable || !world.RadialDriveEnabled || world.WhaleDriveEnabled)
+                    throw new InvalidOperationException("Radial drive must be available and enabled while whale drive remains disabled.");
                 world.SetOriginalGroundJump(); world.SetBounds(-256, 256);
                 foreach (var phase in phases)
                 {
@@ -54,8 +56,9 @@ public static class LabBeltGuardExperiments
                     var maxFallbacks = 0d; var maxRefusals = 0d; var maxGap = 0d; var airborne = 0; var longestAir = 0; var acceptedJump = false;
                     var maxAcceptedResidual = 0d; var maxIterations = 0d; var residualValidatedStops = 0d;
                     var limitedSubsteps = 0d; var speedLimitEnergy = 0d; var maxSpeedAfterLimit = 0d; var bfgsUpdates = 0d;
-                    var whaleActiveSubsteps = 0d; var whaleShapeWork = 0d; var whaleMaxNetFx = 0d; var whaleMaxNetFy = 0d;
-                    var whaleMaxTorque = 0d; var whaleMaxPointTraction = 0d; var whaleMaxAbsGain = 0d; var whaleFinalGain = 0d;
+                    var radialActiveSubsteps = 0d; var radialEndpointWork = 0d; var radialMaxBudget = 0d; var radialMaxApplied = 0d;
+                    var radialMaxNetFx = 0d; var radialMaxNetFy = 0d; var radialMaxTorque = 0d; var radialMaxUnitCrossError = 0d;
+                    var radialMinUnitDot = 1d; var radialMaxBudgetError = 0d; var radialFinalActiveSubsteps = 0d;
                     for (var i = 0; i < phase.Frames; i++)
                     {
                         phaseTick = i;
@@ -66,21 +69,55 @@ public static class LabBeltGuardExperiments
                             InputActive: phase.Horizontal != 0 || phase.Down != 0 || phase.Up != 0 || phase.Drag || phase.Jump && i == 0));
                         var elapsed = Stopwatch.GetElapsedTime(started).TotalMilliseconds; timings.Add(elapsed);
                         var frame = world.Read(); var guard = world.ReadShapeGuard(); ticks++;
-                        var whale = world.ReadWhaleDrive();
-                        if (whale.Length != 16 || whale.Any(x => !double.IsFinite(x)))
-                            throw new InvalidOperationException("Whale drive diagnostics must contain 16 finite values.");
-                        if (whale[1] != 1 || whale[2] != ticks)
-                            throw new InvalidOperationException("Whale drive was not enabled in the same attempted frame.");
-                        if (Math.Abs(whale[5]) > 1e-9 || Math.Abs(whale[6]) > 1e-9 || Math.Abs(whale[7]) > 1e-9)
-                            throw new InvalidOperationException("Whale shape force left a nonzero net force or torque residual.");
-                        if (new[] { whale[3], whale[12], whale[13] }.Any(x => x < -1 || x > 1))
-                            throw new InvalidOperationException("Whale signed gain escaped [-1,1].");
-                        if ((phase.Name is "S" or "S-release" or "W" or "W-release" or "Space" or "drag-compress" or "drag-release") && whale[4] != 0)
-                            throw new InvalidOperationException("Whale force activated during a W/S, Space, or drag phase.");
-                        whaleActiveSubsteps += whale[4]; whaleShapeWork += whale[8];
-                        whaleMaxNetFx = Math.Max(whaleMaxNetFx, whale[5]); whaleMaxNetFy = Math.Max(whaleMaxNetFy, whale[6]);
-                        whaleMaxTorque = Math.Max(whaleMaxTorque, whale[7]); whaleMaxPointTraction = Math.Max(whaleMaxPointTraction, whale[9]);
-                        whaleMaxAbsGain = Math.Max(whaleMaxAbsGain, Math.Abs(whale[3])); whaleFinalGain = whale[3];
+                        var radial = world.ReadRadialDrive();
+                        if (radial.Length != 16 || radial.Any(x => !double.IsFinite(x)))
+                            throw new InvalidOperationException("Radial drive diagnostics must contain 16 finite values.");
+                        if (radial[0] != 1 || radial[1] != 1 || radial[2] != ticks)
+                            throw new InvalidOperationException("Radial drive was not enabled in the same attempted frame.");
+                        var nativeHorizontalForce = (double)(float)config.HorizontalForce;
+                        var nativeAirControlRatio = (double)(float)config.AirControlRatio;
+                        var baseBudget = Math.Abs(nativeHorizontalForce * phase.Horizontal);
+                        var airBudget = Math.Abs(nativeHorizontalForce * nativeAirControlRatio * phase.Horizontal);
+                        var radialBudgetTolerance = 1e-7 * (1 + baseBudget);
+                        var allowedBudgets = phase.Horizontal == 0 ? new[] { 0d } : new[] { 0d, baseBudget, airBudget };
+                        if (!allowedBudgets.Any(allowed => Math.Abs(radial[5] - allowed) <= radialBudgetTolerance) ||
+                            Math.Abs(radial[6] - radial[5]) > radialBudgetTolerance ||
+                            radial[12] > radialBudgetTolerance)
+                            throw new InvalidOperationException("Radial drive magnitude budget was not conserved.");
+                        if (radial[10] > 1e-9 || radial[11] < 1 - 1e-9 || radial[9] > 1e-8 * (1 + radial[5]))
+                            throw new InvalidOperationException("Radial force direction or torque exceeded its radial alignment tolerance.");
+                        if (radial[5] == 0 && (radial[4] != 0 || radial[6] != 0 || radial[7] != 0 || radial[8] != 0))
+                            throw new InvalidOperationException("Zero final-substep budget left nonzero radial force records.");
+                        if (phase.Horizontal == 0 && (radial[5] != 0 || radial[3] != 0))
+                            throw new InvalidOperationException("Radial force remained active after horizontal input stopped or during a non-horizontal phase.");
+                        if (radial[5] != 0 && radial[4] != 64)
+                            throw new InvalidOperationException("Radial drive did not use exactly 64 quadrature points.");
+                        var ledger = world.ReadForceLedger();
+                        if (ledger[2] != ticks) throw new InvalidOperationException("Radial force ledger was not from the same attempted frame.");
+                        var radialLedgerPoints = 0; var ledgerMagnitudeSum = 0d; var ledgerNetFx = 0d; var ledgerNetFy = 0d;
+                        for (var row = 0; row < (int)ledger[4]; row++)
+                        {
+                            var offset = 8 + 6 * row; var kind = ledger[offset + 4];
+                            if (kind == 3) throw new InvalidOperationException("Legacy whale shaping points appeared in the radial runner ledger.");
+                            if (kind == 1) throw new InvalidOperationException("Legacy horizontal half-region force appeared in the radial runner ledger.");
+                            if (kind == 5)
+                            {
+                                radialLedgerPoints++;
+                                var fx = ledger[offset + 2]; var fy = ledger[offset + 3];
+                                ledgerMagnitudeSum += Math.Sqrt(fx * fx + fy * fy); ledgerNetFx += fx; ledgerNetFy += fy;
+                            }
+                        }
+                        if (radialLedgerPoints != radial[4])
+                            throw new InvalidOperationException("Radial diagnostics and active-force ledger point counts disagree.");
+                        var ledgerTolerance = 1e-8 * (1 + radial[5]);
+                        if (Math.Abs(ledgerMagnitudeSum - radial[6]) > ledgerTolerance ||
+                            Math.Abs(ledgerNetFx - radial[7]) > ledgerTolerance || Math.Abs(ledgerNetFy - radial[8]) > ledgerTolerance)
+                            throw new InvalidOperationException("Radial ledger force totals disagree with same-frame diagnostics.");
+                        radialActiveSubsteps += radial[3]; radialEndpointWork += radial[13]; radialFinalActiveSubsteps = radial[3];
+                        radialMaxBudget = Math.Max(radialMaxBudget, radial[5]); radialMaxApplied = Math.Max(radialMaxApplied, radial[6]);
+                        radialMaxNetFx = Math.Max(radialMaxNetFx, Math.Abs(radial[7])); radialMaxNetFy = Math.Max(radialMaxNetFy, Math.Abs(radial[8]));
+                        radialMaxTorque = Math.Max(radialMaxTorque, radial[9]); radialMaxUnitCrossError = Math.Max(radialMaxUnitCrossError, radial[10]);
+                        radialMinUnitDot = Math.Min(radialMinUnitDot, radial[11]); radialMaxBudgetError = Math.Max(radialMaxBudgetError, radial[12]);
                         var solver = world.SolverDiagnosticsAvailable ? world.ReadSolverDiagnostics() : null;
                         var speedLimit = world.ReadSpeedLimit();
                         if (speedLimit[0] != 1 || speedLimit[1] != 1 || speedLimit[2] != ticks || speedLimit[6] > config.MaximumSpeed || speedLimit[7] > 1e-10)
@@ -109,7 +146,8 @@ public static class LabBeltGuardExperiments
                         airborne = frame.Gap > 1e-4 ? airborne + 1 : 0; longestAir = Math.Max(longestAir, airborne);
                         var (frontThickness, rearThickness) = BodyThickness(frame.Curve, phase.Horizontal);
                         var sample = new Sample(frame.Height, frame.Width, frame.CoreY, frame.ComY, frame.Stats[43] / frame.TotalMass,
-                            clearance, guard[12], guard[11], elapsed, whale[3], whale[4], whale[5], whale[6], whale[7], whale[8], whale[9],
+                            clearance, guard[12], guard[11], elapsed, radial[3], radial[4], radial[5], radial[6], radial[7], radial[8], radial[9],
+                            radial[10], radial[11], radial[12], radial[13],
                             frontThickness, rearThickness); samples.Add(sample);
                         if (i % 30 == 0) trace.WriteLine(JsonSerializer.Serialize(new { Tick = ticks, Phase = phase.Name, Sample = sample, Guard = guard }));
                     }
@@ -117,10 +155,10 @@ public static class LabBeltGuardExperiments
                     var width = tail.Average(x => x.Width);
                     if (phase.Name == "rest") { restHeight = height; restWidth = width; }
                     var recoveryHeightError = height / restHeight - 1; var recoveryWidthError = width / restWidth - 1;
-                    if (phase.Name is ("right" or "left") && whaleActiveSubsteps <= 0)
-                        gates.Add(phase.Name + ": whale drive had no active substeps");
-                    if (phase.Name is ("stop-right" or "stop-left") && Math.Abs(whaleFinalGain) >= 1e-9)
-                        gates.Add(phase.Name + ": signed gain did not return to zero at the final frame");
+                    if (phase.Name is ("right" or "left") && radialActiveSubsteps <= 0)
+                        gates.Add(phase.Name + ": radial drive had no active substeps");
+                    if (phase.Name is ("stop-right" or "stop-left") && radialFinalActiveSubsteps != 0)
+                        gates.Add(phase.Name + ": radial drive did not stop immediately with horizontal input");
                     if (phase.Name.EndsWith("release", StringComparison.Ordinal) &&
                         (Math.Abs(recoveryHeightError) > .02 || Math.Abs(recoveryWidthError) > .02))
                         gates.Add(phase.Name + ": tail height/width did not return within 2% of own rest");
@@ -128,10 +166,11 @@ public static class LabBeltGuardExperiments
                         gates.Add(phase.Name + ": true COM not stopped after three seconds");
                     if (phase.Jump && (!acceptedJump || longestAir < 3)) gates.Add("Space: no accepted true airborne jump");
                     measurements.Add(new { phase.Name, phase.Frames, TailHeight = height, TailWidth = width,
-                        WhaleShapeNetFxPeak = whaleMaxNetFx, WhaleShapeNetFyPeak = whaleMaxNetFy, WhaleShapeTorquePeak = whaleMaxTorque,
-                        WhaleActiveSubsteps = whaleActiveSubsteps, WhaleShapeEndpointWork = whaleShapeWork,
-                        WhaleSignedGainPeakAbsolute = whaleMaxAbsGain, WhaleSignedGainFinal = whaleFinalGain,
-                        WhalePointTractionPeak = whaleMaxPointTraction,
+                        RadialNetFxPeak = radialMaxNetFx, RadialNetFyPeak = radialMaxNetFy, RadialTorquePeak = radialMaxTorque,
+                        RadialActiveSubsteps = radialActiveSubsteps, RadialEndpointWork = radialEndpointWork,
+                        RadialRequestedMagnitudeBudgetPeak = radialMaxBudget, RadialAppliedMagnitudeSumPeak = radialMaxApplied,
+                        RadialUnitCrossErrorPeak = radialMaxUnitCrossError, RadialUnitDotAlignmentMinimum = radialMinUnitDot,
+                        RadialBudgetErrorPeak = radialMaxBudgetError,
                         TailFrontThickness = tail.All(x => x.FrontThickness.HasValue) ? tail.Average(x => x.FrontThickness!.Value) : (double?)null,
                         TailRearThickness = tail.All(x => x.RearThickness.HasValue) ? tail.Average(x => x.RearThickness!.Value) : (double?)null,
                         TailFrontRearThicknessDifferenceOverHeight = tail.All(x => x.FrontThickness.HasValue && x.RearThickness.HasValue)
@@ -167,9 +206,9 @@ public static class LabBeltGuardExperiments
             File.WriteAllText(Path.Combine(output, "guard-eight-corner-results.json"), JsonSerializer.Serialize(new { Kind = "guard-eight-material-corners",
                 NativeSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(guardedModule))), FixedDt = Dt, Substeps = 4,
                 ExpectedCases = 8, AttemptedCases = results.Count, CompletedCases = completedCases, Passed = allPassed && completedCases == 8, GuardSchema = LabBeltWorld.ShapeGuardSchema,
-                Scope = "exactly 80/120 x 0/100 x 0/100; no intermediate materials; F, short bones, whole-body Space, explicit speed saturation; force-only whale drive enabled with no periodic gait; no appearance or OS input",
-                WhaleDriveSchema = LabBeltWorld.WhaleDriveSchema,
-                WhaleShapeEndpointWorkNote = "Per-phase sum of diagnostic shapeEndpointWork; this is a subset of total external work and is not added to the energy ledger again.",
+                Scope = "exactly 80/120 x 0/100 x 0/100; no intermediate materials; A/D radial outward drive, short bones, whole-body Space, explicit speed saturation; no periodic gait; no appearance or OS input",
+                RadialDriveSchema = LabBeltWorld.RadialDriveSchema,
+                RadialEndpointWorkNote = "Per-phase sum of diagnostic radialEndpointWork; this is a subset of total external work and is not added to the energy ledger again.",
                 Geometry = "native continuous interval/path certificate plus independent sampled polygon core and crossing screening",
                 Performance = "wall-clock duration around each native Step only, excludes reads, output, independent screening and WPF; not a hard realtime guarantee",
                 RecoveryGate = "last 60 frames of each S/W/drag release: height and width each within 2% of own initial rest tail; separate from manual softness acceptance",
