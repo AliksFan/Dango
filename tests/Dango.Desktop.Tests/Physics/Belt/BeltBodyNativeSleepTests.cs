@@ -184,9 +184,32 @@ public sealed class BeltBodyNativeSleepTests
         else
             await runtime.ConfigureAsync(DangoBodyControls.Default, 1, 1);
 
+        var window = new Queue<BeltBodySnapshot>();
         for (var i = 0; i < 3600 && !runtime.Metrics.Sleeping; i++)
-        { Assert.IsTrue(await runtime.AdvanceAsync(), runtime.Metrics.Error?.ToString()); runtime.TryDequeue(out current); }
+        {
+            Assert.IsTrue(await runtime.AdvanceAsync(), runtime.Metrics.Error?.ToString()); runtime.TryDequeue(out current);
+            window.Enqueue(current!); if (window.Count > 121) window.Dequeue();
+        }
         Console.WriteLine($"ACTIVITY {activity} sleeping={runtime.Metrics.Sleeping} tick={current?.Tick} calls={runtime.Metrics.NativeStepCalls}");
+        if (!runtime.Metrics.Sleeping)
+        {
+            var rows = window.ToArray();
+            double TickDifference(int offset, int count) => Enumerable.Range(offset, count).Max(j => Enumerable.Range(1, rows.Length - 1).Max(k => Math.Abs(rows[k].DebugState![j] - rows[k - 1].DebugState![j])));
+            double Envelope(int offset, int count) => Enumerable.Range(offset, count).Max(j => rows.Max(row => row.DebugState![j]) - rows.Min(row => row.DebugState![j]));
+            var report = new
+            {
+                Activity = activity, Tick = current!.Tick, Current = current.DebugState![78..84], ConfiguredCooldown = current.DebugState[125],
+                current.Frame!.Grounded, current.Frame.ActiveContacts, QTick = TickDifference(2, 36), QWindow = Envelope(2, 36),
+                VTick = TickDifference(38, 36), VWindow = Envelope(38, 36),
+                CurveTick = Enumerable.Range(0, 512).Max(j => Enumerable.Range(1, rows.Length - 1).Max(k => Math.Abs(rows[k].Frame!.Curve[j] - rows[k - 1].Frame!.Curve[j]))),
+                CurveWindow = Enumerable.Range(0, 512).Max(j => rows.Max(row => row.Frame!.Curve[j]) - rows.Min(row => row.Frame!.Curve[j])),
+                CoreWindow = Math.Max(rows.Max(row => row.Frame!.CoreX) - rows.Min(row => row.Frame!.CoreX), rows.Max(row => row.Frame!.CoreY) - rows.Min(row => row.Frame!.CoreY)),
+            };
+            var text = System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            Console.WriteLine(text);
+            var directory = Path.Combine(TestRepository.Root, "artifacts", "belt-runtime", "trend-gate"); Directory.CreateDirectory(directory);
+            File.WriteAllText(Path.Combine(directory, $"activity-{activity}-window.json"), text);
+        }
         Assert.IsTrue(runtime.Metrics.Sleeping, $"Activity {activity} did not establish the frozen 120-tick stable-state gate.");
         var before = await runtime.CaptureStateAsync(); var calls = runtime.Metrics.NativeStepCalls;
         await Task.Delay(50);

@@ -53,10 +53,10 @@ native 源码顺序说明绝对系数 v 不等于整个 tick 的净坐标变化�
 - 默认真实 native 入睡、完整 numeric snapshot／scaffold／curve／stats 冻结，以及醒后与未睡眠同 state 的下一固定步对照通过。
 - 确定性 owner、FIFO、配置版本、保存陈旧回执、在途屏障、输入边沿、判睡至等待精确竞态、正常睡眠无定时轮询、关闭释放等通过；内部 q/完整 v 趋势、空中、无接触、相反输入、未过跳跃冷却、故障反例覆盖。
 - 走停 tick2603、跳跃释放 tick491、热编辑 tick436、取消恢复 tick345 入睡并唤醒通过。数值是物理 tick，不能把加速测试墙钟当作真实等待时间。
-- **拖动释放 FAIL**：轻量拖动脚本释放后继续 3600 tick，总 tick3914 仍未达到门。保持失败，未放宽阈值；尚未证明该工况能够节能入睡。
+- **拖动释放 FAIL**：轻量拖动脚本释放后继续 3600 tick，总 tick3914 仍未达到门。末 121 帧真实接地、contact=3、ramp=0、drag=false、elapsed=65.683>配置冷却 .45；q 单步 `2.20551e-6`、v 单步 `1.41388e-7`／窗 `1.69447e-5` 均符合门，但 q 窗 `0.000264525`、curve 窗 `0.000242718` 超过 `1e-4`。核心窗只有 `7.45058e-7`，说明只看核心会误睡，真实形变趋势仍应拒睡。保持失败，未放宽阈值；尚未证明该工况能够节能入睡。
 - 真正 wall-clock worker 的 3 秒 CPU A/B 通过：相同默认参数、同自然稳定状态、相同每 8ms 消费循环。开：进程 CPU 0.000ms，native call 0，分配 40904 bytes；关：984.375ms，native call 179，native step 926.563ms，分配 2889432 bytes。满足事先固定的 call=0、关侧至少 120 次、CPU 降至少 50% 门。该实验无 WPF 外观负载，不能代替实际产品 CPU／外观／输入体验验证，也不代表功率测量。
 
-最初完整 Desktop test 命令被既有 NU1903 阻挡；上述定向运行使用 `-p:NuGetAudit=false`，不记作默认审计通过。随后更强原始字节断言＋全部确定性 worker 用例针对性运行 26/26 通过，证据为 `trend-gate/raw-state-and-deterministic.trx`。
+最初完整 Desktop test 命令被既有 NU1903 阻挡；上述定向运行使用 `-p:NuGetAudit=false`，不记作默认审计通过。随后更强原始字节断言＋全部确定性 worker 用例针对性运行 26/26 通过，证据为 `trend-gate/raw-state-and-deterministic.trx`。增加失败末窗诊断后，5 个活动工况的原始字节复验为 4 通过／拖动 1 失败，见 `activity-raw-state-and-drag-window.trx` 和 `activity-drag-release-window.json`；失败没有通过更换断言或放宽门消失。
 
 ## 证据与交付边界
 
