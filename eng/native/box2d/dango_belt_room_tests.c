@@ -43,19 +43,24 @@ static int rollback_contract(void){
 }
 static int corner_contract(void){
  void* h=NULL;CHECK(create_room(8,0,1.5f,&h)==0);room_world* w=room_lookup(h);belt_body* b=room_body(w);w->platform_enabled=1;w->platform=(dango_belt_room_platform){UINT64_C(9007199254740993),-.5,1.25,1,.5,.72};w->revision=17;
+ /* The nearest point to a corner can lie in a face region. It must not add
+    a second, nonstationary face constraint beside the true face extremum. */
+ room_world probe=*w;probe.platform=(dango_belt_room_platform){1,-.49,.4,1.02,.2,.72};double candidate_q[36]={0},angles[512],edges[4];int candidates=0;
+ candidate_q[1]=candidate_q[35]=1.2001;candidate_q[2]=candidate_q[5]=.7;room_edges(&probe.platform,edges);CHECK(room_corner_roots(&probe,candidate_q,angles,&candidates));
+ for(int i=0;i<candidates;++i){belt_v normal;double gap=room_gap(belt_eval(candidate_q,angles[i],0),edges,&normal);if(gap<=ROOM_ACTIVATION&&fabs(normal.x*normal.y)<1e-12)CHECK(fabs(room_gap_derivative(candidate_q,angles[i],edges))<1e-10);}
  double radius=.7,phase=.01,center=(radius+1.8e-6)/sqrt(2.0);memset(b->q,0,sizeof b->q);memset(b->v,0,sizeof b->v);b->q[0]=b->q[34]=center;b->q[1]=b->q[35]=1.5+center;b->q[2]=radius*cos(phase);b->q[4]=-radius*sin(phase);b->q[3]=radius*sin(phase);b->q[5]=radius*cos(phase);b->v[0]=b->v[34]=b->v[1]=b->v[35]=-.1;
  room_row rows[512];int count=room_rows(w,b,rows),corners=0;CHECK(count>=0);for(int i=0;i<count;++i)if(rows[i].platform&&rows[i].n.x>.6&&rows[i].n.y>.6)corners++;CHECK(corners>0);memcpy(w->old_q,b->q,sizeof b->q);room_active=w;CHECK(belt_room_contact(b));room_active=NULL;
  uint64_t support=(uint64_t)(uint32_t)w->diag[18]|((uint64_t)(uint32_t)w->diag[19]<<32);CHECK(support==w->platform.id);CHECK(w->diag[9]<=2e-6);belt_read_stats(b);dango_belt_room_frame frame;CHECK(!dango_belt_room_read_frame(h,&frame,sizeof frame)&&frame.body_snapshot[82]==1&&frame.stats[14]==1);CHECK(!dango_belt_room_remove_platform(h,w->platform.id,17));CHECK(!dango_belt_room_read_frame(h,&frame,sizeof frame)&&frame.body_snapshot[82]==0&&frame.stats[14]==0&&frame.stats[25]==0&&frame.diagnostics[18]==0&&frame.diagnostics[19]==0);CHECK(dango_belt_room_destroy(h)==0);printf("rotated circle 1.8e-6 corner activation, uint64 support identity and immediate remove support consistency PASS\n");return 0;
 }
 static void dump_array(FILE* file,const char* key,const double* values,int count){fprintf(file,"\"%s\":[",key);for(int i=0;i<count;++i)fprintf(file,"%s%.17g",i?",":"",values[i]);fprintf(file,"]");}
-static void dump_failure(room_world* w,int corner,const float* controls){char path[160];snprintf(path,sizeof path,"artifacts/belt-room-f7/native/platform-failure-corner-%d-variant-%d.json",corner,DANGO_BELT_ROOM_NEGATIVE);FILE* file=NULL;
+static void dump_failure(room_world* w,int corner,const float* controls){char path[160];snprintf(path,sizeof path,"artifacts/belt-room-f7-r1/native/platform-failure-corner-%d-variant-%d.json",corner,DANGO_BELT_ROOM_NEGATIVE);FILE* file=NULL;
 #ifdef _WIN32
  fopen_s(&file,path,"wb");
 #else
  file=fopen(path,"wb");
 #endif
  if(!file)return;double snapshot[200],input[9];dango_belt_read_snapshot(w->body_handle,snapshot,200);for(int i=0;i<9;++i)input[i]=controls[i];fprintf(file,"{\"corner\":%d,\"lastSuccessfulTick\":%llu,\"sceneRevision\":%llu,\"fault\":%d,",corner,(unsigned long long)w->tick,(unsigned long long)w->revision,w->fault);dump_array(file,"diagnostics",w->diag,24);fprintf(file,",");dump_array(file,"lastSuccessfulSnapshot",snapshot,200);fprintf(file,",");dump_array(file,"input",input,9);fprintf(file,",\"inputHistory\":[");for(uint64_t tick=0;tick<=w->tick;++tick){if(tick)fprintf(file,",");fprintf(file,"[");for(int i=0;i<9;++i)fprintf(file,"%s%.17g",i?",":"",input[i]);fprintf(file,"]");}fprintf(file,"],");dump_array(file,"attemptQ",room_trace_attempt_body.q,36);fprintf(file,",");dump_array(file,"attemptV",room_trace_attempt_body.v,36);fprintf(file,",");dump_array(file,"certificateFrom",room_trace_from,36);fprintf(file,",");dump_array(file,"certificateTo",room_trace_to,36);fprintf(file,",");dump_array(file,"certificateCell",room_trace_cell,6);fprintf(file,"}\n");fclose(file);
- snprintf(path,sizeof path,"artifacts/belt-room-f7/native/platform-last-safe-body-corner-%d-variant-%d.bin",corner,DANGO_BELT_ROOM_NEGATIVE);
+ snprintf(path,sizeof path,"artifacts/belt-room-f7-r1/native/platform-last-safe-body-corner-%d-variant-%d.bin",corner,DANGO_BELT_ROOM_NEGATIVE);
 #ifdef _WIN32
  fopen_s(&file,path,"wb");
 #else
@@ -68,27 +73,29 @@ static int public_bounds_rollback(void){
  for(tick=0;tick<480;++tick){CHECK(!dango_belt_room_read_frame(h,&before,sizeof before));rc=dango_belt_room_step(h,.0166666f,&input,1);if(rc)break;}
  CHECK(rc==DANGO_BELT_ROOM_REJECTED);CHECK(!dango_belt_room_read_frame(h,&after,sizeof after));CHECK(!memcmp(before.body_snapshot,after.body_snapshot,sizeof before.body_snapshot)&&!memcmp(before.scaffold,after.scaffold,sizeof before.scaffold)&&!memcmp(before.curve,after.curve,sizeof before.curve)&&!memcmp(before.stats,after.stats,sizeof before.stats));CHECK(before.tick==after.tick&&before.scene_revision==after.scene_revision&&after.fault==rc);CHECK(dango_belt_room_step(h,.0166666f,&input,1)==-703);CHECK(!dango_belt_room_destroy(h));printf("public walking-to-boundary physical failure tick=%d full snapshot rollback PASS\n",tick);return 0;
 }
-static int platform_contract(void){
+static int platform_contract(int only){
  int failures=0;
- for(int corner=0;corner<9;++corner){void* h=NULL;CHECK(create_room(corner,0,1.5f,&h)==0);dango_belt_room_platform p={1,0,.4,3,.2,.72};CHECK(dango_belt_room_set_platform(h,&p,0)==0);room_world* w=room_lookup(h);belt_body* b=room_body(w);dango_belt_room_input input={.body_id=1};int tick,rc=0;
-  for(tick=0;tick<360;++tick){rc=dango_belt_room_step(h,.0166666f,&input,1);if(rc)break;double theta=0;CHECK(room_certificate(w,b->q,b->q,&theta,0)==1);}
+ for(int corner=0;corner<9;++corner){if(only>=0&&corner!=only)continue;void* h=NULL;CHECK(create_room(corner,0,1.5f,&h)==0);dango_belt_room_platform p={1,0,.4,3,.2,.72};CHECK(dango_belt_room_set_platform(h,&p,0)==0);room_world* w=room_lookup(h);belt_body* b=room_body(w);dango_belt_room_input input={.body_id=1};int tick,rc=0;
+  for(tick=0;tick<480;++tick){rc=dango_belt_room_step(h,.0166666f,&input,1);if(rc)break;double theta=0;CHECK(room_certificate(w,b->q,b->q,&theta,0)==1);}
   printf("platform corner=%d completed=%d rc=%d reason=%.0f geometryWork=%.0f thetaDepth=%.0f timeDepth=%.0f penetration=%.12g residual=%.12g support=%.0f refusalLine=%d\n",corner,tick,rc,w->diag[7],w->diag[4],w->diag[5],w->diag[6],w->diag[8],w->diag[9],w->diag[18],room_refusal_line);
   if(rc||!b->grounded||w->diag[18]!=1)failures++;if(rc)dump_failure(w,corner,input.controls);
   if(!rc){double height=b->q[35];CHECK(dango_belt_room_remove_platform(h,1,1)==0);CHECK(!b->grounded);for(int i=0;i<30;++i)if(dango_belt_room_step(h,.0166666f,&input,1)){failures++;break;}if(!(b->q[35]<height))failures++;}
   CHECK(dango_belt_room_destroy(h)==0);
  }
- CHECK(failures==0);printf("nine configurations finite platform standing and support removal PASS\n");return 0;
+ CHECK(failures==0);printf("%s finite platform standing and support removal PASS\n",only<0?"nine configurations":"default configuration");return 0;
 }
-static int scenario_contract(void){
+static int scenario_contract(int only,int only_kind){
  const char* names[]={"edge","side","bottom","corner","jump-onto","drag-pressure"};int failures=0;
- for(int kind=0;kind<6;++kind)for(int corner=0;corner<9;++corner){float x=kind==1?-2.5f:kind==3?-1.3f:kind==4?-2.3f:0,y=kind==2?-.42f:(kind==1||kind==4?0:1.5f);void* h=NULL;CHECK(!create_room(corner,x,y,&h));dango_belt_room_platform p={1,0,kind==2?1.2:kind==1?-.1:.4,kind==1||kind==3||kind==4?1:3,kind==1?1:.2,.72};int setup=dango_belt_room_set_platform(h,&p,0);if(setup){printf("scenario=%s corner=%d SETUP_REJECTED=%d behavior=UNVERIFIED\n",names[kind],corner,setup);failures++;CHECK(!dango_belt_room_destroy(h));continue;}
-  room_world* w=room_lookup(h);dango_belt_room_input input={.body_id=1};int rc=0,tick,observed=0;double start_x=room_body(w)->q[34];
-  for(tick=0;tick<240;++tick){memset(input.controls,0,sizeof input.controls);if(kind==0&&tick>=120)input.controls[0]=1;if(kind==1||kind==3||kind==4)input.controls[0]=1;if(kind==2&&tick==120)input.controls[2]=1;if(kind==4&&tick==60)input.controls[2]=1;if(kind==5&&tick>=120){input.controls[3]=1;input.controls[4]=0;input.controls[5]=.2f;}
+ for(int kind=0;kind<6;++kind)for(int corner=0;corner<9;++corner){if((only>=0&&corner!=only)||(only_kind>=0&&kind!=only_kind))continue;float x=kind==1?-2.5f:kind==3?-1.3f:kind==4?-2.3f:0,y=kind==2?-.42f:(kind==1||kind==4?0:1.5f);void* h=NULL;CHECK(!create_room(corner,x,y,&h));dango_belt_room_platform p={1,0,kind==2?1.2:kind==1?-.1:.4,kind==1||kind==3||kind==4?1:3,kind==1?1:.2,.72};int setup=dango_belt_room_set_platform(h,&p,0);if(setup){printf("scenario=%s corner=%d SETUP_REJECTED=%d behavior=UNVERIFIED\n",names[kind],corner,setup);failures++;CHECK(!dango_belt_room_destroy(h));continue;}
+  room_world* w=room_lookup(h);dango_belt_room_input input={.body_id=1};int rc=0,tick,observed=0,had_support=0,jumped=0;double supported_height=0;
+  for(tick=0;tick<(kind==0?720:240);++tick){memset(input.controls,0,sizeof input.controls);if(kind==0&&tick>=120)input.controls[0]=1;if(kind==1||kind==3||kind==4)input.controls[0]=1;if(kind==2&&tick==120)input.controls[2]=1;if(kind==4&&tick==60)input.controls[2]=1;if(kind==5&&tick>=120&&tick<180){input.controls[3]=1;input.controls[4]=0;input.controls[5]=.2f;}
    rc=dango_belt_room_step(h,.0166666f,&input,1);if(rc)break;room_world probe=*w;room_row rows[512];int count=room_rows(&probe,room_body(w),rows);if(count<0){rc=-707;break;}
-   for(int i=0;i<count;++i)if(rows[i].platform){if(kind==1&&fabs(rows[i].n.x)>.7)observed=1;if(kind==2&&rows[i].n.y<-.7)observed=1;if(kind==3&&fabs(rows[i].n.x)>.05&&fabs(rows[i].n.y)>.05)observed=1;if(kind==4&&rows[i].n.y>.7)observed=1;if(kind==5&&tick>=120&&room_body(w)->dragging)observed=1;}
-   if(kind==0&&tick>=120&&room_body(w)->q[34]>start_x+.5&&w->diag[18]==0)observed=1;
+   if(w->diag[18]==1){had_support=1;supported_height=room_body(w)->q[35];}if(room_body(w)->stats[15]==1)jumped=1;
+   for(int i=0;i<count;++i)if(rows[i].platform){if(kind==1&&fabs(rows[i].n.x)>.7)observed=1;if(kind==2&&rows[i].n.y<-.7)observed=1;if(kind==3&&fabs(rows[i].n.x)>.05&&fabs(rows[i].n.y)>.05)observed=1;if(kind==4&&jumped&&rows[i].n.y>.7&&w->diag[18]==1)observed=1;if(kind==5&&tick>=120&&tick<180&&room_body(w)->dragging)observed|=1;}
+   if(kind==5&&tick>=180&&!room_body(w)->dragging&&(observed&1))observed|=2;
+   double bounds[4],foot;belt_bounds(room_body(w)->q,bounds,&foot);if(kind==0&&had_support&&tick>=120&&bounds[0]>p.x+p.width*.5&&w->diag[18]==0&&room_body(w)->q[35]<supported_height-.02)observed=1;
   }
-  printf("scenario=%s corner=%d completed=%d rc=%d observed=%d reason=%.0f work=%.0f depth=%.0f residual=%.12g\n",names[kind],corner,tick,rc,observed,w->diag[7],w->diag[4],w->diag[5],w->diag[9]);if(rc||!observed)failures++;CHECK(!dango_belt_room_destroy(h));
+  printf("scenario=%s corner=%d completed=%d rc=%d observed=%d reason=%.0f work=%.0f depth=%.0f residual=%.12g\n",names[kind],corner,tick,rc,observed,w->diag[7],w->diag[4],w->diag[5],w->diag[9]);if(rc||!observed||(kind==5&&observed!=3))failures++;CHECK(!dango_belt_room_destroy(h));
  }
  CHECK(failures==0);return 0;
 }
@@ -118,18 +125,23 @@ typedef int (__cdecl *room_create_fn)(const dango_belt_config*,const float*,int,
 typedef int (__cdecl *room_step_fn)(void*,float,const dango_belt_room_input*,int);
 typedef int (__cdecl *room_read_fn)(void*,dango_belt_room_frame*,int);
 typedef int (__cdecl *room_platform_fn)(void*,const dango_belt_room_platform*,uint64_t);
-static int dll_failure_replay(const char* path){
+static int dll_failure_replay(const char* path,int r1){
  HMODULE dll=LoadLibraryA(path);CHECK(dll);room_create_fn create=(room_create_fn)(uintptr_t)GetProcAddress(dll,"dango_belt_room_create");room_step_fn step=(room_step_fn)(uintptr_t)GetProcAddress(dll,"dango_belt_room_step");room_read_fn read=(room_read_fn)(uintptr_t)GetProcAddress(dll,"dango_belt_room_read_frame");room_platform_fn platform=(room_platform_fn)(uintptr_t)GetProcAddress(dll,"dango_belt_room_set_platform");destroy_fn destroy=(destroy_fn)(uintptr_t)GetProcAddress(dll,"dango_belt_room_destroy");CHECK(create&&step&&read&&platform&&destroy);CHECK(!GetProcAddress(dll,"dango_belt_product_version"));
- for(int corner=1;corner<=3;corner+=2){void* h=NULL;dango_belt_config c=configuration(corner);CHECK(!create(&c,calibration,11,0,1.5f,-20,20,&h));dango_belt_room_platform p={1,0,.4,3,.2,.72};CHECK(!platform(h,&p,0));dango_belt_room_input input={.body_id=1};dango_belt_room_frame before,after;int rc=0;for(int i=0;i<480;++i){CHECK(!read(h,&before,sizeof before));rc=step(h,.0166666f,&input,1);if(rc)break;}CHECK(rc==-707);CHECK(!read(h,&after,sizeof after));CHECK(after.tick==(uint64_t)(corner==1?59:75)&&after.diagnostics[1]==(double)(after.tick+1)&&after.diagnostics[7]==3&&after.diagnostics[5]==20);CHECK(!memcmp(before.body_snapshot,after.body_snapshot,sizeof before.body_snapshot)&&!memcmp(before.scaffold,after.scaffold,sizeof before.scaffold)&&!memcmp(before.curve,after.curve,sizeof before.curve)&&!memcmp(before.stats,after.stats,sizeof before.stats)&&!memcmp(&before.platform,&after.platform,sizeof before.platform));printf("actual room DLL corner=%d successfulWorldTick=%llu rejectedAttempt=%.0f rc=%d depth=%.0f last-safe frame unchanged REPRODUCED TECHNICAL FAIL\n",corner,(unsigned long long)after.tick,after.diagnostics[1],rc,after.diagnostics[5]);CHECK(!destroy(h));}
+ for(int corner=1;corner<=3;corner+=2){void* h=NULL;dango_belt_config c=configuration(corner);CHECK(!create(&c,calibration,11,0,1.5f,-20,20,&h));dango_belt_room_platform p={1,0,.4,3,.2,.72};CHECK(!platform(h,&p,0));dango_belt_room_input input={.body_id=1};dango_belt_room_frame before,after;int rc=0;for(int i=0;i<480;++i){CHECK(!read(h,&before,sizeof before));rc=step(h,.0166666f,&input,1);if(rc)break;}if(r1){CHECK(rc==0);CHECK(!read(h,&after,sizeof after));CHECK(after.tick==480&&after.fault==0&&after.body_snapshot[82]==1&&after.diagnostics[18]==1);printf("actual R1 room DLL corner=%d 480 ticks standing support PASS\n",corner);CHECK(!destroy(h));continue;}CHECK(rc==-707);CHECK(!read(h,&after,sizeof after));CHECK(after.tick==(uint64_t)(corner==1?59:75)&&after.diagnostics[1]==(double)(after.tick+1)&&after.diagnostics[7]==3&&after.diagnostics[5]==20);CHECK(!memcmp(before.body_snapshot,after.body_snapshot,sizeof before.body_snapshot)&&!memcmp(before.scaffold,after.scaffold,sizeof before.scaffold)&&!memcmp(before.curve,after.curve,sizeof before.curve)&&!memcmp(before.stats,after.stats,sizeof before.stats)&&!memcmp(&before.platform,&after.platform,sizeof before.platform));printf("actual room DLL corner=%d successfulWorldTick=%llu rejectedAttempt=%.0f rc=%d depth=%.0f last-safe frame unchanged REPRODUCED TECHNICAL FAIL\n",corner,(unsigned long long)after.tick,after.diagnostics[1],rc,after.diagnostics[5]);CHECK(!destroy(h));}
  FreeLibrary(dll);return 0;
 }
 #endif
 int main(int argc,char** argv){
+ setvbuf(stdout,NULL,_IONBF,0);
 #ifdef _WIN32
- if(argc==3&&strcmp(argv[1],"--replay-dll")==0)return dll_failure_replay(argv[2]);
+ if(argc==3&&strcmp(argv[1],"--replay-dll")==0)return dll_failure_replay(argv[2],0);
+ if(argc==3&&strcmp(argv[1],"--replay-r1-dll")==0)return dll_failure_replay(argv[2],1);
 #endif
- if(argc>1&&strcmp(argv[1],"--platform")==0)return platform_contract();
- if(argc>1&&strcmp(argv[1],"--scenarios")==0)return scenario_contract();
+ if(argc>1&&strcmp(argv[1],"--platform")==0)return platform_contract(-1);
+ if(argc>1&&strcmp(argv[1],"--platform-default")==0)return platform_contract(8);
+ if(argc==4&&strcmp(argv[1],"--scenario")==0)return scenario_contract(atoi(argv[3]),atoi(argv[2]));
+ if(argc>1&&strcmp(argv[1],"--scenarios")==0)return scenario_contract(-1,-1);
+ if(argc>1&&strcmp(argv[1],"--scenarios-default")==0)return scenario_contract(8,-1);
  CHECK(atomic_contract()==0);CHECK(certificate_contract()==0);CHECK(rollback_contract()==0);CHECK(corner_contract()==0);CHECK(public_bounds_rollback()==0);
 #ifdef _WIN32
  if(argc>1)CHECK(equivalence(argv[1])==0);

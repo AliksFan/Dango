@@ -25,7 +25,7 @@ public sealed unsafe class DangoBeltRoomWorld : IDisposable
     public const string Model = "continuous-belt-room-v1";
     public const string BodyModel = "continuous-belt-v1";
     public const string TuningVersion = "C455-F-v1";
-    public const string ContactModel = "belt-solid-aabb-v1";
+    public const string ContactModel = "belt-solid-aabb-r1-v1";
     public const int AbiVersion = 1, RequiredCapabilities = 15, FrameSize = 4472;
     private static readonly object NativeGate = new();
     private static long ownerSequence;

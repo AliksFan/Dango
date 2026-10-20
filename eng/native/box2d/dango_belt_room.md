@@ -1,5 +1,17 @@
 # F7-0 independent belt room ABI 1
 
+Current follow-up: [F7-1R1 contract](../../../docs/planning/2026-10-20-belt-room-f7-r1.md)
+supersedes the numerical/contact-policy choices below for the new candidate.
+This document retains the original `c24fe1f` contract and FAIL evidence as history;
+R1 results are recorded separately and do not retroactively pass these old gates.
+
+R1 basic-platform automatic gates pass with contact identity
+`belt-solid-aabb-r1-v1`, unchanged ABI1/capabilities15/frame4472. Current commands:
+`--platform` runs nine standing/removal cases; `--replay-r1-dll <DLL>` runs the
+two former failures against the actual R1 DLL. `--scenarios-default` still exits1
+for unfinished edge/corner/jump behavior; it is not a product-admission gate
+that has passed. See the linked R1 contract and verification section5 for scope.
+
 Status: contract written before implementation sampling, 2026-10-20. F7-1
 technical candidate only; capability declarations describe available operations,
 not passed acceptance. No dynamic balls, multiple bodies, sleep or product room

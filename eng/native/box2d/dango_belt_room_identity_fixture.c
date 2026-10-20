@@ -23,7 +23,7 @@ ROOM_FIXTURE_API int dango_belt_room_frame_size(void)
 }
 ROOM_FIXTURE_API const char* dango_belt_room_model(void) { return "continuous-belt-room-v1"; }
 ROOM_FIXTURE_API const char* dango_belt_room_tuning(void) { return "C455-F-v1"; }
-ROOM_FIXTURE_API const char* dango_belt_room_contact_model(void) { return "belt-solid-aabb-v1"; }
+ROOM_FIXTURE_API const char* dango_belt_room_contact_model(void) { return "belt-solid-aabb-r1-v1"; }
 
 /* No create/step/read exports: metadata must reject the DLL before resolving
    or calling an operational API. A fixture cannot manufacture a body. */
