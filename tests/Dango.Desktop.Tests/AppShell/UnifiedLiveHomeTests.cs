@@ -170,12 +170,12 @@ public sealed class UnifiedLiveHomeTests
     }
 
     [STATestMethod]
-    public void ProductHomeAndBothDesktopHostsShareTheApplicationRuntime()
+    public void ProductHomeUsesContinuousBodyWhileBothRoomHostsShareTheDeferredRoomRuntime()
     {
         var settingsPath = Path.Combine(TestRepository.Root, "artifacts", "test-runs", "unified-home",
             $"fictional-{Guid.NewGuid():N}.json");
         using var host = new DangoApplicationHost(settingsFile: settingsPath,
-            nativeLibraryPath: settingsPath + ".missing.dll");
+            roomModulePath: settingsPath + ".missing.dll");
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
         var sceneSession = Field<DesktopSceneSession>(host, "sceneSession");
         var workerW = Field<object>(host, "workerWWindow");
@@ -189,14 +189,11 @@ public sealed class UnifiedLiveHomeTests
             .GetMethod("GetOrCreateControlCenter", BindingFlags.NonPublic | BindingFlags.Instance)!
             .Invoke(host, null)!;
         var home = Element<ProductHomeView>(controlCenter, "ProductHome");
-        var property = typeof(ProductHomeView).GetProperty("BoundRuntime",
-            BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
-        Assert.IsNotNull(property, "The product home needs an observable binding to the application's one runtime.");
-        Assert.AreSame(runtime, property.GetValue(home), "Opening home must not create a second physical Dango.");
-        var sessionProperty = typeof(ProductHomeView).GetProperty("BoundSceneSession",
-            BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
-        Assert.IsNotNull(sessionProperty, "The home must reuse the desktop hosts' motion session.");
-        Assert.AreSame(sceneSession, sessionProperty.GetValue(home));
+        Assert.IsTrue(runtime.UsesBeltRoom);
+        Assert.IsNull(home.BoundRuntime, "The home must not bind the legacy or room frame driver.");
+        Assert.IsNull(home.BoundSceneSession);
+        Assert.IsNotNull(home.BoundBeltBody);
+        Assert.IsNotNull(home.BoundBeltPresenter);
         Assert.AreEqual(0, runtime.EntityIds.Count,
             "Binding the home must not claim that the unavailable native world has started.");
     }
@@ -372,11 +369,11 @@ public sealed class UnifiedLiveHomeTests
     [TestCategory("NativeIntegration")]
     public void ProductStartupShowsTheLiveHomeButNoDesktopHostBeforeRoomEntry()
     {
-        var modulePath = Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName);
-        if (!File.Exists(modulePath)) Assert.Inconclusive("统一原生物理模块不在测试输出中；产品启动集成未验证。");
+        Assert.IsTrue(File.Exists(Path.Combine(AppContext.BaseDirectory, "dango_belt_product.dll")));
+        Assert.IsTrue(File.Exists(Path.Combine(AppContext.BaseDirectory, "dango_belt_room.dll")));
         var settingsPath = Path.Combine(TestRepository.Root, "artifacts", "test-runs", "unified-home",
             $"startup-{Guid.NewGuid():N}.json");
-        using var host = new DangoApplicationHost(settingsFile: settingsPath, nativeLibraryPath: modulePath);
+        using var host = new DangoApplicationHost(settingsFile: settingsPath);
         var controlCenter = (ControlCenterWindow)typeof(DangoApplicationHost)
             .GetMethod("GetOrCreateControlCenter", BindingFlags.NonPublic | BindingFlags.Instance)!
             .Invoke(host, null)!;
@@ -388,10 +385,12 @@ public sealed class UnifiedLiveHomeTests
 
         var home = Element<ProductHomeView>(controlCenter, "ProductHome");
         Assert.IsTrue(controlCenter.IsVisible);
-        Assert.IsTrue(home.OwnsLiveFrameDriver);
+        Assert.IsNotNull(home.BoundBeltBody);
+        Assert.IsNotNull(home.DisplayedBeltSnapshot);
+        Assert.IsFalse(home.OwnsLiveFrameDriver);
         Assert.IsFalse(Field<DesktopHostCoordinator>(host, "desktopHost").GetSnapshot().IsVisible,
             "Product startup must keep both desktop hosts hidden until real room entry exists.");
-        Assert.AreEqual(1, Field<StackedDangoSceneRuntime>(host, "stackedRuntime").EntityIds.Count);
+        Assert.AreEqual(0, Field<StackedDangoSceneRuntime>(host, "stackedRuntime").EntityIds.Count);
     }
 
     private static Window ReviewWindow(ProductHomeView home) => new()

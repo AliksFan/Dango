@@ -2,6 +2,8 @@ using System.Windows;
 using System.Windows.Threading;
 using System.IO;
 using System.Text.Json;
+using System.Security.Cryptography;
+using System.Text;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.Physics.Native;
@@ -18,12 +20,12 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        ValidateStartupArguments(e.Args);
         ValidateIsolatedReviewSelection(e.Args);
         var acceptanceSettingsFile = ResolveLocalInstallAcceptanceSettingsFile(e.Args);
         var faceReviewSettingsFile = ResolveFaceReviewSettingsFile(e.Args);
         var accessoryReviewSettingsFile = ResolveAccessoryReviewSettingsFile(e.Args);
-        var beltBodySettingsFile = ResolveBeltBodyReviewSettingsFile(e.Args);
-        var beltRoomModulePath = ResolveBeltRoomModulePath(e.Args);
+        var productSettingsFile = ResolveProductSettingsFile(e.Args);
 
         var homeUiReview = e.Args.Contains("--home-ui-review", StringComparer.Ordinal);
         var settingsUiReview = e.Args.Contains("--settings-ui-review", StringComparer.Ordinal);
@@ -85,10 +87,9 @@ public partial class App : System.Windows.Application
         var desktopPetRoomReview = e.Args.Contains("--desktop-pet-room-review", StringComparer.Ordinal);
         var faceReview = e.Args.Contains("--face-review", StringComparer.Ordinal);
         var accessoryReview = e.Args.Contains("--accessory-review", StringComparer.Ordinal);
-        var beltBodyReview = e.Args.Contains("--belt-body-review", StringComparer.Ordinal);
         if ((physicsReview ? 1 : 0) + (eyeHatReview ? 1 : 0) + (unifiedHomeReview ? 1 : 0) +
             (porchReview ? 1 : 0) + (localRoomReview ? 1 : 0) + (faceReview ? 1 : 0) +
-            (desktopPetRoomReview ? 1 : 0) + (accessoryReview ? 1 : 0) + (beltBodyReview ? 1 : 0) > 1)
+            (desktopPetRoomReview ? 1 : 0) + (accessoryReview ? 1 : 0) > 1)
             throw new ArgumentException("Choose one isolated review mode.");
         var instanceName = ResolveSingleInstanceName(e.Args);
         singleInstanceCoordinator = SingleInstanceCoordinator.TryBecomePrimary(
@@ -105,14 +106,12 @@ public partial class App : System.Windows.Application
 
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
         applicationHost = new DangoApplicationHost(physicsReview, eyeHatReview,
-            settingsFile: beltBodySettingsFile ?? accessoryReviewSettingsFile ?? faceReviewSettingsFile ?? acceptanceSettingsFile,
+            settingsFile: productSettingsFile ?? accessoryReviewSettingsFile ?? faceReviewSettingsFile ?? acceptanceSettingsFile,
             isolatedUnifiedHomeReview: unifiedHomeReview,
             isolatedPorchReview: porchReview,
             isolatedLocalRoomReview: localRoomReview || accessoryReview,
             isolatedFaceReview: faceReview,
-            isolatedDesktopPetRoomReview: desktopPetRoomReview,
-            isolatedBeltBodyReview: beltBodyReview,
-            beltRoomModulePath: beltRoomModulePath);
+            isolatedDesktopPetRoomReview: desktopPetRoomReview);
         applicationHost.Start();
         if (desktopPetRoomReview) applicationHost.EnterDesktopPetRoom();
         if (physicsReview || eyeHatReview) applicationHost.ShowControlCenter();
@@ -147,27 +146,33 @@ public partial class App : System.Windows.Application
         return ResolveOwnedIsolatedSettingsFile(args[2], ".dango-accessory-review.json", "accessoryReviewFormat");
     }
 
-    internal static string? ResolveBeltBodyReviewSettingsFile(string[] args)
+    internal static string? ResolveProductSettingsFile(string[] args)
     {
-        const string mode = "--belt-body-review";
-        const string flag = "--belt-body-review-settings";
-        if (!args.Contains(mode, StringComparer.Ordinal) && !args.Contains(flag, StringComparer.Ordinal)) return null;
-        if ((args.Length != 3 && args.Length != 5) || args[0] != mode || args[1] != flag || string.IsNullOrWhiteSpace(args[2]) ||
-            (args.Length == 5 && (args[3] != "--belt-room-module" || string.IsNullOrWhiteSpace(args[4]))))
-            throw new ArgumentException("Belt body review requires only its explicit owned fictional settings directory.");
-        _ = ResolveBeltRoomModulePath(args);
-        return ResolveOwnedIsolatedSettingsFile(args[2], ".dango-belt-body-review.json", "beltBodyReviewFormat");
+        const string flag = "--data-root";
+        if (!args.Contains(flag, StringComparer.Ordinal)) return null;
+        if (args.Length != 2 || args[0] != flag || string.IsNullOrWhiteSpace(args[1]) || !Path.IsPathFullyQualified(args[1]))
+            throw new ArgumentException("Use --data-root with one absolute data directory.");
+        var root = Path.GetFullPath(args[1]).TrimEnd(Path.DirectorySeparatorChar);
+        if (root == Path.GetPathRoot(root)?.TrimEnd(Path.DirectorySeparatorChar))
+            throw new ArgumentException("The data directory cannot be a drive root.");
+        return Path.Combine(root, "settings.json");
     }
 
-    internal static string? ResolveBeltRoomModulePath(string[] args)
+    internal static void ValidateStartupArguments(string[] args)
     {
-        if (!args.Contains("--belt-room-module", StringComparer.Ordinal)) return null;
-        if (args.Length != 5 || args[0] != "--belt-body-review" || args[1] != "--belt-body-review-settings" ||
-            string.IsNullOrWhiteSpace(args[2]) || args[3] != "--belt-room-module" || !Path.IsPathFullyQualified(args[4]))
-            throw new ArgumentException("Belt room module requires belt body review, owned settings and an explicit absolute module path.");
-        var path = Path.GetFullPath(args[4]);
-        if (!File.Exists(path)) throw new FileNotFoundException("Belt room module was not found.", path);
-        return path;
+        string[] modes = ["--home-ui-review", "--settings-ui-review", "--physics-host-review", "--eye-hat-review",
+            "--unified-live-home-review", "--porch-scene-review", "--local-room-review", "--face-review",
+            "--desktop-pet-room-review", "--accessory-review", "--soft-body-preview", "--paired-contact-preview",
+            "--box2d-native-probe", "--smoke-test"];
+        string[] dataOptions = ["--data-root", "--local-install-acceptance-settings", "--face-review-settings", "--accessory-review-settings"];
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (modes.Contains(args[i], StringComparer.Ordinal)) continue;
+            if (dataOptions.Contains(args[i], StringComparer.Ordinal) && i + 1 < args.Length &&
+                !args[i + 1].StartsWith("--", StringComparison.Ordinal)) { i++; continue; }
+            // Retired/unknown switches must never silently launch the daily data directory.
+            throw new ArgumentException("Unknown or incomplete Dango startup option: " + args[i]);
+        }
     }
 
     private static string ResolveOwnedIsolatedSettingsFile(string directory, string ownerFile, string formatProperty)
@@ -224,14 +229,22 @@ public partial class App : System.Windows.Application
     {
         string[] flags = ["--home-ui-review", "--settings-ui-review", "--physics-host-review",
             "--eye-hat-review", "--unified-live-home-review", "--porch-scene-review", "--local-room-review", "--face-review",
-            "--desktop-pet-room-review", "--accessory-review", "--belt-body-review"];
+            "--desktop-pet-room-review", "--accessory-review"];
         if (flags.Count(flag => args.Contains(flag, StringComparer.Ordinal)) > 1)
             throw new ArgumentException("Choose one isolated review mode.");
     }
 
-    internal static string ResolveSingleInstanceName(string[] args) =>
-        args.Contains("--belt-body-review", StringComparer.Ordinal) ? SingleInstanceName + ".BeltBodyReview"
-        : args.Contains("--accessory-review", StringComparer.Ordinal) ? SingleInstanceName + ".AccessoryReview"
+    internal static string ResolveSingleInstanceName(string[] args)
+    {
+        var settings = ResolveProductSettingsFile(args);
+        if (settings is not null)
+        {
+            var daily = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Dango", "settings.json");
+            if (Path.GetFullPath(settings).Equals(daily, StringComparison.OrdinalIgnoreCase)) return SingleInstanceName;
+            var identity = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(settings).ToUpperInvariant())));
+            return SingleInstanceName + ".Data." + identity[..24];
+        }
+        return args.Contains("--accessory-review", StringComparer.Ordinal) ? SingleInstanceName + ".AccessoryReview"
         : args.Contains("--face-review", StringComparer.Ordinal) ? SingleInstanceName + ".FaceReview"
         : args.Contains("--desktop-pet-room-review", StringComparer.Ordinal) ? SingleInstanceName + ".DesktopPetRoomReview"
         : args.Contains("--local-room-review", StringComparer.Ordinal) ? SingleInstanceName + ".LocalRoomReview"
@@ -240,6 +253,7 @@ public partial class App : System.Windows.Application
         : args.Contains("--porch-scene-review", StringComparer.Ordinal) ? SingleInstanceName + ".PorchSceneReview"
         : args.Contains("--unified-live-home-review", StringComparer.Ordinal) ? SingleInstanceName + ".UnifiedHomeReview"
         : SingleInstanceName;
+    }
 
     protected override void OnExit(ExitEventArgs e)
     {

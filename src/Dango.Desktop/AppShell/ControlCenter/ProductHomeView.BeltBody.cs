@@ -31,9 +31,8 @@ public partial class ProductHomeView
     private string? beltError;
     private string? beltDiagnosticError;
     private string? beltSettingsPath;
-    private bool beltRoomEntryEnabled, beltRoomSuspended;
+    private bool beltRoomSuspended;
     private double beltPorchOriginX;
-    internal bool BeltRoomEntryEnabled => beltRoomEntryEnabled;
     private double BeltFloor => 120 + (PetShadow.Height / 2 - 1) / Math.Max(.1, PetPreview.Width / 160);
     internal BeltBodyRuntime? BoundBeltBody => beltRuntime;
     internal BeltBodyAppearancePresenter? BoundBeltPresenter => beltPresenter;
@@ -44,11 +43,10 @@ public partial class ProductHomeView
     private readonly List<BeltBodySnapshot> beltRenderBatch = new(2);
     internal double BeltBodyPresentationSeconds { get; private set; }
 
-    internal void BindBeltBody(string settingsPath, bool enableRoomEntry = false)
+    internal void BindBeltBody(string settingsPath)
     {
         if (beltRuntime is not null || BoundRuntime is not null) throw new InvalidOperationException("主页已绑定实时场景。");
         beltSettingsPath = settingsPath;
-        beltRoomEntryEnabled = enableRoomEntry;
         beltRuntime = new BeltBodyRuntime(Path.Combine(AppContext.BaseDirectory, "dango_belt_product.dll")) { SleepEnabled = true };
         ConfigureBeltLauncher(FaceButton, "捏脸");
         ConfigureBeltLauncher(WardrobeButton, "换装");
@@ -66,9 +64,7 @@ public partial class ProductHomeView
         LiveDangoVisual.Visibility = LiveDangoHat.Visibility = Visibility.Collapsed;
         PetPreview.ToolTip = "拖动团子 · A/D 移动 · W 拉伸 · S 下压 · Space 跳跃";
         LiveSceneStatusText.Text = "新身体启动中…";
-        SetNotice("新身体接入验收", appearanceSession?.StartupWarning ?? (beltRoomEntryEnabled
-            ? "本地新身体验收 · 门廊、外观、配饰与房间。"
-            : "单人首页、捏脸与配饰验收。"));
+        SetNotice(appearanceSession?.StartupWarning is null ? string.Empty : "外观设置提示 · 查看", appearanceSession?.StartupWarning);
         PetPreview.PreviewMouseLeftButtonDown += OnBeltPointerDown;
         PetPreview.MouseMove += OnBeltPointerMove;
         PetPreview.MouseLeftButtonUp += OnBeltPointerUp;
@@ -110,7 +106,7 @@ public partial class ProductHomeView
         beltFatalError = false;
         beltDiagnosticError = null;
         beltRequestedRevision = beltRequestedBodyEpoch = -1;
-        BindBeltBody(path, beltRoomEntryEnabled);
+        BindBeltBody(path);
     }
 
     // Await the home worker's acknowledgement before the room scheduler may advance.
@@ -253,7 +249,7 @@ public partial class ProductHomeView
         {
             var acknowledged = beltRuntime.MarkDisplayed(displayed);
             if (acknowledged) BeltBodyDisplayConfirmed?.Invoke(displayed);
-            if (beltRoomEntryEnabled && porchReturnGeneration != 0 && !beltRoomSuspended && !IsDangoAway && IsInPorch &&
+            if (porchReturnGeneration != 0 && !beltRoomSuspended && !IsDangoAway && IsInPorch &&
                 PorchScene.HasBeltBody && PorchScene.IsVisible && PorchScene.ActualWidth > 0 && PorchScene.ActualHeight > 0)
             {
                 var attempt = porchReturnGeneration;

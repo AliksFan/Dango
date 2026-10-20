@@ -160,30 +160,25 @@ public sealed class BeltRoomHostEntryTests
     }
 
     [TestMethod]
-    public void ModuleOptionRequiresTheExplicitCandidateAndOwnedSettingsShape()
+    public void ProductDataRootDoesNotRequireAModelSpecificModeOrModuleOption()
     {
         var root = NewRoot();
-        var module = Path.Combine(root, "candidate.dll");
-        File.WriteAllText(module, "fictional module path validation fixture");
-        File.WriteAllText(Path.Combine(root, ".dango-belt-body-review.json"),
-            """{"application":"Dango","beltBodyReviewFormat":1,"fictional":true}""");
-        string[] args = ["--belt-body-review", "--belt-body-review-settings", root, "--belt-room-module", module];
-        Assert.AreEqual(module, App.ResolveBeltRoomModulePath(args));
-        Assert.AreEqual(Path.Combine(root, "settings.json"), App.ResolveBeltBodyReviewSettingsFile(args));
-        Assert.IsNull(App.ResolveBeltRoomModulePath(["--belt-body-review"]));
-        Assert.ThrowsExactly<ArgumentException>(() => App.ResolveBeltRoomModulePath(["--belt-room-module", module]));
-        Assert.ThrowsExactly<ArgumentException>(() => App.ResolveBeltRoomModulePath(
-            ["--belt-body-review", "--belt-body-review-settings", root, "--belt-room-module", "relative.dll"]));
-        Assert.ThrowsExactly<FileNotFoundException>(() => App.ResolveBeltRoomModulePath(
-            ["--belt-body-review", "--belt-body-review-settings", root, "--belt-room-module", module + ".missing"]));
+        string[] args = ["--data-root", root];
+        App.ValidateStartupArguments(args);
+        Assert.AreEqual(Path.Combine(root, "settings.json"), App.ResolveProductSettingsFile(args));
+        Assert.IsNull(App.ResolveProductSettingsFile([]));
+        Assert.ThrowsExactly<ArgumentException>(() => App.ValidateStartupArguments(["--belt-room-module", "retired.dll"]));
+        Assert.ThrowsExactly<ArgumentException>(() => App.ResolveProductSettingsFile(["--data-root", "relative"]));
     }
 
     [STATestMethod]
-    public void HostCannotEnableRoomModuleInTheDailyProductMode()
+    public void OrdinaryProductSelectsTheRoomModuleWithoutAReviewSwitch()
     {
         var path = Path.Combine(NewRoot(), "settings.json");
-        Assert.ThrowsExactly<ArgumentException>(() => new DangoApplicationHost(settingsFile: path, beltRoomModulePath: path + ".dll"));
-        Assert.ThrowsExactly<ArgumentException>(() => new DangoApplicationHost(isolatedBeltBodyReview: true, beltRoomModulePath: path + ".dll"));
+        using var host = new DangoApplicationHost(settingsFile: path);
+        Assert.IsTrue(Field<StackedDangoSceneRuntime>(host, "stackedRuntime").UsesBeltRoom);
+        Assert.AreEqual(0, Field<StackedDangoSceneRuntime>(host, "stackedRuntime").EntityIds.Count);
+        Assert.ThrowsExactly<ArgumentException>(() => new DangoApplicationHost(settingsFile: path, roomModulePath: "relative.dll"));
     }
 
     [TestMethod]
@@ -213,11 +208,11 @@ public sealed class BeltRoomHostEntryTests
         var bytes = FurnitureLayoutSerializer.Serialize(layout, FurnitureLayoutContract.OrdinaryRoom, id);
         File.WriteAllBytes(catalog.LayoutPath(id), bytes);
         using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"),
-            isolatedBeltBodyReview: true, beltRoomModulePath: Path.Combine(root, "missing-candidate.dll"));
+            roomModulePath: Path.Combine(root, "missing-candidate.dll"));
         var window = (ControlCenterWindow)typeof(DangoApplicationHost)
             .GetMethod("GetOrCreateControlCenter", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(host, null)!;
         Assert.IsFalse(window.IsVisible, "This integration check must not occupy the screen.");
-        Assert.IsTrue(window.ProductHome.BeltRoomEntryEnabled);
+        Assert.IsNotNull(window.ProductHome.BoundBeltBody);
         Assert.IsNull(window.ProductHome.BoundRuntime, "The homepage retains its own candidate runtime.");
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
         Assert.IsTrue(runtime.UsesBeltRoom);

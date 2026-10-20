@@ -19,6 +19,9 @@ public sealed class LocalInstallAcceptanceTests
         Assert.AreEqual(Path.Combine(root, "settings.json"), App.ResolveLocalInstallAcceptanceSettingsFile(
             ["--local-install-acceptance-settings", root]));
         Assert.IsNull(App.ResolveLocalInstallAcceptanceSettingsFile([]));
+        Assert.AreEqual(App.ResolveSingleInstanceName([]),
+            App.ResolveSingleInstanceName(["--local-install-acceptance-settings", root]),
+            "Existing install management detects and activates its established ordinary instance event.");
     }
 
     [TestMethod]

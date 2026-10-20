@@ -49,11 +49,11 @@ internal sealed class DangoTrayIcon : IDisposable
         if (localRoom is not null)
         {
             var roomMenu = new Forms.ToolStripMenuItem("普通房 · 本地单人");
-            void Add(Forms.ToolStripMenuItem parent, string text, Action action)
-            { var item = new Forms.ToolStripMenuItem(text); item.Click += (_, _) => action(); parent.DropDownItems.Add(item); }
+            Forms.ToolStripMenuItem Add(Forms.ToolStripMenuItem parent, string text, Action action)
+            { var item = new Forms.ToolStripMenuItem(text); item.Click += (_, _) => action(); parent.DropDownItems.Add(item); return item; }
             Add(roomMenu, "恢复房间", localRoom.Restore);
             Add(roomMenu, "隐藏房间", localRoom.Hide);
-            Add(roomMenu, "恢复团子并重试", localRoom.Recover);
+            var recover = Add(roomMenu, "恢复团子并重试", localRoom.Recover);
             Add(roomMenu, "房门 · 返回门廊", localRoom.Return);
             var presentation = new Forms.ToolStripMenuItem("显示方式");
             Add(presentation, "窗口", () => localRoom.Present(LocalRoomPresentation.Window));
@@ -68,6 +68,7 @@ internal sealed class DangoTrayIcon : IDisposable
             {
                 var desktopPet = localRoom.IsDesktopPet?.Invoke() == true && localRoom.IsSelected();
                 roomMenu.Text = desktopPet ? "桌宠房" : "普通房 · 本地单人";
+                recover.Enabled = localRoom.IsSelected();
                 presentation.Visible = view.Visible = !desktopPet;
             };
             menu.Items.Add(roomMenu);

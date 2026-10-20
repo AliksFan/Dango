@@ -25,28 +25,32 @@ public sealed class BeltBodyProductTests
 {
     public TestContext TestContext { get; set; } = null!;
     [TestMethod]
-    public void CandidateRequiresOwnedFictionalSettingsAndSeparateInstance()
+    public void ProductDataDirectoryUsesTheSameProductRouteWithDirectoryScopedInstance()
     {
         var root = NewRoot();
-        Assert.ThrowsExactly<FileNotFoundException>(() => Resolve(root));
-        File.WriteAllText(Path.Combine(root, ".dango-belt-body-review.json"), """{"application":"Dango","beltBodyReviewFormat":1,"fictional":true}""");
         Assert.AreEqual(Path.Combine(root, "settings.json"), Resolve(root));
-        Assert.AreEqual(1, Directory.GetFileSystemEntries(root).Length);
-        Assert.AreNotEqual(App.ResolveSingleInstanceName([]), App.ResolveSingleInstanceName(["--belt-body-review"]));
-        Assert.ThrowsExactly<ArgumentException>(() => App.ResolveBeltBodyReviewSettingsFile(["--belt-body-review"]));
-        Assert.ThrowsExactly<ArgumentException>(() => App.ValidateIsolatedReviewSelection(["--belt-body-review", "--face-review"]));
-        Assert.ThrowsExactly<InvalidDataException>(() => Resolve(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Dango")));
-        Assert.ThrowsExactly<InvalidDataException>(() => Resolve(AppContext.BaseDirectory));
-        File.WriteAllText(Path.Combine(root, ".dango-belt-body-review.json"), """{"application":"Dango","beltBodyReviewFormat":1,"fictional":false}""");
-        Assert.ThrowsExactly<InvalidDataException>(() => Resolve(root));
+        Assert.AreEqual(0, Directory.GetFileSystemEntries(root).Length, "Argument parsing must not write data or require an acceptance marker.");
+        Assert.AreNotEqual(App.ResolveSingleInstanceName([]), App.ResolveSingleInstanceName(["--data-root", root]));
+        Assert.AreEqual(App.ResolveSingleInstanceName(["--data-root", root]), App.ResolveSingleInstanceName(["--data-root", root.ToUpperInvariant() + Path.DirectorySeparatorChar]));
+        var daily = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Dango");
+        Assert.AreEqual(App.ResolveSingleInstanceName([]), App.ResolveSingleInstanceName(["--data-root", daily]));
+        Assert.ThrowsExactly<ArgumentException>(() => App.ResolveProductSettingsFile(["--data-root"]));
+        Assert.ThrowsExactly<ArgumentException>(() => Resolve("relative-directory"));
+        foreach (var alias in new[] { root + ".", root + " ", Path.Combine(root, ".") })
+        {
+            Assert.AreEqual(Resolve(root), Resolve(alias), "Win32 path aliases must resolve to the same data directory.");
+            Assert.AreEqual(App.ResolveSingleInstanceName(["--data-root", root]), App.ResolveSingleInstanceName(["--data-root", alias]));
+        }
+        Assert.ThrowsExactly<ArgumentException>(() => App.ValidateStartupArguments(["--belt-body-review"]));
+        Assert.ThrowsExactly<ArgumentException>(() => App.ValidateStartupArguments(["--belt-room-module", "retired.dll"]));
     }
 
     [STATestMethod]
-    public void ActualHostUsesBeltAndDoesNotInitializeOldRoomWorld()
+    public void ActualProductHostUsesBeltAndDefersTheRoomWorldUntilEntry()
     {
         RequireModule();
         var root = NewRoot();
-        using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"), isolatedBeltBodyReview: true);
+        using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"));
         var window = (ControlCenterWindow)typeof(DangoApplicationHost).GetMethod("GetOrCreateControlCenter", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(host, null)!;
         window.ShowOverview(); window.Show(); window.Activate();
         var home = window.ProductHome;
@@ -56,8 +60,8 @@ public sealed class BeltBodyProductTests
         Assert.AreEqual(0, old.EntityIds.Count);
         Assert.AreEqual(DangoBeltWorld.Model, home.DisplayedBeltSnapshot!.ModelVersion);
         Click(home, "EnterRoomButton");
-        Assert.IsFalse(home.IsInPorch);
-        StringAssert.Contains(Element<Button>(home, "NoticeButton").ToolTip.ToString()!, "尚未接入房间");
+        Assert.IsTrue(home.IsInPorch);
+        Click(home, "BackFromPorchButton");
         Assert.IsFalse(home.ReadBeltBodySettingsScene().CanRestoreDisplay);
         home.ShowEditor(HomeEditor.Wardrobe);
         Assert.IsTrue(home.IsEditing);
@@ -190,7 +194,7 @@ public sealed class BeltBodyProductTests
     {
         RequireModule();
         var root = NewRoot();
-        using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"), isolatedBeltBodyReview: true);
+        using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"));
         var window = (ControlCenterWindow)typeof(DangoApplicationHost).GetMethod("GetOrCreateControlCenter", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(host, null)!;
         window.ShowOverview(); window.Show(); var home = window.ProductHome;
         var jumpEdges = 0;
@@ -234,7 +238,7 @@ public sealed class BeltBodyProductTests
     {
         RequireModule();
         var root = NewRoot();
-        using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"), isolatedBeltBodyReview: true);
+        using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"));
         var window = (ControlCenterWindow)typeof(DangoApplicationHost).GetMethod("GetOrCreateControlCenter", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(host, null)!;
         window.ShowOverview(); window.Show(); var home = window.ProductHome;
         var sibling = new Window { Width = 220, Height = 100, Title = "Dango fictional input ownership" };
@@ -665,7 +669,7 @@ public sealed class BeltBodyProductTests
     {
         var root = Path.Combine(TestRepository.Root, "artifacts", "test-runs", "belt-product", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root); return root;
     }
-    private static string? Resolve(string root) => App.ResolveBeltBodyReviewSettingsFile(["--belt-body-review", "--belt-body-review-settings", root]);
+    private static string? Resolve(string root) => App.ResolveProductSettingsFile(["--data-root", root]);
     private static T Element<T>(ProductHomeView home, string name) => (T)home.FindName(name);
     private static void Click(ProductHomeView home, string name) => Element<Button>(home, name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
     private static void Set(ProductHomeView home, string name, double value) => Element<Slider>(home, name).Value = value;

@@ -406,11 +406,6 @@ public partial class ProductHomeView : UserControl
 
     private void EnterPorch()
     {
-        if (beltRuntime is not null && !beltRoomEntryEnabled)
-        {
-            SetNotice("本次验收：单人首页与捏脸", "新身体尚未接入房间。当前候选只验证捏脸、实时调节与身体休眠。");
-            return;
-        }
         if (IsInPorch || IsDangoAway) return;
         ClearLiveDirectionalInput();
         if (IsEditing) CloseEditor(focusStage: false);

@@ -2,6 +2,8 @@
 
 `Dango` 是一个多人联机桌面宠物项目的开发代号。
 
+2026-10-20 正式接线收口：用户已确认新身体接入验收通过。普通启动现在使用连续身体，覆盖首页／实时捏脸／配饰／门廊及现有普通房／桌宠；不再要求新身体验收开关。普通构建和发布从源码生成并携带两个新物理模块，已复现的木平台证书故障已修复。过度隔离与目录债务已[记录](docs/planning/2026-10-20-production-closeout.md)，目录整理和规则建设留到合并后新分支。当前收口验证及合并边界见[验证记录](docs/verification/2026-10-20-production-closeout.md)，下方日期条目保留历史状态。
+
 2026-10-20 F7 静态玩法R2：默认离边／角点／独立跳台和实体左右墙的技术验证通过，托管定向62/62、零跳过，原九配置站台／撤支撑9/9，见[实施记录第8节](docs/verification/2026-10-20-belt-room-f7.md#8-静态玩法r2默认平台动作与实体横墙)。旧jump60未落台及原FAIL保留。当前仍为隔离空房候选；家具／球、桌宠、房间休眠和恢复数据分批接入，实际产品与人工待验，未合main、推送或安装。下方基础接线及整理条目为各轮历史快照。
 
 2026-10-20 F7 基础接线：新身体已接到现有普通房driver／runtime／scene，显式隔离候选支持空布局房间。定向163/163、零跳过，隐藏宿主实际推进、成功帧、轮廓绘制／命中和输入通过，见[实施记录第7节](docs/verification/2026-10-20-belt-room-f7.md#7-现有房间框架基础接线候选)。实际产品入口完整往返及人工待验；平台玩法、球／家具、桌宠、房间休眠和位置／视角检查点按对应批次接入。未合main、推送、安装或部署。下方整理条目保留为实施前快照。
@@ -32,13 +34,14 @@
 
 本分支已实现单人正式雏形的第一批入口整合：普通无参数启动接入一只团子及新眼帽，提供既有拖放/方向控制、三种帽型、基础偏好保存、隐藏/恢复和故障重试。多体、骨架、物理参数和验收工具只在显式评审模式展示。用户于 2026-09-17 确认本批人工验收通过；完整互动、自主生活和真实上下岛继续后置，专项矩阵及整个 Phase 1 尚未完成。见[第一批设计](docs/planning/2026-09-17-desktop-entry-integration-design.md)、[实施计划](docs/planning/2026-09-17-desktop-entry-integration-plan.md)和[实施验证](docs/verification/2026-09-17-desktop-entry-integration.md)。下文原有验收说明保留各自历史范围。
 
-日常验收默认直接从项目启动对应窗口，不再默认提供整个压缩包。需要分发时再构建普通便携候选，将已有验收模块的本机路径作为显式输入：
+普通启动使用同一套产品入口。Windows x64 构建需要 .NET SDK、CMake 和 Visual Studio C++ 构建工具；自动构建 native 不联网下载依赖：
 
 ```powershell
-.\eng\publish-desktop-entry.ps1 -RunName <新的输出名称> -PhysicsModulePath <已验收模块DLL路径>
+dotnet build .\src\Dango.Desktop\Dango.Desktop.csproj -c Release
+.\eng\publish-desktop-entry.ps1 -RunName <新的输出名称>
 ```
 
-脚本不会重建 native、启动程序或覆盖旧输出。输出为 `artifacts/desktop-entry/<RunName>/package/`，普通启动使用其中的 `Dango.Desktop.exe`；设置位于当前 Windows 用户的本地应用数据目录，人工检查优先使用隔离测试用户。旧 DLL 导出失败和全仓格式基线问题仍保留，该包仅为内部候选。
+发布脚本自动构建新身体和房间模块，不启动程序或覆盖旧输出。输出为 `artifacts/desktop-entry/<RunName>/package/`，普通启动使用其中的 `Dango.Desktop.exe`；默认设置位于当前 Windows 用户的本地应用数据目录。需要另一份存档时可用 `Dango.Desktop.exe --data-root <绝对目录>`，只改变数据位置和单实例身份，产品行为不变。旧 `--belt-body-review` 等新身体专用参数已退役，旧候选请保留原程序运行。可选 `-PhysicsModulePath` 仅携带已校验的旧评审模块，不影响默认产品物理。该包仍为合并候选，不代表已经安装或发布。
 
 固定本地安装、版本切换和回退已实现，桌面快捷方式已通过真实冷启动及重复打开检查；脚本与入口回归、设置/单实例测试及真实包切换通过，详见[本批验证记录](docs/verification/2026-09-20-local-launch-update.md)。方案见[本地启动、更新与回退设计](docs/planning/2026-09-20-local-launch-update-design.md)、[实施计划](docs/planning/2026-09-20-local-launch-update-plan.md)及[本地桌面安装说明](docs/local-desktop-install.md)。候选不代表已发布版本。
 

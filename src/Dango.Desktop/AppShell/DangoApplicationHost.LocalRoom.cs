@@ -162,7 +162,7 @@ internal sealed partial class DangoApplicationHost
     {
         if (disposed || roomHandoff.Pending || localRoomSelected || catalogEntryLoading) return;
         GetOrCreateControlCenter();
-        if (beltRoomReview)
+        if (usesContinuousBody)
         {
             var home = controlCenterWindow!.ProductHome;
             if (home.IsRoomDialogOpen) return;
@@ -223,7 +223,7 @@ internal sealed partial class DangoApplicationHost
         if (localRoomSelected && preferredRoomPresentation == LocalRoomPresentation.DesktopPet) return;
         GetOrCreateControlCenter();
         if (roomHandoff.Current == target && localRoomSelected) return;
-        if (beltRoomReview && !localRoomSelected) { EnterLocalRoom(); return; }
+        if (usesContinuousBody && !localRoomSelected) { EnterLocalRoom(); return; }
         if (!localRoomSelected) localRoomDriver!.ResetEntryPosition();
         BeginLocalHandoff(target, enterWorld: !localRoomSelected || roomWorldNeedsRestore);
     }
@@ -540,7 +540,7 @@ internal sealed partial class DangoApplicationHost
 
     internal void RecoverLocalRoom()
     {
-        if (disposed || roomHandoff.Pending) return;
+        if (disposed || LocalHandoffPending || !localRoomSelected) return;
         GetOrCreateControlCenter();
         if (!stackedRuntime.TryDetachOrdinaryFurniture())
         {
@@ -621,7 +621,7 @@ internal sealed partial class DangoApplicationHost
         var request = ++catalogEntryGeneration;
         try
         {
-            if (beltRoomReview) await home.PauseBeltForRoomAsync();
+            if (usesContinuousBody) await home.PauseBeltForRoomAsync();
             var previousPreparation = roomPreparationTask;
             var previousCheckpoint = roomCheckpointTask;
             var preparation = Task.Run(async () =>
@@ -634,11 +634,11 @@ internal sealed partial class DangoApplicationHost
                 {
                     room = roomCatalogStore.ReadCurrent().Find(id)!;
                     if (furniture && !room.CanEditOffline) throw new InvalidOperationException("离线缓存布局只读，可单人游玩。");
-                    ValidateBeltRoomAdmission(roomCatalogStore.ReadLayout(id), furniture, beltRoomReview);
+                    ValidateBeltRoomAdmission(roomCatalogStore.ReadLayout(id), furniture, usesContinuousBody);
                     resume = roomResumeStore!.Load(id);
                 }
                 // Candidate admission must finish module/configuration checks before writing selection.
-                var selection = beltRoomReview ? null : roomResumeStore!.SaveSelection(id);
+                var selection = usesContinuousBody ? null : roomResumeStore!.SaveSelection(id);
                 return (Room: room, Resume: resume, Selection: selection);
             });
             roomPreparationTask = preparation;
@@ -646,7 +646,7 @@ internal sealed partial class DangoApplicationHost
             await home.Dispatcher.InvokeAsync(() =>
             {
                 if (disposed || request != catalogEntryGeneration || roomHandoff.Pending || localRoomSelected || !home.IsVisible) return;
-                if (beltRoomReview)
+                if (usesContinuousBody)
                 {
                     stackedRuntime.ConfigureBeltRoomAppearance(appearance.SavedAppearance, beginRoom: true);
                     if (!stackedRuntime.TryInitialize())
@@ -658,7 +658,7 @@ internal sealed partial class DangoApplicationHost
                 using (roomCatalogStore.AcquireRoomGuard(id, requireEditing: furniture))
                 {
                     currentRoom = roomCatalogStore.ReadCurrent().Find(id)!;
-                    ValidateBeltRoomAdmission(roomCatalogStore.ReadLayout(id), furniture, beltRoomReview);
+                    ValidateBeltRoomAdmission(roomCatalogStore.ReadLayout(id), furniture, usesContinuousBody);
                     localRoomDriver!.BindRoom(roomCatalogStore, currentRoom, prepared.Resume.Value);
                 }
                 // Save only an admitted room, outside the guard acquired by SaveSelection itself.
@@ -682,7 +682,7 @@ internal sealed partial class DangoApplicationHost
             });
         }
         catch (OperationCanceledException) when (disposed || home.Dispatcher.HasShutdownStarted) { }
-        catch (Exception error) when (beltRoomReview && error is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        catch (Exception error) when (usesContinuousBody && error is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
         {
             await home.Dispatcher.InvokeAsync(() =>
             {
@@ -700,7 +700,7 @@ internal sealed partial class DangoApplicationHost
                 if (!roomHandoff.Pending)
                 {
                     home.RoomEntryPending = false; home.PorchScene.CatalogInputBlocked = false;
-                    if (beltRoomReview && !localRoomSelected) home.RestoreBeltAfterRoomPreparation();
+                    if (usesContinuousBody && !localRoomSelected) home.RestoreBeltAfterRoomPreparation();
                 }
             });
         }

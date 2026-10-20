@@ -34,7 +34,7 @@ public sealed class BeltRoomVisibleIntegrationTests
              new(Guid.NewGuid(), FurnitureItemKind.RoundBall, new(1800, 240))]);
         File.WriteAllBytes(catalog.LayoutPath(id), FurnitureLayoutSerializer.Serialize(layout, FurnitureLayoutContract.OrdinaryRoom, id));
         using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"),
-            isolatedBeltBodyReview: true, beltRoomModulePath: module);
+            roomModulePath: module);
         host.ShowControlCenter();
         var homeWindow = Field<ControlCenterWindow>(host, "controlCenterWindow");
         var home = homeWindow.ProductHome;
