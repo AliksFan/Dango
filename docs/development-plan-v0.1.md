@@ -1,5 +1,7 @@
 # Dango 分阶段开发计划 v0.1
 
+> 2026-10-20 新身体收尾与 F7 草案：活动窗口输入人工验收已通过。迁移保存间歇失败完成有界调查，本轮 129/129 与原数据集 10×119/119 通过但未复现，根因未知、风险继续开放，不凭绿灯关闭。见[收尾记录](verification/2026-10-20-belt-body-closeout.md)。新增[房间接入设计草案](planning/2026-10-20-belt-room-f7-design.md)及[实施计划草案](planning/2026-10-20-belt-room-f7-implementation-plan.md)，先补新内核接触与外来唤醒，再接普通房／桌宠、家具和逐房恢复；设计待用户批准，F7 实施未开始。未合 main、推送、安装或部署。
+
 > 2026-10-19 新身体实施进展：`codex/face-body-belt-integration` 已接入实际单人首页／捏脸、连续外圈产品库、Schema5和三项真正实时调节。用户选择独立[可见形变休眠v2](verification/2026-10-19-belt-visible-deformation-sleep-v2.md)后，候选默认启用；联合230/230、binding9/9、实际EXE保存重启通过，默认三工况CPU减少约74%～75%。九角8组睡眠、120/0/100继续求解；旧严格门失败保留。本批F1～F6自动工作完成，整体人工验收仍待用户确认。边界及开放风险见[实施验证](verification/2026-10-19-belt-body-implementation.md)。旧来源保全有效，main及原房间路径保留，未合并／推送／部署。
 
 > 2026-10-19 新身体接入计划与源归档：用户明确采用已完成的连续外圈物理、增加三个身体参数真正实时显示并保留节能休眠方向，授权新建支线、重订旧 F1～F6 及整理源分支。`codex/face-body-belt-integration` 从 `main@788456b` 起步，形成[新接入计划](planning/2026-10-19-belt-body-product-integration.md)和[来源归档交接](archive/2026-10-19-body-physics-handoff.md)。实验 `75621d3` 的 C5 最终人工通过与自然静置长测作为来源证据保留；旧 F5 的未关闭项不改判。新的 F1～F6 产品实现未开始；旧内核／手动预览／Box2D 专属休眠路线被替代，原 F7 房间目标后续另列。当前只完成分支、设计计划和保全交接，不代表 Phase 1、完整 Windows、房间或多人验收通过；未合 main、推送、安装、部署或替换生产 DLL。
