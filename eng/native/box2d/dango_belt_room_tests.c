@@ -32,7 +32,7 @@ static int atomic_contract(void){
 }
 static int bounds_update_contract(void){
  void* h=NULL;CHECK(create_room(8,0,1.5f,&h)==0);room_world* w=room_lookup(h);belt_body* b=room_body(w);
- CHECK(dango_belt_room_version()==1&&dango_belt_room_capabilities()==31);
+ CHECK(dango_belt_room_version()==1&&dango_belt_room_capabilities()==63);
  dango_belt_room_platform p={1,4,.4,2,.2,.72};CHECK(!dango_belt_room_set_platform(h,&p,0));
  /* A live support identity is deliberately retained: changing a guard is not
     a support mutation or a body/presentation tick. */
@@ -72,14 +72,14 @@ static int corner_contract(void){
  uint64_t support=(uint64_t)(uint32_t)w->diag[18]|((uint64_t)(uint32_t)w->diag[19]<<32);CHECK(support==w->platform.id);CHECK(w->diag[9]<=2e-6);belt_read_stats(b);dango_belt_room_frame frame;CHECK(!dango_belt_room_read_frame(h,&frame,sizeof frame)&&frame.body_snapshot[82]==1&&frame.stats[14]==1);CHECK(!dango_belt_room_remove_platform(h,w->platform.id,17));CHECK(!dango_belt_room_read_frame(h,&frame,sizeof frame)&&frame.body_snapshot[82]==0&&frame.stats[14]==0&&frame.stats[25]==0&&frame.diagnostics[18]==0&&frame.diagnostics[19]==0);CHECK(dango_belt_room_destroy(h)==0);printf("rotated circle 1.8e-6 corner activation, uint64 support identity and immediate remove support consistency PASS\n");return 0;
 }
 static void dump_array(FILE* file,const char* key,const double* values,int count){fprintf(file,"\"%s\":[",key);for(int i=0;i<count;++i)fprintf(file,"%s%.17g",i?",":"",values[i]);fprintf(file,"]");}
-static void dump_failure(room_world* w,int corner,const float* controls){char path[160];snprintf(path,sizeof path,"artifacts/belt-room-f7-r1/native/platform-failure-corner-%d-variant-%d.json",corner,DANGO_BELT_ROOM_NEGATIVE);FILE* file=NULL;
+static void dump_failure(room_world* w,int corner,const float* controls){char path[160];snprintf(path,sizeof path,"artifacts/belt-room-f7-static-r2/platform-failure-corner-%d-variant-%d.json",corner,DANGO_BELT_ROOM_NEGATIVE);FILE* file=NULL;
 #ifdef _WIN32
  fopen_s(&file,path,"wb");
 #else
  file=fopen(path,"wb");
 #endif
  if(!file)return;double snapshot[200],input[9];dango_belt_read_snapshot(w->body_handle,snapshot,200);for(int i=0;i<9;++i)input[i]=controls[i];fprintf(file,"{\"corner\":%d,\"lastSuccessfulTick\":%llu,\"sceneRevision\":%llu,\"fault\":%d,",corner,(unsigned long long)w->tick,(unsigned long long)w->revision,w->fault);dump_array(file,"diagnostics",w->diag,24);fprintf(file,",");dump_array(file,"lastSuccessfulSnapshot",snapshot,200);fprintf(file,",");dump_array(file,"input",input,9);fprintf(file,",\"inputHistory\":[");for(uint64_t tick=0;tick<=w->tick;++tick){if(tick)fprintf(file,",");fprintf(file,"[");for(int i=0;i<9;++i)fprintf(file,"%s%.17g",i?",":"",input[i]);fprintf(file,"]");}fprintf(file,"],");dump_array(file,"attemptQ",room_trace_attempt_body.q,36);fprintf(file,",");dump_array(file,"attemptV",room_trace_attempt_body.v,36);fprintf(file,",");dump_array(file,"certificateFrom",room_trace_from,36);fprintf(file,",");dump_array(file,"certificateTo",room_trace_to,36);fprintf(file,",");dump_array(file,"certificateCell",room_trace_cell,6);fprintf(file,"}\n");fclose(file);
- snprintf(path,sizeof path,"artifacts/belt-room-f7-r1/native/platform-last-safe-body-corner-%d-variant-%d.bin",corner,DANGO_BELT_ROOM_NEGATIVE);
+ snprintf(path,sizeof path,"artifacts/belt-room-f7-static-r2/platform-last-safe-body-corner-%d-variant-%d.bin",corner,DANGO_BELT_ROOM_NEGATIVE);
 #ifdef _WIN32
  fopen_s(&file,path,"wb");
 #else
@@ -104,17 +104,18 @@ static int platform_contract(int only){
  CHECK(failures==0);printf("%s finite platform standing and support removal PASS\n",only<0?"nine configurations":"default configuration");return 0;
 }
 static int scenario_contract(int only,int only_kind){
- const char* names[]={"edge","side","bottom","corner","jump-onto","drag-pressure"};int failures=0;
- for(int kind=0;kind<6;++kind)for(int corner=0;corner<9;++corner){if((only>=0&&corner!=only)||(only_kind>=0&&kind!=only_kind))continue;float x=kind==1?-2.5f:kind==3?-1.3f:kind==4?-2.3f:0,y=kind==2?-.42f:(kind==1||kind==4?0:1.5f);void* h=NULL;CHECK(!create_room(corner,x,y,&h));dango_belt_room_platform p={1,0,kind==2?1.2:kind==1?-.1:.4,kind==1||kind==3||kind==4?1:3,kind==1?1:.2,.72};int setup=dango_belt_room_set_platform(h,&p,0);if(setup){printf("scenario=%s corner=%d SETUP_REJECTED=%d behavior=UNVERIFIED\n",names[kind],corner,setup);failures++;CHECK(!dango_belt_room_destroy(h));continue;}
-  room_world* w=room_lookup(h);dango_belt_room_input input={.body_id=1};int rc=0,tick,observed=0,had_support=0,jumped=0;double supported_height=0;
-  for(tick=0;tick<(kind==0?720:240);++tick){memset(input.controls,0,sizeof input.controls);if(kind==0&&tick>=120)input.controls[0]=1;if(kind==1||kind==3||kind==4)input.controls[0]=1;if(kind==2&&tick==120)input.controls[2]=1;if(kind==4&&tick==60)input.controls[2]=1;if(kind==5&&tick>=120&&tick<180){input.controls[3]=1;input.controls[4]=0;input.controls[5]=.2f;}
+ const char* names[]={"edge","side","bottom","corner","jump-onto","drag-pressure","jump-onto-90"};int failures=0;
+ for(int kind=0;kind<7;++kind)for(int corner=0;corner<9;++corner){if((kind==6&&only_kind<0)||(only>=0&&corner!=only)||(only_kind>=0&&kind!=only_kind))continue;float x=kind==1?-2.5f:kind==3?-1.3f:(kind==4||kind==6)?-2.3f:0,y=kind==2?-.42f:(kind==1||(kind==4||kind==6)?0:1.5f);void* h=NULL;CHECK(!create_room(corner,x,y,&h));dango_belt_room_platform p={1,0,kind==2?1.2:kind==1?-.1:.4,kind==1||kind==3||(kind==4||kind==6)?1:3,kind==1?1:.2,.72};int setup=dango_belt_room_set_platform(h,&p,0);if(setup){printf("scenario=%s corner=%d SETUP_REJECTED=%d behavior=UNVERIFIED\n",names[kind],corner,setup);failures++;CHECK(!dango_belt_room_destroy(h));continue;}
+  room_world* w=room_lookup(h);dango_belt_room_input input={.body_id=1};int rc=0,tick,observed=0,had_support=0,jumped=0,airborne=0,above_top=0,landing_ticks=0,max_landing_ticks=0;double supported_height=0;
+  for(tick=0;tick<(kind==0?720:240);++tick){memset(input.controls,0,sizeof input.controls);if(kind==0&&tick>=120)input.controls[0]=1;if(kind==1||kind==3||kind==4||(kind==6&&!had_support))input.controls[0]=1;if(kind==2&&tick==120)input.controls[2]=1;if(kind==4&&tick==60)input.controls[2]=1;if(kind==6&&tick==90)input.controls[2]=1;if(kind==5&&tick>=120&&tick<180){input.controls[3]=1;input.controls[4]=0;input.controls[5]=.2f;}
    rc=dango_belt_room_step(h,.0166666f,&input,1);if(rc)break;room_world probe=*w;room_row rows[512];int count=room_rows(&probe,room_body(w),rows);if(count<0){rc=-707;break;}
-   if(w->diag[18]==1){had_support=1;supported_height=room_body(w)->q[35];}if(room_body(w)->stats[15]==1)jumped=1;
+   if(w->diag[18]==1){had_support=1;supported_height=room_body(w)->q[35];}if(room_body(w)->stats[15]==1)jumped=1;if((kind==4||kind==6)&&tick%30==0)printf("jump tick=%d x=%.9g y=%.9g grounded=%d support=%.0f jumped=%d\n",tick,room_body(w)->q[34],room_body(w)->q[35],room_body(w)->grounded,w->diag[18],jumped);
    for(int i=0;i<count;++i)if(rows[i].platform){if(kind==1&&fabs(rows[i].n.x)>.7)observed=1;if(kind==2&&rows[i].n.y<-.7)observed=1;if(kind==3&&fabs(rows[i].n.x)>.05&&fabs(rows[i].n.y)>.05)observed=1;if(kind==4&&jumped&&rows[i].n.y>.7&&w->diag[18]==1)observed=1;if(kind==5&&tick>=120&&tick<180&&room_body(w)->dragging)observed|=1;}
    if(kind==5&&tick>=180&&!room_body(w)->dragging&&(observed&1))observed|=2;
-   double bounds[4],foot;belt_bounds(room_body(w)->q,bounds,&foot);if(kind==0&&had_support&&tick>=120&&bounds[0]>p.x+p.width*.5&&w->diag[18]==0&&room_body(w)->q[35]<supported_height-.02)observed=1;
+   double bounds[4],foot;belt_bounds(room_body(w)->q,bounds,&foot);if(kind==6){if(jumped&&!room_body(w)->grounded)airborne=1;if(airborne&&bounds[1]>p.y+p.height*.5)above_top=1;if(above_top&&w->diag[18]==1&&room_body(w)->grounded)landing_ticks++;else landing_ticks=0;if(landing_ticks>max_landing_ticks)max_landing_ticks=landing_ticks;if(landing_ticks>=20)observed=1;}if(kind==0&&had_support&&tick>=120&&bounds[0]>p.x+p.width*.5&&w->diag[18]==0&&room_body(w)->q[35]<supported_height-.02)observed=1;
   }
-  printf("scenario=%s corner=%d completed=%d rc=%d observed=%d reason=%.0f work=%.0f depth=%.0f residual=%.12g\n",names[kind],corner,tick,rc,observed,w->diag[7],w->diag[4],w->diag[5],w->diag[9]);if(rc||!observed||(kind==5&&observed!=3))failures++;CHECK(!dango_belt_room_destroy(h));
+  if(rc){for(int j=0;j<9;++j)printf("contact[%d]=%.17g ",j,room_trace_contact[j]);printf("\n");printf("failure line=%d cell=%.17g %.17g %.17g %.17g %.0f %.0f\n",room_refusal_line,room_trace_cell[0],room_trace_cell[1],room_trace_cell[2],room_trace_cell[3],room_trace_cell[4],room_trace_cell[5]);for(int endpoint=0;endpoint<2;++endpoint){const double* q=endpoint?room_trace_to:room_trace_from;printf("certificate%s=",endpoint?"To":"From");for(int j=0;j<BELT_D;++j)printf("%s%.17g",j?",":"",q[j]);printf("\n");}}
+  if(kind==6)printf("jump-onto-90 accepted=%d airborne=%d aboveTop=%d maxConsecutiveSupport=%d observedLanding=%d\n",jumped,airborne,above_top,max_landing_ticks,observed);printf("scenario=%s corner=%d completed=%d rc=%d observed=%d reason=%.0f work=%.0f depth=%.0f residual=%.12g\n",names[kind],corner,tick,rc,observed,w->diag[7],w->diag[4],w->diag[5],w->diag[9]);if(rc||!observed||(kind==5&&observed!=3))failures++;CHECK(!dango_belt_room_destroy(h));
  }
  CHECK(failures==0);return 0;
 }
@@ -150,6 +151,19 @@ static int dll_failure_replay(const char* path,int r1){
  FreeLibrary(dll);return 0;
 }
 #endif
+static int face_tie_contract(void){
+ /* Real default corner tick95 state: smooth extrema and 256 samples miss a
+    narrow inside-corner minimum at the tie of the left and top distances. */
+ const double q[BELT_D]={-1.0308861015113129,0.39958316305699598,0.63228807341071047,0.31334702002482995,-0.22367377322201043,0.70639850660890113,-0.0064899955849746305,0.052101044721075837,0.024903990374606669,0.0070656259737829569,0.001624527540176249,0.0090625295017401093,0.030724141967186661,-0.022005906931798304,0.0128380768527814,-0.010770860770704179,0.023361941762169654,-0.01952780037248223,0.01605986270334266,-0.016046413386259041,0.0087586804861908511,-0.013143511732367573,0.01331904449418027,-0.020511206014490399,-0.00057149748499992089,-0.005069129202077703,0.011550599641581519,-0.018527401310224761,-0.0030102972860298971,0.0027664512024714598,0.0068690195867074279,-0.016357017457705719,-0.0062935146199407264,0.011513985807881391,-0.98440899478176513,0.37268965080524502};
+ void* h=NULL;CHECK(!create_room(8,0,1.5f,&h));room_world* w=room_lookup(h);w->platform=(dango_belt_room_platform){1,0,.4,1,.2,.72};w->platform_enabled=1;
+ double angles[512],roots[64],e[4],old_min=INFINITY,new_min=INFINITY;int count=0;room_edges(&w->platform,e);
+ for(int i=0;i<256;++i)angles[count++]=2*BELT_PI*i/256;
+ for(int axis=0;axis<2;++axis){int n=belt_roots(q,axis,1,0,roots);for(int i=0;i<n;++i)angles[count++]=roots[i];}
+ CHECK(room_corner_roots(w,q,angles,&count));for(int i=0;i<count;++i){belt_v normal;old_min=fmin(old_min,room_gap(belt_eval(q,angles[i],0),e,&normal));}
+ count=0;room_face_ties(q,e,angles,&count);for(int i=0;i<count;++i){belt_v normal;new_min=fmin(new_min,room_gap(belt_eval(q,angles[i],0),e,&normal));}
+ CHECK(old_min>=ROOM_CLEARANCE&&new_min<-4e-4);CHECK(!dango_belt_room_destroy(h));
+ printf("saved corner tick95 nonsmooth face-tie minimum old=%.12g new=%.12g PASS\n",old_min,new_min);return 0;
+}
 int main(int argc,char** argv){
  setvbuf(stdout,NULL,_IONBF,0);
 #ifdef _WIN32
@@ -161,7 +175,7 @@ int main(int argc,char** argv){
  if(argc==4&&strcmp(argv[1],"--scenario")==0)return scenario_contract(atoi(argv[3]),atoi(argv[2]));
  if(argc>1&&strcmp(argv[1],"--scenarios")==0)return scenario_contract(-1,-1);
  if(argc>1&&strcmp(argv[1],"--scenarios-default")==0)return scenario_contract(8,-1);
- CHECK(atomic_contract()==0);CHECK(bounds_update_contract()==0);CHECK(certificate_contract()==0);CHECK(rollback_contract()==0);CHECK(corner_contract()==0);CHECK(public_bounds_rollback()==0);
+ CHECK(face_tie_contract()==0);CHECK(atomic_contract()==0);CHECK(bounds_update_contract()==0);CHECK(certificate_contract()==0);CHECK(rollback_contract()==0);CHECK(corner_contract()==0);CHECK(public_bounds_rollback()==0);
 #ifdef _WIN32
  if(argc>1)CHECK(equivalence(argv[1])==0);
 #else

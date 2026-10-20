@@ -32,9 +32,18 @@ internal sealed class BeltRoomSceneAdapter : IDisposable
     private DangoBeltRoomWorld Create()
     {
         var candidate = new DangoBeltRoomWorld(module, configuration, x: (left + right) / 2, left: left, right: right);
-        if (candidate.SupportsHorizontalBounds) return candidate;
-        candidate.Dispose();
-        throw new NotSupportedException("Desktop belt rooms require the horizontal bounds capability.");
+        try
+        {
+            if (!candidate.SupportsHorizontalBounds || !candidate.SupportsSolidWalls)
+                throw new NotSupportedException("Desktop belt rooms require horizontal bounds and solid wall capabilities.");
+            candidate.SetSolidWalls(true, candidate.Read().SceneRevision);
+            return candidate;
+        }
+        catch
+        {
+            candidate.Dispose();
+            throw;
+        }
     }
     public LogicalPoint ToWorld(LogicalPoint point) => new((point.X-origin.X)/Scale, (origin.Y-point.Y)/Scale);
     public LogicalPoint ToHost(LogicalPoint point) => new(origin.X+point.X*Scale, origin.Y-point.Y*Scale);

@@ -16,7 +16,7 @@ _Static_assert(sizeof(dango_belt_room_frame)==4472,"room frame ABI");
 #endif
 typedef struct room_world {
  void* body_handle;uint64_t generation,tick,revision,max_platform_id;
- int platform_enabled,fault;dango_belt_room_platform platform;
+ int platform_enabled,fault,solid_walls;dango_belt_room_platform platform;
  double old_q[BELT_D],diag[24],last_theta;
 } room_world;
 static struct {uintptr_t token;room_world* world;} room_handles[16];
@@ -26,6 +26,7 @@ static volatile int room_negative_mode=DANGO_BELT_ROOM_NEGATIVE;
 #ifdef DANGO_BELT_ROOM_TRACE
 static int room_refusal_line;
 static double room_trace_from[BELT_D],room_trace_to[BELT_D],room_trace_cell[6];
+static double room_trace_contact[9];
 static belt_body room_trace_attempt_body;
 static belt_body room_trace_safe_body;
 #endif
@@ -114,6 +115,17 @@ static int room_containment(room_world* w,const double* q){
 typedef struct room_row {double basis[BELT_B];belt_v n;double pn,pt,mu;int platform;} room_row;
 static double room_gap_derivative(const double* q,double theta,const double* e){belt_v normal;room_gap(belt_eval(q,theta,0),e,&normal);return belt_dot(normal,belt_eval(q,theta,1));}
 static double room_corner_derivative(const double* q,double theta,belt_v corner){return belt_dot(belt_sub(belt_eval(q,theta,0),corner),belt_eval(q,theta,1));}
+/* Inside a solid rectangle the signed gap is the maximum of four affine
+   face distances. Its minima also occur at nonsmooth face ties, not only at
+   smooth face extrema or exterior corner-distance extrema. */
+static void room_face_ties(const double* q,const double* e,double* angles,int* count){
+ const double nx[4]={-1,1,0,0},ny[4]={0,0,-1,1},offset[4]={e[0],-e[2],e[1],-e[3]};
+ for(int a=0;a<4;++a)for(int b=a+1;b<4;++b){double transformed[BELT_D]={0},roots[64];
+  for(int j=0;j<BELT_B;++j)transformed[2*j]=(nx[a]-nx[b])*q[2*j]+(ny[a]-ny[b])*q[2*j+1];
+  int n=belt_roots(transformed,0,0,offset[b]-offset[a],roots);
+  for(int i=0;i<n&&*count<512;++i){belt_v p=belt_eval(q,roots[i],0);if(p.x>=e[0]&&p.x<=e[2]&&p.y>=e[1]&&p.y<=e[3])angles[(*count)++]=roots[i];}
+ }
+}
 /* Candidate roots only. The final independent continuous certificate, rather
    than completeness of this locator, decides whether a state may commit. */
 static int room_corner_roots(room_world* w,const double* q,double* angles,int* count){
@@ -135,6 +147,14 @@ static int room_corner_roots(room_world* w,const double* q,double* angles,int* c
 static int room_rows(room_world* w,belt_body* b,room_row* rows){
  belt_contact ground[64];int n=belt_contact_rows(b,ground,ROOM_ACTIVATION);
  for(int i=0;i<n;++i){memset(&rows[i],0,sizeof rows[i]);memcpy(rows[i].basis,ground[i].basis,sizeof rows[i].basis);rows[i].n=(belt_v){0,1};rows[i].mu=b->cfg.friction;}
+ if(w->solid_walls){double roots[64];int count=belt_roots(b->q,0,1,0,roots);
+  for(int i=0;i<count&&n<512;++i){belt_v p=belt_eval(b->q,roots[i],0),dd=belt_eval(b->q,roots[i],2);belt_v normal;
+   if(p.x-b->left<=ROOM_ACTIVATION&&dd.x>=-1e-9)normal=(belt_v){1,0};
+   else if(b->right-p.x<=ROOM_ACTIVATION&&dd.x<=1e-9)normal=(belt_v){-1,0};else continue;
+   room_row* row=&rows[n++];memset(row,0,sizeof *row);belt_basis(roots[i],0,row->basis);row->n=normal;row->mu=b->cfg.friction;row->platform=2;
+  }
+ }
+ if(!w->platform_enabled)return n;
  double angles[512],roots[64],e[4];room_edges(&w->platform,e);int count=0;
  /* Face extrema are analytic Fourier roots. Only minima of the signed gap
     enter the contact manifold; near-contact samples are not constraint rows. */
@@ -144,7 +164,7 @@ static int room_rows(room_world* w,belt_body* b,room_row* rows){
  for(int i=0;i<count&&n<512;++i){belt_v p=belt_eval(b->q,angles[i],0),normal;double gap=room_gap(p,e,&normal);if(gap>ROOM_ACTIVATION)continue;
   if(i<face_count&&fabs(room_gap_derivative(b->q,angles[i],e))>256*DBL_EPSILON*(1+belt_guard_norm_bound(b->q,1)))continue;
   if(belt_dot(normal,belt_eval(b->q,angles[i],2))<0&&fabs(normal.x*normal.y)<1e-12)continue;
-  int duplicate=0;for(int k=0;k<n;++k)if(rows[k].platform&&hypot(rows[k].n.x-normal.x,rows[k].n.y-normal.y)<1e-10){double basis[BELT_B];belt_basis(angles[i],0,basis);if(fabs(basis[1]-rows[k].basis[1])+fabs(basis[2]-rows[k].basis[2])<1e-9){duplicate=1;break;}}if(duplicate)continue;
+  int duplicate=0;for(int k=0;k<n;++k)if(rows[k].platform==1&&hypot(rows[k].n.x-normal.x,rows[k].n.y-normal.y)<1e-10){double basis[BELT_B];belt_basis(angles[i],0,basis);if(fabs(basis[1]-rows[k].basis[1])+fabs(basis[2]-rows[k].basis[2])<1e-9){duplicate=1;break;}}if(duplicate)continue;
   room_row* row=&rows[n++];memset(row,0,sizeof *row);belt_basis(angles[i],0,row->basis);row->n=normal;row->mu=fmin(b->cfg.friction,w->platform.friction);row->platform=1;
  }
  return n;
@@ -166,22 +186,33 @@ static int room_project(room_world* w,belt_body* b,double theta,belt_v normal,do
  double elastic=belt_elastic_energy(b),gravity=belt_gravity_energy(b);memcpy(b->q,trial,sizeof trial);double de=belt_elastic_energy(b)-elastic,dg=belt_gravity_energy(b)-gravity;
  w->diag[12]+=de;w->diag[13]+=dg;w->diag[14]=fmax(w->diag[14],fmin(max_change,ROOM_POSITION_LIMIT));w->diag[15]+=fmax(0,de+dg);w->last_theta=theta;return 1;
 }
-static void belt_room_before_integrate(belt_body* b){if(room_active&&room_active->platform_enabled)memcpy(room_active->old_q,b->q,sizeof b->q);}
+static double room_wall_theta(const double* q,int right){
+ double roots[64],theta=0,value=belt_eval(q,0,0).x;int n=belt_roots(q,0,1,0,roots);
+ for(int i=0;i<n;++i){double x=belt_eval(q,roots[i],0).x;if(right?x>value:x<value){theta=roots[i];value=x;}}return theta;
+}
+static void belt_room_before_integrate(belt_body* b){if(room_active&&(room_active->platform_enabled||room_active->solid_walls))memcpy(room_active->old_q,b->q,sizeof b->q);}
 static int belt_room_contact(belt_body* b){
- room_world* w=room_active;if(!w||!w->platform_enabled)return belt_contact_solve(b);
+ room_world* w=room_active;if(!w||(!w->platform_enabled&&!w->solid_walls))return belt_contact_solve(b);
  if(room_negative_mode==1)return belt_contact_solve(b);
+ if(!w->platform_enabled){double bounds[4],foot;belt_bounds(b->q,bounds,&foot);
+  if(bounds[0]-b->left>ROOM_ACTIVATION&&b->right-bounds[2]>ROOM_ACTIVATION)return belt_contact_solve(b);
+ }
  double e[4]={0};if(w->platform_enabled)room_edges(&w->platform,e);int clean=0;
  for(int iteration=0;iteration<32;++iteration){w->diag[16]+=1;double bounds[4],foot;belt_bounds(b->q,bounds,&foot);
   if(bounds[1]<b->cfg.ground_height-2e-9){if(!room_project(w,b,foot,(belt_v){0,1},b->cfg.ground_height-bounds[1]+ROOM_CLEARANCE))return 0;continue;}
+  if(w->solid_walls&&bounds[0]<b->left){if(!room_project(w,b,room_wall_theta(b->q,0),(belt_v){1,0},b->left-bounds[0]+ROOM_CLEARANCE))return 0;continue;}
+  if(w->solid_walls&&bounds[2]>b->right){if(!room_project(w,b,room_wall_theta(b->q,1),(belt_v){-1,0},bounds[2]-b->right+ROOM_CLEARANCE))return 0;continue;}
+  if(!w->platform_enabled){clean=1;break;}
   /* Locate the endpoint's deepest candidate before asking for a proof. These
      samples locate corrections; they never certify the accepted boundary. */
   double theta=0,deepest=INFINITY,angles[512],roots[64];int count=0;belt_v ignored;
   for(int i=0;i<256;++i)angles[count++]=2*BELT_PI*i/256;
   for(int axis=0;axis<2;++axis){int nr=belt_roots(b->q,axis,1,0,roots);for(int i=0;i<nr;++i)angles[count++]=roots[i];}
+  room_face_ties(b->q,e,angles,&count);
   if(!room_corner_roots(w,b->q,angles,&count))return 0;
   for(int i=0;i<count;++i){double gap=room_gap(belt_eval(b->q,angles[i],0),e,&ignored);if(gap<deepest){deepest=gap;theta=angles[i];}}
   int swept=0;
-  if(deepest>=ROOM_CLEARANCE){
+  if(deepest>=0){
    int ok=room_certificate(w,b->q,b->q,&theta,0);if(ok<0)return 0;
    if(ok){ok=room_certificate(w,w->old_q,b->q,&theta,1);swept=!ok;if(ok<0)return 0;}
    if(ok){if(!room_containment(w,b->q))return 0;clean=1;break;}
@@ -192,8 +223,21 @@ static int belt_room_contact(belt_body* b){
   if(swept||gap<0){normal=room_entry_normal(old,p,e,normal);
    gap=normal.x<-.5?e[0]-p.x:normal.x>.5?p.x-e[2]:normal.y<-.5?e[1]-p.y:p.y-e[3];
   }
+#ifdef DANGO_BELT_ROOM_TRACE
+  double contact_trace[9]={theta,old.x,old.y,p.x,p.y,normal.x,normal.y,gap,swept};memcpy(room_trace_contact,contact_trace,sizeof contact_trace);
+#endif
   if(gap>=ROOM_CLEARANCE)return room_refuse(w,DANGO_BELT_ROOM_REJECTED,1);
   if(!room_project(w,b,theta,normal,ROOM_CLEARANCE-gap))return 0;
+ }
+ /* The last permitted projection is still a candidate. Verify its actual
+    geometry rather than requiring an otherwise empty 33rd solver iteration. */
+ if(!clean){double bounds[4],foot;belt_bounds(b->q,bounds,&foot);
+  int ok=bounds[1]>=b->cfg.ground_height-2e-9&&(!w->solid_walls||(bounds[0]>=b->left&&bounds[2]<=b->right));
+  if(ok&&w->platform_enabled){double theta=0;ok=room_certificate(w,b->q,b->q,&theta,0);if(ok<0)return 0;
+   if(ok){ok=room_certificate(w,w->old_q,b->q,&theta,1);if(ok<0)return 0;}
+   if(ok)ok=room_containment(w,b->q);
+  }
+  if(ok)clean=1;
  }
  if(!clean)return room_refuse(w,DANGO_BELT_ROOM_REJECTED,1);
  room_row rows[512];int n=room_rows(w,b,rows);if(n<0)return 0;double before=belt_kinetic(b),residual=0;int iteration;
@@ -209,7 +253,7 @@ static int belt_room_contact(belt_body* b){
  b->stats[25]=n;b->stats[26]+=before;b->stats[27]+=after;b->stats[30]=fmax(b->stats[30],residual);b->diag[12]+=before;b->diag[13]+=after;b->diag[14]+=after-before;w->diag[22]+=1;return 1;
 }
 int dango_belt_room_version(void){return DANGO_BELT_ROOM_ABI;}
-int dango_belt_room_capabilities(void){return 31;}
+int dango_belt_room_capabilities(void){return 63;}
 int dango_belt_room_frame_size(void){return (int)sizeof(dango_belt_room_frame);}
 const char* dango_belt_room_model(void){return "continuous-belt-room-v1";}
 const char* dango_belt_room_tuning(void){return "C455-F-v1";}
@@ -246,7 +290,15 @@ int dango_belt_room_step(void* handle,float dt,const dango_belt_room_input* inpu
 int dango_belt_room_read_frame(void* handle,dango_belt_room_frame* output,int bytes){
  room_world* w=room_lookup(handle);if(!w)return DANGO_BELT_ROOM_HANDLE;if(!output||bytes<(int)sizeof *output)return DANGO_BELT_ROOM_ARGUMENT;
  dango_belt_room_frame frame;memset(&frame,0,sizeof frame);frame.size=sizeof frame;frame.abi=1;frame.generation=w->generation;frame.tick=w->tick;frame.scene_revision=w->revision;frame.body_id=frame.config_revision=1;frame.platform_enabled=w->platform_enabled;frame.fault=w->fault;if(w->platform_enabled)frame.platform=w->platform;
- if(dango_belt_read_snapshot(w->body_handle,frame.body_snapshot,200)||dango_belt_read(w->body_handle,frame.scaffold,68,frame.curve,512,frame.stats,64))return DANGO_BELT_ROOM_REJECTED;memcpy(frame.diagnostics,w->diag,sizeof frame.diagnostics);memcpy(output,&frame,sizeof frame);return 0;
+ if(dango_belt_read_snapshot(w->body_handle,frame.body_snapshot,200)||dango_belt_read(w->body_handle,frame.scaffold,68,frame.curve,512,frame.stats,64))return DANGO_BELT_ROOM_REJECTED;memcpy(frame.diagnostics,w->diag,sizeof frame.diagnostics);frame.diagnostics[23]=w->solid_walls;memcpy(output,&frame,sizeof frame);return 0;
+}
+int dango_belt_room_set_solid_walls(void* handle,int enabled,uint64_t revision){
+ room_world* w=room_lookup(handle);if(!w)return DANGO_BELT_ROOM_HANDLE;if(w->fault)return DANGO_BELT_ROOM_FAULT;
+ if(enabled!=0&&enabled!=1)return DANGO_BELT_ROOM_ARGUMENT;if(revision!=w->revision||w->revision==UINT64_MAX)return DANGO_BELT_ROOM_REVISION;
+ belt_body* b=room_body(w);double bounds[4],foot;belt_bounds(b->q,bounds,&foot);
+ if(bounds[0]<b->left||bounds[2]>b->right)return DANGO_BELT_ROOM_REJECTED;
+ if(w->platform_enabled){double edges[4];room_edges(&w->platform,edges);if(edges[0]<b->left||edges[2]>b->right)return DANGO_BELT_ROOM_REJECTED;}
+ if(w->solid_walls==enabled)return 0;w->solid_walls=enabled;w->revision++;return 0;
 }
 int dango_belt_room_set_bounds(void* handle,float left,float right,uint64_t revision){
  room_world* w=room_lookup(handle);if(!w)return DANGO_BELT_ROOM_HANDLE;if(w->fault)return DANGO_BELT_ROOM_FAULT;

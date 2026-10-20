@@ -239,13 +239,108 @@ public sealed class DangoBeltRoomWorldTests
     }
 
     [TestMethod]
+    [DataRow(0)]
+    [DataRow(3)]
+    [DataRow(6)]
+    public void StaticActionRegressionsRunThroughTheActualRoomModule(int kind)
+    {
+        var x = kind == 3 ? -1.3f : kind == 6 ? -2.3f : 0;
+        using var world = new DangoBeltRoomWorld(Module, DangoBodyMaterial.Configure(DangoBodyControls.Default),
+            x: x, y: kind == 6 ? 0 : 1.5f, left: -20, right: 20);
+        world.SetSolidWalls(true, 0);
+        var width = kind == 0 ? 3 : 1;
+        world.SetPlatform(new(1, 0, .4, width, .2, .72), world.Read().SceneRevision);
+        var supported = false;
+        var supportedHeight = 0f;
+        var departed = false;
+        var jumped = false;
+        var airborne = false;
+        var aboveTop = false;
+        var landingTicks = 0;
+        var maximumLandingTicks = 0;
+        var count = kind == 0 ? 720 : 240;
+        for (var tick = 0; tick < count; tick++)
+        {
+            var horizontal = kind == 0 ? tick >= 120 ? 1 : 0 : kind == 3 || !supported ? 1 : 0;
+            world.Step(1, new(Horizontal: horizontal, JumpPressed: kind == 6 && tick == 90));
+            var frame = world.Read();
+            Assert.AreEqual(0, frame.Fault);
+            Assert.IsTrue(frame.SolidWallsEnabled);
+            var onPlatform = frame.Diagnostics[18] == 1 && frame.Diagnostics[19] == 0;
+            if (onPlatform) { supported = true; supportedHeight = frame.Stats[1]; }
+            if (frame.Stats[15] == 1) jumped = true;
+            if (jumped && frame.Stats[14] == 0) airborne = true;
+            if (airborne && frame.Stats[9] > .5) aboveTop = true;
+            landingTicks = aboveTop && onPlatform && frame.Stats[14] == 1 ? landingTicks + 1 : 0;
+            maximumLandingTicks = Math.Max(maximumLandingTicks, landingTicks);
+            if (supported && tick >= 120 && frame.Stats[8] > width / 2d &&
+                !onPlatform && frame.Stats[1] < supportedHeight - .02) departed = true;
+        }
+        Assert.AreEqual((ulong)count, world.Read().Tick);
+        if (kind == 0) Assert.IsTrue(departed, "The complete body must leave the platform and descend after support.");
+        if (kind == 6)
+        {
+            Assert.IsTrue(jumped && airborne && aboveTop);
+            Assert.IsGreaterThanOrEqualTo(20, maximumLandingTicks, "Jumping must end in actual sustained platform support.");
+        }
+    }
+
+    [TestMethod]
+    public void OptionalSolidWallsChangeOnlyModeAndRevisionUntilTheNextStep()
+    {
+        using var world = new DangoBeltRoomWorld(Module, Config, left: -2, right: 2);
+        Assert.IsTrue(world.SupportsSolidWalls);
+        var before = world.Read();
+        Assert.IsFalse(before.SolidWallsEnabled);
+        world.SetSolidWalls(true, before.SceneRevision);
+        var enabled = world.Read();
+        Assert.IsTrue(enabled.SolidWallsEnabled);
+        Assert.AreEqual(before.SceneRevision + 1, enabled.SceneRevision);
+        Assert.AreEqual(before.Tick, enabled.Tick);
+        CollectionAssert.AreEqual(before.BodySnapshot, enabled.BodySnapshot);
+        CollectionAssert.AreEqual(before.Curve, enabled.Curve);
+        CollectionAssert.AreEqual(before.Stats, enabled.Stats);
+        for (var i = 0; i < 23; i++) Assert.AreEqual(before.Diagnostics[i], enabled.Diagnostics[i]);
+        world.SetSolidWalls(true, enabled.SceneRevision);
+        AssertStable(enabled, world.Read());
+        Assert.ThrowsExactly<DangoBeltRoomException>(() => world.SetSolidWalls(false, before.SceneRevision));
+        AssertStable(enabled, world.Read());
+        Assert.IsTrue(world.Read().SolidWallsEnabled);
+        world.Step(1);
+        Assert.IsTrue(world.Read().SolidWallsEnabled);
+        world.SetSolidWalls(false, world.Read().SceneRevision);
+        Assert.IsFalse(world.Read().SolidWallsEnabled);
+    }
+
+    [TestMethod]
+    public void SolidWallsContainSustainedDriveAndAllowTheBodyToLeave()
+    {
+        using var world = new DangoBeltRoomWorld(Module, Config, left: -2, right: 2);
+        world.SetSolidWalls(true, 0);
+        for (var i = 0; i < 360; i++)
+        {
+            world.Step(1, new(Horizontal: 1, InputActive: true));
+            var frame = world.Read();
+            Assert.AreEqual(0, frame.Fault);
+            Assert.IsTrue(frame.SolidWallsEnabled);
+            Assert.IsTrue(frame.Stats[8] >= -2 && frame.Stats[10] <= 2);
+        }
+        var atWall = world.Read();
+        Assert.IsGreaterThan(1.99f, atWall.Stats[10], "The body must actually reach the right wall.");
+        for (var i = 0; i < 120; i++) world.Step(1, new(Horizontal: -1, InputActive: true));
+        Assert.IsLessThan(atWall.Stats[0] - .1f, world.Read().Stats[0]);
+    }
+
+    [TestMethod]
     public void LegacyCapability15ModuleRemainsLoadableButRejectsOptionalBounds()
     {
         var module=RequiredModule("DANGO_BELT_ROOM_LEGACY_MODULE");
         using var world=new DangoBeltRoomWorld(module,Config);
         Assert.IsFalse(world.SupportsHorizontalBounds);
+        Assert.IsFalse(world.SupportsSolidWalls);
         var before=world.Read();
         Assert.ThrowsExactly<NotSupportedException>(()=>world.SetHorizontalBounds(-8,8,0));
+        Assert.ThrowsExactly<NotSupportedException>(()=>world.SetSolidWalls(true,0));
         AssertStable(before,world.Read());
         world.Step(1);
         Assert.AreEqual(1UL,world.Read().Tick);

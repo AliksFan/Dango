@@ -23,6 +23,20 @@ revision without advancing tick. Managed physics callers retain capability-15
 compatibility; the desktop room adapter requires the new capability. Connection
 evidence and current product limitations are in verification section7.
 
+Static-play R2 adds optional solid-wall capability 32 (current capabilities63),
+with the same ABI/frame/contact identity; see the
+[R2 contract](../../../docs/planning/2026-10-20-belt-room-static-r2.md).
+`set_solid_walls(handle,enabled,revision)` defaults to disabled and validates the
+complete body/platform interval before changing mode and scene revision.
+`read_frame.diagnostics[23]` reports mode even after a failed step. Enabled walls
+use the real continuous x extrema and the existing shared contact solver;
+wall rows never qualify as ground/platform support. The desktop adapter requires
+this capability and enables it explicitly. R2 also repairs missing inner-face
+tie candidates, unnecessary clearance pursuit, and the unverified final allowed
+projection. Final continuous platform proofs and all R1 numeric gates remain.
+Old jump60 is retained as untriggered; separate jump90 verifies actual landing.
+Results are recorded in verification section8, without changing old FAIL records.
+
 Status: contract written before implementation sampling, 2026-10-20. F7-1
 technical candidate only; capability declarations describe available operations,
 not passed acceptance. No dynamic balls, multiple bodies, sleep or product room

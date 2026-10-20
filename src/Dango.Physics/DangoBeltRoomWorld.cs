@@ -11,7 +11,10 @@ public readonly record struct DangoBeltRoomPlatform(ulong Id, double X, double Y
 public sealed record DangoBeltRoomFrame(ulong OwnerEpoch, ulong Generation, ulong Tick, ulong SceneRevision, ulong BodyId,
     ulong ConfigurationRevision, DangoBeltRoomPlatform? Platform, int Fault,
     ReadOnlyCollection<double> BodySnapshot, ReadOnlyCollection<float> Scaffold,
-    ReadOnlyCollection<float> Curve, ReadOnlyCollection<float> Stats, ReadOnlyCollection<double> Diagnostics);
+    ReadOnlyCollection<float> Curve, ReadOnlyCollection<float> Stats, ReadOnlyCollection<double> Diagnostics)
+{
+    public bool SolidWallsEnabled => Diagnostics[23] == 1;
+}
 
 public sealed class DangoBeltRoomException(string operation, int errorCode)
     : InvalidOperationException($"Belt room {operation} failed ({errorCode}); read the last accepted frame and separate fault diagnostics.")
@@ -39,7 +42,9 @@ public sealed unsafe class DangoBeltRoomWorld : IDisposable
     private readonly RemovePlatformDelegate removePlatform;
     private readonly DestroyDelegate destroy;
     private readonly SetBoundsDelegate? setBounds;
+    private readonly SetSolidWallsDelegate? setSolidWalls;
     public bool SupportsHorizontalBounds { get; private set; }
+    public bool SupportsSolidWalls { get; private set; }
 
     public DangoBeltRoomWorld(string module, DangoSelfPhysicsParameters configuration,
         double x = 0, double y = 0, double left = -10, double right = 10,
@@ -64,6 +69,8 @@ public sealed unsafe class DangoBeltRoomWorld : IDisposable
                     throw new NotSupportedException("Unsupported independent belt room ABI, model, contact model, tuning, capabilities or frame layout.");
                 SupportsHorizontalBounds = (Export<VersionDelegate>("dango_belt_room_capabilities")() & 16) != 0;
                 if (SupportsHorizontalBounds) setBounds = Export<SetBoundsDelegate>("dango_belt_room_set_bounds");
+                SupportsSolidWalls = (Export<VersionDelegate>("dango_belt_room_capabilities")() & 32) != 0;
+                if (SupportsSolidWalls) setSolidWalls = Export<SetSolidWallsDelegate>("dango_belt_room_set_solid_walls");
                 step = Export<StepDelegate>("dango_belt_room_step");
                 read = Export<ReadDelegate>("dango_belt_room_read_frame");
                 setPlatform = Export<SetPlatformDelegate>("dango_belt_room_set_platform");
@@ -75,7 +82,7 @@ public sealed unsafe class DangoBeltRoomWorld : IDisposable
                 NativeFrame initial = default;
                 Check(read(handle, &initial, sizeof(NativeFrame)), "read initial frame");
                 ValidateFrameIdentity(in initial);
-                if (initial.Tick != 0 || initial.SceneRevision != 0 || initial.Fault != 0 || initial.PlatformEnabled != 0)
+                if (initial.Tick != 0 || initial.SceneRevision != 0 || initial.Fault != 0 || initial.PlatformEnabled != 0 || initial.Diagnostics[23] != 0)
                     throw new InvalidOperationException("Native room returned an invalid initial world state.");
                 worldGeneration = initial.Generation;
             }
@@ -106,6 +113,13 @@ public sealed unsafe class DangoBeltRoomWorld : IDisposable
         if (!SupportsHorizontalBounds) throw new NotSupportedException("This belt room module does not support horizontal bounds.");
         if (!Finite(left) || !Finite(right) || left >= right) throw new ArgumentOutOfRangeException(nameof(right));
         lock (NativeGate) Check(setBounds!(handle, (float)left, (float)right, expectedRevision), "set bounds");
+    }
+
+    public void SetSolidWalls(bool enabled, ulong expectedRevision)
+    {
+        VerifyAccess();
+        if (!SupportsSolidWalls) throw new NotSupportedException("This belt room module does not support solid walls.");
+        lock (NativeGate) Check(setSolidWalls!(handle, enabled ? 1 : 0, expectedRevision), "set solid walls");
     }
 
     public void SetPlatform(DangoBeltRoomPlatform platform, ulong expectedRevision)
@@ -164,7 +178,8 @@ public sealed unsafe class DangoBeltRoomWorld : IDisposable
     {
         if (frame.Size != FrameSize || frame.Abi != AbiVersion || frame.Generation == 0 || frame.BodyId != 1 ||
             frame.ConfigurationRevision != 1 || frame.PlatformEnabled is < 0 or > 1 ||
-            (frame.PlatformEnabled != 0 && frame.Platform.Id == 0))
+            (frame.PlatformEnabled != 0 && frame.Platform.Id == 0) ||
+            (frame.Diagnostics[23] != 0 && frame.Diagnostics[23] != 1))
             throw new InvalidOperationException("Native room returned an invalid coherent frame identity.");
     }
     private void VerifyAccess()
@@ -184,6 +199,7 @@ public sealed unsafe class DangoBeltRoomWorld : IDisposable
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int SetPlatformDelegate(nint handle, in NativePlatform platform, ulong expectedRevision);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int RemovePlatformDelegate(nint handle, ulong id, ulong expectedRevision);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int SetBoundsDelegate(nint handle, float left, float right, ulong expectedRevision);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int SetSolidWallsDelegate(nint handle, int enabled, ulong expectedRevision);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int DestroyDelegate(nint handle);
     [StructLayout(LayoutKind.Sequential)] private struct NativeInput { public ulong BodyId; public fixed float Controls[9]; public int Reserved; }
     [StructLayout(LayoutKind.Sequential)] private struct NativePlatform { public ulong Id; public double X, Y, Width, Height, Friction; }

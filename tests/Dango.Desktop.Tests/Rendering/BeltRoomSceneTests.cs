@@ -28,6 +28,7 @@ public sealed class BeltRoomSceneTests
         using var scene = new DesktopPhysicsScene(Module,Bounds,new(120,100,0));
         using var expected = new DangoBeltRoomWorld(Module,DangoBodyMaterial.Configure(new(120,100,0)),left:-256,right:256);
         Assert.IsTrue(scene.UsesBeltRoom);
+        Assert.IsTrue(scene.BeltRoomFrame!.SolidWallsEnabled);
         Assert.AreEqual(1,scene.Count);
         Assert.AreEqual(1,scene.SelectedEntity.Value);
         Assert.AreEqual(Bounds.Bottom,scene.GroundY,1e-10);
@@ -169,10 +170,42 @@ public sealed class BeltRoomSceneTests
     }
 
     [TestMethod]
+    public void GuardOnlyBoundsModuleIsRejectedByTheDesktopEntry()
+    {
+        var path = Environment.GetEnvironmentVariable("DANGO_BELT_ROOM_GUARD_MODULE");
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) Assert.Inconclusive("Explicit capability-31 guard-only module required.");
+        Assert.ThrowsExactly<NotSupportedException>(() => new DesktopPhysicsScene(path!, Bounds, DangoBodyControls.Default));
+    }
+
+    [TestMethod]
+    public void DesktopSolidWallContactDoesNotFreezeTheRoomAndReleasesOnOppositeInput()
+    {
+        using var scene = new DesktopPhysicsScene(Module, Bounds, DangoBodyControls.Default);
+        scene.SetHorizontalBounds(scene.ToHost(new(-2, 0)).X, scene.ToHost(new(2, 0)).X);
+        scene.SetInput(new(false, true, false, false));
+        for (var i = 0; i < 360; i++) scene.Step(Dt);
+        Assert.AreEqual(0, scene.LastErrorCode);
+        var atWall = scene.BeltRoomFrame!;
+        Assert.IsTrue(atWall.SolidWallsEnabled);
+        Assert.IsGreaterThan(1.99f, atWall.Stats[10]);
+        scene.SetInput(new(true, false, false, false));
+        for (var i = 0; i < 120; i++) scene.Step(Dt);
+        Assert.AreEqual(0, scene.LastErrorCode);
+        Assert.IsLessThan(atWall.Stats[0] - .1f, scene.BeltRoomFrame!.Stats[0]);
+    }
+
+    [TestMethod]
     public void GuardFailureRetainsSuccessfulPresentationAndSeparateRawDiagnostics()
     {
         using var scene = new DesktopPhysicsScene(Module,Bounds,DangoBodyControls.Default);
         scene.SetHorizontalBounds(scene.ToHost(new(-2,0)).X,scene.ToHost(new(2,0)).X);
+        // Exercise the module's retained explicit guard mode through its actual API.
+        // Product creation above always enables solid walls.
+        var adapter = (BeltRoomSceneAdapter)typeof(DesktopPhysicsScene)
+            .GetField("beltRoom", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(scene)!;
+        var world = (DangoBeltRoomWorld)typeof(BeltRoomSceneAdapter)
+            .GetField("world", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(adapter)!;
+        world.SetSolidWalls(false, scene.BeltRoomFrame!.SceneRevision);
         DesktopPhysicsSceneFrame? safe = null;
         for(var i=0;i<1200 && scene.LastErrorCode==0;i++)
         {
