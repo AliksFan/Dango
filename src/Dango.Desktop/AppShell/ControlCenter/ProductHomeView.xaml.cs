@@ -67,7 +67,9 @@ public partial class ProductHomeView : UserControl
         IsVisibleChanged += (_, _) => { if (!IsVisible) CancelAppearancePreview(); RefreshLiveSceneOwnership(); };
         IsKeyboardFocusWithinChanged += (_, e) =>
         {
-            if (e.NewValue is false) ClearLiveDirectionalInput();
+            // Belt input belongs to the active window, including its chrome controls.
+            // Its window focus handlers clear input when leaving that owner or entering text.
+            if (e.NewValue is false && beltRuntime is null) ClearLiveDirectionalInput();
         };
         LiveDangoVisual.BodyFill = new SolidColorBrush(PreviewColor);
         LiveDangoVisual.Visibility = LiveDangoHat.Visibility = Visibility.Collapsed;

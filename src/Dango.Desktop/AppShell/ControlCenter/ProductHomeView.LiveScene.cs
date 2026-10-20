@@ -107,12 +107,28 @@ public partial class ProductHomeView
         if (ReferenceEquals(window, ownerWindow)) return;
         DetachLiveFocusSafety();
         ownerWindow = window;
-        if (window is not null) { window.Deactivated += OnOwnerDeactivated; window.Activated += OnBeltOwnerActivated; }
+        if (window is not null)
+        {
+            window.Deactivated += OnOwnerDeactivated;
+            window.Activated += OnBeltOwnerActivated;
+            window.PreviewKeyDown += OnBeltOwnerPreviewKeyDown;
+            window.PreviewKeyUp += OnBeltOwnerPreviewKeyUp;
+            window.PreviewGotKeyboardFocus += OnBeltOwnerKeyboardFocusChanged;
+            window.PreviewLostKeyboardFocus += OnBeltOwnerKeyboardFocusChanged;
+        }
     }
 
     private void DetachLiveFocusSafety()
     {
-        if (ownerWindow is not null) { ownerWindow.Deactivated -= OnOwnerDeactivated; ownerWindow.Activated -= OnBeltOwnerActivated; }
+        if (ownerWindow is not null)
+        {
+            ownerWindow.Deactivated -= OnOwnerDeactivated;
+            ownerWindow.Activated -= OnBeltOwnerActivated;
+            ownerWindow.PreviewKeyDown -= OnBeltOwnerPreviewKeyDown;
+            ownerWindow.PreviewKeyUp -= OnBeltOwnerPreviewKeyUp;
+            ownerWindow.PreviewGotKeyboardFocus -= OnBeltOwnerKeyboardFocusChanged;
+            ownerWindow.PreviewLostKeyboardFocus -= OnBeltOwnerKeyboardFocusChanged;
+        }
         ownerWindow = null;
     }
 

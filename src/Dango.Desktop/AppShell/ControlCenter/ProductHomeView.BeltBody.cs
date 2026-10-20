@@ -25,7 +25,7 @@ public partial class ProductHomeView
     private readonly HashSet<Key> beltHeld = [], beltSuppressed = [];
     private long beltPresentationTick, beltRequestedRevision = -1, beltRequestedBodyEpoch = -1;
     private long beltRenderStamp, beltLastPresentedSequence = -1;
-    private bool beltVisible, beltPrimed, beltDragging, beltJump, beltCancel, beltFatalError;
+    private bool beltVisible, beltPrimed, beltDragging, beltJump, beltCancel, beltFatalError, beltWindowMenuOpen;
     private Point beltDragTarget;
     private string? beltError;
     private string? beltDiagnosticError;
@@ -45,6 +45,9 @@ public partial class ProductHomeView
         if (beltRuntime is not null || BoundRuntime is not null) throw new InvalidOperationException("主页已绑定实时场景。");
         beltSettingsPath = settingsPath;
         beltRuntime = new BeltBodyRuntime(Path.Combine(AppContext.BaseDirectory, "dango_belt_product.dll")) { SleepEnabled = true };
+        ConfigureBeltLauncher(FaceButton, "捏脸");
+        ConfigureBeltLauncher(WardrobeButton, "换装");
+        ConfigureBeltLauncher(EnterRoomButton, "房间");
         InputMethod.SetIsInputMethodEnabled(Stage, false);
         OptionsBody.Resources[typeof(System.Windows.Controls.Primitives.ScrollBar)] = Resources["SettingsScrollBar"];
         HomeContent.Resources[typeof(System.Windows.Controls.Primitives.ScrollBar)] = Resources["SettingsScrollBar"];
@@ -316,21 +319,76 @@ public partial class ProductHomeView
         var key = e.Key == Key.ImeProcessed ? e.ImeProcessedKey : e.Key == Key.System ? e.SystemKey : e.Key;
         if (key is not (Key.A or Key.D or Key.W or Key.S or Key.Space)) return false;
         if (!down) SetBeltDirectionalKey(key, false, false);
-        if (!IsEditing || SelectedEditor != HomeEditor.Face || IsSettingsOpen) return false;
-        if (Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.ComboBox or PasswordBox) return false;
-        if (Keyboard.Modifiers != ModifierKeys.None) { ClearBeltInput(); return false; }
+        // A recognized belt key never falls through to the legacy A/D/W navigation mapping.
+        // Text/menu controls still receive unhandled events when gameplay is unavailable.
+        if (ownerWindow?.IsActive != true || !beltVisible || IsSettingsOpen || IsDangoAway || IsRoomDialogOpen || beltFatalError || beltWindowMenuOpen ||
+            IsBeltTextEntry(Keyboard.FocusedElement) || Keyboard.Modifiers != ModifierKeys.None)
+        { ClearBeltInput(); return true; }
         SetBeltDirectionalKey(key, down, e.IsRepeat);
         e.Handled = true;
         return true;
     }
 
+    private void OnBeltOwnerPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (beltRuntime is null || e.Handled) return;
+        if (Keyboard.Modifiers != ModifierKeys.None) ClearBeltInput();
+        HandleBeltKey(e, true);
+    }
+
+    private void OnBeltOwnerPreviewKeyUp(object sender, KeyEventArgs e)
+    {
+        if (beltRuntime is not null && !e.Handled) HandleBeltKey(e, false);
+    }
+
+    private static bool IsBeltTextEntry(IInputElement? focus)
+    {
+        for (var node = focus as DependencyObject; node is not null;
+            node = node is Visual ? VisualTreeHelper.GetParent(node) : LogicalTreeHelper.GetParent(node))
+            if (node is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.ComboBox or PasswordBox) return true;
+        return false;
+    }
+
+    private void OnBeltOwnerKeyboardFocusChanged(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (beltRuntime is null) return;
+        if (beltWindowMenuOpen || e.NewFocus is not DependencyObject target ||
+            !ReferenceEquals(Window.GetWindow(target), ownerWindow) || IsBeltTextEntry(e.NewFocus))
+        { ClearBeltInput(); return; }
+        // Disable IME only on gameplay focus targets; editable fields keep their own policy.
+        if (target is UIElement && target is not Window) InputMethod.SetIsInputMethodEnabled(target, false);
+        ReconcileBeltKeyboard();
+    }
+
+    internal void SetBeltWindowMenuOpen(bool open)
+    {
+        if (beltWindowMenuOpen == open) return;
+        beltWindowMenuOpen = open;
+        if (beltRuntime is null) return;
+        // A programmatically opened ContextMenu need not move WPF keyboard focus.
+        if (open) ClearBeltInput(); else ReconcileBeltKeyboard();
+    }
+
     private bool SetBeltDirectionalKey(Key key, bool down, bool repeat)
     {
         if (beltRuntime is null || key is not (Key.A or Key.D or Key.W or Key.S or Key.Space)) return false;
+        if (!down && !beltHeld.Contains(key) && !beltSuppressed.Contains(key)) return true;
         if (!down) { beltHeld.Remove(key); beltSuppressed.Remove(key); }
         else if (!beltSuppressed.Contains(key) && !(repeat && key == Key.Space) && beltHeld.Add(key) && key == Key.Space) beltJump = true;
         PublishBeltInput();
         return true;
+    }
+
+    private static void ConfigureBeltLauncher(System.Windows.Controls.Button button, string label)
+    {
+        // The belt owns WASD in the home too; do not advertise legacy navigation keys.
+        if (button.Content is StackPanel panel && panel.Children.Count == 2 && panel.Children[0] is Border)
+        {
+            panel.Children.RemoveAt(0);
+            panel.Children.Add(new TextBlock { Text = label, FontSize = 12, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
+        }
+        button.ToolTip = label;
+        System.Windows.Automation.AutomationProperties.SetName(button, label);
     }
 
     private void PublishBeltInput()
@@ -361,11 +419,19 @@ public partial class ProductHomeView
     private void OnBeltOwnerActivated(object? sender, EventArgs e)
     {
         if (beltRuntime is null) return;
+        ReconcileBeltKeyboard();
+        if (ownerWindow?.IsActive == true && (Keyboard.FocusedElement is null || ReferenceEquals(Keyboard.FocusedElement, ownerWindow)))
+            Stage.Focus();
+    }
+
+    private void ReconcileBeltKeyboard()
+    {
+        var before = beltHeld.Count;
         var physical = new[] { Key.A, Key.D, Key.W, Key.S, Key.Space }.Where(Keyboard.IsKeyDown).ToHashSet();
         beltSuppressed.IntersectWith(physical);
         beltSuppressed.UnionWith(physical.Except(beltHeld));
         beltHeld.IntersectWith(physical);
-        PublishBeltInput();
+        if (beltHeld.Count != before) PublishBeltInput();
     }
 
     private void OnBeltPointerDown(object sender, MouseButtonEventArgs e) => TryBeginBeltDrag(e);

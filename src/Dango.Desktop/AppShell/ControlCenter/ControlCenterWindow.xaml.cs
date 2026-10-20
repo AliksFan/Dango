@@ -172,6 +172,7 @@ public partial class ControlCenterWindow : Window
 
     private void OnWindowSizeMenuOpenStateChanged(object? sender, EventArgs e)
     {
+        ProductHome.SetBeltWindowMenuOpen(WindowSizeMenu.IsOpen);
         if (!WindowSizeMenu.IsOpen) ScheduleSizeMenuFocusRestore();
     }
 

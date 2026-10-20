@@ -182,6 +182,113 @@ public sealed class BeltBodyProductTests
     }
 
     [STATestMethod]
+    [DataRow("home")]
+    [DataRow("header")]
+    [DataRow("face-button")]
+    public void ActiveProductWindowRoutesGameplayFromHomeHeaderAndFaceButtons(string location)
+    {
+        RequireModule();
+        var root = NewRoot();
+        using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"), isolatedBeltBodyReview: true);
+        var window = (ControlCenterWindow)typeof(DangoApplicationHost).GetMethod("GetOrCreateControlCenter", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(host, null)!;
+        window.ShowOverview(); window.Show(); var home = window.ProductHome;
+        var jumpEdges = 0;
+        home.BeltBodyPoseApplied += snapshot => { if (snapshot.ActualInput.JumpPressed) jumpEdges++; };
+        try
+        {
+            WaitReady(home); FocusOwnedWindow(window);
+            if (location != "home") home.ShowEditor(HomeEditor.Face);
+            FrameworkElement focus = location switch
+            {
+                "header" => (Button)window.FindName("WindowSizeButton"),
+                "face-button" => Element<Button>(home, "AppearanceBodyTab"),
+                _ => Element<FrameworkElement>(home, "Stage"),
+            };
+            Assert.IsTrue(focus.Focus()); Pump(50);
+            Assert.IsTrue(focus.IsKeyboardFocused);
+            KeyDown(0x44);
+            Wait(() => home.DisplayedBeltSnapshot?.ActualInput.Horizontal == 1, 1500, location + ": D reaches the visible body");
+            if (location == "home") Assert.IsFalse(home.IsEditing, "D controls the body instead of navigating to face editing.");
+            KeyDown(0x41);
+            Wait(() => home.DisplayedBeltSnapshot is { ActualInput: { Horizontal: 0, InputActive: true } }, 1500, location + ": opposing movement remains active");
+            KeyUp(0x41); KeyUp(0x44);
+            KeyDown(0x57); Wait(() => home.DisplayedBeltSnapshot?.ActualInput.Stretch == 1, 1500, location + ": W stretches without navigating"); KeyUp(0x57);
+            Assert.IsFalse(home.IsInPorch);
+            KeyDown(0x53); Wait(() => home.DisplayedBeltSnapshot?.ActualInput.Downward == 1, 1500, location + ": S presses"); KeyUp(0x53);
+            Wait(() => home.DisplayedBeltSnapshot?.Frame?.Grounded == true, 4000, "supported before Space");
+            KeyDown(0x20); Pump(180); KeyUp(0x20);
+            Wait(() => jumpEdges == 1, 1500, location + ": one Space edge reaches physics");
+            Assert.IsFalse(((ContextMenu)window.FindName("WindowSizeMenu")).IsOpen, "Space must not invoke the focused size button.");
+            Assert.AreSame(focus, Keyboard.FocusedElement, "Nontext controls may retain focus while the window routes gameplay.");
+        }
+        finally
+        {
+            foreach (var key in new byte[] { 0x41, 0x44, 0x57, 0x53, 0x20 }) KeyUp(key);
+            home.UnbindBeltBody();
+        }
+    }
+
+    [STATestMethod]
+    public void WindowGameplayRespectsTextMenusAndReactivationWithoutLosingRelease()
+    {
+        RequireModule();
+        var root = NewRoot();
+        using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"), isolatedBeltBodyReview: true);
+        var window = (ControlCenterWindow)typeof(DangoApplicationHost).GetMethod("GetOrCreateControlCenter", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(host, null)!;
+        window.ShowOverview(); window.Show(); var home = window.ProductHome;
+        var sibling = new Window { Width = 220, Height = 100, Title = "Dango fictional input ownership" };
+        var text = new TextBox { Width = 160, Height = 28, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 90, 0, 0) };
+        System.Windows.Controls.Panel.SetZIndex(text, 50); ((Grid)window.Content).Children.Add(text);
+        var header = (Button)window.FindName("WindowSizeButton"); var menu = (ContextMenu)window.FindName("WindowSizeMenu");
+        var textReceivedGameplay = false; var inspectText = false;
+        home.BeltBodyPoseApplied += snapshot =>
+        {
+            if (inspectText && snapshot.ActualInput is { } input &&
+                (input.InputActive || input.Horizontal != 0 || input.Stretch != 0 || input.Downward != 0 || input.JumpPressed)) textReceivedGameplay = true;
+        };
+        try
+        {
+            WaitReady(home); FocusOwnedWindow(window); header.Focus(); Pump(40);
+            KeyDown(0x44); Moving();
+            Element<Button>(home, "FaceButton").Focus(); Pump(80);
+            Assert.IsTrue(home.DisplayedBeltSnapshot!.ActualInput.InputActive, "Changing focus inside this window must not drop a held movement key.");
+            text.Focus(); Idle(); KeyUp(0x44); Pump(50);
+            Assert.IsTrue(InputMethod.GetIsInputMethodEnabled(text), "Text input keeps its IME policy.");
+            inspectText = true;
+            foreach (var key in new byte[] { 0x57, 0x41, 0x53, 0x44, 0x20 }) { KeyDown(key); Pump(30); KeyUp(key); }
+            Pump(100); Assert.IsFalse(textReceivedGameplay, "Typing in an editable field must not control the body."); inspectText = false;
+
+            header.Focus(); Pump(40); KeyDown(0x44); Moving();
+            header.RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Wait(() => menu.IsOpen, 1500, "actual size popup opens");
+            Idle(); KeyUp(0x44); Pump(50); menu.IsOpen = false; Pump(200);
+            header.Focus(); Pump(40); KeyDown(0x44); Moving(); KeyUp(0x44); Idle();
+
+            KeyDown(0x44); Moving(); sibling.Show(); FocusOwnedWindow(sibling); Idle();
+            // Holding the old physical key across reactivation must not restore old forces.
+            FocusOwnedWindow(window); Element<FrameworkElement>(home, "Stage").Focus(); Pump(250);
+            Assert.IsFalse(home.DisplayedBeltSnapshot!.ActualInput.InputActive);
+            KeyUp(0x44); Pump(50); KeyDown(0x44); Moving(); KeyUp(0x44); Idle();
+
+            home.ShowSettingsPage(showDiagnostics: true);
+            Wait(() => !home.BoundBeltBody!.Metrics.Running && Element<TextBox>(home, "SettingsDiagnosticsText").IsKeyboardFocused,
+                2000, "settings pause the hidden body while its diagnostic text has focus");
+            var calls = home.BoundBeltBody!.Metrics.NativeStepCalls;
+            foreach (var key in new byte[] { 0x57, 0x41, 0x53, 0x44, 0x20 }) { KeyDown(key); KeyUp(key); }
+            Pump(100); Assert.IsTrue(home.IsSettingsOpen); Assert.AreEqual(calls, home.BoundBeltBody.Metrics.NativeStepCalls);
+            Click(home, "BackFromSettingsButton"); WaitReady(home); KeyDown(0x44); Moving(); KeyUp(0x44);
+
+            void Moving() => Wait(() => home.DisplayedBeltSnapshot?.ActualInput.Horizontal == 1, 1500, "fresh D reaches the visible body");
+            void Idle() => Wait(() => home.DisplayedBeltSnapshot is { ActualInput: { Horizontal: 0, InputActive: false } }, 1500, "blocked focus releases held input");
+        }
+        finally
+        {
+            inspectText = false;
+            foreach (var key in new byte[] { 0x41, 0x44, 0x57, 0x53, 0x20 }) KeyUp(key);
+            menu.IsOpen = false; sibling.Close(); home.UnbindBeltBody();
+        }
+    }
+
+    [STATestMethod]
     public void FocusedOsKeysAndMouseReachNewBodyAndReleaseOnFocusLoss()
     {
         RequireModule();
