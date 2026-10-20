@@ -1,5 +1,28 @@
 # F7-0 independent belt room ABI 1
 
+Current collection extension (R3, 2026-10-20): capabilities255 adds an independent
+`belt-room-furniture-r3-v1` interface, while retaining ABI1/frame4472 and the R1
+base contact identity. See [R3 contract](../../../docs/planning/2026-10-20-belt-room-furniture-r3.md)
+and verification section9. A collection frame is16968 bytes and contains the
+same native publication's body, immutable geometry, up to30 platform/disk items,
+their live states and last applied token. New geometry/velocity channels are
+uniform room meters (72 room units/m), with no legacy p/q conversion.
+
+Enable/probe/prepare/apply/cancel/read exports and DTO layouts are frozen in
+`dango_belt_room_collection.h`. Prepare binds generation/token/revision/tick/
+configuration revision; step and mutations return busy without a physics fault
+while prepared. Layout application increments revision without advancing tick.
+All four substeps, coupled contact, shared geometry budget and full-world
+rollback belong to one room owner. Disks use gravity scale0.5; body gravity,
+material and original drive are unchanged. Disk contact reports choose one
+representative row coherently while impulse sums cover the tick. Rolling uses
+only the current substep's floor friction budget and is included in joint KE.
+
+R3 preserves the old failures below as history. Its new proof precision and
+world-round scheduling fixes retain the original penetration/depth/budget and
+iteration limits. Current DLL/source/evidence identity is recorded separately;
+native contracts do not constitute visible-product or human acceptance.
+
 Current follow-up: [F7-1R1 contract](../../../docs/planning/2026-10-20-belt-room-f7-r1.md)
 supersedes the numerical/contact-policy choices below for the new candidate.
 This document retains the original `c24fe1f` contract and FAIL evidence as history;

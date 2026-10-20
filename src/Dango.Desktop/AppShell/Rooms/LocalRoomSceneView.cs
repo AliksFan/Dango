@@ -177,7 +177,9 @@ internal sealed partial class LocalRoomSceneView : Grid
             runtime.LastError is not null || !frame.Bodies[0].IsVisible ||
             frame.Bodies[0].FallbackReason != PhysicsPresentationFallbackReason.None || runtime.LocalGroundY is not { } floor ||
             runtime.UsesBeltRoom && (frame.BeltRoom is not { Fault: 0 } belt ||
-                runtime.LastBeltRoomFrame is not { } current || belt.OwnerEpoch != current.OwnerEpoch || belt.Generation != current.Generation))
+                !ReferenceEquals(frame, runtime.LastFrame) || runtime.LastBeltRoomFrame is not { } current ||
+                belt.OwnerEpoch != current.OwnerEpoch || belt.Generation != current.Generation || belt.Tick != current.Tick ||
+                belt.SceneRevision != current.SceneRevision || belt.ConfigurationRevision != current.ConfigurationRevision))
         {
             InvalidateInputFrame();
             return false;
@@ -201,6 +203,7 @@ internal sealed partial class LocalRoomSceneView : Grid
         UpdateProjection(WindowCameraEnabled || previousFrame == 0 ? 0 : now - previousFrame,
             advanceCamera: !WindowCameraEnabled);
         previousFrame = now;
+        runtime.ConfigureBeltSleepPresentationScale(Projection.Scale);
         var displayedBounds = runtime.AccessoriesEnabled
             ? Dango.Desktop.Accessories.AccessoryHostBinding.DisplayBounds(frame, 0, runtime)
             : WanderVisibleBounds.Get(frame.Bodies[0], DangoHostFrameBinding.Bounds(frame, 0), runtime.DisplayHatSize);
@@ -350,6 +353,7 @@ internal sealed partial class LocalRoomSceneView : Grid
 
     private void UpdatePetScreenBounds()
     {
+        LastAppliedRuntime?.ConfigureBeltSleepPresentationScale(Projection.Scale);
         if (visibleWorldBounds is not { } visible) { PetScreenBounds = null; return; }
         visible = visible.Translate(presentationOffset);
         var topLeft = Projection.WorldToScreen(new(visible.X, visible.Y));

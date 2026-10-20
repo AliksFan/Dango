@@ -151,13 +151,16 @@ public sealed class BeltRoomSceneTests
         var scene = new DesktopPhysicsScene(Module,Bounds,DangoBodyControls.Default);
         try
         {
-            Assert.IsFalse(scene.SupportsFurnitureCollection);
+            using var capabilities = new DangoBeltRoomWorld(Module, DangoBodyMaterial.Configure(DangoBodyControls.Default));
+            Assert.AreEqual(capabilities.SupportsFurnitureCollection, scene.SupportsFurnitureCollection);
             Assert.IsFalse(scene.SupportsLiveFurnitureEditing);
             Assert.ThrowsExactly<NotSupportedException>(()=>scene.Add(1,0));
             Assert.ThrowsExactly<NotSupportedException>(()=>scene.SetPreviewJumpSpeedScale(2));
             Assert.ThrowsExactly<NotSupportedException>(()=>scene.SetUnboundedHorizontalPreview(true));
             Assert.ThrowsExactly<NotSupportedException>(()=>scene.ReadFurnitureFrame());
-            Assert.ThrowsExactly<NotSupportedException>(()=>scene.ReadFurnitureCollectionFrame());
+            if (scene.SupportsFurnitureCollection)
+                Assert.AreEqual(0, scene.ReadFurnitureCollectionFrame().Items.Count);
+            else Assert.ThrowsExactly<NotSupportedException>(()=>scene.ReadFurnitureCollectionFrame());
             Assert.IsFalse(scene.Remove(scene.SelectedEntity));
             Task.Run(()=> {
                 Assert.ThrowsExactly<InvalidOperationException>(()=>scene.Step(Dt));
@@ -217,6 +220,12 @@ public sealed class BeltRoomSceneTests
         Assert.AreSame(safe,scene.LastFrame);
         Assert.IsTrue(scene.LastFrame!.Physics.Succeeded);
         Assert.AreEqual(scene.LastErrorCode,scene.BeltRoomFrame!.Fault);
+        if (scene.SupportsFurnitureCollection)
+        {
+            var failedCollection = scene.ReadFurnitureCollectionFrame();
+            Assert.IsFalse(failedCollection.Physics.Succeeded, "Furniture operations must not mistake the retained safe pose for a healthy world.");
+            Assert.AreEqual(scene.LastErrorCode, failedCollection.Physics.ErrorCode);
+        }
         Assert.AreNotEqual(0d,scene.BeltRoomFrame.Diagnostics[2]);
         Assert.AreSame(safe,scene.Step(Dt));
         scene.Reset();

@@ -45,7 +45,7 @@ static int wall_same_physics(const dango_belt_room_frame* a,const dango_belt_roo
 }
 static int wall_atomic(void){
  void* h=NULL;CHECK(!wall_create(0,1.5f,-5,5,&h));room_world* w=room_lookup(h);belt_body* b=room_body(w);
- CHECK(dango_belt_room_capabilities()==63&&sizeof(dango_belt_room_frame)==4472);
+ CHECK((dango_belt_room_capabilities()&63)==63&&sizeof(dango_belt_room_frame)==4472);
  dango_belt_room_frame frame;CHECK(!dango_belt_room_read_frame(h,&frame,sizeof frame)&&frame.diagnostics[23]==0);
  belt_body body=*b;room_world world=*w;
  CHECK(dango_belt_room_set_solid_walls(h,2,0)==-700);CHECK(!memcmp(&body,b,sizeof body)&&!memcmp(&world,w,sizeof world));

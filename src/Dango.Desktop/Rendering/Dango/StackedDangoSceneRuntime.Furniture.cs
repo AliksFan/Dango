@@ -4,6 +4,7 @@ using Dango.Core.Furniture;
 using Dango.Desktop.Furniture;
 using Dango.Physics.Configuration;
 using Dango.Desktop.AppShell.Rooms.Storage;
+using Dango.Desktop.Physics.Presentation;
 
 namespace Dango.Desktop.Rendering.Visuals;
 
@@ -14,7 +15,6 @@ public sealed partial class StackedDangoSceneRuntime
     private Guid? ordinaryRoomId;
     private bool ordinaryRoomEditable = true;
     private bool ordinaryFurnitureGlove;
-    private bool beltRoomEmptyLayout;
     private LogicalPoint gloveTargetNative, gloveRequestedNative;
     internal OrdinaryRoomFurnitureSession? Furniture { get; private set; }
 
@@ -30,7 +30,6 @@ public sealed partial class StackedDangoSceneRuntime
 
     private void EnsureOrdinaryFurniture()
     {
-        if (beltRoom) return; // Its collection/commit ABI is a later integration increment.
         if (Furniture is not null || ordinaryFurnitureDataRoot is null || scene is null) return;
         Furniture = new(scene, ordinaryFurnitureDataRoot,
             store: ordinaryRoomId is { } id ? ordinaryRoomCatalog!.CreateLayoutStore(id) : null,
@@ -41,12 +40,6 @@ public sealed partial class StackedDangoSceneRuntime
     internal void ConfigureOrdinaryRoom(LocalRoomCatalogStore catalog, LocalRoomRecord room)
     {
         VerifyAccess();
-        if (beltRoom)
-        {
-            if (catalog.ReadLayout(room.RoomId).Items.Count != 0)
-                throw new InvalidOperationException("此房间的家具尚未接入新身体，请保留布局并返回房门。");
-            beltRoomEmptyLayout = true;
-        }
         if (!TryDetachOrdinaryFurniture()) throw new InvalidOperationException("家具保存状态尚未核清，不能切换房间。");
         if (Furniture is not null && ordinaryRoomId == room.RoomId && ordinaryRoomEditable == room.CanEditOffline &&
             string.Equals(ordinaryFurnitureDataRoot, catalog.DataRoot, StringComparison.OrdinalIgnoreCase)) return;
@@ -59,9 +52,6 @@ public sealed partial class StackedDangoSceneRuntime
     internal bool AttachOrdinaryFurniture()
     {
         VerifyAccess();
-        // The host has already checked that this owned test room has an empty
-        // layout. Never attach the legacy physics collection to the belt world.
-        if (beltRoom) return beltRoomEmptyLayout && scene is not null && FrameDriver is not null && running && LastError is null && localHorizontalBounds is not null;
         EnsureOrdinaryFurniture();
         if (Furniture is null || scene is null || FrameDriver is null || !running || LastError is not null ||
             unboundedHorizontalPreview || localHorizontalBounds is null) return false;
@@ -89,14 +79,19 @@ public sealed partial class StackedDangoSceneRuntime
         if (scene is null || Furniture is not { CanEdit: true } || LastPhysicsFrame?.Bodies.SingleOrDefault() is not { } body)
             return false;
         gloveRequestedNative = ToGloveNative(roomX, height);
-        // Begin at the actual highest node, then move the requested target at
+        // Begin at the actual attachment, then move the requested target at
         // the accepted rate. A far pointer cannot inject an initial target jump.
-        var node = Enumerable.Range(0, body.PointCount).MaxBy(index => body.Contour[index * 2 + 1]);
-        var x = (double)body.Contour[node * 2];
-        var y = (double)body.Contour[node * 2 + 1];
-        var length = Math.Sqrt(x * x + y * y);
-        var ratio = length > DangoPhysicsDefaults.Current.NodeRadius ? 1 - DangoPhysicsDefaults.Current.NodeRadius / length : 1;
-        gloveTargetNative = new(body.CoreX + x * ratio, body.CoreY + y * ratio);
+        if (scene.BeltRoomFrame is { } belt)
+            gloveTargetNative = BeltRoomBodyGeometry.DragAttachment(belt);
+        else
+        {
+            var node = Enumerable.Range(0, body.PointCount).MaxBy(index => body.Contour[index * 2 + 1]);
+            var x = (double)body.Contour[node * 2];
+            var y = (double)body.Contour[node * 2 + 1];
+            var length = Math.Sqrt(x * x + y * y);
+            var ratio = length > DangoPhysicsDefaults.Current.NodeRadius ? 1 - DangoPhysicsDefaults.Current.NodeRadius / length : 1;
+            gloveTargetNative = new(body.CoreX + x * ratio, body.CoreY + y * ratio);
+        }
         BeginPhysicalDrag(scene.SelectedEntity, scene.ToHost(gloveTargetNative));
         ordinaryFurnitureGlove = true;
         return true;

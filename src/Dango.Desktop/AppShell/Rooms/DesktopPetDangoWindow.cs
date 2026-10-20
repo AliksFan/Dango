@@ -134,6 +134,9 @@ internal sealed class DesktopPetDangoWindow : Window
             LastFrameRejection = string.Empty;
             if (Handle == 0 || !IsVisible) { LastFrameRejection = "pet window missing or hidden"; return false; }
             if (!ReferenceEquals(scene.LastAppliedFrame, frame)) { LastFrameRejection = "scene frame changed"; return false; }
+            if (!scene.HasHealthyFrame || !ReferenceEquals(scene.LastAppliedRuntime, runtime) ||
+                runtime.UsesBeltRoom && !ReferenceEquals(frame, runtime.LastFrame))
+            { LastFrameRejection = "scene runtime frame changed"; return false; }
             if (frame.Bodies.Count != 1 || frame.ConstraintsReleased) { LastFrameRejection = "invalid physical frame"; return false; }
             DangoHostFrameBinding.Apply(body, hat, frame, 0, new(0, runtime.NeutralBodyGroundOffset),
                 runtime.DisplayHatAppearance, runtime.DisplayHatSize, runtime.BodyPreviewFill, runtime.EyePreviewFill,
@@ -242,7 +245,9 @@ internal sealed class DesktopPetDangoWindow : Window
                 var b = scene.RoomToScene(new(world.Right, world.Bottom));
                 return new(sceneToScreenPixels(new(a.X, a.Y)), sceneToScreenPixels(new(b.X, b.Y)));
             }
-            var guard = new DesktopPetPointerGestureGuard(ScreenRectangle(DangoHostFrameBinding.Bounds(frame, 0)),
+            var guardBounds = frame.BeltRoom is { } belt && scene.NativePetCenter is { } core
+                ? BeltBodyWorldBounds(belt, core) : DangoHostFrameBinding.Bounds(frame, 0);
+            var guard = new DesktopPetPointerGestureGuard(ScreenRectangle(guardBounds),
                 Math.Abs(unit.Y - zero.Y) * 8);
             if (!guard.IsValid) { LastFrameRejection = "pointer qualification bounds unavailable"; return false; }
             CurrentPointerGuard = guard;
@@ -264,6 +269,13 @@ internal sealed class DesktopPetDangoWindow : Window
                     Succeeded = HasHealthyFrame,
                 };
         }
+    }
+
+    internal static LogicalRect BeltBodyWorldBounds(Dango.Physics.DangoBeltRoomFrame frame, LogicalPoint core)
+    {
+        var stats = frame.Stats;
+        return new(core.X + (stats[8] - stats[0]) * 72, core.Y - (stats[11] - stats[1]) * 72,
+            (stats[10] - stats[8]) * 72, (stats[11] - stats[9]) * 72);
     }
 
     private static IEnumerable<Path> PaintedPaths(DependencyObject visual)

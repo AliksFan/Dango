@@ -32,7 +32,7 @@ static int atomic_contract(void){
 }
 static int bounds_update_contract(void){
  void* h=NULL;CHECK(create_room(8,0,1.5f,&h)==0);room_world* w=room_lookup(h);belt_body* b=room_body(w);
- CHECK(dango_belt_room_version()==1&&dango_belt_room_capabilities()==63);
+ CHECK(dango_belt_room_version()==1&&(dango_belt_room_capabilities()&63)==63);
  dango_belt_room_platform p={1,4,.4,2,.2,.72};CHECK(!dango_belt_room_set_platform(h,&p,0));
  /* A live support identity is deliberately retained: changing a guard is not
     a support mutation or a body/presentation tick. */

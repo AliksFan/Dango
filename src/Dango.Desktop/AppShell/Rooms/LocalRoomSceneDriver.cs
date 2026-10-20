@@ -34,6 +34,8 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     private DirectionalControlIntent intent;
     private bool furnitureEnabled;
     private RoomSafePosition? safeCheckpoint;
+    private RoomSafePosition? pendingResumePosition;
+    private Dango.Core.Furniture.FurnitureLayout? pendingResumeLayout;
     private RoomCameraSnapshot? pendingRoomCamera;
     internal string? ResumeWarning { get; private set; }
     private bool furnitureGloveActive;
@@ -63,12 +65,15 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     internal void BindRoom(LocalRoomCatalogStore catalog, LocalRoomRecord room, RoomResumeDocument? resume)
     {
         if (OwnsRuntime) throw new InvalidOperationException("请先回到门廊再切换房间。");
+        resume?.Validate(catalog.ReadCurrent().ProfileId, room.RoomId);
         var layout = catalog.ReadLayout(room.RoomId);
         runtime.ConfigureOrdinaryRoom(catalog, room);
         furnitureEnabled = true;
-        safeCheckpoint = resume?.Position is { SupportHeight: 0 } point && RoomResumeSafety.CanRestore(point, layout) ? point : null;
-        resumeX = safeCheckpoint?.X ?? LocalRoomSceneView.WorldWidth / 2;
-        ResumeWarning = resume?.Position is not null && safeCheckpoint is null ? "位置已回安全出生点，原落点无法安全恢复。" : null;
+        safeCheckpoint = null;
+        pendingResumePosition = resume?.Position;
+        pendingResumeLayout = layout;
+        ResumeWarning = null;
+        if (!runtime.UsesBeltRoom || runtime.LastBeltRoomFrame is not null) ResolveEntryPosition();
         pendingRoomCamera = resume?.Camera ?? new(RoomCameraMode.Follow, RoomViewPreset.Standard, 100, 0, 0);
     }
     internal (RoomSafePosition? Position, RoomCameraSnapshot Camera, long LayoutVersion)? CaptureCheckpoint()
@@ -78,13 +83,49 @@ internal sealed class LocalRoomSceneDriver : IDisposable
             return null;
         // The accepted handoff API relocates horizontally without injecting a vertical pose or velocity.
         // Keep the last verified ground checkpoint while jumping or standing on a dynamic support.
-        if (runtime.LastPhysicsFrame?.Bodies.SingleOrDefault() is { IsGrounded: true, GroundContactCount: > 0 } &&
+        var envelope = runtime.UsesBeltRoom ? RoomResumeSafety.BeltEnvelope(runtime.LastBeltRoomFrame) : new RoomResumeSafety.Envelope(-80, 80, 120);
+        if (envelope is null) return null;
+        if (safeCheckpoint is { } previous && !RoomResumeSafety.CanRestore(previous, furniture.PersistedLayout, envelope.Value))
+            safeCheckpoint = null;
+        if ((runtime.UsesBeltRoom ? RoomResumeSafety.HasBeltFloorSupport(runtime.LastBeltRoomFrame) :
+                runtime.LastPhysicsFrame?.Bodies.SingleOrDefault() is { IsGrounded: true, GroundContactCount: > 0 }) &&
             runtime.CurrentSelectedCenter is { } center)
         {
             var point = new RoomSafePosition(center.X, 0);
-            if (RoomResumeSafety.CanRestore(point, furniture.PersistedLayout)) safeCheckpoint = point;
+            if (RoomResumeSafety.CanRestore(point, furniture.PersistedLayout, envelope.Value)) safeCheckpoint = point;
         }
         return (safeCheckpoint, view.Camera.CaptureState(), furniture.PersistedLayout.LayoutVersion);
+    }
+
+    private void ResolveEntryPosition()
+    {
+        if (pendingResumeLayout is not { } layout) return;
+        var envelope = runtime.UsesBeltRoom ? RoomResumeSafety.BeltEnvelope(runtime.LastBeltRoomFrame) : new RoomResumeSafety.Envelope(-80, 80, 120);
+        if (envelope is null) throw new InvalidOperationException("房间身体几何尚未就绪，无法安全恢复位置。");
+        safeCheckpoint = pendingResumePosition is { SupportHeight: 0 } point &&
+            RoomResumeSafety.CanRestore(point, layout, envelope.Value) ? point : null;
+        ResumeWarning = pendingResumePosition is not null && safeCheckpoint is null ? "位置已回安全出生点，原落点无法安全恢复。" : null;
+        var requested = safeCheckpoint?.X ?? LocalRoomSceneView.WorldWidth / 2;
+        if (!RoomResumeSafety.CanRestore(new(requested, 0), layout, envelope.Value))
+        {
+            // Find a legal ground gap without moving the body through furniture or changing the layout.
+            // Include every obstacle edge: a fixed scan could miss a narrow legal gap.
+            var room = Dango.Core.Furniture.FurnitureLayoutContract.OrdinaryRoom;
+            var candidates = new List<double> { room.Left - envelope.Value.Left, room.Right - envelope.Value.Right };
+            foreach (var item in layout.Items)
+            {
+                var half = item.Kind == Dango.Core.Furniture.FurnitureItemKind.StaticPlatform ? room.PlatformWidth / 2 : room.BallRadius;
+                candidates.Add(item.Anchor.X - half - envelope.Value.Right - .01);
+                candidates.Add(item.Anchor.X + half - envelope.Value.Left + .01);
+            }
+            var legal = candidates.OrderBy(x => Math.Abs(x - requested)).Select(x => (double?)x)
+                .FirstOrDefault(x => RoomResumeSafety.CanRestore(new(x!.Value, 0), layout, envelope.Value));
+            if (legal is null) throw new InvalidOperationException("当前体型没有安全地面出生位置；家具布局已保留。");
+            requested = legal.Value;
+        }
+        resumeX = requested;
+        pendingResumeLayout = null;
+        pendingResumePosition = null;
     }
     internal LocalRoomSceneDriver(DesktopSceneSession session, StackedDangoSceneRuntime runtime,
         IHostFrameSource? frameSource = null, Func<long>? timestamp = null, long frequency = 0, string? furnitureDataRoot = null)
@@ -102,6 +143,7 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     internal void Start(LocalRoomSceneView target, long attempt, bool enterWorld)
     {
         scheduler.VerifyCanStart();
+        ResolveEntryPosition();
         ClearInput();
         pointer = new(runtime, allowPhysicalDrag: target.DesktopPetPresentationEnabled,
             constrainPhysicalTarget: target.DesktopPetPresentationEnabled ? ClampPhysicalDragTarget : null);
@@ -257,6 +299,8 @@ internal sealed class LocalRoomSceneDriver : IDisposable
 
     private LogicalVector DesktopPetDragAnchor()
     {
+        if (runtime.UsesBeltRoom && view?.LastAppliedFrame?.BeltRoom is { } belt)
+            return BeltDragAnchor(belt);
         if (runtime.LastPhysicsFrame?.Bodies.FirstOrDefault(body => body.EntityId == runtime.SelectedEntity) is not { } physical ||
             physical.PointCount == 0) return default;
         var node = physical.SelectedDragNode;
@@ -270,6 +314,12 @@ internal sealed class LocalRoomSceneDriver : IDisposable
         return new(x * contraction * 80, -y * contraction * 60);
     }
 
+    internal static LogicalVector BeltDragAnchor(Dango.Physics.DangoBeltRoomFrame frame)
+    {
+        var attachment = BeltRoomBodyGeometry.DragAttachment(frame);
+        return new((attachment.X - frame.BodySnapshot[36]) * 72,
+            -(attachment.Y - frame.BodySnapshot[37]) * 72);
+    }
     // Pure snapshot for the gesture hook's constant comparisons. Reuse the exact
     // anchor and clamp that PointerMove will apply; do not step or move the body.
     internal bool TryCaptureDesktopPetPointerClamp(out LogicalRect clamp)

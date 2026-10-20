@@ -51,7 +51,7 @@ internal sealed partial class DangoApplicationHost
         localRoomWallpaper.Bind(localRoomDriver);
         desktopPetRoom = new();
         desktopPetRoom.Bind(localRoomDriver);
-        if (!beltRoomReview) homeWindow.ProductHome.EnableDesktopPetRoomDoor();
+        homeWindow.ProductHome.EnableDesktopPetRoomDoor();
         homeWindow.ProductHome.CatalogRoomRequested += EnterCatalogRoom;
         _ = InitializeCatalogUiAsync(homeWindow);
         roomCheckpointTimer.Tick += (_, _) => SaveRoomCheckpoint();
@@ -158,13 +158,58 @@ internal sealed partial class DangoApplicationHost
         EnterLocalRoom();
     }
 
-    internal void EnterDesktopPetRoom()
+    internal async void EnterDesktopPetRoom()
     {
-        if (disposed || roomHandoff.Pending || localRoomSelected) return;
+        if (disposed || roomHandoff.Pending || localRoomSelected || catalogEntryLoading) return;
         GetOrCreateControlCenter();
         if (beltRoomReview)
         {
-            controlCenterWindow!.ProductHome.SetNotice("桌宠房间尚未接入", "本次新身体接线请从目录进入空布局普通房间。");
+            var home = controlCenterWindow!.ProductHome;
+            if (home.IsRoomDialogOpen) return;
+            catalogEntryLoading = true;
+            home.RoomEntryPending = true;
+            home.PorchScene.CatalogInputBlocked = true;
+            var request = ++catalogEntryGeneration;
+            try
+            {
+                await home.PauseBeltForRoomAsync();
+                await home.Dispatcher.InvokeAsync(() =>
+                {
+                    if (disposed || request != catalogEntryGeneration || roomHandoff.Pending || localRoomSelected || !home.IsVisible) return;
+                    stackedRuntime.ConfigureBeltRoomAppearance(appearance.SavedAppearance, beginRoom: true);
+                    if (!stackedRuntime.TryInitialize())
+                        throw new InvalidOperationException("新身体房间模块初始化失败。");
+                    if (!stackedRuntime.TryDetachOrdinaryFurniture())
+                        throw new InvalidOperationException(stackedRuntime.Furniture?.Status ?? "家具状态尚未核清。");
+                    selectedCatalogRoomId = null;
+                    roomControlCenterRequested = false;
+                    localRoomDriver!.ResetEntryPosition();
+                    BeginLocalHandoff(LocalRoomPresentation.DesktopPet, enterWorld: true);
+                });
+            }
+            catch (Exception error) when (error is InvalidOperationException or ArgumentException or DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+            {
+                if (!home.Dispatcher.HasShutdownStarted) await home.Dispatcher.InvokeAsync(() =>
+                {
+                    if (disposed || request != catalogEntryGeneration) return;
+                    localRoomFailure = "桌宠房间暂不可用，请返回房门重试。";
+                    home.SetNotice("桌宠房间暂不可用 · 查看", localRoomFailure);
+                });
+            }
+            finally
+            {
+                if (!home.Dispatcher.HasShutdownStarted) await home.Dispatcher.InvokeAsync(() =>
+                {
+                    if (request != catalogEntryGeneration) return;
+                    catalogEntryLoading = false;
+                    if (!roomHandoff.Pending)
+                    {
+                        home.RoomEntryPending = false;
+                        home.PorchScene.CatalogInputBlocked = false;
+                        if (!localRoomSelected) home.RestoreBeltAfterRoomPreparation();
+                    }
+                });
+            }
             return;
         }
         roomControlCenterRequested = false;
@@ -603,9 +648,11 @@ internal sealed partial class DangoApplicationHost
                 if (disposed || request != catalogEntryGeneration || roomHandoff.Pending || localRoomSelected || !home.IsVisible) return;
                 if (beltRoomReview)
                 {
-                    stackedRuntime.ConfigureBeltRoomAppearance(appearance.SavedAppearance);
+                    stackedRuntime.ConfigureBeltRoomAppearance(appearance.SavedAppearance, beginRoom: true);
                     if (!stackedRuntime.TryInitialize())
                         throw new InvalidOperationException("新身体房间模块初始化失败；原房间布局保留。");
+                    if ((furniture || roomCatalogStore.ReadLayout(id).Items.Count != 0) && !stackedRuntime.SupportsFurnitureCollection)
+                        throw new InvalidOperationException("当前新身体模块缺少家具集合能力，原布局保留。请使用支持家具的平台和皮球模块。");
                 }
                 LocalRoomRecord currentRoom;
                 using (roomCatalogStore.AcquireRoomGuard(id, requireEditing: furniture))
@@ -619,8 +666,6 @@ internal sealed partial class DangoApplicationHost
                 selectedCatalogRoomId = id;
                 localRoomWindow!.Title = "Dango · " + currentRoom.Name + "（本地单人）";
                 var resumeWarning = prepared.Resume.Snapshot.Warning ?? localRoomDriver.ResumeWarning ?? selection.Warning;
-                if (beltRoomReview)
-                    resumeWarning = string.IsNullOrEmpty(resumeWarning) ? "位置和视角暂不保存。" : resumeWarning + " 位置和视角暂不保存。";
                 localRoomWindow.SetResumeSaveStatus(resumeWarning);
                 openFurnitureAfterHandoff = furniture; roomControlCenterRequested = false;
                 BeginLocalHandoff(LocalRoomPresentation.Window, enterWorld: true);
@@ -664,10 +709,7 @@ internal sealed partial class DangoApplicationHost
     internal static void ValidateBeltRoomAdmission(Dango.Core.Furniture.FurnitureLayout layout, bool furniture, bool candidate)
     {
         if (!candidate) return;
-        if (layout.Items.Count != 0)
-            throw new InvalidOperationException("新身体房间暂不支持现有家具布局；原平台、皮球和存档均已保留。请使用空布局房间。");
-        if (furniture)
-            throw new InvalidOperationException("新身体房间的家具编辑尚未接入；可进入空布局房间单人游玩。");
+        layout.Validate(Dango.Core.Furniture.FurnitureLayoutContract.OrdinaryRoom);
     }
     private void SaveRoomCheckpoint(bool flush = false)
     {

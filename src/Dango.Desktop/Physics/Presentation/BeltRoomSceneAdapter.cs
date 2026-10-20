@@ -1,6 +1,7 @@
 using Dango.Core.Animation;
 using Dango.Core.Coordinates;
 using Dango.Desktop.Physics.Tuning;
+using Dango.Desktop.Physics.Belt;
 using Dango.Physics;
 
 namespace Dango.Desktop.Physics.Presentation;
@@ -14,7 +15,16 @@ internal sealed class BeltRoomSceneAdapter : IDisposable
     private DangoBeltRoomWorld world;
     private LogicalPoint origin;
     private double left = -256, right = 256;
+    private readonly BeltSleepPolicy sleep = new();
+    private double? presentationScale;
+    public bool SleepEnabled { get; set; } = true;
+    public bool IsSleeping { get; private set; }
+    public long NativeStepCalls { get; private set; }
+    // 0.0005 m at this supported ceiling is at most 0.15 DIP in any direction.
+    internal const double MaximumSleepMetresToDip = 300;
     public DangoBeltRoomFrame Frame { get; private set; }
+    private DangoBeltRoomFurnitureFrame? furnitureFrame;
+    public bool SupportsFurnitureCollection => world.SupportsFurnitureCollection;
     public DesktopPhysicsSceneFrame LastFrame { get; private set; }
     public int LastErrorCode { get; private set; }
     public LogicalPoint CoreHost => ToHost(new(Frame.Stats[0], Frame.Stats[1]));
@@ -26,8 +36,12 @@ internal sealed class BeltRoomSceneAdapter : IDisposable
         configuration = DangoBodyMaterial.Configure(controls);
         origin = new(bounds.Center.X, bounds.Bottom + configuration.GroundHeight * Scale);
         world = Create();
-        Frame = world.Read();
-        LastFrame = Present(Frame);
+        try
+        {
+            Frame = Refresh();
+            LastFrame = Present(Frame);
+        }
+        catch { world.Dispose(); throw; }
     }
     private DangoBeltRoomWorld Create()
     {
@@ -37,6 +51,8 @@ internal sealed class BeltRoomSceneAdapter : IDisposable
             if (!candidate.SupportsHorizontalBounds || !candidate.SupportsSolidWalls)
                 throw new NotSupportedException("Desktop belt rooms require horizontal bounds and solid wall capabilities.");
             candidate.SetSolidWalls(true, candidate.Read().SceneRevision);
+            if (candidate.SupportsFurnitureCollection)
+                candidate.EnableFurnitureCollection(candidate.Read().SceneRevision);
             return candidate;
         }
         catch
@@ -47,17 +63,60 @@ internal sealed class BeltRoomSceneAdapter : IDisposable
     }
     public LogicalPoint ToWorld(LogicalPoint point) => new((point.X-origin.X)/Scale, (origin.Y-point.Y)/Scale);
     public LogicalPoint ToHost(LogicalPoint point) => new(origin.X+point.X*Scale, origin.Y-point.Y*Scale);
+    public void ConfigureSleepPresentationScale(double? roomToDip)
+    {
+        if (roomToDip is { } value && (!double.IsFinite(value) || value <= 0))
+            throw new ArgumentOutOfRangeException(nameof(roomToDip));
+        if (presentationScale == roomToDip) return;
+        presentationScale = roomToDip;
+        Wake();
+    }
+    public void Wake() { IsSleeping = false; sleep.Reset(); }
+    private DangoBeltRoomFrame Refresh()
+    {
+        if (!world.SupportsFurnitureCollection) return world.Read();
+        furnitureFrame = world.ReadFurnitureCollectionFrame();
+        return furnitureFrame.BeltFrame;
+    }
+    public DangoFurnitureCollectionFrame ReadFurnitureCollectionFrame()
+    {
+        if (!SupportsFurnitureCollection) throw new NotSupportedException("This belt room module has no furniture collection capability.");
+        Frame = Refresh();
+        var collection = furnitureFrame!;
+        return new(collection.WorldGeneration, Frame.SceneRevision, Frame.Tick, collection.LastAppliedToken,
+            Present(Frame).Physics with { ErrorCode = Frame.Fault }, Array.AsReadOnly(Array.Empty<DangoFurnitureBodyDiagnostics>()), collection.Items)
+        { CoordinateSpace = DangoFurnitureCoordinateSpace.BeltWorldMeters };
+    }
+    public DangoFurnitureProbe ProbeFurnitureChange(DangoFurnitureChangeKind kind, ulong instance,
+        DangoFurnitureDefinition? candidate, ulong revision) => world.ProbeFurnitureChange(kind, instance, candidate, revision);
+    public DangoFurniturePreparation PrepareFurnitureChange(DangoFurnitureChangeKind kind, ulong instance,
+        DangoFurnitureDefinition? candidate, ulong revision)
+    {
+        Wake();
+        return world.PrepareFurnitureChange(kind, instance, candidate, revision);
+    }
+    public DangoFurnitureCollectionFrame ApplyPreparedFurnitureChange(DangoPreparedFurnitureChange token)
+    {
+        world.ApplyPreparedFurnitureChange(token);
+        Wake();
+        var frame = ReadFurnitureCollectionFrame();
+        LastFrame = Present(Frame);
+        return frame;
+    }
+    public void CancelPreparedFurnitureChange(DangoPreparedFurnitureChange token) { world.CancelPreparedFurnitureChange(token); Wake(); }
     public void SetBounds(double hostLeft, double hostRight)
     {
         var a = ToWorld(new(hostLeft, origin.Y)).X;
         var b = ToWorld(new(hostRight, origin.Y)).X;
+        if (a != left || b != right) Wake();
         world.SetHorizontalBounds(a, b, Frame.SceneRevision);
-        left = a; right = b; Frame = world.Read();
+        left = a; right = b; Frame = Refresh();
     }
     public void ClearBounds()
     {
+        Wake();
         world.SetHorizontalBounds(-256, 256, Frame.SceneRevision);
-        left = -256; right = 256; Frame = world.Read();
+        left = -256; right = 256; Frame = Refresh();
     }
     public bool TryPlacement(LogicalPoint requested, double hostLeft, double hostRight, out LogicalPoint safe)
     {
@@ -68,12 +127,14 @@ internal sealed class BeltRoomSceneAdapter : IDisposable
     }
     public void Rehost(LogicalPoint reference)
     {
+        Wake();
         origin = new(reference.X, reference.Y + 60 + configuration.GroundHeight*Scale);
         LastFrame = Present(Frame);
     }
     public bool RehostSelected(LogicalPoint actual)
     {
-        if (Frame.Platform is not null) return false;
+        if (Frame.Platform is not null || furnitureFrame?.Items.Count > 0) return false;
+        Wake();
         origin = new(actual.X-Frame.Stats[0]*Scale, actual.Y+60+configuration.GroundHeight*Scale);
         LastFrame = Present(Frame);
         return true;
@@ -81,15 +142,22 @@ internal sealed class BeltRoomSceneAdapter : IDisposable
     public DesktopPhysicsSceneFrame Step(DangoBeltInput input)
     {
         if (LastErrorCode != 0) return LastFrame;
-        try { world.Step(1, input); }
+        var eligible = SleepEnabled && presentationScale is { } scale && scale * Scale <= MaximumSleepMetresToDip &&
+            furnitureFrame?.Items.Any(item => item.Definition.Kind == DangoFurnitureKind.RoundBall) != true;
+        if (!eligible || BeltSleepPolicy.Active(input)) Wake();
+        if (IsSleeping) return LastFrame;
+        try { NativeStepCalls++; world.Step(1, input); }
         catch (DangoBeltRoomException error)
         {
             LastErrorCode = error.ErrorCode;
-            Frame = world.Read();
+            Frame = Refresh();
             return LastFrame;
         }
-        Frame = world.Read();
+        Frame = Refresh();
         if (Frame.Fault != 0) { LastErrorCode = Frame.Fault; return LastFrame; }
+        if (eligible)
+            IsSleeping = sleep.Observe(new(Frame.Scaffold.ToArray(), Frame.Curve.ToArray(), Frame.Stats.ToArray()),
+                Frame.BodySnapshot.ToArray(), input, true);
         return LastFrame = Present(Frame);
     }
     private DesktopPhysicsSceneFrame Present(DangoBeltRoomFrame frame)
@@ -113,8 +181,24 @@ internal sealed class BeltRoomSceneAdapter : IDisposable
     {
         // Create first: a failed allocation must preserve the accepted owner/frame.
         var replacement = Create();
-        world.Dispose(); world = replacement;
-        Frame = world.Read(); LastErrorCode = 0; LastFrame = Present(Frame);
+        DangoBeltRoomFurnitureFrame? nextCollection;
+        DangoBeltRoomFrame nextFrame;
+        DesktopPhysicsSceneFrame nextPresentation;
+        try
+        {
+            nextCollection = replacement.SupportsFurnitureCollection ? replacement.ReadFurnitureCollectionFrame() : null;
+            nextFrame = nextCollection?.BeltFrame ?? replacement.Read();
+            nextPresentation = Present(nextFrame);
+        }
+        catch { replacement.Dispose(); throw; }
+        var previous = world;
+        world = replacement;
+        furnitureFrame = nextCollection;
+        Frame = nextFrame;
+        LastFrame = nextPresentation;
+        Wake();
+        LastErrorCode = 0;
+        previous.Dispose();
     }
     public void Dispose() => world.Dispose();
 }

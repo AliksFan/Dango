@@ -66,6 +66,9 @@ public sealed partial class DesktopPhysicsScene : IDisposable
     }
     public bool UsesBeltRoom => beltRoom is not null;
     public DangoBeltRoomFrame? BeltRoomFrame => beltRoom?.Frame;
+    internal void ConfigureBeltSleepPresentationScale(double? scale) => beltRoom?.ConfigureSleepPresentationScale(scale);
+    internal bool BeltRoomSleeping => beltRoom?.IsSleeping == true;
+    internal long BeltRoomNativeStepCalls => beltRoom?.NativeStepCalls ?? 0;
     public LogicalPoint SelectedCoreHost => beltRoom?.CoreHost ??
         LastFrame?.Bodies.Single(body => body.EntityId == SelectedEntity).Bounds.Center ?? origin;
 
@@ -370,7 +373,7 @@ public sealed partial class DesktopPhysicsScene : IDisposable
             if (axis == 0 && !intent.Jump && !intent.Squash && !intent.Stretch && !dragActive) axis = autonomousHorizontal;
             var result = beltRoom.Step(new(axis, intent.Stretch ? 1 : 0, intent.Squash ? 1 : 0,
                 intent.Jump && !jumpWasHeld, dragActive, dragTarget.X, dragTarget.Y,
-                axis != 0 || intent.Jump || intent.Squash || intent.Stretch || dragActive));
+                intent.Left || intent.Right || intent.Jump || intent.Squash || intent.Stretch || dragActive));
             jumpWasHeld = intent.Jump;
             return LastFrame = result;
         }
@@ -458,6 +461,7 @@ public sealed partial class DesktopPhysicsScene : IDisposable
 
     private void ClearInput()
     {
+        beltRoom?.Wake();
         intent = DirectionalControlIntent.None;
         dragTarget = default;
         dragActive = false;

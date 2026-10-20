@@ -1,5 +1,6 @@
 #define DANGO_BELT_EMBEDDED 1
 #include "dango_belt_room.h"
+#include "dango_belt_room_collection.h"
 #define DANGO_BELT_ROOM_HOOKS 1
 #include "dango_belt.c"
 
@@ -18,7 +19,17 @@ typedef struct room_world {
  void* body_handle;uint64_t generation,tick,revision,max_platform_id;
  int platform_enabled,fault,solid_walls;dango_belt_room_platform platform;
  double old_q[BELT_D],diag[24],last_theta;
+ int collection_enabled,collection_count,prepared,prepared_kind,prepared_slot,collection_error;
+ uint64_t next_instance,next_token,last_applied_token;
+ dango_belt_room_collection_item items[30],candidate;
+ dango_belt_room_collection_token token;
+ double ball_old[30][2],ball_sleep[30];
+ double body_report_weight[30],surface_report_weight[30];
+ unsigned char touches[30][32],pair_touch[30][30];
 } room_world;
+static void collection_before_integrate(room_world*,belt_body*);
+static int collection_contact(room_world*,belt_body*);
+static int collection_bounds_valid(room_world*,double,double);
 static struct {uintptr_t token;room_world* world;} room_handles[16];
 static uint64_t room_next_generation=1;
 static room_world* room_active;
@@ -190,8 +201,9 @@ static double room_wall_theta(const double* q,int right){
  double roots[64],theta=0,value=belt_eval(q,0,0).x;int n=belt_roots(q,0,1,0,roots);
  for(int i=0;i<n;++i){double x=belt_eval(q,roots[i],0).x;if(right?x>value:x<value){theta=roots[i];value=x;}}return theta;
 }
-static void belt_room_before_integrate(belt_body* b){if(room_active&&(room_active->platform_enabled||room_active->solid_walls))memcpy(room_active->old_q,b->q,sizeof b->q);}
+static void belt_room_before_integrate(belt_body* b){if(room_active&&(room_active->platform_enabled||room_active->solid_walls||room_active->collection_enabled))memcpy(room_active->old_q,b->q,sizeof b->q);if(room_active&&room_active->collection_enabled)collection_before_integrate(room_active,b);}
 static int belt_room_contact(belt_body* b){
+ if(room_active&&room_active->collection_enabled)return collection_contact(room_active,b);
  room_world* w=room_active;if(!w||(!w->platform_enabled&&!w->solid_walls))return belt_contact_solve(b);
  if(room_negative_mode==1)return belt_contact_solve(b);
  if(!w->platform_enabled){double bounds[4],foot;belt_bounds(b->q,bounds,&foot);
@@ -253,7 +265,7 @@ static int belt_room_contact(belt_body* b){
  b->stats[25]=n;b->stats[26]+=before;b->stats[27]+=after;b->stats[30]=fmax(b->stats[30],residual);b->diag[12]+=before;b->diag[13]+=after;b->diag[14]+=after-before;w->diag[22]+=1;return 1;
 }
 int dango_belt_room_version(void){return DANGO_BELT_ROOM_ABI;}
-int dango_belt_room_capabilities(void){return 63;}
+int dango_belt_room_capabilities(void){return 255;}
 int dango_belt_room_frame_size(void){return (int)sizeof(dango_belt_room_frame);}
 const char* dango_belt_room_model(void){return "continuous-belt-room-v1";}
 const char* dango_belt_room_tuning(void){return "C455-F-v1";}
@@ -269,6 +281,7 @@ int dango_belt_room_create(const dango_belt_config* cfg,const float* cal,int cou
 }
 int dango_belt_room_step(void* handle,float dt,const dango_belt_room_input* input,int count){
  room_world* w=room_lookup(handle);if(!w)return DANGO_BELT_ROOM_HANDLE;if(w->fault)return DANGO_BELT_ROOM_FAULT;
+ if(w->prepared)return DANGO_BELT_ROOM_BUSY;
  if(!input||count!=1||input->body_id!=1||input->reserved||dt!=.0166666f)return DANGO_BELT_ROOM_ARGUMENT;for(int i=0;i<9;++i)if(!isfinite(input->controls[i]))return DANGO_BELT_ROOM_ARGUMENT;
  const float* c=input->controls;if(fabsf(c[0])>1||c[1]<0||c[1]>1||c[6]<0||c[6]>1)return DANGO_BELT_ROOM_ARGUMENT;const int flags[4]={2,3,7,8};for(int i=0;i<4;++i)if(c[flags[i]]!=0&&c[flags[i]]!=1)return DANGO_BELT_ROOM_ARGUMENT;if(w->tick==UINT64_MAX)return DANGO_BELT_ROOM_REVISION;
  belt_body* b=room_body(w);belt_body backup=*b;room_world world_backup=*w;
@@ -284,6 +297,9 @@ int dango_belt_room_step(void* handle,float dt,const dango_belt_room_input* inpu
 #if DANGO_BELT_ROOM_NEGATIVE == 2
  b->q[0]+=1;
 #endif
+#if defined(DANGO_BELT_ROOM_COLLECTION_NEGATIVE) && DANGO_BELT_ROOM_COLLECTION_NEGATIVE == 2
+ for(int i=0;i<30;++i)if(w->items[i].instance&&w->items[i].definition.kind==2){w->items[i].ball.x+=1;break;}
+#endif
  return code;}
  w->tick++;return 0;
 }
@@ -294,20 +310,24 @@ int dango_belt_room_read_frame(void* handle,dango_belt_room_frame* output,int by
 }
 int dango_belt_room_set_solid_walls(void* handle,int enabled,uint64_t revision){
  room_world* w=room_lookup(handle);if(!w)return DANGO_BELT_ROOM_HANDLE;if(w->fault)return DANGO_BELT_ROOM_FAULT;
+ if(w->prepared)return DANGO_BELT_ROOM_BUSY;
  if(enabled!=0&&enabled!=1)return DANGO_BELT_ROOM_ARGUMENT;if(revision!=w->revision||w->revision==UINT64_MAX)return DANGO_BELT_ROOM_REVISION;
  belt_body* b=room_body(w);double bounds[4],foot;belt_bounds(b->q,bounds,&foot);
  if(bounds[0]<b->left||bounds[2]>b->right)return DANGO_BELT_ROOM_REJECTED;
  if(w->platform_enabled){double edges[4];room_edges(&w->platform,edges);if(edges[0]<b->left||edges[2]>b->right)return DANGO_BELT_ROOM_REJECTED;}
+ if(w->collection_enabled&&!collection_bounds_valid(w,b->left,b->right))return DANGO_BELT_ROOM_REJECTED;
  if(w->solid_walls==enabled)return 0;w->solid_walls=enabled;w->revision++;return 0;
 }
 int dango_belt_room_set_bounds(void* handle,float left,float right,uint64_t revision){
  room_world* w=room_lookup(handle);if(!w)return DANGO_BELT_ROOM_HANDLE;if(w->fault)return DANGO_BELT_ROOM_FAULT;
+ if(w->prepared)return DANGO_BELT_ROOM_BUSY;
  if(revision!=w->revision||w->revision==UINT64_MAX)return DANGO_BELT_ROOM_REVISION;
  belt_body* b=room_body(w);if(!isfinite(left)||!isfinite(right)||left>=right||right-left<4*b->radius)return DANGO_BELT_ROOM_ARGUMENT;
  /* Use the same continuous extrema and strict containment as the body step.
     All checks precede writes, including diagnostic/support state. */
  double bounds[4],foot;belt_bounds(b->q,bounds,&foot);if(bounds[0]<left||bounds[2]>right)return DANGO_BELT_ROOM_REJECTED;
  if(w->platform_enabled){double edges[4];room_edges(&w->platform,edges);if(edges[0]<left||edges[2]>right)return DANGO_BELT_ROOM_REJECTED;}
+ if(w->collection_enabled&&!collection_bounds_valid(w,left,right))return DANGO_BELT_ROOM_REJECTED;
  if(b->left==left&&b->right==right)return 0;
  b->left=left;b->right=right;w->revision++;return 0;
 }
@@ -316,13 +336,16 @@ static int room_platform_valid(room_world* w,const dango_belt_room_platform* p){
  double e[4];room_edges(p,e);belt_body* b=room_body(w);for(int i=0;i<4;++i)if(fabs(e[i])>1024)return 0;return e[0]>=b->left&&e[2]<=b->right&&e[1]>=b->cfg.ground_height;
 }
 int dango_belt_room_set_platform(void* handle,const dango_belt_room_platform* p,uint64_t revision){
+ room_world* busy=room_lookup(handle);if(busy&&busy->prepared)return DANGO_BELT_ROOM_BUSY;if(busy&&busy->collection_enabled)return DANGO_BELT_ROOM_REJECTED;
  room_world* w=room_lookup(handle);if(!w)return DANGO_BELT_ROOM_HANDLE;if(w->fault)return DANGO_BELT_ROOM_FAULT;if(revision!=w->revision||w->revision==UINT64_MAX)return DANGO_BELT_ROOM_REVISION;if(!room_platform_valid(w,p))return DANGO_BELT_ROOM_ARGUMENT;
  if(w->platform_enabled?p->id!=w->platform.id:p->id<=w->max_platform_id)return DANGO_BELT_ROOM_REVISION;
  room_world candidate=*w;candidate.platform=*p;candidate.platform_enabled=1;memset(candidate.diag,0,sizeof candidate.diag);double theta=0;belt_body* b=room_body(w);int proof=room_certificate(&candidate,b->q,b->q,&theta,0);if(proof!=1||!room_containment(&candidate,b->q))return candidate.diag[2]?(int)candidate.diag[2]:DANGO_BELT_ROOM_REJECTED;
  w->platform=*p;w->platform_enabled=1;w->max_platform_id=p->id;w->revision++;b->grounded=0;double bounds[4],foot;belt_bounds(b->q,bounds,&foot);b->grounded=bounds[1]<=b->cfg.ground_height+ROOM_ACTIVATION;w->diag[18]=w->diag[19]=0;b->stats[25]=0;belt_read_stats(b);return 0;
 }
 int dango_belt_room_remove_platform(void* handle,uint64_t id,uint64_t revision){
+ room_world* busy=room_lookup(handle);if(busy&&busy->prepared)return DANGO_BELT_ROOM_BUSY;if(busy&&busy->collection_enabled)return DANGO_BELT_ROOM_REJECTED;
  room_world* w=room_lookup(handle);if(!w)return DANGO_BELT_ROOM_HANDLE;if(w->fault)return DANGO_BELT_ROOM_FAULT;if(!w->platform_enabled||id!=w->platform.id||revision!=w->revision||w->revision==UINT64_MAX)return DANGO_BELT_ROOM_REVISION;
  w->platform_enabled=0;memset(&w->platform,0,sizeof w->platform);w->revision++;belt_body* b=room_body(w);double bounds[4],foot;belt_bounds(b->q,bounds,&foot);b->grounded=bounds[1]<=b->cfg.ground_height+ROOM_ACTIVATION;w->diag[18]=w->diag[19]=0;b->stats[25]=0;belt_read_stats(b);return 0;
 }
 int dango_belt_room_destroy(void* handle){room_world* w=room_lookup(handle);if(!w)return DANGO_BELT_ROOM_HANDLE;for(int i=0;i<16;++i)if(room_handles[i].world==w){dango_belt_destroy(w->body_handle);free(w);room_handles[i].world=NULL;room_handles[i].token=0;return 0;}return DANGO_BELT_ROOM_HANDLE;}
+#include "dango_belt_room_collection_impl.h"

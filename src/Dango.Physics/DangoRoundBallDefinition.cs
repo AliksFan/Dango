@@ -2,7 +2,8 @@ namespace Dango.Physics;
 
 public readonly record struct DangoRoundBallId(int Value);
 
-/// <summary>Birth position and material in q=diag(4/3,1)p. No DIP or initial-velocity input.</summary>
+/// <summary>Legacy direct-ball APIs use q=diag(4/3,1)p. Collection definitions declare their coordinate space;
+/// the independent belt collection uses meters for these Q-named fields. No DIP or initial-velocity input.</summary>
 public sealed record DangoRoundBallDefinition(
     double CenterQX, double CenterQY, double RadiusQ = .4, double Mass = .09,
     double FloorFriction = .45, double DangoFriction = .35,

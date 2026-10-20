@@ -27,6 +27,8 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
     private bool beltRoom;
     internal bool UsesBeltRoom => beltRoom;
     internal DangoBeltRoomFrame? LastBeltRoomFrame => scene?.BeltRoomFrame;
+    internal bool SupportsFurnitureCollection => scene?.SupportsFurnitureCollection == true;
+    internal void ConfigureBeltSleepPresentationScale(double? scale) => scene?.ConfigureBeltSleepPresentationScale(scale);
     private LogicalPoint? hostOrigin;
     private LogicalRect? viewport;
     private (double Left, double Right)? localHorizontalBounds;
@@ -277,14 +279,17 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
         new(nativeLibraryPath) { beltRoom = true, requiresAttachments = true, RequiresInitialization = true, LightInteractionsEnabled = true };
 
     // This is an explicit stopped lifecycle handoff, never a live parameter edit.
-    internal void ConfigureBeltRoomAppearance(DangoAppearanceConfiguration saved)
+    internal void ConfigureBeltRoomAppearance(DangoAppearanceConfiguration saved, bool beginRoom = false)
     {
         VerifyAccess();
         ArgumentNullException.ThrowIfNull(saved);
         if (!beltRoom || running || FrameDriver is not null)
             throw new InvalidOperationException("身体模型只能在房间交接暂停时配置。");
-        if (scene is not null && saved.Body != EffectiveAppearance.Body)
+        if (scene is not null && (beginRoom || saved.Body != EffectiveAppearance.Body))
         {
+            if (!TryDetachOrdinaryFurniture())
+                throw new InvalidOperationException("家具状态尚未核清，不能更换身体配置。");
+            Furniture?.Dispose(); Furniture = null;
             ClearPhysicalInput();
             scene.Dispose(); scene = null;
             attachments?.Dispose(); attachments = null;

@@ -189,19 +189,19 @@ public sealed class BeltRoomHostEntryTests
     [TestMethod]
     [DataRow(FurnitureItemKind.StaticPlatform)]
     [DataRow(FurnitureItemKind.RoundBall)]
-    public void CandidateRejectsEveryExistingFurnitureKindWithoutChangingLayout(FurnitureItemKind kind)
+    public void CandidateValidatesExistingFurnitureKindsWithoutChangingLayout(FurnitureItemKind kind)
     {
         var layout = FurnitureLayout.ForItems(1, Guid.NewGuid(), [new(Guid.NewGuid(), kind, FurnitureLayoutContract.OrdinaryRoom.GetDefaultAnchor(kind))]);
         var before = FurnitureLayoutSerializer.Serialize(layout, FurnitureLayoutContract.OrdinaryRoom);
-        Assert.ThrowsExactly<InvalidOperationException>(() => DangoApplicationHost.ValidateBeltRoomAdmission(layout, false, true));
+        DangoApplicationHost.ValidateBeltRoomAdmission(layout, false, true);
         CollectionAssert.AreEqual(before, FurnitureLayoutSerializer.Serialize(layout, FurnitureLayoutContract.OrdinaryRoom));
         DangoApplicationHost.ValidateBeltRoomAdmission(layout, false, false);
         DangoApplicationHost.ValidateBeltRoomAdmission(FurnitureLayout.Empty, false, true);
-        Assert.ThrowsExactly<InvalidOperationException>(() => DangoApplicationHost.ValidateBeltRoomAdmission(FurnitureLayout.Empty, true, true));
+        DangoApplicationHost.ValidateBeltRoomAdmission(FurnitureLayout.Empty, true, true);
     }
 
     [STATestMethod]
-    public void HiddenHostUsesExistingCatalogAndRejectsUnsupportedLayoutBeforeInitializingOrSelecting()
+    public void HiddenSourceCannotInitializeOrSelectARoomAndKeepsExistingLayout()
     {
         var root = NewRoot();
         var catalog = new LocalRoomCatalogStore(root);
@@ -223,8 +223,7 @@ public sealed class BeltRoomHostEntryTests
         Assert.IsTrue(runtime.UsesBeltRoom);
         host.EnterCatalogRoom(id, false);
         PumpUntil(() => !host.LocalHandoffPending);
-        Assert.IsNotNull(host.LocalRoomFailure);
-        StringAssert.Contains(host.LocalRoomFailure, "家具布局");
+        Assert.IsNull(host.LocalRoomFailure, "An invisible source cancels before module admission or a room handoff starts.");
         Assert.AreEqual(0, runtime.EntityIds.Count);
         Assert.IsNull(Field<Guid?>(host, "selectedCatalogRoomId"));
         CollectionAssert.AreEqual(bytes, File.ReadAllBytes(catalog.LayoutPath(id)));

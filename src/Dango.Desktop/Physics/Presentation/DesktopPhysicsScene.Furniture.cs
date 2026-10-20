@@ -35,31 +35,51 @@ public sealed partial class DesktopPhysicsScene
     { VerifyAccess(); RequireLegacyFurniture(); world.CancelPreparedStaticPlatformChange(token); }
 
     internal bool SupportsFurnitureCollection
-    { get { VerifyAccess(); return beltRoom is null && world.SupportsFurnitureCollection && world.RoundBallGravityScale == .5; } }
+    { get { VerifyAccess(); return beltRoom?.SupportsFurnitureCollection ?? (world.SupportsFurnitureCollection && world.RoundBallGravityScale == .5); } }
 
     internal DangoFurnitureCollectionFrame ReadFurnitureCollectionFrame()
-    { VerifyAccess(); RequireLegacyFurniture(); return world.ReadFurnitureCollectionFrame(); }
+    { VerifyAccess(); return beltRoom?.ReadFurnitureCollectionFrame() ?? world.ReadFurnitureCollectionFrame(); }
 
     internal DangoFurnitureProbe ProbeFurnitureChange(DangoFurnitureChangeKind kind,
         ulong instance, DangoFurnitureDefinition? candidate, ulong revision)
-    { VerifyAccess(); RequireLegacyFurniture(); return world.ProbeFurnitureChange(kind, instance, candidate, revision); }
+    { VerifyAccess(); return beltRoom?.ProbeFurnitureChange(kind, instance, candidate, revision) ?? world.ProbeFurnitureChange(kind, instance, candidate, revision); }
 
     internal DangoFurniturePreparation PrepareFurnitureChange(DangoFurnitureChangeKind kind,
         ulong instance, DangoFurnitureDefinition? candidate, ulong revision)
-    { VerifyAccess(); RequireLegacyFurniture(); return world.PrepareFurnitureChange(kind, instance, candidate, revision); }
+    { VerifyAccess(); return beltRoom?.PrepareFurnitureChange(kind, instance, candidate, revision) ?? world.PrepareFurnitureChange(kind, instance, candidate, revision); }
 
     internal DangoFurnitureCollectionFrame ApplyPreparedFurnitureChange(DangoPreparedFurnitureChange token)
-    { VerifyAccess(); RequireLegacyFurniture(); return world.ApplyPreparedFurnitureChange(token); }
+    {
+        VerifyAccess();
+        if (beltRoom is null) return world.ApplyPreparedFurnitureChange(token);
+        var result = beltRoom.ApplyPreparedFurnitureChange(token);
+        LastFrame = beltRoom.LastFrame;
+        return result;
+    }
 
     internal void CancelPreparedFurnitureChange(DangoPreparedFurnitureChange token)
-    { VerifyAccess(); RequireLegacyFurniture(); world.CancelPreparedFurnitureChange(token); }
+    { VerifyAccess(); if (beltRoom is not null) beltRoom.CancelPreparedFurnitureChange(token); else world.CancelPreparedFurnitureChange(token); }
 
     internal DangoFurnitureDefinition OrdinaryFurnitureDefinition(FurnitureItemInstance item)
     {
         VerifyAccess();
-        RequireLegacyFurniture();
         item.Validate(FurnitureLayoutContract.OrdinaryRoom);
         var center = ToWorld(new LogicalPoint(item.Anchor.X, GroundY - item.Anchor.Y));
+        if (beltRoom is not null)
+        {
+            var geometry = FurnitureLayoutContract.OrdinaryRoom;
+            return item.Kind switch
+            {
+                FurnitureItemKind.StaticPlatform => new(DangoFurnitureKind.StaticPlatform,
+                    Platform: new(center.X, center.Y - geometry.PlatformHeight / 144, geometry.PlatformWidth / 72,
+                        geometry.PlatformHeight / 72, geometry.PlatformFriction))
+                    { CoordinateSpace = DangoFurnitureCoordinateSpace.BeltWorldMeters },
+                FurnitureItemKind.RoundBall => new(DangoFurnitureKind.RoundBall,
+                    Ball: new(center.X, center.Y, RadiusQ: geometry.BallRadius / 72, Mass: .02))
+                    { CoordinateSpace = DangoFurnitureCoordinateSpace.BeltWorldMeters },
+                _ => throw new InvalidDataException("家具类型不受支持。"),
+            };
+        }
         return item.Kind switch
         {
             FurnitureItemKind.StaticPlatform => new(DangoFurnitureKind.StaticPlatform,
@@ -73,8 +93,7 @@ public sealed partial class DesktopPhysicsScene
     internal FurnitureAnchor OrdinaryBallAnchor(DangoRoundBallState ball)
     {
         VerifyAccess();
-        RequireLegacyFurniture();
-        var center = ToHost(new(ball.CenterQX * .75, ball.CenterQY));
+        var center = ToHost(new(ball.CenterQX * (beltRoom is null ? .75 : 1), ball.CenterQY));
         return new(center.X, GroundY - center.Y);
     }
 

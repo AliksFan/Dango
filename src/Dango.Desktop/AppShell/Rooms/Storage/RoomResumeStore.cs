@@ -1,6 +1,7 @@
 using System.IO;
 using Dango.Core.Furniture;
 using Dango.Desktop.Furniture;
+using Dango.Physics;
 
 namespace Dango.Desktop.AppShell.Rooms.Storage;
 
@@ -91,17 +92,56 @@ internal sealed class RoomResumeStore
 
 internal static class RoomResumeSafety
 {
+    internal readonly record struct Envelope(double Left, double Right, double Height);
+
+    // q contains the constant term followed by eight cosine/sine pairs, not scaffold nodes.
+    // Each harmonic is bounded by hypot(cosineCoefficient, sineCoefficient) for every theta.
+    internal static Envelope? BeltEnvelope(DangoBeltRoomFrame? frame)
+    {
+        if (frame is not { Fault: 0 } || frame.BodySnapshot.Count != 200 ||
+            frame.BodySnapshot[0] != 1 || frame.BodySnapshot[1] != 200) return null;
+        var q = frame.BodySnapshot;
+        if (q.Skip(2).Take(36).Any(value => !double.IsFinite(value))) return null;
+        double rx = 0, ry = 0;
+        for (var harmonic = 1; harmonic <= 8; harmonic++)
+        {
+            var i = 2 + 4 * harmonic - 2;
+            rx += Math.Sqrt(q[i] * q[i] + q[i + 2] * q[i + 2]);
+            ry += Math.Sqrt(q[i + 1] * q[i + 1] + q[i + 3] * q[i + 3]);
+        }
+        // Outward rounding margin in room DIP; never use the sampled curve as a safety proof.
+        const double margin = .001;
+        var offset = (q[2] - q[36]) * 72;
+        var result = new Envelope(offset - rx * 72 - margin, offset + rx * 72 + margin, 2 * ry * 72 + 2 * margin);
+        return double.IsFinite(result.Left) && double.IsFinite(result.Right) && double.IsFinite(result.Height) &&
+            result.Left < result.Right && result.Height > 0 ? result : null;
+    }
+
+    // Stats[12] is belt_bounds' continuous-extremum floor gap, not curve[256]'s sampled minimum.
+    // A grounded platform/ball is insufficient; require ground-level bottom and no platform support ID.
+    internal static bool HasBeltFloorSupport(DangoBeltRoomFrame? frame) =>
+        frame is { Fault: 0, Tick: > 0 } && frame.BodySnapshot.Count == 200 && frame.Stats.Count >= 26 &&
+        frame.Diagnostics.Count >= 20 && frame.BodySnapshot[82] == 1 && frame.Stats[14] == 1 &&
+        frame.Stats[25] > 0 && frame.Diagnostics[18] == 0 && frame.Diagnostics[19] == 0 &&
+        double.IsFinite(frame.Stats[12]) && Math.Abs(frame.Stats[12]) <= .003;
+
     // Conservative neutral envelope only. Never changes native geometry, contacts or solver state.
     internal static bool CanRestore(RoomSafePosition point, FurnitureLayout layout, double width = 160, double height = 120)
+        => CanRestore(point, layout, new Envelope(-width / 2, width / 2, height));
+
+    internal static bool CanRestore(RoomSafePosition point, FurnitureLayout layout, Envelope envelope)
     {
+        var width = envelope.Right - envelope.Left;
+        var height = envelope.Height;
         var room = FurnitureLayoutContract.OrdinaryRoom;
         if (!double.IsFinite(point.X) || !double.IsFinite(point.SupportHeight) || !double.IsFinite(width) || !double.IsFinite(height) ||
+            !double.IsFinite(envelope.Left) || !double.IsFinite(envelope.Right) ||
             width <= 0 || height <= 0 || point.SupportHeight < 0 || point.SupportHeight + height > room.Ceiling ||
-            point.X - width / 2 < room.Left || point.X + width / 2 > room.Right) return false;
+            point.X + envelope.Left < room.Left || point.X + envelope.Right > room.Right) return false;
         if (point.SupportHeight > .5 && !layout.Items.Any(item => item.Kind == FurnitureItemKind.StaticPlatform &&
             Math.Abs(item.Anchor.Y - point.SupportHeight) <= .5 && Math.Abs(item.Anchor.X - point.X) + width / 2 <= room.PlatformWidth / 2))
             return false;
-        var left = point.X - width / 2; var right = point.X + width / 2;
+        var left = point.X + envelope.Left; var right = point.X + envelope.Right;
         var bottom = point.SupportHeight; var top = bottom + height;
         foreach (var item in layout.Items)
         {

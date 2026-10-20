@@ -22,8 +22,8 @@ public sealed class DangoBeltRoomException(string operation, int errorCode)
     public int ErrorCode { get; } = errorCode;
 }
 
-/// <summary>Independent F7-1 native room module: exactly one body and one optional solid platform.</summary>
-public sealed unsafe class DangoBeltRoomWorld : IDisposable
+/// <summary>Independent native room: one body, with a legacy platform or optional furniture collection.</summary>
+public sealed unsafe partial class DangoBeltRoomWorld : IDisposable
 {
     public const string Model = "continuous-belt-room-v1";
     public const string BodyModel = "continuous-belt-v1";
@@ -71,6 +71,7 @@ public sealed unsafe class DangoBeltRoomWorld : IDisposable
                 if (SupportsHorizontalBounds) setBounds = Export<SetBoundsDelegate>("dango_belt_room_set_bounds");
                 SupportsSolidWalls = (Export<VersionDelegate>("dango_belt_room_capabilities")() & 32) != 0;
                 if (SupportsSolidWalls) setSolidWalls = Export<SetSolidWallsDelegate>("dango_belt_room_set_solid_walls");
+                LoadFurnitureCollection();
                 step = Export<StepDelegate>("dango_belt_room_step");
                 read = Export<ReadDelegate>("dango_belt_room_read_frame");
                 setPlatform = Export<SetPlatformDelegate>("dango_belt_room_set_platform");
@@ -141,6 +142,11 @@ public sealed unsafe class DangoBeltRoomWorld : IDisposable
         VerifyAccess();
         NativeFrame native = default;
         lock (NativeGate) Check(read(handle, &native, sizeof(NativeFrame)), "read frame");
+        return DecodeFrame(native);
+    }
+
+    private DangoBeltRoomFrame DecodeFrame(NativeFrame native)
+    {
         ValidateFrameIdentity(in native);
         if (native.Generation != worldGeneration) throw new InvalidOperationException("Native room generation changed during its owner lifetime.");
         var p = native.Platform;
@@ -177,7 +183,7 @@ public sealed unsafe class DangoBeltRoomWorld : IDisposable
     private static void ValidateFrameIdentity(in NativeFrame frame)
     {
         if (frame.Size != FrameSize || frame.Abi != AbiVersion || frame.Generation == 0 || frame.BodyId != 1 ||
-            frame.ConfigurationRevision != 1 || frame.PlatformEnabled is < 0 or > 1 ||
+            frame.ConfigurationRevision == 0 || frame.PlatformEnabled is < 0 or > 1 ||
             (frame.PlatformEnabled != 0 && frame.Platform.Id == 0) ||
             (frame.Diagnostics[23] != 0 && frame.Diagnostics[23] != 1))
             throw new InvalidOperationException("Native room returned an invalid coherent frame identity.");
