@@ -57,6 +57,33 @@ static int certificate_contract(void){
  memset(w->diag,0,sizeof w->diag);w->platform=(dango_belt_room_platform){1,0,.4,3,.2,.72};w->diag[4]=ROOM_GEOMETRY_BUDGET;CHECK(room_certificate(w,b->q,b->q,&theta,0)==-1&&w->diag[2]==-706);
  CHECK(dango_belt_room_destroy(h)==0);printf("continuous interior/swept crossing, enclosed platform and budget refusal PASS\n");return 0;
 }
+static int certificate_witness_order_contract(void){
+ void* h=NULL;CHECK(!create_room(8,0,1.5f,&h));room_world* w=room_lookup(h);double q[BELT_D]={0},theta=0;
+ /* A simple analytic circle still returns a real interior witness. */
+ w->platform=(dango_belt_room_platform){1,0,1,1,.2,.72};q[2]=q[5]=1;
+ CHECK(room_certificate(w,q,q,&theta,0)==0);double e[4];room_edges(&w->platform,e);belt_v normal;CHECK(room_gap(belt_eval(q,theta,0),e,&normal)<-ROOM_PENETRATION);
+ /* Frozen x6/jump20 step63 swept candidate: the first exhausted cell at
+    theta=.9920331653/time=.03075 precedes a genuine interior witness. */
+ const double from[BELT_D]={6.520827956887346,1.0719940433892334,0.64269361034753936,-0.3020140056478951,0.21309735852204686,0.68388732611840752,0.016250163827963068,-0.02722295925202364,-0.025712525346351753,-0.005034499387857291,0.022655231828695711,0.0087330152083151605,-0.012777624893327916,-0.0043970634467243369,0.019082719020798042,0.0051907130840982193,0.0044460416073606309,0.0060741746865463232,0.0029823130579175565,-0.0025519961017069258,0.013669795535700361,0.00083883091497245635,-0.0078373277732645442,-0.00035050747747539999,0.0068912757080439929,-0.0025122251396454184,-0.0099379662236427167,0.00063855281400432989,-0.0036655771901933083,0.0002855155302196925,-0.0030399862045537322,0.0001899314983406512,-0.0086979604918643906,0.00023572930748321292,6.5788391930608174,1.0917809582715956};
+ const double to[BELT_D]={6.5232527994223757,1.0640137359361812,0.64331002711800434,-0.301783240919061,0.21292458803379005,0.68344969716358794,0.016596660957623265,-0.026637837927120898,-0.025137929008547152,-0.0053521157445230415,0.022483876261407586,0.0089693528934131038,-0.012202002350141206,-0.004053972097667397,0.018547310899487749,0.0048929591222184885,0.0048489386896965695,0.0061925492906673256,0.0023360090020012273,-0.0026211053415364743,0.013462484322632376,0.00062116948982260248,-0.0080520751558829096,-0.00017236856973209004,0.0062644752818386829,-0.0025736180847187877,-0.009449754526348577,0.00064217791467326591,-0.004332005594466534,0.00031115540802704046,-0.002178724606639139,0.0001492409739970239,-0.0086861986694241698,0.00029284543798982471,6.5810379930182377,1.084048286756476};
+ memset(w->diag,0,sizeof w->diag);w->platform=(dango_belt_room_platform){1,(1715.6051461521163-1080)/72,(126.65960390330395-10.5)/72,272.0/72,21.0/72,.72};
+ CHECK(room_certificate(w,from,to,&theta,1)==0&&w->diag[5]==20&&w->diag[6]==16);
+ /* Entire curve stays outside the forbidden interior, but roundoff/tangent
+    bounds cannot prove it at the frozen depth. It must remain UNCERTAIN. */
+ memset(w->diag,0,sizeof w->diag);w->platform=(dango_belt_room_platform){1,1,0,2,4,.72};memset(q,0,sizeof q);q[0]=nextafter(-1+ROOM_PENETRATION,-INFINITY);q[2]=q[5]=1;
+ CHECK(room_certificate(w,q,q,&theta,0)==-1&&w->diag[2]==DANGO_BELT_ROOM_UNCERTAIN&&w->diag[7]==3&&w->diag[4]<ROOM_GEOMETRY_BUDGET);
+ CHECK(!dango_belt_room_destroy(h));puts("pending uncertainty cannot hide intrusion witness; witness-free tangency remains UNCERTAIN PASS");return 0;
+}
+static int entry_shell_contract(void){
+ const double e[4]={-1,-1,1,1};
+ /* Begin inside the permitted shell, traverse the forbidden interior, then
+    exit another face. Its exit normal must never replace the entry normal. */
+ const belt_v from[4]={{-1+ROOM_PENETRATION*.5,.99},{1-ROOM_PENETRATION*.5,.99},{.99,-1+ROOM_PENETRATION*.5},{.99,1-ROOM_PENETRATION*.5}};
+ const belt_v to[4]={{-.99,1.01},{.99,1.01},{1.01,-.99},{1.01,.99}};
+ const belt_v expected[4]={{-1,0},{1,0},{0,-1},{0,1}},fallback[4]={{0,1},{0,1},{1,0},{1,0}};
+ for(int i=0;i<4;++i){belt_v n=room_entry_normal(from[i],to[i],e,fallback[i]);CHECK(n.x==expected[i].x&&n.y==expected[i].y);}
+ puts("permitted-shell first entry normals left/right/bottom/top PASS");return 0;
+}
 static int rollback_contract(void){
  void* h=NULL;CHECK(create_room(8,0,0,&h)==0);room_world* w=room_lookup(h);belt_body* b=room_body(w);b->left=-.001;b->right=.001;belt_body before=*b;uint64_t tick=w->tick;dango_belt_room_input input={.body_id=1};int rc=dango_belt_room_step(h,.0166666f,&input,1);CHECK(rc<0);CHECK(memcmp(&before,b,sizeof before)==0&&w->tick==tick&&w->fault==rc);CHECK(dango_belt_room_step(h,.0166666f,&input,1)==-703);CHECK(dango_belt_room_destroy(h)==0);printf("physical bounds rejection full private-state rollback/fault latch PASS\n");return 0;
 }
@@ -175,7 +202,7 @@ int main(int argc,char** argv){
  if(argc==4&&strcmp(argv[1],"--scenario")==0)return scenario_contract(atoi(argv[3]),atoi(argv[2]));
  if(argc>1&&strcmp(argv[1],"--scenarios")==0)return scenario_contract(-1,-1);
  if(argc>1&&strcmp(argv[1],"--scenarios-default")==0)return scenario_contract(8,-1);
- CHECK(face_tie_contract()==0);CHECK(atomic_contract()==0);CHECK(bounds_update_contract()==0);CHECK(certificate_contract()==0);CHECK(rollback_contract()==0);CHECK(corner_contract()==0);CHECK(public_bounds_rollback()==0);
+ CHECK(certificate_witness_order_contract()==0);CHECK(entry_shell_contract()==0);CHECK(face_tie_contract()==0);CHECK(atomic_contract()==0);CHECK(bounds_update_contract()==0);CHECK(certificate_contract()==0);CHECK(rollback_contract()==0);CHECK(corner_contract()==0);CHECK(public_bounds_rollback()==0);
 #ifdef _WIN32
  if(argc>1)CHECK(equivalence(argv[1])==0);
 #else

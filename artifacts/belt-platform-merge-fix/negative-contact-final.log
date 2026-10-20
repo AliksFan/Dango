@@ -1,0 +1,1 @@
+FAIL line 106: room_certificate(&proof,room_body(w)->q,room_body(w)->q,&theta,0)==1&&room_containment(&proof,room_body(w)->q)

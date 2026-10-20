@@ -1,0 +1,2 @@
+FAIL line 71: room_certificate(w,from,to,&theta,1)==0&&w->diag[5]==20&&w->diag[6]==16
+FAIL line 206: certificate_witness_order_contract()==0

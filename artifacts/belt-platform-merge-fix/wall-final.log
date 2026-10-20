@@ -1,0 +1,9 @@
+wall mode/bounds revision, ABI, no-op and complete no-write contract PASS
+default guard real driven refusal tick=144, complete body/frame rollback and latch PASS
+enabled mode remains visible after real rejected step and full rollback PASS
+far walls disabled/enabled 240 ticks every private physical channel bitwise equal PASS
+floor-left 600 driven ticks contact=456 simultaneous=456 plus 120 reverse-away PASS
+floor-right 600 driven ticks contact=456 simultaneous=456 plus 120 reverse-away PASS
+air side-wall actual reaction=32 frames without floor, ground or platform support PASS
+platform-right 600 driven ticks contact=454 simultaneous=454 plus 120 reverse-away PASS
+F7 solid walls focused native contracts PASS

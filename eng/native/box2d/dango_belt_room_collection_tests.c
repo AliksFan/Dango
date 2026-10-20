@@ -1,4 +1,5 @@
 #define DANGO_BELT_ROOM_COLLECTION_TESTS 1
+#define DANGO_BELT_ROOM_TRACE 1
 #include "dango_belt_room.c"
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -78,7 +79,7 @@ static int contact_reports(void){void* h=NULL;CHECK(!create(-8,&h));CHECK(!add(h
 static int rollback(void){void* h=NULL;CHECK(!create(-8,&h));CHECK(!add(h,ball(4,3,.4)));CHECK(!step(h,20));room_world* w=room_lookup(h);room_world before=*w;belt_body body=*room_body(w);collection_test_fault=1;CHECK(step(h,1)==DANGO_BELT_ROOM_REJECTED);CHECK(!memcmp(&body,room_body(w),sizeof body));
  CHECK(!memcmp(before.items,w->items,sizeof before.items)&&!memcmp(before.touches,w->touches,sizeof before.touches)&&!memcmp(before.pair_touch,w->pair_touch,sizeof before.pair_touch)&&before.tick==w->tick&&before.revision==w->revision);CHECK(step(h,1)==DANGO_BELT_ROOM_FAULT);CHECK(!dango_belt_room_destroy(h));puts("fourth-substep whole world rollback/fault latch PASS");return 0;}
 #ifdef _WIN32
-static int actual_dll(const char* path){HMODULE module=LoadLibraryA(path);CHECK(module);
+static int actual_dll(const char* path,int saved){HMODULE module=LoadLibraryA(path);CHECK(module);
  int (*native_create)(const dango_belt_config*,const float*,int,float,float,float,float,void**)=NULL;
  int (*native_set_solid_walls)(void*,int,uint64_t)=NULL;int (*native_enable_collection)(void*,uint64_t)=NULL;
  int (*native_step)(void*,float,const dango_belt_room_input*,int)=NULL;int (*native_read_collection_frame)(void*,dango_belt_room_collection_frame*,int)=NULL;
@@ -87,13 +88,30 @@ static int actual_dll(const char* path){HMODULE module=LoadLibraryA(path);CHECK(
 #define LOAD(name) do {FARPROC proc=GetProcAddress(module,"dango_belt_room_" #name);CHECK(proc);memcpy(&native_##name,&proc,sizeof proc);}while(0)
  LOAD(create);LOAD(set_solid_walls);LOAD(enable_collection);LOAD(step);LOAD(read_collection_frame);LOAD(prepare_furniture_change);LOAD(apply_prepared_furniture_change);LOAD(destroy);
 #undef LOAD
+ if(saved){const float starts[3]={6,5,5};const int jumps[3]={20,90,120};for(int c=0;c<3;++c){void* h=NULL;CHECK(!native_create(&cfg,cal,11,starts[c],0,-15,15,&h));CHECK(!native_set_solid_walls(h,1,0)&&!native_enable_collection(h,1));dango_belt_room_input input={.body_id=1};
+  for(int i=0;i<180;++i)CHECK(!native_step(h,.0166666f,&input,1));dango_belt_room_definition p={.kind=1,.x=(1715.6051461521163-1080)/72,.y=(126.65960390330395-10.5)/72,.width=272.0/72,.height=21.0/72,.friction=.72};dango_belt_room_collection_probe probe;dango_belt_room_collection_token token;CHECK(!native_prepare_furniture_change(h,1,0,2,&p,&probe,sizeof probe,&token)&&!probe.rejection);CHECK(!native_apply_prepared_furniture_change(h,&token));
+  for(int i=0;i<600;++i){input.controls[0]=i<jumps[c]+45?1.f:0;input.controls[2]=i==jumps[c]?1.f:0;CHECK(!native_step(h,.0166666f,&input,1));dango_belt_room_collection_frame f;CHECK(!native_read_collection_frame(h,&f,sizeof f));CHECK(f.base.tick==(uint64_t)i+181&&!f.base.fault&&f.base.scene_revision==3&&f.item_count==1&&f.items[0].instance==1);}
+  CHECK(!native_destroy(h));printf("actual DLL saved x%.0f jump%d 600 successful coherent frames PASS\n",starts[c],jumps[c]);}FreeLibrary(module);return 0;}
  void* h=NULL;CHECK(!native_create(&cfg,cal,11,0,0,-20,20,&h));CHECK(!native_set_solid_walls(h,1,0)&&!native_enable_collection(h,1));dango_belt_room_input input={.body_id=1};
  for(int i=0;i<240;++i)CHECK(!native_step(h,.0166666f,&input,1));dango_belt_room_definition d=ball(0,3,66.0/72);dango_belt_room_collection_probe probe;dango_belt_room_collection_token token;CHECK(!native_prepare_furniture_change(h,1,0,2,&d,&probe,sizeof probe,&token)&&!probe.rejection);CHECK(!native_apply_prepared_furniture_change(h,&token));
  double maximum=0;for(int i=0;i<3600;++i){CHECK(!native_step(h,.0166666f,&input,1));dango_belt_room_collection_frame f;CHECK(!native_read_collection_frame(h,&f,sizeof f));CHECK(f.base.tick==(uint64_t)i+241&&f.base.scene_revision==3&&f.item_count==1&&!f.base.fault);CHECK(f.items[0].ball.step==f.base.tick&&f.items[0].body_contact.step==f.base.tick&&f.items[0].surface_contact.scene_revision==f.base.scene_revision);maximum=fmax(maximum,f.items[0].body_contact.normal_impulse);}
  CHECK(maximum>1e-4&&!native_destroy(h));FreeLibrary(module);printf("actual DLL default disk 3600 ticks coherent successful frames/real body impulse %.9g PASS\n",maximum);return 0;}
 #endif
+static int saved_platform_case(float x,int jump){
+ void* h=NULL;CHECK(!dango_belt_room_create(&cfg,cal,11,x,0,-15,15,&h));
+ CHECK(!dango_belt_room_set_solid_walls(h,1,0)&&!dango_belt_room_enable_collection(h,1));CHECK(!step(h,180));
+ dango_belt_room_definition p={.kind=1,.x=(1715.6051461521163-1080)/72,.y=(126.65960390330395-10.5)/72,.width=272.0/72,.height=21.0/72,.friction=.72};CHECK(!add(h,p));
+ room_world* w=room_lookup(h);int tick,rc=0;
+ for(tick=0;tick<600;++tick){dango_belt_room_input input={.body_id=1};input.controls[0]=tick<jump+45?1.f:0;input.controls[2]=tick==jump?1.f:0;rc=dango_belt_room_step(h,.0166666f,&input,1);if(rc)break;
+  room_world proof=*w;proof.platform=collection_platform(&w->items[0]);memset(proof.diag,0,sizeof proof.diag);double theta=0;CHECK(room_certificate(&proof,room_body(w)->q,room_body(w)->q,&theta,0)==1&&room_containment(&proof,room_body(w)->q));}
+ if(rc){fprintf(stderr,"refusal line=%d contact=",room_refusal_line);for(int j=0;j<9;++j)fprintf(stderr," %.17g",room_trace_contact[j]);fprintf(stderr,"\n");fprintf(stderr,"saved approach tick=%d accepted=%llu rc=%d body=%.0f reason=%.0f work=%.0f cell=%.17g %.17g %.17g %.17g %.0f %.0f\n",tick,(unsigned long long)w->tick,rc,w->diag[3],w->diag[7],w->diag[4],room_trace_cell[0],room_trace_cell[1],room_trace_cell[2],room_trace_cell[3],room_trace_cell[4],room_trace_cell[5]);
+  for(int endpoint=0;endpoint<2;++endpoint){const double* q=endpoint?room_trace_to:room_trace_from;fprintf(stderr,"%s={",endpoint?"to":"from");for(int j=0;j<BELT_D;++j)fprintf(stderr,"%s%.17g",j?",":"",q[j]);fprintf(stderr,"}\n");}}
+ CHECK(!rc&&tick==600);CHECK(!dango_belt_room_destroy(h));printf("saved x%.0f jump%d platform approach 600 ticks PASS\n",x,jump);return 0;
+}
 int main(int argc,char** argv){
+ if(argc>1&&!strcmp(argv[1],"--saved-platform"))return saved_platform_case(6,20)||saved_platform_case(5,90)||saved_platform_case(5,120);
 #ifdef _WIN32
- if(argc>2&&!strcmp(argv[1],"--dll"))return actual_dll(argv[2]);
+ if(argc>2&&!strcmp(argv[1],"--dll"))return actual_dll(argv[2],0);
+ if(argc>2&&!strcmp(argv[1],"--saved-platform-dll"))return actual_dll(argv[2],1);
 #endif
  if(argc>1&&!strcmp(argv[1],"--reports"))return contact_reports();if(argc>1&&!strcmp(argv[1],"--body"))return body_ball(.4,240);if(argc>1&&!strcmp(argv[1],"--long"))return body_ball(66.0/72,3600);if(argc>1&&!strcmp(argv[1],"--thirty"))return thirty();if(argc>1&&!strcmp(argv[1],"--platform"))return body_platform();if(argc>1&&!strcmp(argv[1],"--rollback"))return rollback();if(api()||empty_equivalence()||geometry()||contact_reports()||surface()||pair()||ball_walls()||body_platform()||body_ball(.4,240)||rollback())return 1;puts("R3 targeted native contracts PASS");return 0;}

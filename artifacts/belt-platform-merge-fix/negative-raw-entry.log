@@ -1,0 +1,3 @@
+pending uncertainty cannot hide intrusion witness; witness-free tangency remains UNCERTAIN PASS
+FAIL line 79: n.x==expected[i].x&&n.y==expected[i].y
+FAIL line 200: entry_shell_contract()==0

@@ -62,12 +62,15 @@ static double room_gap(belt_v p,const double* e,belt_v* normal){
  if(e[3]-p.y<nearest){nearest=e[3]-p.y;*normal=(belt_v){0,1};}
  return -nearest;
 }
-/* Determine the first entry face of the material segment, not its exit face. */
+/* Determine entry into the same forbidden interior used by the certificate.
+   An accepted source may already be in the permitted penetration shell. Using
+   the full rectangle then gives a negative entry time and loses its face. */
 static belt_v room_entry_normal(belt_v from,belt_v to,const double* e,belt_v fallback){
  double enter=-INFINITY,leave=INFINITY;belt_v n=fallback;
  for(int axis=0;axis<2;++axis){double a=axis?from.y:from.x,d=(axis?to.y:to.x)-a;
-  if(fabs(d)<1e-15){if(a<e[axis]||a>e[axis+2])return fallback;continue;}
-  double lo=(e[axis]-a)/d,hi=(e[axis+2]-a)/d;belt_v near=axis?(belt_v){0,-1}:(belt_v){-1,0};
+  double lower=e[axis]+ROOM_PENETRATION,upper=e[axis+2]-ROOM_PENETRATION;
+  if(fabs(d)<1e-15){if(a<lower||a>upper)return fallback;continue;}
+  double lo=(lower-a)/d,hi=(upper-a)/d;belt_v near=axis?(belt_v){0,-1}:(belt_v){-1,0};
   if(lo>hi){double swap=lo;lo=hi;hi=swap;near=belt_mul(-1,near);}
   if(lo>enter){enter=lo;n=near;}leave=fmin(leave,hi);
  }
@@ -94,7 +97,7 @@ static int room_certificate(room_world* w,const double* from,const double* to,do
 #ifdef DANGO_BELT_ROOM_TRACE
  memcpy(room_trace_from,from,sizeof room_trace_from);memcpy(room_trace_to,to,sizeof room_trace_to);
 #endif
- double e[4];room_edges(&w->platform,e);room_cell stack[64];int pending=1;stack[0]=(room_cell){BELT_PI,BELT_PI,0,swept?1:0,0,0};
+ double e[4];room_edges(&w->platform,e);room_cell stack[64];int pending=1,uncertain=0;stack[0]=(room_cell){BELT_PI,BELT_PI,0,swept?1:0,0,0};
  while(pending){if(w->diag[4]>=ROOM_GEOMETRY_BUDGET){room_refuse(w,DANGO_BELT_ROOM_BUDGET,2);return -1;}w->diag[4]+=1;
   room_cell c=stack[--pending];w->diag[5]=fmax(w->diag[5],c.theta_depth);w->diag[6]=fmax(w->diag[6],c.time_depth);double box[4];room_cell_bounds(from,to,&c,box);
 #ifdef DANGO_BELT_ROOM_TRACE
@@ -103,13 +106,16 @@ static int room_certificate(room_world* w,const double* from,const double* to,do
   if(box[2]<=e[0]+ROOM_PENETRATION||box[0]>=e[2]-ROOM_PENETRATION||box[3]<=e[1]+ROOM_PENETRATION||box[1]>=e[3]-ROOM_PENETRATION)continue;
   double q[BELT_D],s=.5*(c.lo+c.hi);for(int j=0;j<BELT_D;++j)q[j]=(1-s)*from[j]+s*to[j];belt_v p=belt_eval(q,c.center,0),n;double gap=room_gap(p,e,&n);
   if(gap<-ROOM_PENETRATION){*theta=c.center;w->diag[8]=fmax(w->diag[8],-gap);return 0;}
-  if(c.theta_depth>=20&&(!swept||c.time_depth>=16)){room_refuse(w,DANGO_BELT_ROOM_UNCERTAIN,3);return -1;}
+  /* An unresolved cell cannot certify clearance, but it also cannot hide an
+     interior witness in a pending cell. Keep the refusal pending while the
+     unchanged work/depth limits still allow a concrete correction witness. */
+  if(c.theta_depth>=20&&(!swept||c.time_depth>=16)){uncertain=1;continue;}
   double theta_width=fmax(box[2]-box[0],box[3]-box[1]);belt_v p0=belt_eval(from,c.center,0),p1=belt_eval(to,c.center,0);double time_width=hypot(p1.x-p0.x,p1.y-p0.y)*(c.hi-c.lo);
   if(swept&&c.time_depth<16&&(c.theta_depth>=20||time_width>theta_width*.5)){
    double mid=.5*(c.lo+c.hi);room_cell right=c;right.lo=mid;right.time_depth++;c.hi=mid;c.time_depth++;stack[pending++]=right;stack[pending++]=c;
   }else{room_cell right=c;right.center+=c.half*.5;right.half*=.5;right.theta_depth++;c.center-=c.half*.5;c.half*=.5;c.theta_depth++;stack[pending++]=right;stack[pending++]=c;}
  }
- return 1;
+ if(uncertain){room_refuse(w,DANGO_BELT_ROOM_UNCERTAIN,3);return -1;}return 1;
 }
 /* Chord winding with an analytic Fourier interpolation-error tube. If the
    test point is outside every tube, the polygon and curve are homotopic around
@@ -154,6 +160,16 @@ static int room_corner_roots(room_world* w,const double* q,double* angles,int* c
   }
  }
  return 1;
+}
+/* Correction candidates only; clearance still requires the independent full
+   endpoint and swept certificates for the corrected state. */
+static double room_deepest_candidate(room_world* w,const double* q,double* theta){
+ double e[4],deepest=INFINITY,angles[512],roots[64];int count=0;belt_v ignored;room_edges(&w->platform,e);
+ for(int i=0;i<256;++i)angles[count++]=2*BELT_PI*i/256;
+ for(int axis=0;axis<2;++axis){int nr=belt_roots(q,axis,1,0,roots);for(int i=0;i<nr;++i)angles[count++]=roots[i];}
+ room_face_ties(q,e,angles,&count);if(!room_corner_roots(w,q,angles,&count))return NAN;
+ for(int i=0;i<count;++i){double gap=room_gap(belt_eval(q,angles[i],0),e,&ignored);if(gap<deepest){deepest=gap;*theta=angles[i];}}
+ return deepest;
 }
 static int room_rows(room_world* w,belt_body* b,room_row* rows){
  belt_contact ground[64];int n=belt_contact_rows(b,ground,ROOM_ACTIVATION);
@@ -217,12 +233,7 @@ static int belt_room_contact(belt_body* b){
   if(!w->platform_enabled){clean=1;break;}
   /* Locate the endpoint's deepest candidate before asking for a proof. These
      samples locate corrections; they never certify the accepted boundary. */
-  double theta=0,deepest=INFINITY,angles[512],roots[64];int count=0;belt_v ignored;
-  for(int i=0;i<256;++i)angles[count++]=2*BELT_PI*i/256;
-  for(int axis=0;axis<2;++axis){int nr=belt_roots(b->q,axis,1,0,roots);for(int i=0;i<nr;++i)angles[count++]=roots[i];}
-  room_face_ties(b->q,e,angles,&count);
-  if(!room_corner_roots(w,b->q,angles,&count))return 0;
-  for(int i=0;i<count;++i){double gap=room_gap(belt_eval(b->q,angles[i],0),e,&ignored);if(gap<deepest){deepest=gap;theta=angles[i];}}
+  double theta=0,deepest=room_deepest_candidate(w,b->q,&theta);if(!isfinite(deepest))return 0;
   int swept=0;
   if(deepest>=0){
    int ok=room_certificate(w,b->q,b->q,&theta,0);if(ok<0)return 0;

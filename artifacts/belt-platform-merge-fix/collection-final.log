@@ -1,0 +1,15 @@
+step fault-709 tick0 geom0 residual0 KE0/0 reason0
+step fault-705 tick13 geom2 residual0 KE0.64731472/0.647025194 reason1
+step fault-705 tick20 geom6 residual1.62983852e-08 KE3.04911509/3.01622186 reason1
+collection ABI/token/busy/no-write PASS
+empty collection exact private body equivalence 240 ticks PASS
+Fourier radial outward-bound samples, intrusion, swept tunnel and containment rejection PASS
+pair reports both real IDs/opposite normals/own before-speed/gap and coherent floor+pair representative PASS
+multi-platform physical landing, immediate stale-contact invalidation and support removal fall PASS
+ball pair real momentum transfer max_v=0.677964635 PASS
+disk solid wall bounce and guard-only full atomic refusal PASS
+actual-size collection platform body landing/support/delete/floor fall PASS
+Fourier/disk radius 0.4 240 ticks double-sided impulse 0.0464110692 coreDeltaVy 0.0919301102 PASS
+fourth-substep whole world rollback/fault latch PASS
+R3 targeted native contracts PASS
+step fault-703 tick20 geom6 residual1.62983852e-08 KE3.04911509/3.01622186 reason1

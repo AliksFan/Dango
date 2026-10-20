@@ -1,0 +1,10 @@
+platform corner=0 completed=480 rc=0 reason=0 geometryWork=675 thetaDepth=7 timeDepth=0 penetration=0 residual=1.30808772477e-09 support=1 refusalLine=0
+platform corner=1 completed=480 rc=0 reason=0 geometryWork=849 thetaDepth=8 timeDepth=0 penetration=0 residual=1.1484706133e-09 support=1 refusalLine=0
+platform corner=2 completed=480 rc=0 reason=0 geometryWork=837 thetaDepth=8 timeDepth=0 penetration=0 residual=5.15811288219e-09 support=1 refusalLine=0
+platform corner=3 completed=480 rc=0 reason=0 geometryWork=1125 thetaDepth=8 timeDepth=0 penetration=0 residual=1.33178595979e-08 support=1 refusalLine=0
+platform corner=4 completed=480 rc=0 reason=0 geometryWork=495 thetaDepth=7 timeDepth=0 penetration=0 residual=1.56753771611e-08 support=1 refusalLine=0
+platform corner=5 completed=480 rc=0 reason=0 geometryWork=547 thetaDepth=8 timeDepth=0 penetration=0 residual=6.98658364167e-10 support=1 refusalLine=0
+platform corner=6 completed=480 rc=0 reason=0 geometryWork=657 thetaDepth=7 timeDepth=0 penetration=0 residual=8.48428021062e-09 support=1 refusalLine=0
+platform corner=7 completed=480 rc=0 reason=0 geometryWork=801 thetaDepth=8 timeDepth=0 penetration=0 residual=1.84836173529e-08 support=1 refusalLine=0
+platform corner=8 completed=480 rc=0 reason=0 geometryWork=719 thetaDepth=8 timeDepth=0 penetration=0 residual=8.57525894236e-09 support=1 refusalLine=0
+nine configurations finite platform standing and support removal PASS

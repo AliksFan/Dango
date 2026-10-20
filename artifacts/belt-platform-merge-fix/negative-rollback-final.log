@@ -1,0 +1,2 @@
+step fault-705 tick20 geom6 residual1.62983852e-08 KE3.04911509/3.01622186 reason1
+FAIL line 80: !memcmp(before.items,w->items,sizeof before.items)&&!memcmp(before.touches,w->touches,sizeof before.touches)&&!memcmp(before.pair_touch,w->pair_touch,sizeof before.pair_touch)&&before.tick==w->tick&&before.revision==w->revision

@@ -147,11 +147,17 @@ static double collection_swept_rectangle(belt_v a,belt_v b,const dango_belt_room
  belt_v corners[4]={{e[0],e[1]},{e[2],e[1]},{e[2],e[3]},{e[0],e[3]}};double best=INFINITY;for(int i=0;i<4;++i)best=fmin(best,collection_segments_distance(a,b,corners[i],corners[(i+1)%4]));return best;}
 static int collection_body_platform_position(room_world* w,belt_body* b,const dango_belt_room_platform* p,int correct){
  dango_belt_room_platform saved=w->platform;w->platform=*p;double theta=0,e[4];room_edges(p,e);belt_v n;double deepest=INFINITY;
- for(int i=0;i<256;++i){double t=2*BELT_PI*i/256,g=room_gap(belt_eval(b->q,t,0),e,&n);if(g<deepest){deepest=g;theta=t;}}
- int result=room_certificate(w,b->q,b->q,&theta,0),swept=0;if(result==1){result=room_certificate(w,w->old_q,b->q,&theta,1);swept=result==0;}
+ /* Match the single-platform locator: correct an actual endpoint candidate
+    before asking for a clearance proof. These roots/samples never admit a
+    state; the independent endpoint and swept certificates still must pass. */
+ deepest=room_deepest_candidate(w,b->q,&theta);if(!isfinite(deepest)){w->platform=saved;return -1;}
+ int result=deepest<0?0:room_certificate(w,b->q,b->q,&theta,0),swept=0;if(result==1){result=room_certificate(w,w->old_q,b->q,&theta,1);swept=result==0;}
  if(result==1&&!room_containment(w,b->q))result=-1;
  if(result==0&&correct){belt_v now=belt_eval(b->q,theta,0),old=belt_eval(w->old_q,theta,0);double gap=room_gap(now,e,&n);
   if(swept||gap<0){n=room_entry_normal(old,now,e,n);gap=n.x<-.5?e[0]-now.x:n.x>.5?now.x-e[2]:n.y<-.5?e[1]-now.y:now.y-e[3];}
+#ifdef DANGO_BELT_ROOM_TRACE
+  double contact_trace[9]={theta,old.x,old.y,now.x,now.y,n.x,n.y,gap,swept};memcpy(room_trace_contact,contact_trace,sizeof contact_trace);
+#endif
   if(gap>=ROOM_CLEARANCE)result=-1;else result=room_project(w,b,theta,n,ROOM_CLEARANCE-gap)?2:-1;}
  w->platform=saved;return result;
 }

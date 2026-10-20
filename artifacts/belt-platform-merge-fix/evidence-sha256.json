@@ -1,0 +1,90 @@
+{
+  "base": "b2a024b",
+  "frozen_module_sha256": "DB4F3494E8F6FF64E783845903647D7916DC2F584715C6B9539D3AB2789A9085",
+  "files": [
+    {
+      "path": "eng/native/box2d/dango_belt_room.c",
+      "sha256": "016649D775B94C06B6C5E99DF62B69093A6083E15FFC4972A7880ED5F2861ADE"
+    },
+    {
+      "path": "eng/native/box2d/dango_belt_room_collection_impl.h",
+      "sha256": "0155669D580A95C3BA955BB51EBA52C4B9E2AB7220AFB2F4E09E8E6E35BA45C8"
+    },
+    {
+      "path": "eng/native/box2d/dango_belt_room_tests.c",
+      "sha256": "B186078B64008AE78E914F19FC197C6978F84103FBE745A32B9D7E3E251F4040"
+    },
+    {
+      "path": "eng/native/box2d/dango_belt_room_collection_tests.c",
+      "sha256": "214604FA7936A9401A505A46226229ECB90980061DC5ED79CA7D0C011B25E8FF"
+    },
+    {
+      "path": "artifacts/belt-platform-merge-fix/baseline-native.log",
+      "sha256": "8392DD763BF64C1031767A1F9B6F98A370450C2EF3799255F482DD65CB0A0C06"
+    },
+    {
+      "path": "artifacts/belt-platform-merge-fix/fix-native-r2.log",
+      "sha256": "598416C590DE8CFDA3E91CC8CCC821CB4866F5F0097C57B36067B44395F73658"
+    },
+    {
+      "path": "artifacts/belt-platform-merge-fix/saved-platform-600.log",
+      "sha256": "5236DF97B05D7C5C89D1B2EDFB9E2498D2D0F1D99A9A34CE9B75E9D5C5F9CB1A"
+    },
+    {
+      "path": "artifacts/belt-platform-merge-fix/saved-native-final.log",
+      "sha256": "F6BB73CCE02C6873584D12CED37A14AF480ACD842C4FCE34857586065852BAC8"
+    },
+    {
+      "path": "artifacts/belt-platform-merge-fix/actual-saved-final.log",
+      "sha256": "083A89FC76768AF5EECF968D5A864DF0DBD437D2D903CA89F67D923EBBEC1C85"
+    },
+    {
+      "path": "artifacts/belt-platform-merge-fix/room-contracts-final.log",
+      "sha256": "68554D067288B7E7936B60B6788AA6EFADBE17C7FB3BFA076AEA33C3FAC9F473"
+    },
+    {
+      "path": "artifacts/belt-platform-merge-fix/body-equivalence-final.log",
+      "sha256": "0B212240E620CF3AD5AE3C5A120D401EFDA3106E77E61C6FED344002B5AC239A"
+    },
+    {
+      "path": "artifacts/belt-platform-merge-fix/collection-final.log",
+      "sha256": "B3220B61F3C1A2F00C27C5F7CCD7D555E843C92C9C0B63240D81167C3FEB02DB"
+    },
+    {
+      "path": "artifacts/belt-platform-merge-fix/wall-final.log",
+      "sha256": "57F563F961990E82A6A83B7AA669A416DC29948CA806A20B75F8D3242A454D33"
+    },
+    {
+      "path": "artifacts/belt-platform-merge-fix/static-platform-final.log",
+      "sha256": "0DE3DCF0F63B2C71F1585673A531E0F2614E2D5E0FCB483F2187B025C32A36E2"
+    },
+    {
+      "path": "artifacts/belt-platform-merge-fix/actual-disk-final.log",
+      "sha256": "7A49987E396DBA7A3CECC5F1EA5AA7C8F0CDFA8ED9821A025174EDCB4E90553C"
+    },
+    {
+      "path": "artifacts/belt-platform-merge-fix/negative-early-uncertain-final.log",
+      "sha256": "586953A176ABC3F51DDB5FA16AB2CA04C87E0E4D2A67300C3FE7B4B4E7430521"
+    },
+    {
+      "path": "artifacts/belt-platform-merge-fix/negative-raw-entry.log",
+      "sha256": "D87CAF3F7AE35ED6A3DEBD3E9F4868DAE4585DEA92DE996C9A557B2670A001F4"
+    },
+    {
+      "path": "artifacts/belt-platform-merge-fix/negative-contact-final.log",
+      "sha256": "6296A569AFDFB1FA70F8A054AB5D9A067BFC697D594615DA2A34EEB253BC400D"
+    },
+    {
+      "path": "artifacts/belt-platform-merge-fix/negative-rollback-final.log",
+      "sha256": "F2CB711CBAD50A999F4C7D6C883BB1D22B1B22E08A7FB56FC19A704B96F3B471"
+    },
+    {
+      "path": "artifacts/belt-platform-merge-fix/verification.md",
+      "sha256": "C36DC4763BB8C697D82898036C72DB6416803B47ECF391F0B84631621AB3C566"
+    },
+    {
+      "path": "artifacts/belt-platform-merge-fix/build/Release/dango_belt_room.dll",
+      "sha256": "1C50E89C9983949A089A5859A3E86D175EBF02A01CAA895657F7FC823C884A58"
+    }
+  ]
+}
