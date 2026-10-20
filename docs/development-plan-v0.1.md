@@ -1,6 +1,6 @@
 # Dango 分阶段开发计划 v0.1
 
-> 2026-10-20 F7 实施停止点：用户“开始计划”授权后，独立 `codex/belt-room-f7` 从 `d337cb6` 完成F7-0合同／基线自动门，托管14/14及无平台各4320次冻结／产品对照通过。F7-1必需物理门FAIL：站台7/9、54动作21完成／31拒绝／2未观测；不提高证书深度或放宽门限，按[已批准设计](planning/2026-10-20-belt-room-f7-design.md)／[计划](planning/2026-10-20-belt-room-f7-implementation-plan.md)停止F7-2～6准入。真实DLL失败重放及全部结果见[实施记录](verification/2026-10-20-belt-room-f7.md)，不宣称新物理已进入普通房／桌宠。[保存间歇失败](verification/2026-10-20-belt-body-closeout.md)继续开放；未合 main、推送、安装或部署。
+> 2026-10-20 F7 接入整理：用户明确“把新身体模型接入现有框架／房间”，按[实施计划](planning/2026-10-20-belt-room-f7-implementation-plan.md)整理接入差量。现有房间、输入、家具、逐房存档和桌宠宿主已有实现；下一实施项是现有runtime／scene中的新模块、成功帧、呈现和输入适配，不重开整套房间开发。F7-0及R1基础自动工作已完成，九配置站台／撤支撑、托管14/14通过；离边／角点／跳台和横墙仍待处理，新room模块未接桌面房间。球／30家具是既有功能的物理适配，多连续体／三体承重不作为本批单人前置。原FAIL、分期依据和[保存开放风险](verification/2026-10-20-belt-body-closeout.md)按[设计](planning/2026-10-20-belt-room-f7-design.md)及[实施记录](verification/2026-10-20-belt-room-f7.md)保留；本轮只整理文档，未合main、推送、安装或部署。
 
 > 2026-10-19 新身体实施进展：`codex/face-body-belt-integration` 已接入实际单人首页／捏脸、连续外圈产品库、Schema5和三项真正实时调节。用户选择独立[可见形变休眠v2](verification/2026-10-19-belt-visible-deformation-sleep-v2.md)后，候选默认启用；联合230/230、binding9/9、实际EXE保存重启通过，默认三工况CPU减少约74%～75%。九角8组睡眠、120/0/100继续求解；旧严格门失败保留。本批F1～F6自动工作完成，整体人工验收仍待用户确认。边界及开放风险见[实施验证](verification/2026-10-19-belt-body-implementation.md)。旧来源保全有效，main及原房间路径保留，未合并／推送／部署。
 
