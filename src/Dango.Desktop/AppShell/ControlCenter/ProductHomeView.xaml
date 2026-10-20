@@ -115,10 +115,31 @@
             <Setter Property="MinHeight" Value="32" />
             <Setter Property="Padding" Value="5" />
             <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="ToolTipService.InitialShowDelay" Value="250" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome" CornerRadius="7" Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HomeSoft}" /></Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HomeSoft}" /></Trigger>
+                            <Trigger Property="Tag" Value="Selected"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HomeSelected}" /></Trigger>
+                            <Trigger Property="IsPressed" Value="True"><Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HomeSelected}" /></Trigger>
+                            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Chrome" Property="Opacity" Value="0.45" /></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
             <Style.Triggers>
                 <Trigger Property="Tag" Value="Selected">
                     <Setter Property="BorderBrush" Value="{DynamicResource HomeAccent}" />
+                    <Setter Property="BorderThickness" Value="1" />
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -170,6 +191,7 @@
         <Style x:Key="BodyParameterSlider" TargetType="Slider">
             <Setter Property="Height" Value="28" />
             <Setter Property="IsMoveToPointEnabled" Value="True" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Slider">
@@ -183,7 +205,17 @@
                                 </Track.DecreaseRepeatButton>
                                 <Track.Thumb>
                                     <Thumb Width="28" Height="26">
-                                        <Thumb.Template><ControlTemplate TargetType="Thumb"><Grid Background="Transparent"><Ellipse Width="12" Height="12" Fill="{DynamicResource HomeAccent}" /></Grid></ControlTemplate></Thumb.Template>
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Grid Background="Transparent"><Ellipse x:Name="Grip" Width="12" Height="12" Fill="{DynamicResource HomeAccent}" /></Grid>
+                                                <ControlTemplate.Triggers>
+                                                    <DataTrigger Binding="{Binding IsKeyboardFocusWithin, RelativeSource={RelativeSource AncestorType=Slider}}" Value="True">
+                                                        <Setter TargetName="Grip" Property="Width" Value="14" />
+                                                        <Setter TargetName="Grip" Property="Height" Value="14" />
+                                                    </DataTrigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
                                     </Thumb>
                                 </Track.Thumb>
                                 <Track.IncreaseRepeatButton>
@@ -194,7 +226,6 @@
                             </Track>
                         </Border>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="FocusOutline" Property="BorderBrush" Value="{DynamicResource HomeAccent}" /></Trigger>
                             <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45" /></Trigger>
                             <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="FocusOutline" Property="Background" Value="{DynamicResource HomeSoft}" /></Trigger>
                         </ControlTemplate.Triggers>
@@ -416,6 +447,7 @@
                                   CanContentScroll="False" Focusable="False">
                       <Grid>
                         <StackPanel x:Name="FaceOptions">
+                            <StackPanel.Resources><Style TargetType="Slider" BasedOn="{StaticResource BodyParameterSlider}" /></StackPanel.Resources>
                             <StackPanel x:Name="AppearanceColorsPanel">
                                 <TextBlock Text="身体" Margin="0,0,0,8" />
                                 <Button x:Name="BodyColorPickerButton" Click="OnBodyColorPickerClick" HorizontalContentAlignment="Stretch" Margin="0,0,0,12">
@@ -453,13 +485,12 @@
                                 <Grid><TextBlock Text="近" FontSize="11" /><TextBlock Text="远" FontSize="11" HorizontalAlignment="Right" /></Grid>
                             </StackPanel>
                             <StackPanel x:Name="AppearanceBodyPanel" Visibility="Collapsed">
-                                <StackPanel.Resources><Style TargetType="Slider" BasedOn="{StaticResource BodyParameterSlider}" /></StackPanel.Resources>
                                 <TextBlock x:Name="BodySizeValue" Text="大小 · 100%" />
                                 <Slider x:Name="BodySizeSlider" Minimum="80" Maximum="120" Value="100" TickFrequency="1" SmallChange="1" LargeChange="5" IsSnapToTickEnabled="True" ValueChanged="OnBodySliderChanged" Margin="0,6,0,2" AutomationProperties.Name="身体大小" />
-                                <Grid Margin="0,0,0,14"><TextBlock Text="80%" FontSize="11" /><TextBlock Text="120%" FontSize="11" HorizontalAlignment="Right" /></Grid>
+                                <Grid Margin="0,0,0,6"><TextBlock Text="80%" FontSize="11" /><TextBlock Text="120%" FontSize="11" HorizontalAlignment="Right" /></Grid>
                                 <TextBlock x:Name="BodySoftnessValue" Text="柔软度 · 50" />
                                 <Slider x:Name="BodySoftnessSlider" Minimum="0" Maximum="100" Value="50" TickFrequency="1" SmallChange="1" LargeChange="10" IsSnapToTickEnabled="True" ValueChanged="OnBodySliderChanged" Margin="0,6,0,2" AutomationProperties.Name="身体柔软度" />
-                                <Grid Margin="0,0,0,14"><TextBlock Text="硬" FontSize="11" /><TextBlock Text="软" FontSize="11" HorizontalAlignment="Right" /></Grid>
+                                <Grid Margin="0,0,0,6"><TextBlock Text="硬" FontSize="11" /><TextBlock Text="软" FontSize="11" HorizontalAlignment="Right" /></Grid>
                                 <TextBlock x:Name="BodyLandingBuildValue" Text="落地体型 · 50" />
                                 <Slider x:Name="BodyLandingBuildSlider" Minimum="0" Maximum="100" Value="50" TickFrequency="1" SmallChange="1" LargeChange="10" IsSnapToTickEnabled="True" ValueChanged="OnBodySliderChanged" Margin="0,6,0,2" AutomationProperties.Name="落地体型" />
                                 <Grid><TextBlock Text="胖" FontSize="11" /><TextBlock Text="瘦" FontSize="11" HorizontalAlignment="Right" /></Grid>
@@ -557,8 +588,7 @@
                                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
                             </Canvas></Viewbox>
                         </Button>
-                        <Button x:Name="ApplyButton" Style="{StaticResource FaceIconButton}" Tag="Primary" IsEnabled="False"
-                                Background="{DynamicResource HomeSelected}" BorderBrush="{DynamicResource HomeAccent}"
+                        <Button x:Name="ApplyButton" Style="{StaticResource FaceIconButton}" IsEnabled="False"
                                 Click="OnApplyAppearanceClick" ToolTip="应用 · 保存整套外观" AutomationProperties.Name="应用并保存外观">
                             <Viewbox Width="20" Height="20"><Canvas Width="24" Height="24" IsHitTestVisible="False">
                                 <Path Data="M4,12 L9,17 L20,6"

@@ -16,6 +16,45 @@ namespace Dango.Desktop.Tests.AppShell;
 public sealed class ProductHomeInteractionTests
 {
     [STATestMethod]
+    [DataRow(640, 360)]
+    [DataRow(960, 540)]
+    [DataRow(960, 640)]
+    [DataRow(1280, 720)]
+    public void LandscapeFaceEditorFitsViewportAndKeepsActionsReachable(int width, int height)
+    {
+        var home = new ProductHomeView { ReduceMotion = true };
+        var window = new Window { Content = home, Width = width, Height = height, Left = -10000, Top = 0,
+            ShowActivated = false, ShowInTaskbar = false, WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize };
+        try
+        {
+            window.Show(); Arrange(); home.ShowEditor(HomeEditor.Face); Arrange();
+            foreach (var tab in new[] { "AppearanceColorsTab", "AppearanceEyesTab" })
+            {
+                Click(home, tab); Arrange();
+                var viewport = Element<ScrollViewer>(home, "HomeContent");
+                Assert.IsLessThanOrEqualTo(.5, viewport.ScrollableHeight,
+                    $"{width}x{height} {tab}: stage={Element<Grid>(home, "Stage").ActualHeight}, viewport={viewport.ViewportHeight}; the whole editor must fit without page scrolling.");
+                foreach (var name in new[] { "ApplyButton", "CancelAppearanceButton", "DefaultAppearanceButton" })
+                {
+                    var bounds = Bounds(home, name);
+                    Assert.IsTrue(bounds.Top >= 0 && bounds.Bottom <= height && bounds.Left >= 0 && bounds.Right <= width, $"{name}: {bounds}");
+                    var button = Element<Button>(home, name);
+                    var point = new Point(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2);
+                    var hit = home.InputHitTest(point) as DependencyObject;
+                    // Apply is intentionally disabled until a valid draft exists; the other actions must be clickable.
+                    if (button.IsEnabled) Assert.IsTrue(ReferenceEquals(button, hit) || hit is not null && button.IsAncestorOf(hit), $"{name} must not be clipped by a scroll ancestor.");
+                }
+            }
+        }
+        finally { window.Close(); }
+
+        void Arrange()
+        {
+            window.UpdateLayout(); Pump(20); window.UpdateLayout();
+        }
+    }
+
+    [STATestMethod]
     [DataRow(1024)]
     [DataRow(736)]
     [DataRow(640)]

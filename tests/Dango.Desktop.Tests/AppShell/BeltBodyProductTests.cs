@@ -127,6 +127,7 @@ public sealed class BeltBodyProductTests
     }
 
     [STATestMethod]
+    [DataRow(640, 360)]
     [DataRow(960, 540)]
     [DataRow(736, 560)]
     [DataRow(480, 800)]
@@ -136,12 +137,20 @@ public sealed class BeltBodyProductTests
     {
         RequireModule();
         var root = NewRoot(); var home = CreateHome(root, new(Path.Combine(root, "appearance.json")));
-        var window = Show(home, width, height);
+        var window = Show(home, width, height, activate: false);
         try
         {
             WaitReady(home); var previewWidth = Element<Viewbox>(home, "PetPreview").Width;
             home.ShowEditor(HomeEditor.Face); Click(home, "AppearanceBodyTab"); Pump(100);
             Set(home, "BodySizeSlider", 120); Set(home, "BodySoftnessSlider", 100); Set(home, "BodyLandingBuildSlider", 0); WaitReady(home); Pump(200);
+            var outer = Element<ScrollViewer>(home, "HomeContent");
+            if (width > height)
+            {
+                Assert.IsLessThanOrEqualTo(.5, outer.ScrollableHeight,
+                    $"{width}x{height}: stage={Element<Grid>(home, "Stage").ActualHeight}, viewport={outer.ViewportHeight}; body editing must fit the page.");
+                Assert.IsLessThanOrEqualTo(.5, Element<ScrollViewer>(home, "OptionsBody").ScrollableHeight,
+                    "All three body parameters must fit without a second scrollbar.");
+            }
             foreach (var name in new[] { "AppearanceBodyTab", "ApplyButton", "CancelAppearanceButton", "DefaultAppearanceButton" })
             {
                 var b = Bounds(home, name);
@@ -161,6 +170,13 @@ public sealed class BeltBodyProductTests
             Element<ScrollViewer>(home, "OptionsBody").ScrollToEnd(); Pump(40);
             Assert.AreEqual(apply, Bounds(home, "ApplyButton"));
             SaveImage(home, $"body-{width}x{height}.png");
+            Click(home, "AppearanceEyesTab"); Pump(40);
+            Set(home, "EyeSizeSlider", 85);
+            Assert.AreEqual(85d, home.DraftAppearance.EyeLayout.SizePercent);
+            Assert.AreEqual(new DangoBodyControls(120, 100, 0), home.DraftAppearance.Body);
+            if (width > height) Assert.IsLessThanOrEqualTo(.5, outer.ScrollableHeight, "Changing to eye controls must not reintroduce page scrolling.");
+            Pump(40); home.UpdateLayout();
+            SaveImage(home, $"eyes-{width}x{height}.png");
         }
         finally { home.UnbindBeltBody(); window.Close(); }
     }
@@ -531,10 +547,11 @@ public sealed class BeltBodyProductTests
         var home = new ProductHomeView { ReduceMotion = true }; home.BindAppearance(appearance);
         home.BindBeltBody(Path.Combine(root, "settings.json")); return home;
     }
-    private static Window Show(ProductHomeView home, int width = 960, int height = 640)
+    private static Window Show(ProductHomeView home, int width = 960, int height = 640, bool activate = true)
     {
-        var window = new Window { Content = home, Width = width, Height = height, Left = 80, Top = 40, Title = "Dango product body verification" };
-        window.Show(); window.Activate(); Pump(60); return window;
+        var window = new Window { Content = home, Width = width, Height = height, Left = activate ? 80 : -10000, Top = 40,
+            ShowActivated = activate, ShowInTaskbar = activate, Title = "Dango product body verification" };
+        window.Show(); if (activate) window.Activate(); Pump(60); return window;
     }
     private static string NewRoot()
     {

@@ -618,12 +618,20 @@ public partial class ProductHomeView : UserControl
     private void UpdateStageSizing()
     {
         if (Stage is null || HomeContent is null) return;
+        var available = Math.Max(0, HomeContent.ActualHeight - Stage.Margin.Top - Stage.Margin.Bottom);
+        if (IsEditing && SelectedEditor == HomeEditor.Face && !IsPortraitLayout)
+        {
+            // Face parameters have their own scroll viewport and actions stay in the preview
+            // column. Hidden home launchers must not impose a page-scrolling minimum height.
+            Stage.MinHeight = 0;
+            if (double.IsNaN(Stage.Height) || Math.Abs(Stage.Height - available) > .5) Stage.Height = available;
+            return;
+        }
         var commonHeight = CommonPreviewTop + BasePreviewWidth * .75 + HomeLauncherSpace;
         Stage.MinHeight = Math.Max(minimumStageHeight, IsPortraitLayout ? PortraitPreviewHeight : commonHeight);
         if (IsEditing && !IsPortraitLayout)
             Stage.MinHeight = Math.Max(Stage.MinHeight, CommonPreviewTop + BasePreviewWidth * .75 + ShadowHeight +
                 EditorSaveActionsHeight + 16);
-        var available = HomeContent.ActualHeight - Stage.Margin.Top - Stage.Margin.Bottom;
         var height = Math.Max(Stage.MinHeight, available);
         if (double.IsNaN(Stage.Height) || Math.Abs(Stage.Height - height) > .5) Stage.Height = height;
     }
@@ -659,8 +667,12 @@ public partial class ProductHomeView : UserControl
             // Lower the resting Dango a little further wherever the actual
             // viewport still fits both entry rows; short views keep headroom.
             var lowerBy = Math.Clamp(available - safeTop - BasePreviewWidth * .75 - HomeLauncherSpace, 0, 8);
-            return Math.Max(safeTop + lowerBy, IsPortraitLayout ? 0 :
+            var preferred = Math.Max(safeTop + lowerBy, IsPortraitLayout ? 0 :
                 (Math.Max(minimumStageHeight, available) - BasePreviewWidth * .75 - HomeLauncherSpace) / 2);
+            if (IsEditing && SelectedEditor == HomeEditor.Face && !IsPortraitLayout)
+                return Math.Max(8, Math.Min(preferred, available - BasePreviewWidth * .75 - ShadowHeight -
+                    EditorSaveActionsHeight - 16));
+            return preferred;
         }
     }
 
@@ -696,7 +708,7 @@ public partial class ProductHomeView : UserControl
         EditorHeading.Visibility = EditorTitle.Visibility = Visibility.Collapsed;
         EditorHeadingRow.Height = new GridLength(0);
         OptionsBody.Margin = new Thickness(0);
-        EditorPanel.MinHeight = portrait ? 0 : shortLandscape ? 245 : compactLandscape ? 300 : 340;
+        EditorPanel.MinHeight = portrait || faceEditing ? 0 : shortLandscape ? 245 : compactLandscape ? 300 : 340;
         EditorPanel.Margin = portrait ? new Thickness(12, 4, 12, 8)
             : shortLandscape ? new Thickness(4) : new Thickness(4, 8, 4, 8);
         Grid.SetColumn(FaceEditorTools, 0);
