@@ -64,8 +64,23 @@ public sealed class BeltRoomVisibleIntegrationTests
             $"pet={window.Scene.DesktopPetPresentationEnabled}; healthy={window.Scene.HasHealthyFrame}; " +
             $"runtime={runtime.FrameFaultState}; host={host.LocalRoomFailure}; nativeFault={runtime.LastBeltRoomFrame?.Fault}; " +
             $"scheduler={driver.FrameDiagnostics}");
-        Pump(50); driver.Key(Key.Space, false, false);
-        Pump(700);
+        driver.Key(Key.Space, false, false); // The admission check above must not inject a simulated jump.
+        Assert.IsTrue(runtime.LastBeltRoomFrame!.BodySnapshot[79] >= .45, "The physical jump cooldown must already be clear.");
+        var realJumpObserved = false;
+        void ObserveJump()
+        {
+            if (runtime.LastBeltRoomFrame is { } frame && (frame.Stats[15] != 0 || frame.BodySnapshot[79] < .15))
+                realJumpObserved = true;
+        }
+        window.Scene.FrameApplied += ObserveJump;
+        try
+        {
+            try { keybd_event(0x20, 0, 0, 0); Pump(50); }
+            finally { keybd_event(0x20, 0, 2, 0); }
+            Pump(700);
+        }
+        finally { window.Scene.FrameApplied -= ObserveJump; }
+        Assert.IsTrue(realJumpObserved, "A real focused Space event must produce a native accepted jump.");
         foreach (var preset in new[] { RoomViewPreset.Whole, RoomViewPreset.Near, RoomViewPreset.Standard })
             window.Scene.SelectView(preset);
         Pump(150);
