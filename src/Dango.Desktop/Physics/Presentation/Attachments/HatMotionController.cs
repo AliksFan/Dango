@@ -10,7 +10,7 @@ public sealed record HatMotionFrame(HatVisualPose? Pose, double S, double Veloci
 /// <summary>Sliding only; reads presentation geometry and never owns a physics world.</summary>
 public sealed class HatMotionController(PhysicsPresentationFrame? baseline = null)
 {
-    private HatPlacementSolver? calibration = baseline is null ? null : HatPlacementSolver.Create(AttachmentShapeGeometry.Create(baseline.Contour), baseline.Hat);
+    private HatPlacementSolver? calibration = baseline is null ? null : HatPlacementSolver.Create(AttachmentShapeGeometry.FromFrame(baseline), baseline.Hat);
     private HatPlacementSolver? placement;
     private SpringState state;
     private string safety = "Normal";

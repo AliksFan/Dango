@@ -411,7 +411,7 @@ public partial class ProductHomeView : UserControl
 
     private void EnterPorch()
     {
-        if (beltRuntime is not null)
+        if (beltRuntime is not null && !beltRoomEntryEnabled)
         {
             SetNotice("本次验收：单人首页与捏脸", "新身体尚未接入房间。当前候选只验证捏脸、实时调节与身体休眠。");
             return;
@@ -421,6 +421,7 @@ public partial class ProductHomeView : UserControl
         if (IsEditing) CloseEditor(focusStage: false);
         CancelAppearancePreview();
         IsInPorch = true;
+        if (beltRoomEntryEnabled) RefreshBeltVisibility();
         roomNavigation.ShowPorch();
         ChangeLiveSurface();
         UpdateLiveMovementMode();
@@ -433,6 +434,7 @@ public partial class ProductHomeView : UserControl
         if (!IsInPorch) return;
         porchResumeX = PorchScene.PetWorldX;
         IsInPorch = false;
+        if (beltRoomEntryEnabled) RefreshBeltVisibility();
         roomNavigation.ShowHome();
         ClearLiveDirectionalInput();
         ChangeLiveSurface();

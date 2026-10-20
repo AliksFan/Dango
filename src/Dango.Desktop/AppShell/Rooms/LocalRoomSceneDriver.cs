@@ -50,6 +50,7 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     internal bool IsReady => readySent && scheduler.OwnsRuntime;
     internal HostFrameDiagnostics FrameDiagnostics => scheduler.Snapshot;
     internal bool RuntimeRunning => runtime.IsRunning;
+    internal bool UsesBeltRoom => runtime.UsesBeltRoom;
     internal bool RuntimeHealthy => runtime.LastError is null && runtime.LastFrame is not null;
     internal bool IsPointerActive => pointer.IsActive;
     internal string DesktopPetPointerDiagnostics => $"Pointer={pointer.IsActive}; PhysicalDrag={runtime.IsDragging}; " +
@@ -302,16 +303,17 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     internal bool Key(System.Windows.Input.Key key, bool down, bool repeat)
     {
         if (!scheduler.OwnsRuntime || view?.InputBlocked == true || view?.DesktopPetPresentationEnabled == true || !readySent) return false;
-        if (down && repeat) return key is System.Windows.Input.Key.A or System.Windows.Input.Key.D or System.Windows.Input.Key.S or System.Windows.Input.Key.Space;
+        if (down && repeat) return key is System.Windows.Input.Key.A or System.Windows.Input.Key.D or System.Windows.Input.Key.S or System.Windows.Input.Key.Space || runtime.UsesBeltRoom && key == System.Windows.Input.Key.W;
         intent = key switch
         {
             System.Windows.Input.Key.A => intent with { Left = down },
             System.Windows.Input.Key.D => intent with { Right = down },
             System.Windows.Input.Key.S => intent with { Squash = down },
+            System.Windows.Input.Key.W when runtime.UsesBeltRoom => intent with { Stretch = down },
             System.Windows.Input.Key.Space => intent with { Jump = down },
             _ => intent,
         };
-        return key is System.Windows.Input.Key.A or System.Windows.Input.Key.D or System.Windows.Input.Key.S or System.Windows.Input.Key.Space;
+        return key is System.Windows.Input.Key.A or System.Windows.Input.Key.D or System.Windows.Input.Key.S or System.Windows.Input.Key.Space || runtime.UsesBeltRoom && key == System.Windows.Input.Key.W;
     }
 
     private bool Prepare()

@@ -63,6 +63,7 @@ public partial class ProductHomeView
 
     internal void ResumePorch(long generation = 0)
     {
+        if (beltRoomEntryEnabled) { ResumeBeltHome(generation); return; }
         SetDangoAway(false);
         porchReturnGeneration = generation;
         ShowHomePage();

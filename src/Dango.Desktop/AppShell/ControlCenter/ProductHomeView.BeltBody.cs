@@ -30,6 +30,8 @@ public partial class ProductHomeView
     private string? beltError;
     private string? beltDiagnosticError;
     private string? beltSettingsPath;
+    private bool beltRoomEntryEnabled, beltRoomSuspended;
+    internal bool BeltRoomEntryEnabled => beltRoomEntryEnabled;
     private double BeltFloor => 120 + (PetShadow.Height / 2 - 1) / Math.Max(.1, PetPreview.Width / 160);
     internal BeltBodyRuntime? BoundBeltBody => beltRuntime;
     internal BeltBodyAppearancePresenter? BoundBeltPresenter => beltPresenter;
@@ -40,10 +42,11 @@ public partial class ProductHomeView
     private readonly List<BeltBodySnapshot> beltRenderBatch = new(2);
     internal double BeltBodyPresentationSeconds { get; private set; }
 
-    internal void BindBeltBody(string settingsPath)
+    internal void BindBeltBody(string settingsPath, bool enableRoomEntry = false)
     {
         if (beltRuntime is not null || BoundRuntime is not null) throw new InvalidOperationException("主页已绑定实时场景。");
         beltSettingsPath = settingsPath;
+        beltRoomEntryEnabled = enableRoomEntry;
         beltRuntime = new BeltBodyRuntime(Path.Combine(AppContext.BaseDirectory, "dango_belt_product.dll")) { SleepEnabled = true };
         ConfigureBeltLauncher(FaceButton, "捏脸");
         ConfigureBeltLauncher(WardrobeButton, "换装");
@@ -60,7 +63,9 @@ public partial class ProductHomeView
         LiveDangoVisual.Visibility = LiveDangoHat.Visibility = Visibility.Collapsed;
         PetPreview.ToolTip = "拖动团子 · A/D 移动 · W 拉伸 · S 下压 · Space 跳跃";
         LiveSceneStatusText.Text = "新身体启动中…";
-        SetNotice("新身体接入验收", appearanceSession?.StartupWarning ?? "单人首页／捏脸 · 已保存配饰跟随；房间接入为后续批次。");
+        SetNotice("新身体接入验收", appearanceSession?.StartupWarning ?? (beltRoomEntryEnabled
+            ? "首页／捏脸与空布局房间接线；家具玩法尚未接入。"
+            : "单人首页／捏脸 · 已保存配饰跟随；房间接入为后续批次。"));
         PetPreview.PreviewMouseLeftButtonDown += OnBeltPointerDown;
         PetPreview.MouseMove += OnBeltPointerMove;
         PetPreview.MouseLeftButtonUp += OnBeltPointerUp;
@@ -101,7 +106,32 @@ public partial class ProductHomeView
         beltFatalError = false;
         beltDiagnosticError = null;
         beltRequestedRevision = beltRequestedBodyEpoch = -1;
-        BindBeltBody(path);
+        BindBeltBody(path, beltRoomEntryEnabled);
+    }
+
+    // Await the home worker's acknowledgement before the room scheduler may advance.
+    internal async Task PauseBeltForRoomAsync()
+    {
+        if (beltRuntime is null) return;
+        beltRoomSuspended = true;
+        PauseBeltBody();
+        await beltRuntime.PauseAsync();
+    }
+
+    internal void RestoreBeltAfterRoomPreparation()
+    {
+        beltRoomSuspended = false;
+        RefreshBeltVisibility();
+    }
+
+    private void ResumeBeltHome(long generation)
+    {
+        porchReturnGeneration = generation;
+        SetDangoAway(false);
+        ShowHomePage();
+        LeavePorch();
+        liveSceneSuspended = false;
+        RestoreBeltAfterRoomPreparation();
     }
 
     internal ProductSettingsSceneSnapshot ReadBeltBodySettingsScene()
@@ -179,7 +209,7 @@ public partial class ProductHomeView
     private void RefreshBeltVisibility()
     {
         if (beltRuntime is null) return;
-        var visible = IsLoaded && IsVisible && !IsSettingsOpen && !IsDangoAway;
+        var visible = IsLoaded && IsVisible && !IsSettingsOpen && !IsDangoAway && !beltRoomSuspended && (!beltRoomEntryEnabled || !IsInPorch);
         if (visible == beltVisible) return;
         beltVisible = visible;
         beltRenderStamp = Stopwatch.GetTimestamp();
@@ -218,6 +248,12 @@ public partial class ProductHomeView
             beltRuntime.MarkDisplayed(displayed))
         {
             BeltBodyDisplayConfirmed?.Invoke(displayed);
+            if (beltRoomEntryEnabled && porchReturnGeneration != 0 && !beltRoomSuspended && !IsDangoAway && !IsInPorch)
+            {
+                var attempt = porchReturnGeneration;
+                porchReturnGeneration = 0;
+                HealthyPorchFrameReady?.Invoke(attempt);
+            }
             if (appearanceSession?.MarkBodyApplied(displayed.Body, displayed.ModelVersion, displayed.ConfigurationRevision, displayed.BodyEpoch) == true)
                 RefreshAppearanceControls();
         }

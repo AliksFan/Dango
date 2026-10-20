@@ -209,7 +209,7 @@ static int belt_room_contact(belt_body* b){
  b->stats[25]=n;b->stats[26]+=before;b->stats[27]+=after;b->stats[30]=fmax(b->stats[30],residual);b->diag[12]+=before;b->diag[13]+=after;b->diag[14]+=after-before;w->diag[22]+=1;return 1;
 }
 int dango_belt_room_version(void){return DANGO_BELT_ROOM_ABI;}
-int dango_belt_room_capabilities(void){return 15;}
+int dango_belt_room_capabilities(void){return 31;}
 int dango_belt_room_frame_size(void){return (int)sizeof(dango_belt_room_frame);}
 const char* dango_belt_room_model(void){return "continuous-belt-room-v1";}
 const char* dango_belt_room_tuning(void){return "C455-F-v1";}
@@ -247,6 +247,17 @@ int dango_belt_room_read_frame(void* handle,dango_belt_room_frame* output,int by
  room_world* w=room_lookup(handle);if(!w)return DANGO_BELT_ROOM_HANDLE;if(!output||bytes<(int)sizeof *output)return DANGO_BELT_ROOM_ARGUMENT;
  dango_belt_room_frame frame;memset(&frame,0,sizeof frame);frame.size=sizeof frame;frame.abi=1;frame.generation=w->generation;frame.tick=w->tick;frame.scene_revision=w->revision;frame.body_id=frame.config_revision=1;frame.platform_enabled=w->platform_enabled;frame.fault=w->fault;if(w->platform_enabled)frame.platform=w->platform;
  if(dango_belt_read_snapshot(w->body_handle,frame.body_snapshot,200)||dango_belt_read(w->body_handle,frame.scaffold,68,frame.curve,512,frame.stats,64))return DANGO_BELT_ROOM_REJECTED;memcpy(frame.diagnostics,w->diag,sizeof frame.diagnostics);memcpy(output,&frame,sizeof frame);return 0;
+}
+int dango_belt_room_set_bounds(void* handle,float left,float right,uint64_t revision){
+ room_world* w=room_lookup(handle);if(!w)return DANGO_BELT_ROOM_HANDLE;if(w->fault)return DANGO_BELT_ROOM_FAULT;
+ if(revision!=w->revision||w->revision==UINT64_MAX)return DANGO_BELT_ROOM_REVISION;
+ belt_body* b=room_body(w);if(!isfinite(left)||!isfinite(right)||left>=right||right-left<4*b->radius)return DANGO_BELT_ROOM_ARGUMENT;
+ /* Use the same continuous extrema and strict containment as the body step.
+    All checks precede writes, including diagnostic/support state. */
+ double bounds[4],foot;belt_bounds(b->q,bounds,&foot);if(bounds[0]<left||bounds[2]>right)return DANGO_BELT_ROOM_REJECTED;
+ if(w->platform_enabled){double edges[4];room_edges(&w->platform,edges);if(edges[0]<left||edges[2]>right)return DANGO_BELT_ROOM_REJECTED;}
+ if(b->left==left&&b->right==right)return 0;
+ b->left=left;b->right=right;w->revision++;return 0;
 }
 static int room_platform_valid(room_world* w,const dango_belt_room_platform* p){
  if(!p||!p->id||!isfinite(p->x)||!isfinite(p->y)||!isfinite(p->width)||!isfinite(p->height)||!isfinite(p->friction)||p->width<.1||p->width>16||p->height<.1||p->height>16||p->friction<0||p->friction>1.5)return 0;

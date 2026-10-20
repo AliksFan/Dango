@@ -2,6 +2,7 @@ using Dango.Core.Animation;
 using Dango.Core.Coordinates;
 using Dango.Physics;
 using Dango.Physics.Configuration;
+using Dango.Desktop.Physics.Tuning;
 
 namespace Dango.Desktop.Physics.Presentation;
 
@@ -21,7 +22,8 @@ public sealed record DesktopPhysicsSceneFrame(
 /// </summary>
 public sealed partial class DesktopPhysicsScene : IDisposable
 {
-    private readonly DangoPhysicsWorld world;
+    private readonly DangoPhysicsWorld world = null!;
+    private readonly BeltRoomSceneAdapter? beltRoom;
     private readonly Dictionary<DangoEntityId, DangoPhysicsPresentationAdapter> presenters = [];
     private readonly Dictionary<DangoEntityId, DangoFacingDirection> facing = [];
     private readonly int ownerThreadId = Environment.CurrentManagedThreadId;
@@ -55,21 +57,34 @@ public sealed partial class DesktopPhysicsScene : IDisposable
         }
     }
 
+    public DesktopPhysicsScene(string nativeLibraryPath, LogicalRect referenceBounds, DangoBodyControls controls)
+    {
+        width = 160; height = 120;
+        beltRoom = new(nativeLibraryPath, referenceBounds, controls);
+        SelectedEntity = new(1);
+        LastFrame = beltRoom.LastFrame;
+    }
+    public bool UsesBeltRoom => beltRoom is not null;
+    public DangoBeltRoomFrame? BeltRoomFrame => beltRoom?.Frame;
+    public LogicalPoint SelectedCoreHost => beltRoom?.CoreHost ??
+        LastFrame?.Bodies.Single(body => body.EntityId == SelectedEntity).Bounds.Center ?? origin;
+
     public DangoEntityId SelectedEntity { get; private set; }
-    public int Count => presenters.Count;
+    public int Count => beltRoom is null ? presenters.Count : 1;
     public bool IsPaused => paused;
-    public int LastErrorCode => world.LastErrorCode;
+    public int LastErrorCode => beltRoom?.LastErrorCode ?? world.LastErrorCode;
     public DesktopPhysicsSceneFrame? LastFrame { get; private set; }
-    public IReadOnlyList<DangoEntityId> EntityIds => Array.AsReadOnly(presenters.Keys.ToArray());
-    public double GroundY => ToHost(new(0, DangoPhysicsDefaults.Current.GroundHeight)).Y;
+    public IReadOnlyList<DangoEntityId> EntityIds => beltRoom is null ? Array.AsReadOnly(presenters.Keys.ToArray()) : Array.AsReadOnly(new[] { SelectedEntity });
+    public double GroundY => beltRoom?.GroundY ?? ToHost(new(0, DangoPhysicsDefaults.Current.GroundHeight)).Y;
     internal bool UnboundedHorizontalPreview => unboundedHorizontalPreview;
     internal int HorizontalRebaseCount { get; private set; }
-    internal double PreviewJumpSpeedScale => world.PreviewJumpSpeedScale;
+    internal double PreviewJumpSpeedScale => beltRoom is null ? world.PreviewJumpSpeedScale : 1;
     internal double ContinuousCoreX(DangoBodyState body) => body.CoreX + horizontalCoreOffset;
 
     internal void SetPreviewJumpSpeedScale(double scale)
     {
         VerifyAccess();
+        if (beltRoom is not null) throw new NotSupportedException("Belt room preview scaling is unsupported.");
         if (scale != 1) EnsureHealthy();
         world.SetPreviewJumpSpeedScale(scale);
     }
@@ -83,6 +98,7 @@ public sealed partial class DesktopPhysicsScene : IDisposable
     {
         VerifyAccess();
         EnsureHealthy();
+        if (beltRoom is not null) throw new NotSupportedException("Belt room unbounded preview is unsupported.");
         if (unboundedHorizontalPreview == enabled) return;
         if (enabled)
         {
@@ -124,6 +140,7 @@ public sealed partial class DesktopPhysicsScene : IDisposable
         VerifyAccess();
         EnsureHealthy();
         if (unboundedHorizontalPreview) throw new InvalidOperationException("请先退出无边界编辑预览，再设置房间边界。");
+        if (beltRoom is not null) { beltRoom.SetBounds(hostLeft, hostRight); return; }
         world.SetHorizontalBounds(ToWorld(new(hostLeft, origin.Y)).X, ToWorld(new(hostRight, origin.Y)).X);
     }
 
@@ -131,6 +148,7 @@ public sealed partial class DesktopPhysicsScene : IDisposable
     {
         VerifyAccess();
         EnsureHealthy();
+        if (beltRoom is not null) { beltRoom.ClearBounds(); return; }
         world.ClearHorizontalBounds();
     }
 
@@ -148,6 +166,7 @@ public sealed partial class DesktopPhysicsScene : IDisposable
         ValidatePoint(requestedCenter);
         if (!double.IsFinite(hostLeft) || !double.IsFinite(hostRight) || hostLeft >= hostRight)
             throw new ArgumentOutOfRangeException(nameof(hostRight));
+        if (beltRoom is not null) return beltRoom.TryPlacement(requestedCenter, hostLeft, hostRight, out safeCenter);
         safeCenter = default;
         if (LastFrame is not { Physics.Succeeded: true } frame) return false;
         var defaults = DangoPhysicsDefaults.Current;
@@ -190,6 +209,7 @@ public sealed partial class DesktopPhysicsScene : IDisposable
         VerifyAccess();
         EnsureHealthy();
         ValidatePoint(actualCenter);
+        if (beltRoom is not null) { ClearInput(); var ok = beltRoom.RehostSelected(actualCenter); LastFrame = beltRoom.LastFrame; return ok; }
         if (LastFrame is not { Physics.Succeeded: true } frame) return false;
         var selected = frame.Physics.Bodies.Single(body => body.EntityId == SelectedEntity);
         var selectedBounds = frame.Bodies.Single(body => body.EntityId == SelectedEntity).Bounds;
@@ -217,6 +237,7 @@ public sealed partial class DesktopPhysicsScene : IDisposable
     {
         VerifyAccess();
         EnsureHealthy();
+        if (beltRoom is not null) throw new NotSupportedException("Belt rooms currently support one body.");
         var id = world.Add(x, y);
         presenters.Add(id, new(DangoPhysicsDefaults.Current));
         facing.Add(id, DangoFacingDirection.Center);
@@ -299,6 +320,7 @@ public sealed partial class DesktopPhysicsScene : IDisposable
     {
         VerifyAccess();
         ValidatePoint(referenceCenter);
+        if (beltRoom is not null) { beltRoom.Rehost(referenceCenter); ClearInput(); LastFrame = beltRoom.LastFrame; return; }
         var translation = new LogicalVector(referenceCenter.X - origin.X, referenceCenter.Y - origin.Y);
         origin = referenceCenter;
         ClearInput();
@@ -317,6 +339,7 @@ public sealed partial class DesktopPhysicsScene : IDisposable
     {
         VerifyAccess();
         ValidatePoint(hostPoint);
+        if (beltRoom is not null) return beltRoom.ToWorld(hostPoint);
         return new((hostPoint.X - origin.X) / (width / 2), (origin.Y - hostPoint.Y) / (height / 2));
     }
 
@@ -324,6 +347,7 @@ public sealed partial class DesktopPhysicsScene : IDisposable
     {
         VerifyAccess();
         ValidatePoint(worldPoint);
+        if (beltRoom is not null) return beltRoom.ToHost(worldPoint);
         return new(origin.X + worldPoint.X * width / 2, origin.Y - worldPoint.Y * height / 2);
     }
 
@@ -340,6 +364,16 @@ public sealed partial class DesktopPhysicsScene : IDisposable
         }
         if (!double.IsFinite(autonomousHorizontal) || Math.Abs(autonomousHorizontal) > .35)
             throw new ArgumentOutOfRangeException(nameof(autonomousHorizontal));
+        if (beltRoom is not null)
+        {
+            var axis = intent.Left == intent.Right ? 0d : intent.Left ? -1d : 1d;
+            if (axis == 0 && !intent.Jump && !intent.Squash && !intent.Stretch && !dragActive) axis = autonomousHorizontal;
+            var result = beltRoom.Step(new(axis, intent.Stretch ? 1 : 0, intent.Squash ? 1 : 0,
+                intent.Jump && !jumpWasHeld, dragActive, dragTarget.X, dragTarget.Y,
+                axis != 0 || intent.Jump || intent.Squash || intent.Stretch || dragActive));
+            jumpWasHeld = intent.Jump;
+            return LastFrame = result;
+        }
         RebaseHorizontalPreview();
         var horizontal = intent.Left == intent.Right ? 0d : intent.Left ? -1d : 1d;
         if (horizontal == 0 && !intent.Jump && !intent.Squash && !dragActive && Count == 1)
@@ -374,6 +408,7 @@ public sealed partial class DesktopPhysicsScene : IDisposable
     public void Reset()
     {
         VerifyAccess();
+        if (beltRoom is not null) { beltRoom.Reset(); ClearInput(); LastFrame = beltRoom.LastFrame; return; }
         world.Reset();
         horizontalCoreOffset = 0;
         HorizontalRebaseCount = 0;
@@ -389,7 +424,7 @@ public sealed partial class DesktopPhysicsScene : IDisposable
         VerifyAccess();
         disposed = true;
         ClearInput();
-        world.Dispose();
+        if (beltRoom is not null) beltRoom.Dispose(); else world.Dispose();
         presenters.Clear();
         facing.Clear();
         LastFrame = null;
@@ -398,6 +433,7 @@ public sealed partial class DesktopPhysicsScene : IDisposable
     private void VerifyEntity(DangoEntityId id)
     {
         VerifyAccess();
+        if (beltRoom is not null && id == SelectedEntity) return;
         if (!presenters.ContainsKey(id))
             throw new DangoPhysicsException(DangoPhysicsFailureKind.InvalidEntity, "桌面实体已失效。", -412);
     }

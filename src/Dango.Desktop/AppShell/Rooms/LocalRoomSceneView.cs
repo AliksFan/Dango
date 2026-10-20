@@ -175,7 +175,9 @@ internal sealed partial class LocalRoomSceneView : Grid
     {
         if (ActualWidth <= 0 || ActualHeight <= 0 || frame.Bodies.Count != 1 || frame.ConstraintsReleased ||
             runtime.LastError is not null || !frame.Bodies[0].IsVisible ||
-            frame.Bodies[0].FallbackReason != PhysicsPresentationFallbackReason.None || runtime.LocalGroundY is not { } floor)
+            frame.Bodies[0].FallbackReason != PhysicsPresentationFallbackReason.None || runtime.LocalGroundY is not { } floor ||
+            runtime.UsesBeltRoom && (frame.BeltRoom is not { Fault: 0 } belt ||
+                runtime.LastBeltRoomFrame is not { } current || belt.OwnerEpoch != current.OwnerEpoch || belt.Generation != current.Generation))
         {
             InvalidateInputFrame();
             return false;
@@ -261,7 +263,8 @@ internal sealed partial class LocalRoomSceneView : Grid
         if (!HasHealthyFrame || InputBlocked || bodyWorldBounds is not { } bounds ||
             !double.IsFinite(sceneDip.X) || !double.IsFinite(sceneDip.Y)) return false;
         var point = ScreenToPetWorld(sceneDip);
-        if (!DesktopPetPresentationEnabled) return bounds.Contains(point);
+        if (!DesktopPetPresentationEnabled && LastAppliedFrame?.Bodies[0].Diagnostics.Backend != PhysicsPresentationBackend.ContinuousBelt)
+            return bounds.Contains(point);
         if (body.FindName("BodyPath") is not System.Windows.Shapes.Path { Data: { } geometry } ||
             body.FindName("GaitBodyLayer") is not FrameworkElement layer || layer.RenderTransform.Inverse is not { } inverse) return false;
         return geometry.FillContains(inverse.Transform(new Point(point.X - bounds.X, point.Y - bounds.Y)));

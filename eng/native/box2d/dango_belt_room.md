@@ -12,6 +12,17 @@ two former failures against the actual R1 DLL. `--scenarios-default` still exits
 for unfinished edge/corner/jump behavior; it is not a product-admission gate
 that has passed. See the linked R1 contract and verification section5 for scope.
 
+Framework-connection extension (2026-10-20): ABI1/frame4472 and the R1 contact
+identity remain unchanged. Capability 16 adds `dango_belt_room_set_bounds`, so
+the new module advertises 31. It changes only the containment guard, not solid
+wall contact. The operation validates the expected scene revision, finite
+interval, minimum width, complete continuous body bounds and any platform
+bounds before writing. Rejection changes no state or fault; identical bounds
+are a revision-preserving no-op, and an accepted change increments scene
+revision without advancing tick. Managed physics callers retain capability-15
+compatibility; the desktop room adapter requires the new capability. Connection
+evidence and current product limitations are in verification section7.
+
 Status: contract written before implementation sampling, 2026-10-20. F7-1
 technical candidate only; capability declarations describe available operations,
 not passed acceptance. No dynamic balls, multiple bodies, sleep or product room

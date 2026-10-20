@@ -46,6 +46,11 @@ public sealed class AttachmentShapeGeometry
     public static AttachmentPoint MapToCanvas(PresentationPoint point, double width, double height) =>
         new(width / 2 + point.X * width * 0.45, height * 0.55 - point.Y * height * 0.48333333333333334);
 
+    internal static AttachmentShapeGeometry FromFrame(PhysicsPresentationFrame frame) =>
+        frame.Attachments?.SourceShape ?? (frame.Diagnostics.Backend == PhysicsPresentationBackend.ContinuousBelt
+            ? FromBoundary(frame.Contour.Select(point => new AttachmentPoint(point.X * 72 / 160, point.Y * 72 / 160)).ToArray())
+            : Create(frame.Contour));
+
     public static AttachmentShapeGeometry Create(IReadOnlyList<PresentationPoint> contour)
     {
         ArgumentNullException.ThrowIfNull(contour);

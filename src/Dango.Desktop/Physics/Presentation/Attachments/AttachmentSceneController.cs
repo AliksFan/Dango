@@ -87,9 +87,14 @@ public sealed class AttachmentSceneController(PhysicsPresentationFrame baseline)
                 var physical = frame.Physics.Bodies.Single(p => p.EntityId == body.EntityId);
                 try
                 {
-                    entry.Motion.Update(body.Presentation, step, seconds,
-                        body.EntityId == selected ? facing : DangoFacingDirection.Center,
-                        new(physical.CoreX, physical.CoreY));
+                    if (body.Presentation.Diagnostics.Backend == PhysicsPresentationBackend.ContinuousBelt)
+                        entry.Motion.UpdateBoundary(body.Presentation, AttachmentShapeGeometry.FromFrame(body.Presentation),
+                            step, seconds, body.EntityId == selected ? facing : DangoFacingDirection.Center,
+                            new(physical.CoreX, physical.CoreY));
+                    else
+                        entry.Motion.Update(body.Presentation, step, seconds,
+                            body.EntityId == selected ? facing : DangoFacingDirection.Center,
+                            new(physical.CoreX, physical.CoreY));
                     router.ConsumeResults(entry.Target);
                 }
                 catch (Exception error) when (error is ArgumentException or InvalidOperationException or ArithmeticException)

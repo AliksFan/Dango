@@ -30,6 +30,25 @@ static int atomic_contract(void){
  CHECK(dango_belt_room_remove_platform(h,1,1)==0);p.y=.4;CHECK(dango_belt_room_set_platform(h,&p,2)==-708);p.id=2;CHECK(dango_belt_room_set_platform(h,&p,2)==0);
  CHECK(dango_belt_room_destroy(h)==0);CHECK(dango_belt_room_destroy(h)==-701);printf("ABI/layout atomicity, capacity-no-write, overlap/stale revision/tombstone PASS\n");return 0;
 }
+static int bounds_update_contract(void){
+ void* h=NULL;CHECK(create_room(8,0,1.5f,&h)==0);room_world* w=room_lookup(h);belt_body* b=room_body(w);
+ CHECK(dango_belt_room_version()==1&&dango_belt_room_capabilities()==31);
+ dango_belt_room_platform p={1,4,.4,2,.2,.72};CHECK(!dango_belt_room_set_platform(h,&p,0));
+ /* A live support identity is deliberately retained: changing a guard is not
+    a support mutation or a body/presentation tick. */
+ w->diag[18]=1;w->diag[19]=0;belt_body before_body=*b;room_world before_world=*w;
+ CHECK(!dango_belt_room_set_bounds(h,-10,10,1));before_body.left=-10;before_body.right=10;before_world.revision++;
+ CHECK(!memcmp(&before_body,b,sizeof before_body)&&!memcmp(&before_world,w,sizeof before_world));
+ CHECK(!dango_belt_room_set_bounds(h,-10,10,2));CHECK(!memcmp(&before_body,b,sizeof before_body)&&!memcmp(&before_world,w,sizeof before_world));
+ const float invalid[][2]={{NAN,10},{-10,INFINITY},{10,-10},{0,0},{-.1f,.1f},{.5f,10},{-10,-.5f},{-3,3}};
+ const int expected[]={-700,-700,-700,-700,-700,-705,-705,-705};
+ for(int i=0;i<8;++i){CHECK(dango_belt_room_set_bounds(h,invalid[i][0],invalid[i][1],2)==expected[i]);CHECK(!memcmp(&before_body,b,sizeof before_body)&&!memcmp(&before_world,w,sizeof before_world));}
+ CHECK(dango_belt_room_set_bounds(h,-12,12,1)==-708);CHECK(!memcmp(&before_body,b,sizeof before_body)&&!memcmp(&before_world,w,sizeof before_world));
+ w->revision=UINT64_MAX;before_world=*w;CHECK(dango_belt_room_set_bounds(h,-12,12,UINT64_MAX)==-708);CHECK(!memcmp(&before_body,b,sizeof before_body)&&!memcmp(&before_world,w,sizeof before_world));
+ w->fault=-707;before_world=*w;CHECK(dango_belt_room_set_bounds(h,-12,12,UINT64_MAX)==-703);CHECK(!memcmp(&before_body,b,sizeof before_body)&&!memcmp(&before_world,w,sizeof before_world));
+ CHECK(!dango_belt_room_destroy(h));CHECK(dango_belt_room_set_bounds(h,-10,10,2)==-701);
+ printf("horizontal guard bounds revision, same-bounds no-op, body/platform refusal and complete no-write rollback PASS\n");return 0;
+}
 static int certificate_contract(void){
  void* h=NULL;CHECK(create_room(8,0,1.5f,&h)==0);room_world* w=room_lookup(h);belt_body* b=room_body(w);w->platform_enabled=1;w->platform=(dango_belt_room_platform){1,0,.4,3,.2,.72};double q[BELT_D],theta=0;memcpy(q,b->q,sizeof q);q[1]=q[35]=.4;CHECK(room_certificate(w,q,q,&theta,0)==0);
  /* Both endpoints clear, but actual Fourier interpolation traverses the slab. */
@@ -142,7 +161,7 @@ int main(int argc,char** argv){
  if(argc==4&&strcmp(argv[1],"--scenario")==0)return scenario_contract(atoi(argv[3]),atoi(argv[2]));
  if(argc>1&&strcmp(argv[1],"--scenarios")==0)return scenario_contract(-1,-1);
  if(argc>1&&strcmp(argv[1],"--scenarios-default")==0)return scenario_contract(8,-1);
- CHECK(atomic_contract()==0);CHECK(certificate_contract()==0);CHECK(rollback_contract()==0);CHECK(corner_contract()==0);CHECK(public_bounds_rollback()==0);
+ CHECK(atomic_contract()==0);CHECK(bounds_update_contract()==0);CHECK(certificate_contract()==0);CHECK(rollback_contract()==0);CHECK(corner_contract()==0);CHECK(public_bounds_rollback()==0);
 #ifdef _WIN32
  if(argc>1)CHECK(equivalence(argv[1])==0);
 #else

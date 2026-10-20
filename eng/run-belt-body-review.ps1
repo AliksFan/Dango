@@ -1,9 +1,11 @@
 param(
     [string]$NativeModulePath,
+    [string]$BeltRoomModulePath,
     [string]$ReviewDirectory,
     [switch]$NoBuild
 )
 $ErrorActionPreference = 'Stop'
+if ($BeltRoomModulePath) { $BeltRoomModulePath = (Resolve-Path -LiteralPath $BeltRoomModulePath).Path }
 $taskRoot = Split-Path -Parent $PSScriptRoot
 $binaryDirectory = Join-Path $taskRoot 'src/Dango.Desktop/bin/Release/net10.0-windows'
 if (-not $ReviewDirectory) { $ReviewDirectory = Join-Path $taskRoot 'artifacts/belt-product/human-review' }
@@ -38,5 +40,7 @@ if (-not (Test-Path -LiteralPath $executable) -or -not (Test-Path -LiteralPath (
     throw 'The isolated Release product and its independent belt DLL must be built first.'
 }
 # This explicitly requested review is an interactive window. It does not install or replace daily files.
-$candidate = Start-Process -FilePath $executable -ArgumentList @('--belt-body-review', '--belt-body-review-settings', ('"' + $ReviewDirectory + '"')) -PassThru
-[pscustomobject]@{ ProcessId = $candidate.Id; SettingsDirectory = $ReviewDirectory; SleepDefault = 'visible-deformation-v2-enabled'; Installed = $false }
+$candidateArguments = @('--belt-body-review', '--belt-body-review-settings', ('"' + $ReviewDirectory + '"'))
+if ($BeltRoomModulePath) { $candidateArguments += @('--belt-room-module', ('"' + $BeltRoomModulePath + '"')) }
+$candidate = Start-Process -FilePath $executable -ArgumentList $candidateArguments -PassThru
+[pscustomobject]@{ ProcessId = $candidate.Id; SettingsDirectory = $ReviewDirectory; BeltRoomModule = $BeltRoomModulePath; SleepDefault = 'visible-deformation-v2-enabled'; Installed = $false }

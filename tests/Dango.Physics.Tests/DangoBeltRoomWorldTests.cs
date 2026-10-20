@@ -208,6 +208,49 @@ public sealed class DangoBeltRoomWorldTests
         Assert.ThrowsExactly<NotSupportedException>(() => new DangoBeltRoomWorld(module, Config));
     }
 
+    [TestMethod]
+    public void OptionalHorizontalBoundsAreAtomicAndNeverAdvancePhysics()
+    {
+        using var world = new DangoBeltRoomWorld(Module, Config);
+        if (!world.SupportsHorizontalBounds) Assert.Inconclusive("This module does not advertise optional horizontal bounds.");
+        world.Step(1,new(Horizontal:1));
+        var before=world.Read();
+        world.SetHorizontalBounds(-8,8,before.SceneRevision);
+        var changed=world.Read();
+        Assert.AreEqual(before.Tick,changed.Tick);
+        Assert.AreEqual(before.SceneRevision+1,changed.SceneRevision);
+        CollectionAssert.AreEqual(before.Curve,changed.Curve);
+        CollectionAssert.AreEqual(before.Scaffold,changed.Scaffold);
+        CollectionAssert.AreEqual(before.Stats,changed.Stats);
+        CollectionAssert.AreEqual(before.Diagnostics,changed.Diagnostics);
+        // The snapshot contains native bounds; every other state value is unchanged.
+        for(var i=0;i<before.BodySnapshot.Count;i++)
+            if(i is not (76 or 77)) Assert.AreEqual(before.BodySnapshot[i],changed.BodySnapshot[i]);
+        Assert.AreEqual(-8d,changed.BodySnapshot[76]);
+        Assert.AreEqual(8d,changed.BodySnapshot[77]);
+        world.SetHorizontalBounds(-8,8,changed.SceneRevision);
+        AssertStable(changed,world.Read());
+        Assert.ThrowsExactly<DangoBeltRoomException>(()=>world.SetHorizontalBounds(-7,7,before.SceneRevision));
+        AssertStable(changed,world.Read());
+        Assert.ThrowsExactly<DangoBeltRoomException>(()=>world.SetHorizontalBounds(3,8,changed.SceneRevision));
+        AssertStable(changed,world.Read());
+        world.SetHorizontalBounds(-256,256,changed.SceneRevision);
+        Assert.AreEqual(changed.Tick,world.Read().Tick);
+    }
+
+    [TestMethod]
+    public void LegacyCapability15ModuleRemainsLoadableButRejectsOptionalBounds()
+    {
+        var module=RequiredModule("DANGO_BELT_ROOM_LEGACY_MODULE");
+        using var world=new DangoBeltRoomWorld(module,Config);
+        Assert.IsFalse(world.SupportsHorizontalBounds);
+        var before=world.Read();
+        Assert.ThrowsExactly<NotSupportedException>(()=>world.SetHorizontalBounds(-8,8,0));
+        AssertStable(before,world.Read());
+        world.Step(1);
+        Assert.AreEqual(1UL,world.Read().Tick);
+    }
+
     private static void AssertStable(DangoBeltRoomFrame expected, DangoBeltRoomFrame actual)
     {
         Assert.AreEqual(expected.OwnerEpoch, actual.OwnerEpoch);

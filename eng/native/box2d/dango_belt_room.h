@@ -11,7 +11,8 @@
 enum { DANGO_BELT_ROOM_ABI=1, DANGO_BELT_ROOM_BODY_CAPACITY=1,
  DANGO_BELT_ROOM_PLATFORM_CAPACITY=1, DANGO_BELT_ROOM_DIAGNOSTICS=24 };
 enum { DANGO_BELT_ROOM_CAP_SNAPSHOT=1,DANGO_BELT_ROOM_CAP_FROZEN_BODY=2,
- DANGO_BELT_ROOM_CAP_SOLID_PLATFORM=4,DANGO_BELT_ROOM_CAP_ATOMIC_LAYOUT=8 };
+ DANGO_BELT_ROOM_CAP_SOLID_PLATFORM=4,DANGO_BELT_ROOM_CAP_ATOMIC_LAYOUT=8,
+ DANGO_BELT_ROOM_CAP_HORIZONTAL_BOUNDS=16 };
 enum { DANGO_BELT_ROOM_ARGUMENT=-700,DANGO_BELT_ROOM_HANDLE=-701,
  DANGO_BELT_ROOM_CONFIG=-702,DANGO_BELT_ROOM_FAULT=-703,
  DANGO_BELT_ROOM_CAPACITY=-704,DANGO_BELT_ROOM_REJECTED=-705,
@@ -42,6 +43,8 @@ DANGO_BELT_ROOM_API int dango_belt_room_create(const dango_belt_config*,const fl
  float,float,float,float,void**);
 DANGO_BELT_ROOM_API int dango_belt_room_step(void*,float,const dango_belt_room_input*,int);
 DANGO_BELT_ROOM_API int dango_belt_room_read_frame(void*,dango_belt_room_frame*,int);
+/* Guard bounds only, not solid walls. Revisions serialize this with layout changes. */
+DANGO_BELT_ROOM_API int dango_belt_room_set_bounds(void*,float,float,uint64_t);
 DANGO_BELT_ROOM_API int dango_belt_room_set_platform(void*,const dango_belt_room_platform*,uint64_t);
 DANGO_BELT_ROOM_API int dango_belt_room_remove_platform(void*,uint64_t,uint64_t);
 DANGO_BELT_ROOM_API int dango_belt_room_destroy(void*);

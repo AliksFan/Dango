@@ -38,6 +38,8 @@ public sealed unsafe class DangoBeltRoomWorld : IDisposable
     private readonly SetPlatformDelegate setPlatform;
     private readonly RemovePlatformDelegate removePlatform;
     private readonly DestroyDelegate destroy;
+    private readonly SetBoundsDelegate? setBounds;
+    public bool SupportsHorizontalBounds { get; private set; }
 
     public DangoBeltRoomWorld(string module, DangoSelfPhysicsParameters configuration,
         double x = 0, double y = 0, double left = -10, double right = 10,
@@ -56,10 +58,12 @@ public sealed unsafe class DangoBeltRoomWorld : IDisposable
                 if (sizeof(NativeFrame) != FrameSize || sizeof(NativeInput) != 48 || sizeof(NativePlatform) != 48 ||
                     Export<VersionDelegate>("dango_belt_room_version")() != AbiVersion ||
                     Export<VersionDelegate>("dango_belt_room_frame_size")() != FrameSize ||
-                    Export<VersionDelegate>("dango_belt_room_capabilities")() != RequiredCapabilities ||
+                    (Export<VersionDelegate>("dango_belt_room_capabilities")() & RequiredCapabilities) != RequiredCapabilities ||
                     Identity("dango_belt_room_model") != Model || Identity("dango_belt_room_tuning") != TuningVersion ||
                     Identity("dango_belt_room_contact_model") != ContactModel)
                     throw new NotSupportedException("Unsupported independent belt room ABI, model, contact model, tuning, capabilities or frame layout.");
+                SupportsHorizontalBounds = (Export<VersionDelegate>("dango_belt_room_capabilities")() & 16) != 0;
+                if (SupportsHorizontalBounds) setBounds = Export<SetBoundsDelegate>("dango_belt_room_set_bounds");
                 step = Export<StepDelegate>("dango_belt_room_step");
                 read = Export<ReadDelegate>("dango_belt_room_read_frame");
                 setPlatform = Export<SetPlatformDelegate>("dango_belt_room_set_platform");
@@ -94,6 +98,14 @@ public sealed unsafe class DangoBeltRoomWorld : IDisposable
         var native = new NativeInput { BodyId = bodyId };
         for (var i = 0; i < controls.Length; i++) native.Controls[i] = controls[i];
         lock (NativeGate) Check(step(handle, (float)DangoBeltWorld.FixedDt, in native, 1), "step");
+    }
+
+    public void SetHorizontalBounds(double left, double right, ulong expectedRevision)
+    {
+        VerifyAccess();
+        if (!SupportsHorizontalBounds) throw new NotSupportedException("This belt room module does not support horizontal bounds.");
+        if (!Finite(left) || !Finite(right) || left >= right) throw new ArgumentOutOfRangeException(nameof(right));
+        lock (NativeGate) Check(setBounds!(handle, (float)left, (float)right, expectedRevision), "set bounds");
     }
 
     public void SetPlatform(DangoBeltRoomPlatform platform, ulong expectedRevision)
@@ -171,6 +183,7 @@ public sealed unsafe class DangoBeltRoomWorld : IDisposable
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int ReadDelegate(nint handle, NativeFrame* frame, int capacity);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int SetPlatformDelegate(nint handle, in NativePlatform platform, ulong expectedRevision);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int RemovePlatformDelegate(nint handle, ulong id, ulong expectedRevision);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int SetBoundsDelegate(nint handle, float left, float right, ulong expectedRevision);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int DestroyDelegate(nint handle);
     [StructLayout(LayoutKind.Sequential)] private struct NativeInput { public ulong BodyId; public fixed float Controls[9]; public int Reserved; }
     [StructLayout(LayoutKind.Sequential)] private struct NativePlatform { public ulong Id; public double X, Y, Width, Height, Friction; }

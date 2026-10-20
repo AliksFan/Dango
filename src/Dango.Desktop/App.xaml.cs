@@ -23,6 +23,7 @@ public partial class App : System.Windows.Application
         var faceReviewSettingsFile = ResolveFaceReviewSettingsFile(e.Args);
         var accessoryReviewSettingsFile = ResolveAccessoryReviewSettingsFile(e.Args);
         var beltBodySettingsFile = ResolveBeltBodyReviewSettingsFile(e.Args);
+        var beltRoomModulePath = ResolveBeltRoomModulePath(e.Args);
 
         var homeUiReview = e.Args.Contains("--home-ui-review", StringComparer.Ordinal);
         var settingsUiReview = e.Args.Contains("--settings-ui-review", StringComparer.Ordinal);
@@ -110,7 +111,8 @@ public partial class App : System.Windows.Application
             isolatedLocalRoomReview: localRoomReview || accessoryReview,
             isolatedFaceReview: faceReview,
             isolatedDesktopPetRoomReview: desktopPetRoomReview,
-            isolatedBeltBodyReview: beltBodyReview);
+            isolatedBeltBodyReview: beltBodyReview,
+            beltRoomModulePath: beltRoomModulePath);
         applicationHost.Start();
         if (desktopPetRoomReview) applicationHost.EnterDesktopPetRoom();
         if (physicsReview || eyeHatReview) applicationHost.ShowControlCenter();
@@ -150,9 +152,22 @@ public partial class App : System.Windows.Application
         const string mode = "--belt-body-review";
         const string flag = "--belt-body-review-settings";
         if (!args.Contains(mode, StringComparer.Ordinal) && !args.Contains(flag, StringComparer.Ordinal)) return null;
-        if (args.Length != 3 || args[0] != mode || args[1] != flag || string.IsNullOrWhiteSpace(args[2]))
+        if ((args.Length != 3 && args.Length != 5) || args[0] != mode || args[1] != flag || string.IsNullOrWhiteSpace(args[2]) ||
+            (args.Length == 5 && (args[3] != "--belt-room-module" || string.IsNullOrWhiteSpace(args[4]))))
             throw new ArgumentException("Belt body review requires only its explicit owned fictional settings directory.");
+        _ = ResolveBeltRoomModulePath(args);
         return ResolveOwnedIsolatedSettingsFile(args[2], ".dango-belt-body-review.json", "beltBodyReviewFormat");
+    }
+
+    internal static string? ResolveBeltRoomModulePath(string[] args)
+    {
+        if (!args.Contains("--belt-room-module", StringComparer.Ordinal)) return null;
+        if (args.Length != 5 || args[0] != "--belt-body-review" || args[1] != "--belt-body-review-settings" ||
+            string.IsNullOrWhiteSpace(args[2]) || args[3] != "--belt-room-module" || !Path.IsPathFullyQualified(args[4]))
+            throw new ArgumentException("Belt room module requires belt body review, owned settings and an explicit absolute module path.");
+        var path = Path.GetFullPath(args[4]);
+        if (!File.Exists(path)) throw new FileNotFoundException("Belt room module was not found.", path);
+        return path;
     }
 
     private static string ResolveOwnedIsolatedSettingsFile(string directory, string ownerFile, string formatProperty)

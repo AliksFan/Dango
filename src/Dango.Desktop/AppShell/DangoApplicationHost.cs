@@ -29,6 +29,7 @@ internal sealed partial class DangoApplicationHost : IDisposable
     private readonly bool porchReview;
     private readonly bool faceReview;
     private readonly bool beltBodyReview;
+    private readonly bool beltRoomReview;
     private readonly ApplicationUiMode uiMode;
     private readonly DispatcherTimer geometrySaveTimer = new() { Interval = TimeSpan.FromMilliseconds(300) };
     private ControlCenterWindow? controlCenterWindow;
@@ -42,7 +43,8 @@ internal sealed partial class DangoApplicationHost : IDisposable
     public DangoApplicationHost(bool isolatedPhysicsReview = false, bool isolatedEyeHatReview = false,
         string? settingsFile = null, string? nativeLibraryPath = null, ControlCenterWindowSettingsStore? settingsStore = null,
         bool isolatedUnifiedHomeReview = false, bool isolatedPorchReview = false, bool isolatedLocalRoomReview = false,
-        bool isolatedFaceReview = false, bool isolatedDesktopPetRoomReview = false, bool isolatedBeltBodyReview = false)
+        bool isolatedFaceReview = false, bool isolatedDesktopPetRoomReview = false, bool isolatedBeltBodyReview = false,
+        string? beltRoomModulePath = null)
     {
         if ((isolatedPhysicsReview ? 1 : 0) + (isolatedEyeHatReview ? 1 : 0) +
             (isolatedUnifiedHomeReview ? 1 : 0) + (isolatedPorchReview ? 1 : 0) +
@@ -52,13 +54,17 @@ internal sealed partial class DangoApplicationHost : IDisposable
         porchReview = isolatedPorchReview;
         faceReview = isolatedFaceReview;
         beltBodyReview = isolatedBeltBodyReview;
+        beltRoomReview = beltRoomModulePath is not null;
+        if (beltRoomReview && (!beltBodyReview || settingsFile is null || !Path.IsPathFullyQualified(beltRoomModulePath!)))
+            throw new ArgumentException("Belt room requires belt body review, isolated settings and an explicit absolute module path.", nameof(beltRoomModulePath));
         if (beltBodyReview && settingsFile is null)
             throw new ArgumentException("Belt body candidate requires explicitly owned isolated settings.", nameof(settingsFile));
         eyeHatReview = isolatedEyeHatReview;
         uiMode = isolatedPhysicsReview || isolatedEyeHatReview ? ApplicationUiMode.DeveloperReview : ApplicationUiMode.Product;
         sceneSession = new DesktopSceneSession();
         stackedRuntime = isolatedEyeHatReview ? StackedDangoSceneRuntime.CreateEyeHatReview(nativeLibraryPath, deferInitialization: true)
-            : isolatedPhysicsReview ? new StackedDangoSceneRuntime(nativeLibraryPath) : StackedDangoSceneRuntime.CreateProduct(nativeLibraryPath);
+            : isolatedPhysicsReview ? new StackedDangoSceneRuntime(nativeLibraryPath)
+            : beltRoomReview ? StackedDangoSceneRuntime.CreateBeltRoom(beltRoomModulePath!) : StackedDangoSceneRuntime.CreateProduct(nativeLibraryPath);
         workerWWindow = new WorkerWWindow(sceneSession, stackedRuntime);
         sceneWindow = new DangoSceneWindow(sceneSession, stackedRuntime);
         desktopHost = new DesktopHostCoordinator(workerWWindow, sceneWindow, stackedRuntime);
@@ -109,7 +115,7 @@ internal sealed partial class DangoApplicationHost : IDisposable
         started = true;
         // Establish recovery entry points before touching the native module.
         trayIcon = new DangoTrayIcon(commandController, ShowControlCenter, ShowDiagnostics, RequestExit,
-            uiMode == ApplicationUiMode.Product && !porchReview && !faceReview && !beltBodyReview ? CreateLocalRoomTrayActions() : null);
+            uiMode == ApplicationUiMode.Product && !porchReview && !faceReview && (!beltBodyReview || beltRoomReview) ? CreateLocalRoomTrayActions() : null);
         var initialized = !beltBodyReview && stackedRuntime.TryInitialize();
         if (uiMode == ApplicationUiMode.Product)
         {
@@ -212,10 +218,10 @@ internal sealed partial class DangoApplicationHost : IDisposable
         {
             controlCenterWindow.ProductHome.BindAppearance(appearance);
             controlCenterWindow.ProductHome.BindAccessories(accessories);
-            if (beltBodyReview) controlCenterWindow.ProductHome.BindBeltBody(settingsPath);
+            if (beltBodyReview) controlCenterWindow.ProductHome.BindBeltBody(settingsPath, beltRoomReview);
             else controlCenterWindow.ProductHome.BindLiveScene(sceneSession, stackedRuntime);
             controlCenterWindow.ProductHome.SetPorchReviewMode(porchReview);
-            if (!porchReview && !faceReview && !beltBodyReview) BindLocalRoom(controlCenterWindow);
+            if (!porchReview && !faceReview && (!beltBodyReview || beltRoomReview)) BindLocalRoom(controlCenterWindow);
             controlCenterWindow.BindSettingsScene(ReadProductSettingsScene, RestoreRoomDisplayFromSettings, ReinitializeSceneFromSettings);
             if (porchReview) controlCenterWindow.Title = "Dango · 门廊 E1 场景预览";
             if (beltBodyReview) controlCenterWindow.Title = "Dango · 新身体接入验收";

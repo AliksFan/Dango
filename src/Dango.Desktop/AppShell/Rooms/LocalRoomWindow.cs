@@ -132,6 +132,8 @@ internal sealed class LocalRoomWindow : Window
         Scene.KeyDown += OnSceneKeyDown;
         Scene.KeyUp += (_, e) => { if (IsActive && Scene.IsKeyboardFocusWithin && !Scene.InputBlocked) e.Handled = driver.Key(e.Key, false, false); };
         PreviewKeyDown += OnPreviewKeyDown;
+        PreviewKeyUp += (_, e) => HandleBeltRoomKey(e, false);
+        PreviewGotKeyboardFocus += (_, e) => { if (IsBeltTextEntry(e.NewFocus)) driver.ClearInput(); };
         IsVisibleChanged += (_, _) =>
         {
             if (!IsVisible) { CancelFurnitureGesture(); CancelFurniturePreview(); driver.ClearInput(); ReleaseScenePointerCapture(); SetMenuOpen(false); }
@@ -363,6 +365,7 @@ internal sealed class LocalRoomWindow : Window
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (HandleBeltRoomKey(e, true)) return;
         if (!IsActive || !IsKeyboardFocusWithin || Keyboard.Modifiers != ModifierKeys.None) return;
         if (e.Key == Key.Escape)
         {
@@ -378,6 +381,27 @@ internal sealed class LocalRoomWindow : Window
             driver.ClearInput();
             e.Handled = true;
         }
+    }
+
+    private bool HandleBeltRoomKey(KeyEventArgs e, bool down)
+    {
+        if (!driver.UsesBeltRoom) return false;
+        var key = e.Key == Key.ImeProcessed ? e.ImeProcessedKey : e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key is not (Key.A or Key.D or Key.W or Key.S or Key.Space)) return false;
+        if (!down) driver.Key(key, false, false);
+        if (!IsActive || !IsVisible || Scene.InputBlocked || IsMenuOpen || Keyboard.Modifiers != ModifierKeys.None || IsBeltTextEntry(Keyboard.FocusedElement))
+        { driver.ClearInput(); return true; }
+        driver.Key(key, down, e.IsRepeat);
+        e.Handled = true;
+        return true;
+    }
+
+    private static bool IsBeltTextEntry(IInputElement? focus)
+    {
+        for (var node = focus as DependencyObject; node is not null;
+            node = node is Visual ? VisualTreeHelper.GetParent(node) : LogicalTreeHelper.GetParent(node))
+            if (node is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.ComboBox or System.Windows.Controls.PasswordBox) return true;
+        return false;
     }
 
     private void SetMenuOpen(bool open)

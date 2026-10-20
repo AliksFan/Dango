@@ -14,6 +14,7 @@ public readonly record struct DirectionalControlIntent(
     bool Squash)
 {
     public static DirectionalControlIntent None => default;
+    public bool Stretch { get; init; }
 }
 
 public sealed record GroundSurfaceMotionProfile
