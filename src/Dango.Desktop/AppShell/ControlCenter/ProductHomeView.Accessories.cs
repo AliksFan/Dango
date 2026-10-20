@@ -29,6 +29,7 @@ public partial class ProductHomeView
     private bool accessoryProjectionRefreshQueued;
     private bool IsAccessoryPreview => IsEditing && SelectedEditor == HomeEditor.Wardrobe;
     internal AccessorySettingsSession? BoundAccessories => accessorySession;
+    internal bool IsPickingAccessoryAnchor => pickingAccessoryAnchor;
 
     private void InitializeAccessories()
     {
@@ -44,12 +45,12 @@ public partial class ProductHomeView
         {
             if (!IsEditing || SelectedEditor != HomeEditor.Wardrobe) return;
             ClearLiveDirectionalInput();
-            BoundRuntime?.SetAccessories(configuration);
+            SetAccessoryPresentation(configuration);
             RefreshAccessoryFrame();
         };
         accessoryPanel.Applied += configuration =>
         {
-            BoundRuntime?.SetAccessories(configuration, !(accessorySession?.IsCompatibilityMode ?? true));
+            SetAccessoryPresentation(configuration, !(accessorySession?.IsCompatibilityMode ?? true));
             RefreshAccessoryFrame();
         };
         accessoryPanel.CancelRequested += CloseEditor;
@@ -83,6 +84,22 @@ public partial class ProductHomeView
     {
         accessorySession = session;
         accessoryPanel.Bind(session);
+        SynchronizeBeltAccessories();
+    }
+
+    internal void SynchronizeBeltAccessories()
+    {
+        if (accessorySession is null || beltPresenter is null) return;
+        beltPresenter.SetAccessories(IsAccessoryPreview ? accessorySession.DraftConfiguration : accessorySession.SavedConfiguration,
+            accessorySession.TryGetImage);
+        RefreshAccessoryFrame();
+    }
+
+    private void SetAccessoryPresentation(AccessoryConfiguration configuration, bool useNewConfiguration = true)
+    {
+        BoundRuntime?.SetAccessories(configuration, useNewConfiguration);
+        if (beltPresenter is not null && accessorySession is not null)
+            beltPresenter.SetAccessories(configuration, accessorySession.TryGetImage);
     }
 
     internal void CancelAccessoryPreview()
@@ -91,7 +108,7 @@ public partial class ProductHomeView
         PetPreview.ToolTip = "同一只实时物理团子";
         accessorySession?.CancelPreview(); accessoryPanel.DiscardInputsAndRefresh();
         if (accessorySession is not null)
-            BoundRuntime?.SetAccessories(accessorySession.SavedConfiguration, !accessorySession.IsCompatibilityMode);
+            SetAccessoryPresentation(accessorySession.SavedConfiguration, !accessorySession.IsCompatibilityMode);
         RefreshAccessoryFrame();
     }
 
@@ -280,12 +297,12 @@ public partial class ProductHomeView
     private void RefreshAccessoryFrame()
     {
         if (BoundRuntime?.LastFrame is { } frame && OwnsLiveFrameDriver) ApplyLiveFrame(frame);
-        accessoryPanel.SetPreviewError(BoundRuntime?.AccessoryError);
+        accessoryPanel.SetPreviewError(beltPresenter?.AccessoryError ?? BoundRuntime?.AccessoryError);
     }
 
     private void UpdateAccessoryPresentationStatus()
     {
-        var error = BoundRuntime?.AccessoryError;
+        var error = beltPresenter?.AccessoryError ?? BoundRuntime?.AccessoryError;
         accessoryPanel.SetPreviewError(error);
         if (error is not null) LiveSceneStatusText.Text = error;
         LiveSceneStatusText.Visibility = error is null ? Visibility.Collapsed : Visibility.Visible;
@@ -293,8 +310,18 @@ public partial class ProductHomeView
 
     private void OnAccessoryBodyAnchorPick(object sender, MouseButtonEventArgs e)
     {
-        if (!pickingAccessoryAnchor || !IsEditing || SelectedEditor != HomeEditor.Wardrobe ||
-            BoundRuntime?.LastFrame is not { Bodies.Count: > 0 } frame) return;
+        if (!pickingAccessoryAnchor || !IsEditing || SelectedEditor != HomeEditor.Wardrobe) return;
+        if (beltPresenter is not null)
+        {
+            e.Handled = true; ClearLiveDirectionalInput();
+            if (!beltPresenter.TryPickBodyAnchor(e.GetPosition(beltPresenter.View), out var anchor))
+            { PetPreview.ToolTip = "等待有效身体画面后重试"; return; }
+            accessoryPanel.SetBodyAnchor(anchor);
+            pickingAccessoryAnchor = false; PetPreview.Cursor = Cursors.Arrow;
+            PetPreview.ToolTip = "同一只实时物理团子";
+            return;
+        }
+        if (BoundRuntime?.LastFrame is not { Bodies.Count: > 0 } frame) return;
         e.Handled = true; ClearLiveDirectionalInput();
         var point = e.GetPosition(LiveDangoVisual);
         try

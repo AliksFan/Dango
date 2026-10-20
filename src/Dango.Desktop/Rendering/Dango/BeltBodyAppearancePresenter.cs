@@ -61,7 +61,7 @@ public sealed class BeltBodyAppearancePresenter : IDisposable
     private readonly Path rightEye = new() { IsHitTestVisible = false };
     private DangoAppearanceConfiguration appearance;
     private readonly List<EquippedEntry> equipped = [];
-    private readonly string loadStatus;
+    private string loadStatus;
     private readonly AttachmentCommandRouter router = new(enableHatMotion: true);
     private AttachmentTarget target;
     private AttachmentToken quietToken;
@@ -70,7 +70,8 @@ public sealed class BeltBodyAppearancePresenter : IDisposable
     private long sequence, lastTick = -1;
     private DangoFacingDirection facing;
     private bool paused, disposed;
-    private string? runtimeError;
+    private string? runtimeError, accessoryError;
+    private Vector accessorySceneOffset;
     private PhysicsPresentationFrame? currentBody;
     private AttachmentShapeGeometry? currentShape;
     private readonly List<AccessoryMeshFrame> accessoryFrames = [];
@@ -150,9 +151,10 @@ public sealed class BeltBodyAppearancePresenter : IDisposable
     /// <summary>Canonical 160×120 canvas with the physical core at (80,66). Content may extend beyond it.</summary>
     public Canvas View => root;
     public DangoAppearanceConfiguration Appearance => appearance;
-    public int EquippedCount { get; }
+    public int EquippedCount { get; private set; }
     public int RenderedAccessoryCount => equipped.Count(entry => entry.Visual.Frame is not null);
-    public string Status => runtimeError is null ? loadStatus : loadStatus + "；" + runtimeError;
+    public string Status => string.Join("；", new[] { loadStatus, runtimeError, accessoryError }.Where(value => !string.IsNullOrEmpty(value)));
+    public string? AccessoryError => accessoryError;
     public string? RuntimeError => runtimeError;
     public string EyeDiagnostic { get; private set; } = "眼睛等待物理帧";
     public string MeshDiagnostic { get; private set; } = "配饰等待物理帧";
@@ -223,6 +225,63 @@ public sealed class BeltBodyAppearancePresenter : IDisposable
         motion.SetEyeLayout(configuration.EyeLayout);
         // Layout joins the existing motion state on its next presentation tick.
         // A color edit must not replace a sleeping/blinking comparison with neutral eyes.
+    }
+
+    /// <summary>Updates the displayed draft only. The supplied session owns image caching and persistence.</summary>
+    public void SetAccessories(AccessoryConfiguration configuration, Func<string, BitmapSource?> imageSource)
+    {
+        VerifyAccess(); ArgumentNullException.ThrowIfNull(configuration); ArgumentNullException.ThrowIfNull(imageSource);
+        configuration.Validate();
+        var previous = equipped.ToDictionary(entry => entry.Item.Id, StringComparer.Ordinal);
+        var textures = new Dictionary<string, BitmapSource?>(StringComparer.Ordinal);
+        var next = new List<EquippedEntry>();
+        accessoryError = null;
+        foreach (var item in configuration.Items.Where(item => item.IsEquipped)
+            .OrderBy(item => item.Layer).ThenBy(item => item.Order).ThenBy(item => item.Id, StringComparer.Ordinal))
+        {
+            try
+            {
+                if (!textures.TryGetValue(item.AssetId, out var texture))
+                {
+                    // Cache failure too: copies sharing a broken asset must not repeatedly decode/read it.
+                    textures.Add(item.AssetId, null);
+                    texture = AccessoryItem.IsBuiltInAsset(item.AssetId) ? BuiltinAccessoryImages.Get(item.AssetId) : imageSource(item.AssetId);
+                    textures[item.AssetId] = texture;
+                }
+                if (texture is null || !AccessoryItem.IsBuiltInAsset(item.AssetId) &&
+                    (texture.PixelWidth != item.PixelWidth || texture.PixelHeight != item.PixelHeight))
+                    throw new InvalidDataException("配饰图片缺失或尺寸无效。");
+                // Reuse the mesh and solver for a stable instance; replacing the asset starts a new instance.
+                var old = previous.GetValueOrDefault(item.Id);
+                if (old is not null && old.Item.AssetId == item.AssetId && ReferenceEquals(old.Texture, texture))
+                    next.Add(old with { Item = item });
+                else
+                {
+                    var visual = new AccessoryMeshVisual(); visual.SetTexture(texture);
+                    next.Add(new(item, texture, visual, old?.Item.AssetId == item.AssetId ? old.Motion : new()));
+                }
+            }
+            catch (Exception error) when (IsAppearanceFault(error))
+            {
+                accessoryError = $"部分配饰无法显示（{error.GetType().Name}：{SafeAssetReason(error)}）；配置仍保留";
+            }
+        }
+        behind.Children.Clear(); front.Children.Clear(); equipped.Clear(); equipped.AddRange(next);
+        foreach (var entry in equipped)
+            (entry.Item.Layer == AccessoryLayer.Behind ? behind : front).Children.Add(entry.Visual);
+        EquippedCount = configuration.Items.Count(item => item.IsEquipped);
+        loadStatus = $"已同步 {EquippedCount} 件已佩戴配饰";
+        if (currentBody is not null) RefreshAccessoryMeshes();
+    }
+
+    /// <summary>Reads this presenter's actual boundary and inverse display gait without advancing motion.</summary>
+    public bool TryPickBodyAnchor(Point displayedPoint, out Point anchor)
+    {
+        VerifyAccess(); anchor = default;
+        if (currentBody is null || currentShape is null || runtimeError is not null ||
+            !double.IsFinite(displayedPoint.X) || !double.IsFinite(displayedPoint.Y)) return false;
+        try { anchor = AccessoryBodyMapper.Unmap(currentBody, GaitFrame, displayedPoint); return true; }
+        catch (Exception error) when (IsAppearanceFault(error)) { return false; }
     }
 
     public bool SubmitAttachment(AttachmentIntent intent)
@@ -315,7 +374,7 @@ public sealed class BeltBodyAppearancePresenter : IDisposable
         currentBody = null; currentShape = null; cachedPoints = null; cachedPresentation = null; accessoryFrames.Clear();
         body.Data = leftEye.Data = rightEye.Data = Geometry.Empty;
         foreach (var entry in equipped) entry.Visual.ClearFrame();
-        runtimeError = null; EyeDiagnostic = "眼睛等待物理帧"; MeshDiagnostic = "配饰等待物理帧";
+        runtimeError = accessoryError = null; accessorySceneOffset = default; EyeDiagnostic = "眼睛等待物理帧"; MeshDiagnostic = "配饰等待物理帧";
     }
 
     public void Dispose()
@@ -367,6 +426,7 @@ public sealed class BeltBodyAppearancePresenter : IDisposable
 
     private void UpdateAccessories(BeltBodyAppearanceFrame frame)
     {
+        accessorySceneOffset = new Vector(frame.CoreX * WorldToCanvas, -frame.CoreY * WorldToCanvas);
         accessoryFrames.Clear();
         var requests = new List<(AccessoryMeshVisual Visual, AccessoryMeshFrame Frame)>();
         foreach (var entry in equipped)
@@ -376,7 +436,7 @@ public sealed class BeltBodyAppearancePresenter : IDisposable
                 var anchor = AccessoryBodyMapper.Map(currentBody!, null, entry.Item.BodyAnchorX, entry.Item.BodyAnchorY);
                 // Keep core translation in the solver's observations, then remove it only for local rendering.
                 // Otherwise a translating undeformed body would generate no attachment inertia.
-                var sceneOffset = new Vector(frame.CoreX * WorldToCanvas, -frame.CoreY * WorldToCanvas);
+                var sceneOffset = accessorySceneOffset;
                 var sceneAnchor = anchor + sceneOffset;
                 var (width, height) = Size(entry.Item);
                 var mesh = entry.Motion.Update(frame.Tick, frame.Seconds, sceneAnchor, width, height, entry.Item)
@@ -385,7 +445,7 @@ public sealed class BeltBodyAppearancePresenter : IDisposable
             }
             catch (Exception error) when (IsAppearanceFault(error))
             {
-                entry.Visual.ClearFrame(); runtimeError = $"配饰运动失败（{error.GetType().Name}）";
+                entry.Visual.ClearFrame(); accessoryError = $"配饰运动失败（{error.GetType().Name}）";
             }
         }
         var batch = AccessoryMeshVisual.ApplyBatch(requests);
@@ -393,7 +453,7 @@ public sealed class BeltBodyAppearancePresenter : IDisposable
         PerformanceSample?.Invoke("accessories-raster", batch.RasterMilliseconds);
         PerformanceSample?.Invoke("accessories-upload", batch.UploadMilliseconds);
         foreach (var (_, error) in batch.Errors)
-            runtimeError = $"配饰网格呈现失败（{error.GetType().Name}）";
+            accessoryError = $"配饰网格呈现失败（{error.GetType().Name}）";
         MeshDiagnostic = $"已佩戴 {EquippedCount} · 呈现 {RenderedAccessoryCount} · 顶点 {accessoryFrames.Sum(mesh => mesh.Vertices.Count)}";
     }
 
@@ -402,17 +462,30 @@ public sealed class BeltBodyAppearancePresenter : IDisposable
         var neutral = new EyeMotionSample(new(0, 0), 1, EyeShape.Round, 0);
         var face = FaceLayoutSolver.Solve(currentShape!, neutral, neutral, 0, appearance.EyeLayout, 7);
         currentBody = currentBody! with { Attachments = new(lastTick, target.Generation, new(0, 0, "Reset"), face) { SourceShape = currentShape } };
-        DrawEyes(face); accessoryFrames.Clear();
+        DrawEyes(face); RefreshAccessoryMeshes();
+    }
+
+    private void RefreshAccessoryMeshes()
+    {
+        accessoryFrames.Clear();
         var requests = new List<(AccessoryMeshVisual Visual, AccessoryMeshFrame Frame)>();
         foreach (var entry in equipped)
         {
-            var anchor = AccessoryBodyMapper.Map(currentBody, null, entry.Item.BodyAnchorX, entry.Item.BodyAnchorY);
-            var (width, height) = Size(entry.Item);
-            var mesh = entry.Motion.Refresh(anchor, width, height, entry.Item);
-            accessoryFrames.Add(mesh); requests.Add((entry.Visual, mesh));
+            try
+            {
+                var anchor = AccessoryBodyMapper.Map(currentBody!, null, entry.Item.BodyAnchorX, entry.Item.BodyAnchorY);
+                var (width, height) = Size(entry.Item);
+                var mesh = entry.Motion.Refresh(anchor + accessorySceneOffset, width, height, entry.Item).Translated(-accessorySceneOffset);
+                accessoryFrames.Add(mesh); requests.Add((entry.Visual, mesh));
+            }
+            catch (Exception error) when (IsAppearanceFault(error))
+            {
+                entry.Visual.ClearFrame(); accessoryError = $"配饰运动失败（{error.GetType().Name}）";
+            }
         }
         foreach (var (_, error) in AccessoryMeshVisual.ApplyBatch(requests).Errors)
-            runtimeError = $"配饰网格呈现失败（{error.GetType().Name}）";
+            accessoryError = $"配饰网格呈现失败（{error.GetType().Name}）";
+        MeshDiagnostic = $"已佩戴 {EquippedCount} · 呈现 {RenderedAccessoryCount} · 顶点 {accessoryFrames.Sum(mesh => mesh.Vertices.Count)}";
     }
 
     private void ResetGait()
