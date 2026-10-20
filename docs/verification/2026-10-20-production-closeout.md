@@ -17,12 +17,13 @@
 - Desktop 受影响组 **169/169、0 失败、0 跳过**：`tests/product-affected-final.trx`。包含原页面／配饰／门廊、room／家具／球／手套／休眠／恢复、默认 Host／实例和旧外观数据。没有传入手工 build 模块属性，使用普通构建所生成并传递的 DLL；旧 legacy／guard 反例仍显式绑定对应历史模块。
 - 原生托管绑定 **21/21、0 跳过**：`tests/physics-binding-modules-bound.trx`，包括单体等价和坏 ABI／能力／大小负控。首次只绑定当前模块时的 15 通过／6 未验证记录保留，不能用来替代最终完整绑定结果。
 - 托盘修复后的入口／真实 Host／保存取消／旧产品设置组 **14/14**：`tests/recovery-and-entry-final.trx`。新增托盘反例覆盖实际回调在未选房、目录准备中不得创建房间，且首页 owner 继续推进；其余是上述 169 项的受影响复核，不能相加冒充独立功能数。
+- 最终实例与托盘组 **10/10**：`tests/instance-and-tray-final.trx`。确认通用数据根别名共用身份、旧本地安装验收仍用原事件名、当前保护及恢复回调通过。保留安装工具原 `Local\Dango.Phase1.App.Activate` 的消费合同，避免引入另一套安装激活接线。
 - Schema1／3／4／5 用例通过真正默认 Host 绑定实际 native 身体，隐藏 HwndSource 始终不可见；显示前保存拒绝，读取及显示不写外观文件，取消保持原字节，显式应用后 Schema5 重载一致。隐藏测试手动消费实际 native 快照，不证明 GPU 呈现、真实键盘或人工观感。
 - 原生保存案例 x6/jump20、x5/jump90、x5/jump120 各 600 tick；集合、墙、九配置静态平台和撤支撑、9×480 无平台全通道位等价、实际 DLL 球 3600 tick 通过。四个独立负控按预期失败，冻结 step63、修复中间 step165 的失败均保留。
 
 首次正式 Host 测试把独立门廊的旧单门断言误用于真实目录：新目录会导入原本地普通房，不能断言触发旧 `LocalRoomRequested` 或新建空门。保留两份 27 通过／1 失败 TRX，恢复独立门廊夹具的专用门动作检查；新增 Schema 组仍通过真 Host 完成实际默认接线。早期门廊位置断言还将导航后的物理移动算作坐标错误，改为同步检查交接原点公式，未修改物理或放宽容差。传递输出遗漏曾造成 DLL 缺失，修复 Content 后普通构建实际供给测试；原失败 TRX 保留。
 
-路径审查提出的“尾点／空格将产生另一目录身份”经 Windows 当前 .NET 实测并不成立：`GetFullPath` 已作归一。定向反例先拒绝断言失败，随后改为检查相同路径与实例身份，保留失败 `data-root-paths-final.trx`，不新增多余路径门槛。初期两个所谓 CLI 漏项实际属于 `Dango.JointReview`，并非 Desktop 参数；配饰绑定也不触发 world 初始化，两项误报均核实后未改产品。
+路径审查提出的“尾点／空格将产生另一目录身份”经 Windows 当前 .NET 实测并不成立：`GetFullPath` 已作归一。定向反例先拒绝断言失败，随后改为检查相同路径与实例身份，保留失败 `data-root-paths-final.trx`，不新增多余路径门槛。初期所谓 CLI 漏项实际属于 `Dango.JointReview`，并非 Desktop 参数；配饰绑定也不触发 world 初始化，误报均核实后未改产品。
 
 ## 人工、风险与阶段边界
 
@@ -34,6 +35,12 @@
 
 ## 交付与保护
 
-正式包的最终复核将在源码提交后记录，避免把带未提交产品修改的输出当作清洁提交构建。
+正式便携包已从干净源码提交 `7a41c6d7d0949690f9b22d611140692c9e452b82` 生成，package manifest 的 `sourceDirty=false`。执行普通发布脚本 `eng/publish-desktop-entry.ps1 -RunName belt-production-closeout`，没有传入任何 native DLL 路径，也没有关闭发布的 NuGet audit。输出为 `artifacts/desktop-entry/belt-production-closeout/package/`，后续收口提交只追加验证记录，不改变该包的生产源码。
+
+包检查 **10/10**：`artifacts/production-closeout/publish-preflight/summary.json`，包含默认不需旧模块、当前源码／native 身份与文件哈希、篡改拒绝、完整安装器包清单和即使重写文件列表也不能遗漏 room DLL。新包仍不安装。`--smoke-test` 后台退出码 0，仅证明基础启动退出；默认产品 native 行为由真实 Host 隐藏集成覆盖。
+
+包内 body DLL 为 `4871642B25107FAA3D794AC16FA04837D342BF4646627B0AF103D4B1679C3C4A`，room DLL 为 `1C50E89C9983949A089A5859A3E86D175EBF02A01CAA895657F7FC823C884A58`；包内实际 room DLL 重放三条保存平台案例各 600 tick 再次全部通过，记录 `artifacts/production-closeout/packaged-platform-replay.log`。产物、TRX、日志与保护摘要绑定见[交付摘要](../../artifacts/production-closeout/delivery-summary.json)。
+
+本轮达到所列可合并标准，未合并。用户原有接入验收与本轮新增自动／后台证据分别保留。最终差异空白及变更文档链接检查通过；测试 HWND／native owner／smoke 与重放进程已退出，未留下本轮 Dango 或 testhost 进程，未启动服务、端口、数据库或云资源。虚构数据、失败证据和构建输出保留，未清理其它工作树。
 
 main 保持 `788456b`，原 AGENTS 修改保留（SHA256 `7F2DD53E64CB4E3B32445CBD798D5ABD01AB4B283EB096F5A854674B6802A029`）；受保护旧 DLL 保持 `6712D66ECEF9588123CAFCD868455080598B5B58711A698FB8AF022A0CDA191A`。不合 main、推送、更新日常安装、部署、删除分支或 Worktree。目录与历史验收工具收敛只记录为合并后下一分支工作。

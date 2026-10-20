@@ -1,0 +1,78 @@
+{
+  "format": 1,
+  "source_commit": "7a41c6d7d0949690f9b22d611140692c9e452b82",
+  "source_dirty": false,
+  "branch": "codex/belt-page-completion",
+  "package_directory": "artifacts/desktop-entry/belt-production-closeout/package",
+  "package_manifest_sha256": "219D311E4706E948B9E2130D9CC4A4BCD7E20F63C2C439F026D8B248255E7550",
+  "native_manifest_sha256": "B5B00F1476184555FABC669039EBA81FE6EFF0E0C189E71E95BE1A802713FBB1",
+  "body_sha256": "4871642B25107FAA3D794AC16FA04837D342BF4646627B0AF103D4B1679C3C4A",
+  "room_sha256": "1C50E89C9983949A089A5859A3E86D175EBF02A01CAA895657F7FC823C884A58",
+  "tests": [
+    {
+      "path": "artifacts/production-closeout/tests/product-affected-final.trx",
+      "sha256": "CF1D73807C0CD599F6456B466E39A754402434F3E84FBB21D3413E2403BF69F0",
+      "total": 169,
+      "passed": 169,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "path": "artifacts/production-closeout/tests/physics-binding-modules-bound.trx",
+      "sha256": "1D3951C3C85DF960C7B2A28A259C4170EEFE8851854D2B89B9394C397B69DBAC",
+      "total": 21,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "path": "artifacts/production-closeout/tests/recovery-and-entry-final.trx",
+      "sha256": "18216D3BB7CEC28BCE4B43BEAE5E1137F755A265AD506B5BD24710786865E0E3",
+      "total": 14,
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "path": "artifacts/production-closeout/tests/instance-and-tray-final.trx",
+      "sha256": "3B319B35AEA7A717F3E07E8CE6361AEC9BD33FDD605386DCAE9E9BE77F31B5BD",
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    }
+  ],
+  "evidence": [
+    {
+      "path": "artifacts/production-closeout/publish-final.log",
+      "sha256": "005C1283B66EB64A66C0DA864BDAD70756525F2CAE48D39293D4094734EA8F10"
+    },
+    {
+      "path": "artifacts/production-closeout/publish-preflight/summary.json",
+      "sha256": "99AAE817609CFB124331A1297699957E1F0F6708C96E07F0A77D66106DCA0AFF"
+    },
+    {
+      "path": "artifacts/production-closeout/packaged-platform-replay.log",
+      "sha256": "21CC7AB5919C895F21AC55791FC21ACA6266E0DD8B116E097E3EA8334FC9BEEE"
+    },
+    {
+      "path": "artifacts/production-closeout/smoke.json",
+      "sha256": "FBC2AE20DBE1A64AF82C919669A7432E2641ABBB0B0A49E0B3B0A2CACBDA7BFA"
+    }
+  ],
+  "package_checks": {
+    "passed": 10,
+    "failed": 0
+  },
+  "actual_packaged_platform_replay": "three saved cases, 600 action ticks each, PASS",
+  "prior_human_acceptance": "User confirmed the integration accepted before this production closeout",
+  "foreground_retest": "Not performed in this closeout",
+  "open_risks": [
+    "Historical Schema1 one-off save failure remains UNKNOWN; diagnosis deferred with evidence preserved",
+    "Full Windows, DPI, performance and multiplayer acceptance remain separate"
+  ],
+  "protected_main_agents_sha256": "7F2DD53E64CB4E3B32445CBD798D5ABD01AB4B283EB096F5A854674B6802A029",
+  "protected_native_sha256": "6712D66ECEF9588123CAFCD868455080598B5B58711A698FB8AF022A0CDA191A",
+  "git_scope": "local task commits only; no main merge, push, installation or deployment",
+  "residuals": "No task Dango, testhost or native replay processes remain; build outputs and fictional data retained"
+}
