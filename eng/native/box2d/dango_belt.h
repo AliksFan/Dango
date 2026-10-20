@@ -1,6 +1,12 @@
 #ifndef DANGO_BELT_H
 #define DANGO_BELT_H
+#if defined(DANGO_BELT_EMBEDDED)
 #if defined(_WIN32)
+#define DANGO_BELT_API
+#else
+#define DANGO_BELT_API __attribute__((visibility("hidden")))
+#endif
+#elif defined(_WIN32)
 #define DANGO_BELT_API __declspec(dllexport)
 #else
 #define DANGO_BELT_API __attribute__((visibility("default")))

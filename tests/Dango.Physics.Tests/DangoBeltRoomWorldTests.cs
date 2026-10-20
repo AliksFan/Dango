@@ -1,0 +1,226 @@
+using Dango.Desktop.Physics.Tuning;
+
+namespace Dango.Physics.Tests;
+
+[TestClass]
+[DoNotParallelize]
+public sealed class DangoBeltRoomWorldTests
+{
+    private static string Module => RequiredModule("DANGO_BELT_ROOM_MODULE");
+    private static string RequiredModule(string name)
+    {
+        var value = Environment.GetEnvironmentVariable(name);
+        if (string.IsNullOrWhiteSpace(value) || !File.Exists(value))
+            Assert.Inconclusive($"Set {name} to an explicitly built independent native module; native coverage was not executed.");
+        return value!;
+    }
+    private static DangoSelfPhysicsParameters Config => new()
+    { RadialElasticity = 1.82, PerimeterElasticity = 15.075, TopInwardForce = 0, GroundDeformationStrength = 0 };
+
+    [TestMethod]
+    public void MissingIndependentModuleFailsClosed()
+    {
+        var absent = Path.Combine(Path.GetTempPath(), $"dango-room-absent-{Guid.NewGuid():N}.dll");
+        Assert.ThrowsExactly<DllNotFoundException>(() => new DangoBeltRoomWorld(absent, Config));
+    }
+
+    [TestMethod]
+    public void IndependentRoomIdentityAndCoherentDetachedFrames()
+    {
+        using var world = new DangoBeltRoomWorld(Module, Config);
+        var before = world.Read();
+        Assert.AreNotEqual(0UL, before.Generation);
+        Assert.AreEqual(0UL, before.Tick);
+        Assert.AreEqual(0UL, before.SceneRevision);
+        Assert.AreEqual(1UL, before.BodyId);
+        Assert.AreEqual(1UL, before.ConfigurationRevision);
+        Assert.IsNull(before.Platform);
+        Assert.AreEqual(0, before.Fault);
+        world.Step(before.BodyId, new(Horizontal: 1));
+        var after = world.Read();
+        Assert.AreEqual(before.Generation, after.Generation);
+        Assert.AreEqual(1UL, after.Tick);
+        Assert.AreEqual(0UL, before.Tick, "Previously returned frame must remain detached.");
+        Assert.AreEqual(68, after.Scaffold.Count);
+        Assert.AreEqual(512, after.Curve.Count);
+        Assert.AreEqual(200, after.BodySnapshot.Count);
+        Assert.ThrowsExactly<NotSupportedException>(() => ((IList<float>)after.Curve)[0] = 10);
+    }
+
+    [TestMethod]
+    public void FullyDisposedOwnersNeverReuseRetainedFrameIdentity()
+    {
+        var module = Module;
+        DangoBeltRoomFrame retained;
+        using (var first = new DangoBeltRoomWorld(module, Config)) retained = first.Read();
+        using var second = new DangoBeltRoomWorld(module, Config);
+        var fresh = second.Read();
+        Assert.AreNotEqual(0UL, retained.OwnerEpoch);
+        Assert.AreNotEqual(retained.OwnerEpoch, fresh.OwnerEpoch);
+        Assert.AreNotEqual((retained.OwnerEpoch, retained.Generation), (fresh.OwnerEpoch, fresh.Generation));
+        second.Step(1);
+        Assert.AreEqual(fresh.OwnerEpoch, second.Read().OwnerEpoch);
+        Assert.AreEqual(0UL, retained.Tick);
+    }
+
+    [TestMethod]
+    public void SeparateThreadsReceiveDistinctOwnerEpochs()
+    {
+        var module = Module;
+        var owners = Enumerable.Range(0, 4).Select(_ => Task.Run(() =>
+        {
+            using var world = new DangoBeltRoomWorld(module, Config);
+            world.Step(1);
+            return world.Read().OwnerEpoch;
+        })).ToArray();
+        Task.WhenAll(owners).GetAwaiter().GetResult();
+        Assert.AreEqual(owners.Length, owners.Select(task => task.Result).Distinct().Count());
+    }
+
+    [TestMethod]
+    public void NoPlatformExecutionMatchesFrozenSingleBodyChannels()
+    {
+        using var room = new DangoBeltRoomWorld(Module, Config);
+        using var body = new DangoBeltWorld(RequiredModule("DANGO_BELT_MODULE"), Config);
+        body.SetBounds(-10, 10);
+        for (var tick = 0; tick < 24; tick++)
+        {
+            var input = new DangoBeltInput(Horizontal: tick < 12 ? 1 : 0);
+            body.Step(DangoBeltWorld.FixedDt, input);
+            room.Step(1, input);
+            var actual = room.Read();
+            var expected = body.Read();
+            CollectionAssert.AreEqual(expected.Scaffold, actual.Scaffold.ToArray());
+            CollectionAssert.AreEqual(expected.Curve, actual.Curve.ToArray());
+            CollectionAssert.AreEqual(expected.Stats, actual.Stats.ToArray());
+            CollectionAssert.AreEqual(body.ReadDebugState(), actual.BodySnapshot.ToArray());
+        }
+    }
+
+    [TestMethod]
+    public void PlatformTransactionsAreAtomicRevisionedAndDoNotReuseIds()
+    {
+        using var world = new DangoBeltRoomWorld(Module, Config);
+        var before = world.Read();
+        var platform = new DangoBeltRoomPlatform(41, 3, 2, 1, .2, .4);
+        world.SetPlatform(platform, 0);
+        var added = world.Read();
+        Assert.AreEqual(platform, added.Platform);
+        Assert.AreEqual(1UL, added.SceneRevision);
+        Assert.AreEqual(before.Tick, added.Tick);
+        CollectionAssert.AreEqual(before.BodySnapshot, added.BodySnapshot);
+        Assert.AreEqual(-708, Assert.ThrowsExactly<DangoBeltRoomException>(() => world.SetPlatform(platform with { X = 4 }, 0)).ErrorCode);
+        Assert.AreEqual(-708, Assert.ThrowsExactly<DangoBeltRoomException>(() => world.RemovePlatform(42, 1)).ErrorCode);
+        AssertStable(added, world.Read());
+        Assert.ThrowsExactly<DangoBeltRoomException>(() => world.SetPlatform(platform with { Width = double.NaN }, 1));
+        AssertStable(added, world.Read());
+        world.SetPlatform(platform with { X = 4 }, 1);
+        Assert.AreEqual(2UL, world.Read().SceneRevision);
+        world.RemovePlatform(41, 2);
+        var removed = world.Read();
+        Assert.IsNull(removed.Platform);
+        Assert.AreEqual(3UL, removed.SceneRevision);
+        Assert.ThrowsExactly<DangoBeltRoomException>(() => world.SetPlatform(platform, 3));
+        AssertStable(removed, world.Read());
+        world.SetPlatform(platform with { Id = 42 }, 3);
+        Assert.AreEqual(4UL, world.Read().SceneRevision);
+    }
+
+    [TestMethod]
+    public void PhysicalBoundaryRejectionPreservesCompleteAcceptedFrameAndLatchesFault()
+    {
+        using var world = new DangoBeltRoomWorld(Module, Config, left: -2, right: 2);
+        var accepted = world.Read();
+        DangoBeltRoomException? rejection = null;
+        for (var tick = 0; tick < 480; tick++)
+        {
+            try { world.Step(1, new(Horizontal: 1)); }
+            catch (DangoBeltRoomException error) { rejection = error; break; }
+            accepted = world.Read();
+        }
+        Assert.IsNotNull(rejection, "Walking into the frozen finite boundary must exercise physical refusal, not argument rejection.");
+        Assert.IsTrue(rejection.ErrorCode is -705 or -706 or -707);
+        var failed = world.Read();
+        Assert.AreEqual(rejection.ErrorCode, failed.Fault);
+        Assert.AreEqual((double)rejection.ErrorCode, failed.Diagnostics[2]);
+        AssertStable(accepted, failed with { Fault = accepted.Fault });
+        Assert.AreEqual(-703, Assert.ThrowsExactly<DangoBeltRoomException>(() => world.Step(1)).ErrorCode);
+        Assert.AreEqual(-703, Assert.ThrowsExactly<DangoBeltRoomException>(() => world.SetPlatform(new(2, 0, 2, 1, .2, .4), failed.SceneRevision)).ErrorCode);
+        AssertStable(failed, world.Read());
+    }
+
+    [TestMethod]
+    public void InvalidBodyIdentityDoesNotAdvanceOrLatchAndWorldCanContinue()
+    {
+        using var world = new DangoBeltRoomWorld(Module, Config);
+        var before = world.Read();
+        Assert.ThrowsExactly<DangoBeltRoomException>(() => world.Step(2));
+        AssertStable(before, world.Read());
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => world.Step(1, new(Horizontal: double.NaN)));
+        AssertStable(before, world.Read());
+        world.Step(1);
+        Assert.AreEqual(1UL, world.Read().Tick);
+    }
+
+    [TestMethod]
+    public void OwnerReadMutationAndDisposeRejectForeignThreadAndUseAfterDispose()
+    {
+        var world = new DangoBeltRoomWorld(Module, Config);
+        try
+        {
+            Task.Run(() =>
+            {
+                Assert.ThrowsExactly<InvalidOperationException>(() => world.Read());
+                Assert.ThrowsExactly<InvalidOperationException>(() => world.Step(1));
+                Assert.ThrowsExactly<InvalidOperationException>(() => world.SetPlatform(new(1, 3, 2, 1, .2, .4), 0));
+                Assert.ThrowsExactly<InvalidOperationException>(() => world.RemovePlatform(1, 0));
+                Assert.ThrowsExactly<InvalidOperationException>(() => world.Dispose());
+            }).GetAwaiter().GetResult();
+            Assert.AreEqual(0UL, world.Read().Tick);
+        }
+        finally { world.Dispose(); }
+        world.Dispose();
+        Assert.ThrowsExactly<ObjectDisposedException>(() => world.Read());
+        Assert.ThrowsExactly<ObjectDisposedException>(() => world.Step(1));
+    }
+
+    [TestMethod]
+    public void OriginalSingleBodyModuleCannotMasqueradeAsIndependentRoom()
+    {
+        var singleBodyModule = RequiredModule("DANGO_BELT_MODULE");
+        Assert.ThrowsExactly<EntryPointNotFoundException>(() => new DangoBeltRoomWorld(singleBodyModule, Config));
+    }
+
+    [TestMethod]
+    public void RoomModuleCannotMasqueradeAsOriginalSingleBody()
+    {
+        var roomModule = Module;
+        Assert.ThrowsExactly<EntryPointNotFoundException>(() => new DangoBeltWorld(roomModule, Config));
+    }
+
+    [TestMethod]
+    [DataRow("DANGO_BELT_ROOM_BAD_ABI_MODULE")]
+    [DataRow("DANGO_BELT_ROOM_MISSING_CAPABILITIES_MODULE")]
+    [DataRow("DANGO_BELT_ROOM_BAD_FRAME_SIZE_MODULE")]
+    public void MalformedNativeIdentityFailsClosed(string variable)
+    {
+        var module = RequiredModule(variable);
+        Assert.ThrowsExactly<NotSupportedException>(() => new DangoBeltRoomWorld(module, Config));
+    }
+
+    private static void AssertStable(DangoBeltRoomFrame expected, DangoBeltRoomFrame actual)
+    {
+        Assert.AreEqual(expected.OwnerEpoch, actual.OwnerEpoch);
+        Assert.AreEqual(expected.Generation, actual.Generation);
+        Assert.AreEqual(expected.Tick, actual.Tick);
+        Assert.AreEqual(expected.SceneRevision, actual.SceneRevision);
+        Assert.AreEqual(expected.BodyId, actual.BodyId);
+        Assert.AreEqual(expected.ConfigurationRevision, actual.ConfigurationRevision);
+        Assert.AreEqual(expected.Platform, actual.Platform);
+        Assert.AreEqual(expected.Fault, actual.Fault);
+        CollectionAssert.AreEqual(expected.BodySnapshot, actual.BodySnapshot);
+        CollectionAssert.AreEqual(expected.Scaffold, actual.Scaffold);
+        CollectionAssert.AreEqual(expected.Curve, actual.Curve);
+        CollectionAssert.AreEqual(expected.Stats, actual.Stats);
+    }
+}

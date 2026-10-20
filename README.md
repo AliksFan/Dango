@@ -2,7 +2,7 @@
 
 `Dango` 是一个多人联机桌面宠物项目的开发代号。
 
-2026-10-20 新身体收尾与 F7 设计：活动窗口 WASD／Space 已获用户人工确认；迁移保存历史失败经本轮 129 项定向检查及 10×119 数据回归仍未复现，风险继续开放，未虚构修复。见[收尾交接](docs/verification/2026-10-20-belt-body-closeout.md)。已形成[本地房间接入设计草案](docs/planning/2026-10-20-belt-room-f7-design.md)及[实施计划草案](docs/planning/2026-10-20-belt-room-f7-implementation-plan.md)，覆盖接触能力、房间 owner、家具、外来唤醒、逐房恢复与桌宠分层；待用户批准，F7 产品实施未开始。未合 main、推送、安装或部署。
+2026-10-20 F7 技术停止：用户明确“开始计划”，独立 `codex/belt-room-f7` 从收尾 `d337cb6` 实施[已批准设计](docs/planning/2026-10-20-belt-room-f7-design.md)与[计划](docs/planning/2026-10-20-belt-room-f7-implementation-plan.md)。F7-0合同／基线自动完成，托管14/14、无平台4320次逐字节对照通过；F7-1平台站立7/9，54动作21完成／31拒绝／2未观测，必需物理门FAIL，停止F7-2～6，房间入口未接新物理。失败重放、状态和证据见[实施记录](docs/verification/2026-10-20-belt-room-f7.md)。[保存间歇失败](docs/verification/2026-10-20-belt-body-closeout.md)继续开放；未合 main、推送、安装或部署。
 
 2026-10-19 新身体接入：`codex/face-body-belt-integration` 已接入实际单人首页／捏脸、独立连续外圈内核、Schema5和三项真正实时调节。用户选择独立[可见形变休眠v2](docs/verification/2026-10-19-belt-visible-deformation-sleep-v2.md)后，候选默认启用；最终联合230/230、binding9/9、实际EXE保存重启通过。默认三工况CPU减少约74%～75%，九角8组睡眠、120/0/100超预算继续求解，旧严格门失败保留。本批F1～F6自动工作完成，整体人工待验。见[当前计划](docs/planning/2026-10-19-belt-body-product-integration.md)、[实施验证](docs/verification/2026-10-19-belt-body-implementation.md)和[来源归档](docs/archive/2026-10-19-body-physics-handoff.md)。房间新内核另案；未合main、推送、安装或部署。
 

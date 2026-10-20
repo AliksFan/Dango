@@ -15,6 +15,13 @@ typedef struct belt_body {
  int short_bones,grounded,dragging,original_ground_jump,has_stepped;double stats[64],cal[11],diag[48];
  int shape_guard,speed_saturation,whale_drive,radial_drive;double radial_diag[16],rear_diag[16];double whale_gain,whale_diag[16],force_ledger[1024];double guard[24],solver_diag[24],speed_limit[12];
 } belt_body;
+#ifdef DANGO_BELT_ROOM_HOOKS
+static void belt_room_before_integrate(belt_body* b);
+static int belt_room_contact(belt_body* b);
+#define BELT_CONTACT_DISPATCH belt_room_contact
+#else
+#define BELT_CONTACT_DISPATCH belt_contact_solve
+#endif
 static int belt_solver_fail(belt_body* b,int site){b->solver_diag[3]=site;return 0;}
 #if defined(DANGO_BELT_PROFILE) && DANGO_BELT_PROFILE
 #define belt_guard_path belt_guard_path_profile_impl
@@ -539,7 +546,10 @@ int dango_belt_step(void* handle,float dt,const float* c,int count){belt_body* b
   double total=b->cfg.core_mass+16.0*b->cfg.node_mass,cx=(b->mass[0]*b->q[0]+b->cfg.core_mass*b->q[34])/total,cy=(b->mass[1]*b->q[1]+b->cfg.core_mass*b->q[35])/total;
   b->stats[18]=fx;b->stats[19]=fy;b->stats[20]=hp[0];b->stats[21]=hp[1];b->stats[22]=vp[0];b->stats[23]=vp[1];b->stats[24]=-(hp[1]-cy)*fx+(vp[0]-cx)*fy;b->stats[57]=fx;b->stats[58]=fy;if(b->radial_drive){double netx=radial_x+rear_force[0]+rear_force[34],nety=radial_y+rear_force[1]+rear_force[35];b->stats[18]=b->stats[57]=netx;b->stats[19]=b->stats[58]=nety+fy;double actual_torque=0;for(int j=0;j<BELT_D;j+=2)actual_torque+=b->q[j]*(radial_force[j+1]+rear_force[j+1])-b->q[j+1]*(radial_force[j]+rear_force[j]);b->stats[24]=actual_torque-cx*nety+cy*netx+(vp[0]-cx)*fy;}
   if(b->dragging){double basis[BELT_B];belt_basis(b->drag_theta,0,basis);belt_v p=belt_eval_basis(b->q,basis),v=belt_eval_basis(b->v,basis),force={b->cfg.drag_stiffness*(c[4]-p.x)-b->cfg.drag_damping*v.x,b->cfg.drag_stiffness*(c[5]-p.y)-b->cfg.drag_damping*v.y};double magnitude=hypot(force.x,force.y);if(magnitude>b->cfg.drag_maximum_force)force=belt_mul(b->cfg.drag_maximum_force/magnitude,force);belt_force_ledger_add(b,p.x,p.y,force.x,force.y,4,b->drag_theta);for(int j=0;j<BELT_B;++j){f[2*j]+=basis[j]*force.x;f[2*j+1]+=basis[j]*force.y;}}
-  belt_apply_calibration_damping(b,h,c,accepted);b->solver_diag[15]=2;if(!belt_integrate(b,h,f))goto fault;if(b->radial_drive){for(int j=0;j<BELT_D;++j){b->radial_diag[13]+=radial_force[j]*(b->q[j]-radial_old[j]);b->rear_diag[12]+=rear_force[j]*(b->q[j]-radial_old[j]);}}if(b->whale_drive){for(int j=0;j<BELT_D;++j)b->whale_diag[8]+=whale_force[j]*(b->q[j]-whale_old[j]);b->whale_diag[14]=fmax(b->whale_diag[14],b->guard[4]);}b->solver_diag[15]=3;if(!belt_contact_solve(b))goto fault;b->solver_diag[15]=4;{int samples=0;double maximum=0,coarse=0;b->solver_diag[14]=belt_speed_certificate(b,&samples,&maximum,&coarse);b->solver_diag[19]=samples;b->solver_diag[20]=maximum;b->solver_diag[21]=b->solver_diag[14];if(samples>256){b->solver_diag[22]=coarse;b->solver_diag[23]=b->solver_diag[14];}}if(!belt_limit_speed(b,&b->solver_diag[14]))goto fault;if(b->solver_diag[14]>b->cfg.maximum_speed){belt_solver_fail(b,13);goto fault;}
+#ifdef DANGO_BELT_ROOM_HOOKS
+  belt_room_before_integrate(b);
+#endif
+  belt_apply_calibration_damping(b,h,c,accepted);b->solver_diag[15]=2;if(!belt_integrate(b,h,f))goto fault;if(b->radial_drive){for(int j=0;j<BELT_D;++j){b->radial_diag[13]+=radial_force[j]*(b->q[j]-radial_old[j]);b->rear_diag[12]+=rear_force[j]*(b->q[j]-radial_old[j]);}}if(b->whale_drive){for(int j=0;j<BELT_D;++j)b->whale_diag[8]+=whale_force[j]*(b->q[j]-whale_old[j]);b->whale_diag[14]=fmax(b->whale_diag[14],b->guard[4]);}b->solver_diag[15]=3;if(!BELT_CONTACT_DISPATCH(b))goto fault;b->solver_diag[15]=4;{int samples=0;double maximum=0,coarse=0;b->solver_diag[14]=belt_speed_certificate(b,&samples,&maximum,&coarse);b->solver_diag[19]=samples;b->solver_diag[20]=maximum;b->solver_diag[21]=b->solver_diag[14];if(samples>256){b->solver_diag[22]=coarse;b->solver_diag[23]=b->solver_diag[14];}}if(!belt_limit_speed(b,&b->solver_diag[14]))goto fault;if(b->solver_diag[14]>b->cfg.maximum_speed){belt_solver_fail(b,13);goto fault;}
   double bounds[4],foot;belt_bounds(b->q,bounds,&foot);if(bounds[0]<b->left||bounds[2]>b->right){belt_solver_fail(b,14);goto fault;}
   b->stats[50]+=1;
   if(b->shape_guard)b->guard[22]+=1;
