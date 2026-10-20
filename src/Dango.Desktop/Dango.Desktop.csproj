@@ -9,16 +9,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="$(DangoBeltRoomModulePath)"
-             Condition="'$(DangoBeltRoomModulePath)' != ''"
-             Link="dango_belt_room.dll"
-             CopyToOutputDirectory="PreserveNewest"
-             CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="$(DangoBeltModulePath)"
-             Condition="'$(DangoBeltModulePath)' != ''"
-             Link="dango_belt_product.dll"
-             CopyToOutputDirectory="PreserveNewest"
-             CopyToPublishDirectory="PreserveNewest" />
     <ProjectReference Include="..\Dango.Core\Dango.Core.csproj" />
     <ProjectReference Include="..\Dango.Physics\Dango.Physics.csproj" />
     <ProjectReference Include="..\Dango.Protocol\Dango.Protocol.csproj" />
@@ -43,5 +33,7 @@
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <Import Project="../../eng/Dango.BeltNative.targets" />
 
 </Project>

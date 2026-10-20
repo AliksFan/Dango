@@ -21,6 +21,14 @@ $script:SettingsContracts['dango-desktop-settings-v4-preset-sidecar-v1'] = @{
     'App.xaml.cs' = '26054FB5051849AD2467C43FAD1FAEC3F4351609DDB1E02DF10329539953637E'
     'Verification/VerificationSessionStore.cs' = '925A313A44DBE72C35FBA230010A521E384C529D0EA705788E1D8AE4D7B2ACBD'
 }
+# Separate compatibility identity for the normal belt room host. Old contracts remain valid for rollback.
+$script:SettingsContracts['dango-desktop-settings-v4-belt-default-v1'] = @{
+    'AppShell/ControlCenter/ControlCenterWindowSettingsStore.cs' = '48FF4A9AB801FFF52228E6DB760F9248E047111DDBF0DA5AD22E78B32DE97329'
+    'AppShell/ControlCenter/ApplicationSettingsSession.cs' = 'E68D1E6997AF8E73305C1D374978B60B18FF107A4C07825B4A2C86212F96FB6E'
+    'AppShell/DangoApplicationHost.cs' = 'DD745264BAC8F22B0FAF400C54943B34C6B908CD02CC9FE07712EE0E82C69CA6'
+    'App.xaml.cs' = '5C7CF18AEB85E039C85B7713C0D911EC520CB33003279CDD724E9B9DE2B00D42'
+    'Verification/VerificationSessionStore.cs' = '925A313A44DBE72C35FBA230010A521E384C529D0EA705788E1D8AE4D7B2ACBD'
+}
 $script:LegacyToolHashes = @{
     'Dango.LocalInstall.psm1' = '5500CB19FFE0486C82DE9C42EC0C41DA27E65606618A2360DDA97AC6F9CCA77B'
     'Manage-Dango.ps1' = '58668DDD3C117BF8F82E0F83F6C32D847CDDB6AB3B44564D11ED8EC946C11738'
@@ -100,6 +108,37 @@ function Get-DangoPackageFiles([string]$Root) {
     }
 }
 
+function Assert-DangoBeltPackageContract($Root, $PackageManifest, $Paths) {
+    if ($PackageManifest.beltNativeContract -cne 'dango-belt-native-v1') { throw 'Missing belt native package contract.' }
+    foreach ($name in @('dango_belt_product.dll', 'dango_belt_room.dll', 'belt-native-manifest.json')) {
+        if (-not $Paths.Contains($name)) { throw "Missing belt native package file: $name" }
+    }
+    $native = [IO.File]::ReadAllText((Join-Path $Root 'belt-native-manifest.json')) | ConvertFrom-Json
+    if ($native.format -ne 1 -or $native.contract -cne 'dango-belt-native-v1' -or $native.origin -cne 'source-build' -or
+        @($native.modules).Count -ne 2) { throw 'Unsupported belt native build evidence.' }
+    $sources = @($native.sourceHashes.PSObject.Properties)
+    if ($sources.Count -eq 0) { throw 'Missing belt native source hashes.' }
+    foreach ($source in $sources) {
+        if ($source.Name -cnotmatch '^eng/native/box2d/(CMakeLists\.txt|dango_belt[A-Za-z0-9_]*\.(c|h)|dango_round_ball_types\.h)$' -or
+            $source.Value -cnotmatch '^[0-9A-F]{64}$') { throw 'Invalid belt native source hash evidence.' }
+    }
+    foreach ($name in @('CMakeLists.txt', 'dango_belt.c', 'dango_belt.h', 'dango_belt_math.h', 'dango_belt_guard.h',
+        'dango_belt_basis_cache.h', 'dango_belt_profile.h', 'dango_belt_room.c', 'dango_belt_room.h',
+        'dango_belt_room_collection.h', 'dango_belt_room_collection_impl.h', 'dango_round_ball_types.h')) {
+        if ($null -eq $native.sourceHashes.PSObject.Properties['eng/native/box2d/' + $name]) { throw "Missing belt native source binding: $name" }
+    }
+    foreach ($name in @('dango_belt_product.dll', 'dango_belt_room.dll')) {
+        $records = @($native.modules | Where-Object { $_.path -ceq $name })
+        $requiredCapabilities = if ($name -ceq 'dango_belt_room.dll') { 255 } else { 127 }
+        $model = if ($name -ceq 'dango_belt_room.dll') { 'continuous-belt-room-v1' } else { 'continuous-belt-v1' }
+        if ($records.Count -ne 1 -or $records[0].abi -ne 1 -or $records[0].capabilities -ne $requiredCapabilities -or
+            $records[0].model -cne $model -or $records[0].tuning -cne 'C455-F-v1' -or
+            $records[0].sha256 -cne (Get-DangoHash (Join-Path $Root $name))) {
+            throw "Belt native artifact binding mismatch: $name"
+        }
+    }
+}
+
 function Test-DangoPackage {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$PackagePath)
@@ -147,9 +186,16 @@ function Test-DangoPackage {
     }
     if (-not $paths.Contains('Dango.Desktop.exe')) { throw 'The package is missing Dango.Desktop.exe.' }
     foreach ($required in $script:RequiredHashes.Keys) {
+        # Belt-default packages use the independent native room. The historical module is optional,
+        # but remains hash-protected when supplied for older diagnostics.
+        if ($required -ceq 'dango_physics_module.dll' -and
+            $manifest.settingsContract -ceq 'dango-desktop-settings-v4-belt-default-v1' -and -not $paths.Contains($required)) { continue }
         if (-not $paths.Contains($required) -or (Get-DangoHash (Join-Path $root $required)) -ne $script:RequiredHashes[$required]) {
             throw "Protected package input differs from the accepted baseline: $required"
         }
+    }
+    if ($manifest.settingsContract -ceq 'dango-desktop-settings-v4-belt-default-v1') {
+        Assert-DangoBeltPackageContract $root $manifest $paths
     }
     return [pscustomobject]@{
         VersionId = $manifest.sourceCommit.Substring(0, 12) + '-' + $manifestHash.Substring(0, 12).ToLowerInvariant()
@@ -432,7 +478,7 @@ function Start-DangoInstalled {
         $executable = Join-Path $package.Root 'Dango.Desktop.exe'
         $settingsScope = $null
         if ($PSBoundParameters.ContainsKey('AcceptanceSettingsRoot')) {
-            if ($package.Manifest.settingsContract -cne 'dango-desktop-settings-v4-preset-sidecar-v1') {
+            if ($package.Manifest.settingsContract -cnotin @('dango-desktop-settings-v4-preset-sidecar-v1', 'dango-desktop-settings-v4-belt-default-v1')) {
                 throw 'This package does not support isolated local-install acceptance settings.'
             }
             $settingsScope = Assert-DangoAcceptanceSettingsRoot $AcceptanceSettingsRoot $package.Root

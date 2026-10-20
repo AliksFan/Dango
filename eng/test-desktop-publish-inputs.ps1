@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$PhysicsModulePath,
+    [string]$PhysicsModulePath,
+    [string]$BeltNativeDirectory,
     [string]$RepositoryRoot
 )
 
@@ -8,7 +9,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop
 if (-not $RepositoryRoot) { $RepositoryRoot = Join-Path $PSScriptRoot '..' }
 $RepositoryRoot = [IO.Path]::GetFullPath($RepositoryRoot)
-$moduleFullPath = [IO.Path]::GetFullPath($PhysicsModulePath)
+$moduleFullPath = if ($PhysicsModulePath) { [IO.Path]::GetFullPath($PhysicsModulePath) } else { $null }
 $acceptedModuleHash = '00FF064A9A1A4DB67712403A8D01F19845A9EDF6B582D5FCA7CB9D0B567EF69C'
 $protectedInputs = @{
     'src/Dango.Desktop/runtimes/win-x64/native/dango_box2d.dll' = '6712D66ECEF9588123CAFCD868455080598B5B58711A698FB8AF022A0CDA191A'
@@ -41,7 +42,7 @@ function Assert-InputHash([string]$Path, [string]$Expected) {
 }
 
 # Only the exact accepted binary is ever loaded. Do not execute an untrusted DLL to inspect it.
-$actualModuleHash = Assert-InputHash $moduleFullPath $acceptedModuleHash
+$actualModuleHash = if ($moduleFullPath) { Assert-InputHash $moduleFullPath $acceptedModuleHash } else { $null }
 foreach ($relative in @($protectedInputs.Keys | Sort-Object)) {
     $null = Assert-InputHash (Join-Path $RepositoryRoot $relative) $protectedInputs[$relative]
 }
@@ -88,11 +89,13 @@ namespace Dango.PublishInputs {
 }
 $exports = @('dango_physics_get_abi_version', 'dango_physics_world_create', 'dango_physics_world_add',
     'dango_physics_world_remove', 'dango_physics_world_step', 'dango_physics_world_reset', 'dango_physics_world_destroy')
-$abi = [Dango.PublishInputs.NativeModule]::Verify($moduleFullPath, $exports)
+$abi = if ($moduleFullPath) { [Dango.PublishInputs.NativeModule]::Verify($moduleFullPath, $exports) } else { $null }
+$beltInputs = if ($BeltNativeDirectory) { & (Join-Path $PSScriptRoot 'test-belt-native-package.ps1') -NativeDirectory $BeltNativeDirectory -RepositoryRoot $RepositoryRoot } else { $null }
 [pscustomobject]@{
     PhysicsModulePath = $moduleFullPath
     PhysicsModuleSha256 = $actualModuleHash
     NativeAbi = $abi
+    BeltNative = $beltInputs
     RequiredExports = $exports
     ProtectedInputsVerified = $true
 }

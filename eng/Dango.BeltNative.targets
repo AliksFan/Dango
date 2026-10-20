@@ -1,0 +1,32 @@
+<Project>
+  <PropertyGroup>
+    <DangoBeltBuildScript>$(MSBuildThisFileDirectory)build-belt-native.ps1</DangoBeltBuildScript>
+    <DangoBeltVerifyScript>$(MSBuildThisFileDirectory)test-belt-native-package.ps1</DangoBeltVerifyScript>
+    <DangoBeltRepositoryRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))</DangoBeltRepositoryRoot>
+  </PropertyGroup>
+  <Target Name="BuildDangoBeltNative" BeforeTargets="PrepareForBuild" Condition="'$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <!-- Keep CMake scratch paths short enough for MSVC FileTracker, including custom publish artifact directories. -->
+      <DangoBeltNativeDirectory>$([MSBuild]::NormalizePath('$(DangoBeltRepositoryRoot)', 'obj', 'belt-native', '$(Configuration)'))</DangoBeltNativeDirectory>
+    </PropertyGroup>
+    <Exec Condition="'$(DangoBeltModulePath)' == '' or '$(DangoBeltRoomModulePath)' == ''" Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(DangoBeltBuildScript)&quot; -OutputDirectory &quot;$(DangoBeltNativeDirectory)&quot; -Configuration &quot;$(Configuration)&quot;" />
+    <MakeDir Directories="$(DangoBeltNativeDirectory)" />
+    <Copy Condition="'$(DangoBeltModulePath)' != ''" SourceFiles="$(DangoBeltModulePath)" DestinationFiles="$(DangoBeltNativeDirectory)/dango_belt_product.dll" />
+    <Copy Condition="'$(DangoBeltRoomModulePath)' != ''" SourceFiles="$(DangoBeltRoomModulePath)" DestinationFiles="$(DangoBeltNativeDirectory)/dango_belt_room.dll" />
+    <Exec Condition="'$(DangoBeltModulePath)' != '' or '$(DangoBeltRoomModulePath)' != ''" Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(DangoBeltVerifyScript)&quot; -NativeDirectory &quot;$(DangoBeltNativeDirectory)&quot; -RepositoryRoot &quot;$(DangoBeltRepositoryRoot)&quot; -WriteManifest -ExternalOverride" />
+    <ItemGroup>
+      <DangoBeltNativeFile Include="$(DangoBeltNativeDirectory)/dango_belt_product.dll;$(DangoBeltNativeDirectory)/dango_belt_room.dll;$(DangoBeltNativeDirectory)/belt-native-manifest.json" />
+    </ItemGroup>
+  </Target>
+  <Target Name="CopyDangoBeltNative" AfterTargets="CopyFilesToOutputDirectory" DependsOnTargets="BuildDangoBeltNative">
+    <Copy SourceFiles="@(DangoBeltNativeFile)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <FileWrites Include="@(DangoBeltNativeFile->'$(TargetDir)%(Filename)%(Extension)')" />
+    </ItemGroup>
+  </Target>
+  <Target Name="PublishDangoBeltNative" AfterTargets="ComputeFilesToPublish" DependsOnTargets="BuildDangoBeltNative">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="@(DangoBeltNativeFile)" RelativePath="%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+</Project>
