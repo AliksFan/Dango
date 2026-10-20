@@ -24,6 +24,22 @@ public sealed class BeltBodyRuntimeTests
     }
 
     [TestMethod]
+    public async Task BoundsRequestedBeforeFirstConfigurationReachTheCreatedNativeSession()
+    {
+        var native = new FakeSession();
+        await using var runtime = new BeltBodyRuntime(_ => native, true);
+        await runtime.SetBoundsAsync(-7, 22);
+        Assert.AreEqual(0, native.BoundsChanges);
+        await Configured(runtime);
+        Assert.AreEqual(1, native.BoundsChanges, "An early porch entry must not lose its boundaries before native creation.");
+        Assert.AreEqual((-7d, 22d), native.LastBounds);
+        await runtime.ConfigureAsync(new(110, 20, 80), 1, 0);
+        Assert.AreEqual(1, native.BoundsChanges, "Hot body changes retain the existing bounds.");
+        await runtime.SetBoundsAsync(-256, 256);
+        Assert.AreEqual((-256d, 256d), native.LastBounds);
+    }
+
+    [TestMethod]
     public async Task OneOwnerCreatesReconfiguresStepsAndDisposesOnSameThread()
     {
         var native = new FakeSession();
@@ -374,6 +390,7 @@ public sealed class BeltBodyRuntimeTests
         internal readonly List<int> Threads = [];
         internal readonly ManualResetEventSlim Entered = new(), Release = new();
         internal int Disposals, Reconfigurations, Calls, BoundsChanges;
+        internal (double Left, double Right) LastBounds;
         internal bool BlockStep, RejectConfiguration, RejectStep, MoveCurve, MoveInternalQ, Airborne, NoContact, UnexpiredCooldown;
         internal double InternalVelocity, VelocityDrift;
         public void Reconfigure(DangoBodyControls body)
@@ -382,7 +399,8 @@ public sealed class BeltBodyRuntimeTests
             if (RejectConfiguration) throw new InvalidOperationException("rejected configuration");
             Reconfigurations++;
         }
-        public void SetBounds(double left, double right) { Threads.Add(Environment.CurrentManagedThreadId); BoundsChanges++; }
+        public void SetBounds(double left, double right)
+        { Threads.Add(Environment.CurrentManagedThreadId); BoundsChanges++; LastBounds = (left, right); }
         public BeltNativeStep Step(DangoBeltInput input)
         {
             Threads.Add(Environment.CurrentManagedThreadId); Calls++; Entered.Set();

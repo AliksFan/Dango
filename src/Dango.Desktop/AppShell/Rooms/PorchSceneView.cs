@@ -46,6 +46,9 @@ public sealed partial class PorchSceneView : Grid
     private string? status;
     private double liveGroundY = WorldHeight;
     private bool unavailable;
+    private Canvas? beltBody;
+    private bool beltBodyPresented;
+    internal bool HasBeltBody => beltBodyPresented && beltBody?.IsVisible == true;
 
     public PorchSceneView()
     {
@@ -128,10 +131,40 @@ public sealed partial class PorchSceneView : Grid
         InvalidateVisual();
     }
 
+    internal void AttachBeltBody(Canvas view, double petX)
+    {
+        DetachBeltBody();
+        ResetProjection(petX);
+        beltBody = view;
+        beltBodyPresented = false;
+        liveGroundY = WorldHeight;
+        liveLayer.Children.Add(view);
+    }
+
+    internal void DetachBeltBody()
+    {
+        if (beltBody is not null) liveLayer.Children.Remove(beltBody);
+        beltBody = null;
+        beltBodyPresented = false;
+    }
+
+    internal void PresentBeltBody(double petX, double elapsedMs, bool reduceMotion)
+    {
+        if (beltBody is null) return;
+        PetWorldX = petX;
+        beltBodyPresented = true;
+        if (unavailable) { status = null; unavailable = false; }
+        if (resetCamera) { camera.Reset(PetWorldX, ViewportWorldWidth); resetCamera = false; }
+        else camera.Update(PetWorldX, ViewportWorldWidth, elapsedMs, reduceMotion);
+        UpdateProjection();
+        InvalidateVisual();
+    }
+
     internal void ShowUnavailable(string? message = null)
     {
         Dango.Desktop.Accessories.AccessoryHostBinding.Hide(body);
         body.Visibility = hat.Visibility = Visibility.Collapsed;
+        beltBodyPresented = false;
         unavailable = true;
         status = message ?? "团子暂不可用 · 请返回设置重试";
         InvalidateVisual();
@@ -260,7 +293,7 @@ public sealed partial class PorchSceneView : Grid
                 Text(dc, door.Kind, new Point(rect.Left + rect.Width / 2, rect.Top - 21 * SceneScale), 11, muted, centered: true);
                 if (near) Text(dc, "W", new Point(rect.Left + rect.Width / 2, rect.Top + rect.Height * .58), 13, accent, centered: true);
             }
-            if (body.Visibility == Visibility.Visible)
+            if (body.Visibility == Visibility.Visible || HasBeltBody)
                 dc.DrawEllipse(line, null, new Point((PetWorldX - CameraX) * SceneScale, FrontGroundY + 3 * SceneScale), 38 * SceneScale, 4 * SceneScale);
         }
         else Text(dc, "房间目录尚未接入", new Point(ActualWidth / 2, Math.Max(72, BackWallGroundY - 100)), 13, muted, centered: true);

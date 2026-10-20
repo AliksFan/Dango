@@ -87,11 +87,6 @@ public partial class ProductHomeView : UserControl
 
     public void ShowEditor(HomeEditor editor)
     {
-        if (beltRuntime is not null && editor == HomeEditor.Wardrobe)
-        {
-            SetNotice("本次验收：捏脸与身体", "已保存配饰会跟随新身体；配饰编辑与房间接入另批验证。");
-            return;
-        }
         if (IsInPorch || IsDangoAway) return;
         ClearLiveDirectionalInput();
         if (IsEditing && SelectedEditor == HomeEditor.Face) CancelAppearancePreview();
@@ -421,7 +416,7 @@ public partial class ProductHomeView : UserControl
         if (IsEditing) CloseEditor(focusStage: false);
         CancelAppearancePreview();
         IsInPorch = true;
-        if (beltRoomEntryEnabled) RefreshBeltVisibility();
+        if (beltRuntime is not null) EnterBeltPorch();
         roomNavigation.ShowPorch();
         ChangeLiveSurface();
         UpdateLiveMovementMode();
@@ -434,7 +429,7 @@ public partial class ProductHomeView : UserControl
         if (!IsInPorch) return;
         porchResumeX = PorchScene.PetWorldX;
         IsInPorch = false;
-        if (beltRoomEntryEnabled) RefreshBeltVisibility();
+        if (beltRuntime is not null) LeaveBeltPorch();
         roomNavigation.ShowHome();
         ClearLiveDirectionalInput();
         ChangeLiveSurface();

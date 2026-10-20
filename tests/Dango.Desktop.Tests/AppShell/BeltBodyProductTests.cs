@@ -60,7 +60,8 @@ public sealed class BeltBodyProductTests
         StringAssert.Contains(Element<Button>(home, "NoticeButton").ToolTip.ToString()!, "尚未接入房间");
         Assert.IsFalse(home.ReadBeltBodySettingsScene().CanRestoreDisplay);
         home.ShowEditor(HomeEditor.Wardrobe);
-        Assert.IsFalse(home.IsEditing);
+        Assert.IsTrue(home.IsEditing);
+        Assert.AreEqual(HomeEditor.Wardrobe, home.SelectedEditor);
     }
 
     [STATestMethod]

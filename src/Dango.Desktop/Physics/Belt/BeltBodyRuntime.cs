@@ -25,6 +25,7 @@ public sealed class BeltBodyRuntime : IAsyncDisposable
     private readonly TaskCompletionSource stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Thread owner;
     private IBeltBodySession? session;
+    private (double Left, double Right)? requestedBounds;
     private ConfigurationRequest? pending;
     private DangoBodyControls body = DangoBodyControls.Default;
     private DangoBeltInput latest;
@@ -153,7 +154,13 @@ public sealed class BeltBodyRuntime : IAsyncDisposable
         lock (gate)
         {
             ThrowIfClosing(); SignalLocked();
-            return CommandLocked(() => { session?.SetBounds(left, right); lock (gate) SignalLocked(); return true; });
+            return CommandLocked(() =>
+            {
+                session?.SetBounds(left, right);
+                requestedBounds = (left, right);
+                lock (gate) SignalLocked();
+                return true;
+            });
         }
     }
 
@@ -229,7 +236,16 @@ public sealed class BeltBodyRuntime : IAsyncDisposable
         }
         try
         {
-            if (session is null) session = factory(request.Body);
+            if (session is null)
+            {
+                var created = factory(request.Body);
+                try
+                {
+                    if (requestedBounds is { } bounds) created.SetBounds(bounds.Left, bounds.Right);
+                    session = created;
+                }
+                catch { created.Dispose(); throw; }
+            }
             else session.Reconfigure(request.Body);
             lock (gate)
             {

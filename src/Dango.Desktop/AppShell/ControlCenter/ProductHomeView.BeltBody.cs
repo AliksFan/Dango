@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using Dango.Desktop.Physics.Belt;
+using Dango.Desktop.AppShell.Rooms;
 using Dango.Desktop.Physics.Tuning;
 using Dango.Desktop.Rendering.Visuals;
 using Dango.Physics;
@@ -31,6 +32,7 @@ public partial class ProductHomeView
     private string? beltDiagnosticError;
     private string? beltSettingsPath;
     private bool beltRoomEntryEnabled, beltRoomSuspended;
+    private double beltPorchOriginX;
     internal bool BeltRoomEntryEnabled => beltRoomEntryEnabled;
     private double BeltFloor => 120 + (PetShadow.Height / 2 - 1) / Math.Max(.1, PetPreview.Width / 160);
     internal BeltBodyRuntime? BoundBeltBody => beltRuntime;
@@ -60,12 +62,13 @@ public partial class ProductHomeView
             InputMethod.SetIsInputMethodEnabled(slider, false);
         beltPresenter = new BeltBodyAppearancePresenter(DraftAppearance, settingsPath) { GaitEnabled = true };
         LiveEntityLayer.Children.Add(beltPresenter.View);
+        SynchronizeBeltAccessories();
         LiveDangoVisual.Visibility = LiveDangoHat.Visibility = Visibility.Collapsed;
         PetPreview.ToolTip = "拖动团子 · A/D 移动 · W 拉伸 · S 下压 · Space 跳跃";
         LiveSceneStatusText.Text = "新身体启动中…";
         SetNotice("新身体接入验收", appearanceSession?.StartupWarning ?? (beltRoomEntryEnabled
-            ? "首页／捏脸与空布局房间接线；家具玩法尚未接入。"
-            : "单人首页／捏脸 · 已保存配饰跟随；房间接入为后续批次。"));
+            ? "本地新身体验收 · 门廊、外观、配饰与房间。"
+            : "单人首页、捏脸与配饰验收。"));
         PetPreview.PreviewMouseLeftButtonDown += OnBeltPointerDown;
         PetPreview.MouseMove += OnBeltPointerMove;
         PetPreview.MouseLeftButtonUp += OnBeltPointerUp;
@@ -90,6 +93,7 @@ public partial class ProductHomeView
         beltRuntime.CloseAsync().GetAwaiter().GetResult();
         beltRuntime = null;
         if (beltPresenter is not null) LiveEntityLayer.Children.Remove(beltPresenter.View);
+        PorchScene.DetachBeltBody();
         beltPresenter?.Dispose();
         beltPresenter = null;
         beltVisible = false;
@@ -124,12 +128,12 @@ public partial class ProductHomeView
         RefreshBeltVisibility();
     }
 
-    private void ResumeBeltHome(long generation)
+    private void ResumeBeltPorch(long generation)
     {
         porchReturnGeneration = generation;
         SetDangoAway(false);
         ShowHomePage();
-        LeavePorch();
+        EnterPorch();
         liveSceneSuspended = false;
         RestoreBeltAfterRoomPreparation();
     }
@@ -137,7 +141,7 @@ public partial class ProductHomeView
     internal ProductSettingsSceneSnapshot ReadBeltBodySettingsScene()
     {
         var m = beltRuntime?.Metrics;
-        return new("新身体 · 单人捏脸", beltError is not null ? "需要恢复" : m?.Sleeping == true ? "身体休眠 · 外观继续显示" : beltVisible ? "正在运行" : "已暂停",
+        return new(IsInPorch ? "新身体 · 门廊" : IsAccessoryPreview ? "新身体 · 配饰" : "新身体 · 首页与捏脸", beltError is not null ? "需要恢复" : m?.Sleeping == true ? "身体休眠 · 外观继续显示" : beltVisible ? "正在运行" : "已暂停",
             beltError, CanReinitialize: beltError is not null,
             Diagnostics: $"模型：{DangoBeltWorld.Model}\n标定：{DangoBeltWorld.TuningVersion}\n物理 tick：{beltSnapshot?.Tick}\n配置版本：{beltSnapshot?.ConfigurationRevision}\n身体代际：{beltSnapshot?.BodyEpoch}\n工作线程：{m}\n外观：{beltPresenter?.Status}\n错误：{beltDiagnosticError}");
     }
@@ -209,7 +213,7 @@ public partial class ProductHomeView
     private void RefreshBeltVisibility()
     {
         if (beltRuntime is null) return;
-        var visible = IsLoaded && IsVisible && !IsSettingsOpen && !IsDangoAway && !beltRoomSuspended && (!beltRoomEntryEnabled || !IsInPorch);
+        var visible = IsLoaded && IsVisible && !IsSettingsOpen && !IsDangoAway && !liveSceneSuspended && !beltRoomSuspended;
         if (visible == beltVisible) return;
         beltVisible = visible;
         beltRenderStamp = Stopwatch.GetTimestamp();
@@ -245,16 +249,18 @@ public partial class ProductHomeView
         // A second WPF rendering callback confirms that the successful pose entered the visual tree.
         // This is a presentation acknowledgement, not a GPU-present or human acceptance claim.
         if (beltPendingDisplay is { } displayed && PresentationSource.FromVisual(this) is not null &&
-            beltRuntime.MarkDisplayed(displayed))
+            displayed.Epoch == beltRuntime.Epoch && displayed.BodyEpoch == appearanceSession?.BodyEpoch)
         {
-            BeltBodyDisplayConfirmed?.Invoke(displayed);
-            if (beltRoomEntryEnabled && porchReturnGeneration != 0 && !beltRoomSuspended && !IsDangoAway && !IsInPorch)
+            var acknowledged = beltRuntime.MarkDisplayed(displayed);
+            if (acknowledged) BeltBodyDisplayConfirmed?.Invoke(displayed);
+            if (beltRoomEntryEnabled && porchReturnGeneration != 0 && !beltRoomSuspended && !IsDangoAway && IsInPorch &&
+                PorchScene.HasBeltBody && PorchScene.IsVisible && PorchScene.ActualWidth > 0 && PorchScene.ActualHeight > 0)
             {
                 var attempt = porchReturnGeneration;
                 porchReturnGeneration = 0;
                 HealthyPorchFrameReady?.Invoke(attempt);
             }
-            if (appearanceSession?.MarkBodyApplied(displayed.Body, displayed.ModelVersion, displayed.ConfigurationRevision, displayed.BodyEpoch) == true)
+            if (acknowledged && appearanceSession?.MarkBodyApplied(displayed.Body, displayed.ModelVersion, displayed.ConfigurationRevision, displayed.BodyEpoch) == true)
                 RefreshAppearanceControls();
         }
         beltPendingDisplay = null;
@@ -295,18 +301,29 @@ public partial class ProductHomeView
     private void ApplyBeltPose(BeltBodySnapshot current, double dt)
     {
         if (current.Frame is not { } frame || beltPresenter is null) return;
-        var scale = PetPreview.ActualWidth / 160;
+        var scale = IsInPorch ? PorchScene.SceneScale : PetPreview.ActualWidth / 160;
         var ground = DangoBodyMaterial.Configure(current.Body).GroundHeight;
-        var top = BeltFloor - 66 + (ground - frame.CoreY) * BeltBodyAppearancePresenter.WorldToCanvas;
+        var top = (IsInPorch ? PorchSceneView.WorldHeight : BeltFloor) - 66 +
+            (ground - frame.CoreY) * BeltBodyAppearancePresenter.WorldToCanvas;
         Canvas.SetTop(beltPresenter.View, top);
+        if (IsInPorch)
+            Canvas.SetLeft(beltPresenter.View, beltPorchOriginX + frame.CoreX * BeltBodyAppearancePresenter.WorldToCanvas - 80);
+        else Canvas.SetLeft(beltPresenter.View, 0);
         var input = current.ActualInput;
-        var gaitContext = new BeltBodyGaitContext(scale, 0, top * scale, PetPreview.ActualWidth, PetVisualArea.ActualHeight);
+        if (IsInPorch)
+            PorchScene.PresentBeltBody(beltPorchOriginX + frame.CoreX * BeltBodyAppearancePresenter.WorldToCanvas,
+                dt * 1000, ReduceMotion || !SystemParameters.ClientAreaAnimation);
+        var gaitContext = IsInPorch
+            ? new BeltBodyGaitContext(scale, (PorchScene.PetWorldX - 80 - PorchScene.CameraX) * scale,
+                PorchScene.FrontGroundY + (top - PorchSceneView.WorldHeight) * scale, PorchScene.ActualWidth, PorchScene.ActualHeight)
+            : new BeltBodyGaitContext(scale, 0, top * scale, PetPreview.ActualWidth, PetVisualArea.ActualHeight);
         if (beltAppearanceFrame?.PhysicalTick == current.Tick)
             beltAppearanceFrame = beltAppearanceFrame with { Tick = ++beltPresentationTick, Seconds = dt, GaitContext = gaitContext };
         else beltAppearanceFrame = new(++beltPresentationTick, dt, beltBoundary, frame.CoreX, frame.CoreY,
             frame.Scaffold[2], frame.Scaffold[3], frame.Grounded, input.Horizontal, input.Downward > 0,
             input.Stretch > 0, input.JumpPressed, input.DragActive, gaitContext, current.Tick);
         beltPresenter.Update(beltAppearanceFrame);
+        if (IsAccessoryPreview) RefreshAccessoryFrame();
         BeltBodyPresentationSeconds += beltAppearanceFrame.Seconds;
         if (beltPresenter.RuntimeError is { } presentationError)
         {
@@ -321,7 +338,7 @@ public partial class ProductHomeView
         }
         LiveSceneStatusText.Text = beltError ?? string.Empty;
         LiveSceneStatusText.Visibility = beltError is null ? Visibility.Collapsed : Visibility.Visible;
-        PetShadow.Visibility = Visibility.Visible;
+        PetShadow.Visibility = IsInPorch ? Visibility.Collapsed : Visibility.Visible;
         var lift = Math.Clamp((frame.MinimumY - DangoBodyMaterial.Configure(current.Body).GroundHeight) / .7, 0, 1);
         PetShadowScale.ScaleX = 1 - .32 * lift;
         PetShadowScale.ScaleY = 1 - .15 * lift;
@@ -353,6 +370,8 @@ public partial class ProductHomeView
     {
         if (beltRuntime is null) return false;
         var key = e.Key == Key.ImeProcessed ? e.ImeProcessedKey : e.Key == Key.System ? e.SystemKey : e.Key;
+        // Porch keeps its existing W door action; all other surfaces use W to stretch.
+        if (IsInPorch && key == Key.W) return false;
         if (key is not (Key.A or Key.D or Key.W or Key.S or Key.Space)) return false;
         if (!down) SetBeltDirectionalKey(key, false, false);
         // A recognized belt key never falls through to the legacy A/D/W navigation mapping.
@@ -408,6 +427,7 @@ public partial class ProductHomeView
     private bool SetBeltDirectionalKey(Key key, bool down, bool repeat)
     {
         if (beltRuntime is null || key is not (Key.A or Key.D or Key.W or Key.S or Key.Space)) return false;
+        if (IsInPorch && key == Key.W) return false;
         if (!down && !beltHeld.Contains(key) && !beltSuppressed.Contains(key)) return true;
         if (!down) { beltHeld.Remove(key); beltSuppressed.Remove(key); }
         else if (!beltSuppressed.Contains(key) && !(repeat && key == Key.Space) && beltHeld.Add(key) && key == Key.Space) beltJump = true;
@@ -470,10 +490,15 @@ public partial class ProductHomeView
         if (beltHeld.Count != before) PublishBeltInput();
     }
 
-    private void OnBeltPointerDown(object sender, MouseButtonEventArgs e) => TryBeginBeltDrag(e);
+    private void OnBeltPointerDown(object sender, MouseButtonEventArgs e)
+    {
+        if (IsPickingAccessoryAnchor) return;
+        TryBeginBeltDrag(e);
+    }
     private bool TryBeginBeltDrag(MouseButtonEventArgs e)
     {
-        if (e.Handled || e.ChangedButton != MouseButton.Left || beltSnapshot is null || beltPresenter is null || IsSettingsOpen) return false;
+        if (e.Handled || e.ChangedButton != MouseButton.Left || beltSnapshot is null || beltPresenter is null ||
+            IsSettingsOpen || IsInPorch || IsPickingAccessoryAnchor) return false;
         var p = e.GetPosition(LiveSceneCanvas);
         var world = BeltPointerToWorld(p);
         var inside = false;
