@@ -1,0 +1,30 @@
+{
+  "head": "bfc3adc79ef46cc7aa1658323d34976f6a6eb224",
+  "scope": "diagnostic only; unchanged production source and current three-fix DLL; no foreground tests",
+  "compared": "exported body_snapshot and ball state byte-for-byte after each driven tick, including refusal; equal return codes/ticks",
+  "failure": {
+    "sequence": "24781",
+    "input_tick": "612",
+    "substep": "2",
+    "event": "integrate_failed",
+    "bending": "53602.868215539282",
+    "max_row": "5",
+    "min_derivative": "0.022709613967234827",
+    "solver_site": "5",
+    "residual": "0.16851607703094643"
+  },
+  "trace_events": 24782,
+  "trace_sha256": "f4b2e86fa678edc08b6039a0b86e5aea37f62dea4bdbb1015914e452a128f291",
+  "compact_events": 47,
+  "files": {
+    "trace.c": "b1b4cea6b95236d86a088f301b42a462f09bbd31e1d0384af3b1721d6fb2ced5",
+    "prepare_trace.py": "82e24a99f22d94952787a35b5e82cb48e88cd4166677e20d16c672d757a7119b",
+    "inspect-stage.c": "f7259dd53757ea63006ac53e3b67b1f5cccaa279d8144c9e2c5042f029150141",
+    "analyze_trace.py": "96a4b359e8547d1e5547862a150a915dafd3e06cc848f83d343d41b0f4a1aed9",
+    "compact-events.csv": "569d95b9a7cb9e1435c3d0e0341f36e05ac371a8702b6c1764adbc8ec00f1b96",
+    "counterfactual.log": "2126489b9798ac2c9830d7bde7f057396139418ed7a6258aa012b9db98c7d42f",
+    "run.log": "38da33cf7d079c861132d2b3ee91ff4a5135168f6edbf6a4c215e5a6b49d4ae0",
+    "source-hashes.json": "f05907006b4f8fefe6fd3b1426250a1412ff16fdb94201e27b2dcf72fd17646b"
+  },
+  "tracked_text_hash_format": "SHA256 after CRLF-to-LF normalization; full trace hash is raw bytes"
+}

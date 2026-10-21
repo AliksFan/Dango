@@ -1,0 +1,5 @@
+flags radial1 whale0 substeps4 dt0.0041666501201689243
+actual-next-integrate ok0 site5 residual0.16851607703094643 iter39 elasticBefore109106.39500712704 elasticAfter53607.02544927437 guardWork34786
+same-velocity-unprojected-q-diagnostic-only ok1 site0 residual7.560798694682249e-10 iter31 elasticBefore7141.1573170946231 elasticAfter3510.4848244984018 guardWork28206
+before-position-stage-same-old-velocity ok0 site5 residual0.0018010347609097072 iter39 elasticBefore7141.1573170946231 elasticAfter3510.4596838706639 guardWork29079
+after-position-stage-same-old-velocity ok0 site5 residual0.046845339515670471 iter39 elasticBefore109106.39500712704 elasticAfter53607.396478152041 guardWork35854
