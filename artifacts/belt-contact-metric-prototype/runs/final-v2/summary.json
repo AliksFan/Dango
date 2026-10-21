@@ -1,0 +1,212 @@
+{
+  "source_head": "6976168155b63f0903e960840dfa4308ca13ab6a",
+  "scope": "isolated numerical prototype, no production changes or foreground operations",
+  "checks": [
+    {
+      "name": "collection-contracts",
+      "executable": "metric_1",
+      "arguments": [
+        "contracts"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 21.89694000000054
+    },
+    {
+      "name": "combined-corner",
+      "executable": "metric_1",
+      "arguments": [
+        "--combined-corner"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 12.462712200000169
+    },
+    {
+      "name": "frozen-mass",
+      "executable": "metric_0",
+      "arguments": [
+        "frozen"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.10216979999950127
+    },
+    {
+      "name": "frozen-metric",
+      "executable": "metric_1",
+      "arguments": [
+        "frozen"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.10631280000052357
+    },
+    {
+      "name": "frozen-product-equivalence",
+      "executable": "room_metric",
+      "arguments": [
+        "../belt-page-completion/review-app/dango_belt_product.dll"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 53.77467069999966
+    },
+    {
+      "name": "platform-nine",
+      "executable": "room_metric",
+      "arguments": [
+        "--platform"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 55.94876639999984
+    },
+    {
+      "name": "properties",
+      "executable": "metric_1",
+      "arguments": [
+        "properties"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.020742699999573233
+    },
+    {
+      "name": "replay-mass",
+      "executable": "metric_0",
+      "arguments": [
+        "replay"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 7.40623719999985
+    },
+    {
+      "name": "replay-metric",
+      "executable": "metric_1",
+      "arguments": [
+        "replay"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 10.280594199999541
+    },
+    {
+      "name": "room-contracts",
+      "executable": "room_metric",
+      "arguments": [],
+      "exit_code": 0,
+      "elapsed_seconds": 0.8250192999994397
+    },
+    {
+      "name": "stage-mass",
+      "executable": "metric_0",
+      "arguments": [
+        "stage"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.09233150000000023
+    },
+    {
+      "name": "stage-metric",
+      "executable": "metric_1",
+      "arguments": [
+        "stage"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.04084160000002157
+    },
+    {
+      "name": "walls",
+      "executable": "wall_metric",
+      "arguments": [],
+      "exit_code": 0,
+      "elapsed_seconds": 28.25335300000006
+    }
+  ],
+  "hashes": {
+    "artifacts/belt-contact-metric-prototype/actual-config.h": "22499aa82aba7bedbfcd4e4dabce552ff3ce1fffe7e571908710a0f8c160ac45",
+    "artifacts/belt-contact-metric-prototype/cases.h": "a150be65928bee18bdf900a023a3e8a9d6c63a2516537037722fce51de849c70",
+    "artifacts/belt-contact-metric-prototype/metric-ball.h": "8e6c7519870bdb32d3a7c634f113dd5539e437bd51f229260704d62e3112bdfa",
+    "artifacts/belt-contact-metric-prototype/metric.h": "fdd4db684772f08e24cfb0703a93e7549acca89ee42abff7d410f742c5088b9e",
+    "artifacts/belt-contact-metric-prototype/experiment.c": "c7caa111660e03d0dd5b57bc20500b15a1e455bc69ac47988a05509b1443e6fd",
+    "artifacts/belt-contact-metric-prototype/prepare.py": "315b31727b10d2aef066bfcb7a61b5aa64bff8a6ab2ef4f6c88358682d311bef",
+    "artifacts/belt-contact-metric-prototype/run_checks.py": "588e64336c4d32c0b6cf3b32a9635f480a1418e8c09b00b505a5ec22f76ee5e1",
+    "artifacts/belt-contact-metric-prototype/CMakeLists.txt": "0520e17e47e81fd3af779abc1f1ebfa8512da1468ad8e938dad439efdfe7fe71",
+    "artifacts/belt-contact-metric-prototype/source-binding.json": "fb7113b688447113c5d3085ddc72a990c15d056e14570b9dd14756a6f2c33b9a",
+    "artifacts/belt-contact-metric-prototype/build/Release/metric_0.exe": "a9d86bccd784f6fd3f54f584e13b3fe1f19c8e74aeae26508664df514ccea8fa",
+    "artifacts/belt-contact-metric-prototype/build/Release/metric_1.exe": "1f88621a9aab914626b878b423ea76b7d75069bc3e103425642583a7dd9db217",
+    "artifacts/belt-contact-metric-prototype/build/Release/room_metric.exe": "a420ac72499b0592a5ba2dbef01d4b466739de18f055a98e47d73f79d490c880",
+    "artifacts/belt-contact-metric-prototype/build/Release/wall_metric.exe": "2e33532a0585fd627e1e17f0fb851bca38316a47b44c8f94b09ae2b4bc80d80f",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024418-before_integrate.bin": "d6f385ee2210f4375d613552d32447a7134d45e81f43914a40e404877f035b48",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024447-before_integrate.bin": "591551f2d27509845f348b1e4644748590e2217b60889e78074bea10af03531e",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024474-before_integrate.bin": "b62056c003675cf46995a9c72eadb3bb8a8370138c8fbbe308751a58f293617b",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024501-before_integrate.bin": "ff84ee96052dd8ba5f1d1c6094f93d2c6d4db7be1e7677a0211231145783180c",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024534-before_integrate.bin": "5e54b1a8a26e8ec4cea93bc0543b313d877cc1c58036725f8de4067238d4223a",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024557-before_integrate.bin": "18d749f00c617293f191df00ee4cef892e365143bd2bd969db9b0c886e298952",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024580-before_integrate.bin": "adab434123e16aeba89c54a89c1b7d065dd52a6d12d1661fe94bd095ce1bb69e",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024601-before_integrate.bin": "ad3b7356132d03ef05662e901920aed0562a54576603dd25d16b9d6b18f7e04e",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024620-before_integrate.bin": "14ccb6a25154283e9397e30bb691b07817bbe6fe2dba9e605ff7e542d3a4afd9",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024639-before_integrate.bin": "a6d2d1b3f4247438588fc1d4c5204a43fcd546d7f5749962394dfd07ae2ceff9",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024656-before_integrate.bin": "bc3795c692a88212aa4ce968a572d779df57126f392c761ca992b7a085e97e07",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024673-before_integrate.bin": "8d3fb9779d468840fc822b1e7a96731a46f4e3360b156cb5cab84dd3f321baec",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024690-before_integrate.bin": "226edd36bee10daa62254406afaa7ba6c9e186b498800e44fc958eb847650dd6",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024705-before_integrate.bin": "62c3afaa83fe17927e8d42a31ebd4e906024bfb8fa8bdc480ac7f09ad64e15a8",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024720-before_integrate.bin": "57f6fe1f17889e5f30b33ab7aa1d9739efe69758ceb29d5c4596c0baa0823916",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024727-static_after.bin": "6edf7a8771c4ca46cfc7c1bf3942109c0c87ba30b30c607cbabf7130780eccf5",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024728-static_before.bin": "723f9a3d5f8d5bad29382e66e0bb6ce73a2e7b76251fff6a7083584dc38cddce",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024729-static_after.bin": "f2eaf79eaa88143d1cd4267873a763027778f2f31010bef124b0d0d3d530c10c",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024730-static_before.bin": "39557da66ef40b7378fb749d0efca72861ec519c1ba2f4d0feafd12e4b3c72de",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024731-static_after.bin": "8067d2c4cc9be9141692a9929c56d8b1cca3674d3719b866fc86e04eef7d1a70",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024732-static_before.bin": "04181b07e8cb1ba848e71551f3e69eff74b4fc54f58bd98a4ae57f6577968bfe",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024733-static_after.bin": "dc79a057e5005b39f805b43df34d48b5bf2455dcf0c9f5884d69a179a2bf5704",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024735-before_integrate.bin": "7e2f8425fc3a0934406400fbe4f69ebced552a6999cc3f681f4bc0f989133f15",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024738-static_after.bin": "dad5dc6ac90dbfb2546c38a4d71f5ff1b5a4f0ff5a5097ccf1b9a281c3af32ad",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024739-static_before.bin": "59d8bf747add6805f24dda39427ee6c8a0926cfc7a90fed5cc5f6e7bb8a733aa",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024740-static_after.bin": "50c98c6c7adf26a9d0a996d67b0da9febca7cc4dde4545e1a1e7c2771a37a0b9",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024741-static_before.bin": "e97c204e781862aee1c42e88ed19ec1562ee8dc52d016a7579786ad94a3159f3",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024742-static_after.bin": "b52b72468eb2af33f3663015055e9309fb0cd51de8d7e5829e067d9d426c1404",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024743-static_before.bin": "53da744a11b921b6f6805896aeba2cb41e6e874d9692283f023df2bffa02f862",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024744-static_after.bin": "aff3432026209c875a915d45a8b365a8e1683530085ae86be281155669e3bae9",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024745-static_before.bin": "67e7e083d72fdefee37b8562065eacb79bdf2ffd24edfe41a153b8a9d0704315",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024746-static_after.bin": "fccc16061f925e37d7dbfa4c824312d71c056df6cd9c978fc4845b02e834780e",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024747-static_before.bin": "dd83bf4efdbebc31e1319b77ac86c8385bfa436d9a18d1743df0f9265f5d5bf7",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024748-static_after.bin": "8aac84e552ee761489739712da72821229e4ed84c833d6124c31472961e6b0b9",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024750-before_integrate.bin": "a124d946c2cf92be2f6a52e92bbdabaa5515ef121589015aa4ff85b63c2a0feb",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024752-static_before.bin": "22b7b2a03b0ce8bfc79882072f1ad19275022994457eccf28eb5c0f1a542e005",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024753-static_after.bin": "edbef656156d23c91c4c10042777360ba7942805c51c325141f2a9dd23200ea6",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024754-static_before.bin": "2077a35bfb5c95048f8bd811817b8be2880f86f9702cedb8b80c7110f6ee476d",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024755-static_after.bin": "9d163ad039ae7934d281479fcf6d6cbad983cf96524dbc34781ee3afdc253fb4",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024756-static_before.bin": "7c68f9462a021d0841aa2e7e0f71b194d4806eea4af70ecdaa6a6d728d92ce02",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024757-static_after.bin": "e45c6bd6f3641680133c2f78388ac590e65492915b298feb9596ae8f66e60808",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024758-static_before.bin": "626aac083e51a7af4046f965dfe90a21402c67ff162b071c6567a6e3c173a7b2",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024759-static_after.bin": "5b411997ab7e15ab49511c036593465b841215637771c577875ab358cdd09bcb",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024760-static_before.bin": "91d59461ef2e7afcf4ff7c8397573cb2b037e03acd5260fd9828b15459669964",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024761-static_after.bin": "db9a311600a2b4f88cfc7e28494d6672128f0e9bd65800d1fab91628244da7de",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024762-static_before.bin": "169238c8f89355fe3b94bc0b9f0d3e4492c0ab76da0df2ba0ceb05b8a09bc0fa",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024763-static_after.bin": "dcb30ae64ac655f5742c0f110a6b89df31b2f9b3ac2a01bfd9f5b558c07ebd7f",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024765-before_integrate.bin": "4d5ba5a7d9f2b645e80b059dcc1a3bd01254ac472127cd432024960841dfc77c",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024767-static_before.bin": "dc382b6766c061969a3acaa0eafc806397bfdffa3ef13c798f1a87fd6617e809",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024768-static_after.bin": "4d5fe459cbb6a4578909cdd130cbdb2cac8f1cd627a424a7ef4b7b9933a3654a",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024769-static_before.bin": "2221462c90a2c1b6ab37ebd119b29f2e7d34281d4898eb6fdd95afc035c5ede3",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024770-static_after.bin": "8599d08344a7060a0321c1776aad54b0dd0144590a6dfa5c76621a6dad152844",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024771-static_before.bin": "d0685692cd390393757c27d7b83f6564479b1779910c159e3190a298471f4f53",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024772-static_after.bin": "f8937a33e4e4f359b375461690970441cf680aaedfd9a4128397a1a618cdb5c5",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024773-static_before.bin": "4ccf36b33b41aa17eddf08a98c96b6684c2c38ee81485bf24dbe62228f31a586",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024774-static_after.bin": "5fdd5b729580f17279db7e26fa9bdcf8cf9e35983e1f05c47eb1704421eab13d",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024775-static_before.bin": "715d5447c58bd9d9c24537f1ffabbe71bb6c5affba9a6874edd7dea16216b39e",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024776-static_after.bin": "dbc04b18ea8884dbe7127209abbd50b2f0df54e16b39c025a7e0102c8a9f20b6",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024777-static_before.bin": "d226c01743fedbd8303ffe8fd0765385d57e203c16ef8a613b27c53d6cb145d9",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024778-static_after.bin": "54039e36b5a8995b23ea5d778fcbd8f333f62c7558d0b341d6ad530e5b09ece9",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/state-024780-before_integrate.bin": "787574a10da2d3c5724734eea7ef1146ece0600f611670544f0d4e78ac6b34f9",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/trace.csv": "f4b2e86fa678edc08b6039a0b86e5aea37f62dea4bdbb1015914e452a128f291",
+    "artifacts/belt-ball-platform-diagnosis/body-state-trace/source-hashes.json": "f05907006b4f8fefe6fd3b1426250a1412ff16fdb94201e27b2dcf72fd17646b",
+    "artifacts/belt-contact-metric-prototype/../belt-page-completion/review-app/dango_belt_product.dll": "4871642b25107faa3d794ac16fa04837d342bf4646627b0af103d4b1679c3c4a",
+    "artifacts/belt-ball-platform-diagnosis/native-wall-build/Release/dango_belt_room.dll": "1d3b87349589516fdcf7702b1415b3b1ae5d016a95a862133e4f36ea3fa9b74e",
+    "artifacts/belt-contact-metric-prototype/runs/final-v2/collection-contracts.log": "43d2994c6a261b57ae32b662da1095aed10b8f77b7cfcbea0d365ebc169afbdc",
+    "artifacts/belt-contact-metric-prototype/runs/final-v2/combined-corner.log": "a4faece219f961a62ff7e3e48b3cb1f307e5f237326bb658f5b1b016de820799",
+    "artifacts/belt-contact-metric-prototype/runs/final-v2/frozen-mass.log": "3c0ee175ad7d416f24a6a268f3959e320c3080eefbf650db03f43071a63035a7",
+    "artifacts/belt-contact-metric-prototype/runs/final-v2/frozen-metric.log": "648b7ca6707abdd1132e98ab92328dc09487110ef80350066734dfd6f369c375",
+    "artifacts/belt-contact-metric-prototype/runs/final-v2/frozen-product-equivalence.log": "cd4306ba87daeb4fc10233321c6c52a25b4beb7a7a799c0cf22033512cfded91",
+    "artifacts/belt-contact-metric-prototype/runs/final-v2/platform-nine.log": "4be6773e03e85e96175e6381a61a7fa32a98796d5bf275db887212da8d358276",
+    "artifacts/belt-contact-metric-prototype/runs/final-v2/properties.log": "87c1a22f655bad793966c8dce9794ee9b47ff067093b6f76bbe1ef4f3300d032",
+    "artifacts/belt-contact-metric-prototype/runs/final-v2/replay-mass.log": "a4088a0ec4842b224da384f6881727063bf63cd8dfb24940344fca8051bdfe4c",
+    "artifacts/belt-contact-metric-prototype/runs/final-v2/replay-metric.log": "494321b9e2f216764598cf1be558d13de00b061c5bc9a0ff48966fc1decaac75",
+    "artifacts/belt-contact-metric-prototype/runs/final-v2/room-contracts.log": "3a3a03522bced9bff554d77029eb1f5531a6a0ea2b52141f6aff4a3bb5d32ed2",
+    "artifacts/belt-contact-metric-prototype/runs/final-v2/stage-mass.log": "ede146242931e8c2e398aee5c2b6e5bb588c6c6439401efe0ee3556df39aee1d",
+    "artifacts/belt-contact-metric-prototype/runs/final-v2/stage-metric.log": "56038cc62a30e82707c0cee18ed0ceac40cadffa25f6336a2dd0443cc70278cd",
+    "artifacts/belt-contact-metric-prototype/runs/final-v2/walls.log": "2e86ca6aa23be456f19d69f3444f134d648f28831cce46e82b7b72785f89b5df"
+  }
+}

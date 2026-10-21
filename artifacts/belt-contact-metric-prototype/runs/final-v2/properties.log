@@ -1,0 +1,3 @@
+PROPERTIES translationDirectionRelativeError 6.6578656557249722e-14
+PROPERTIES bodyBallProgress 0.0010000020000016541 massWeightedTranslation 1.9447876468958736e-17 4.4655576979246714e-18 velocitiesUnchanged PASS
+PROPERTIES nonfinite refusal no kinematic writes PASS
