@@ -77,8 +77,8 @@ public sealed class OrdinaryRoomFurnitureProductTests
         Assert.IsTrue(accessories.TrySave(), accessories.StatusMessage);
         using var host = CreateHost(root);
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
-        Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
-        host.ShowControlCenter(); Pump(250);
+        Assert.IsTrue(runtime.UsesBeltRoom, "Product rooms must use the continuous body module.");
+        host.ShowControlCenter(); ProductHostTestSupport.WaitForHome(host); Pump(250);
         var home = Field<ControlCenterWindow>(host, "controlCenterWindow").ProductHome;
         home.ResumePorch(); Pump(300);
         Assert.IsTrue(home.PorchScene.RequestNearbyFurniture());
@@ -92,6 +92,7 @@ public sealed class OrdinaryRoomFurnitureProductTests
         Assert.IsNull(runtime.AccessoryError);
         Assert.IsNull(runtime.AttachmentError);
         var generation = furniture.WorldGeneration;
+        var roomEpoch = runtime.LastBeltRoomFrame!.OwnerEpoch;
         var entity = runtime.EntityIds.Single();
         var appearance = runtime.DisplayHatAppearance;
         var selectedCenter = runtime.CurrentSelectedCenter;
@@ -148,10 +149,12 @@ public sealed class OrdinaryRoomFurnitureProductTests
         Assert.AreEqual(LocalRoomPresentation.Porch, host.LocalPresentation, host.LocalRoomFailure);
         Assert.HasCount(0, furniture.NativeFrame!.Items, "Furniture cannot pollute porch.");
         CollectionAssert.AreEqual(bytes, File.ReadAllBytes(path), "Runtime detach must never save an empty layout.");
-        host.EnterLocalRoom(); Until(() => !host.LocalHandoffPending, 4500);
+        host.EnterLocalRoom(); Until(() => host.LocalPresentation == LocalRoomPresentation.Window && !host.LocalHandoffPending, 4500);
+        furniture = runtime.Furniture!;
         Assert.HasCount(1, furniture.NativeFrame!.Items, furniture.Status);
         Assert.AreEqual(anchor, furniture.Layout.Platform!.Anchor);
-        Assert.AreEqual(generation, furniture.WorldGeneration);
+        Assert.AreNotEqual(roomEpoch, runtime.LastBeltRoomFrame!.OwnerEpoch,
+            "A fresh admission must rebuild the physical owner from the saved layout.");
         Assert.AreEqual(entity, runtime.EntityIds.Single());
         Assert.AreEqual(appearance, runtime.DisplayHatAppearance);
         Assert.HasCount(2, runtime.GetAccessoryFrames(runtime.LastFrame!, 0));
@@ -176,8 +179,8 @@ public sealed class OrdinaryRoomFurnitureProductTests
         File.WriteAllBytes(path, FurnitureLayoutSerializer.Serialize(layout, FurnitureLayoutContract.OrdinaryRoom));
         using var host = CreateHost(root);
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
-        Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
-        host.ShowControlCenter(); Pump(250);
+        Assert.IsTrue(runtime.UsesBeltRoom, "Product rooms must use the continuous body module.");
+        host.ShowControlCenter(); ProductHostTestSupport.WaitForHome(host); Pump(250);
         host.EnterLocalRoom(); Until(() => !host.LocalHandoffPending, 4500);
         Assert.AreEqual(LocalRoomPresentation.Window, host.LocalPresentation, host.LocalRoomFailure);
         Assert.AreEqual(layout, runtime.Furniture!.Layout);
@@ -195,8 +198,8 @@ public sealed class OrdinaryRoomFurnitureProductTests
         var root = NewRoot();
         using var host = CreateHost(root);
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
-        Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
-        host.ShowControlCenter(); Pump(250);
+        Assert.IsTrue(runtime.UsesBeltRoom, "Product rooms must use the continuous body module.");
+        host.ShowControlCenter(); ProductHostTestSupport.WaitForHome(host); Pump(250);
         host.EnterLocalRoom(); Until(() => !host.LocalHandoffPending, 4500);
         var furniture = runtime.Furniture!;
         var generation = furniture.WorldGeneration;
@@ -226,12 +229,13 @@ public sealed class OrdinaryRoomFurnitureProductTests
     {
         using var host = CreateHost(NewRoot());
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
-        Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
-        host.ShowControlCenter(); Pump(250);
+        Assert.IsTrue(runtime.UsesBeltRoom, "Product rooms must use the continuous body module.");
+        host.ShowControlCenter(); ProductHostTestSupport.WaitForHome(host); Pump(250);
         var home = Field<ControlCenterWindow>(host, "controlCenterWindow").ProductHome;
         host.EnterLocalRoom(); Until(() => !host.LocalHandoffPending, 4500);
         host.Dispose();
         Assert.IsNull(home.BoundRuntime, "Queued Home.Unloaded cannot retain an already-disposed native owner.");
+        Assert.IsNull(home.BoundBeltBody, "Disposal must also release the actual home worker.");
         Assert.IsNull(home.BoundSceneSession);
         Assert.IsNull(runtime.FrameDriver);
         Assert.IsFalse(runtime.IsRunning);
@@ -245,8 +249,8 @@ public sealed class OrdinaryRoomFurnitureProductTests
         return root;
     }
     private static DangoApplicationHost CreateHost(string root) => new(settingsFile: Path.Combine(root, "settings.json"),
-        nativeLibraryPath: Environment.GetEnvironmentVariable("DANGO_ORDINARY_FURNITURE_TEST_MODULE") ??
-            throw new InvalidOperationException("Real furniture module is required for product-room integration tests."), isolatedLocalRoomReview: true);
+        roomModulePath: Environment.GetEnvironmentVariable("DANGO_BELT_ROOM_MODULE") ??
+            Path.Combine(AppContext.BaseDirectory, "dango_belt_room.dll"));
     private static T Field<T>(object instance, string name) => (T)instance.GetType().GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(instance)!;
     private static void Until(Func<bool> condition, int timeout)
     {

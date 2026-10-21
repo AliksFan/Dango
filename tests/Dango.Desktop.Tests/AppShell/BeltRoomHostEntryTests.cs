@@ -192,15 +192,13 @@ public sealed class BeltRoomHostEntryTests
     [TestMethod]
     [DataRow(FurnitureItemKind.StaticPlatform)]
     [DataRow(FurnitureItemKind.RoundBall)]
-    public void CandidateValidatesExistingFurnitureKindsWithoutChangingLayout(FurnitureItemKind kind)
+    public void ProductValidatesExistingFurnitureKindsWithoutChangingLayout(FurnitureItemKind kind)
     {
         var layout = FurnitureLayout.ForItems(1, Guid.NewGuid(), [new(Guid.NewGuid(), kind, FurnitureLayoutContract.OrdinaryRoom.GetDefaultAnchor(kind))]);
         var before = FurnitureLayoutSerializer.Serialize(layout, FurnitureLayoutContract.OrdinaryRoom);
-        DangoApplicationHost.ValidateBeltRoomAdmission(layout, false, true);
+        DangoApplicationHost.ValidateBeltRoomAdmission(layout);
         CollectionAssert.AreEqual(before, FurnitureLayoutSerializer.Serialize(layout, FurnitureLayoutContract.OrdinaryRoom));
-        DangoApplicationHost.ValidateBeltRoomAdmission(layout, false, false);
-        DangoApplicationHost.ValidateBeltRoomAdmission(FurnitureLayout.Empty, false, true);
-        DangoApplicationHost.ValidateBeltRoomAdmission(FurnitureLayout.Empty, true, true);
+        DangoApplicationHost.ValidateBeltRoomAdmission(FurnitureLayout.Empty);
     }
 
     [STATestMethod]

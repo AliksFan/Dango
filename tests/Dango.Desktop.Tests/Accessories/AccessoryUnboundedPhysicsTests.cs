@@ -26,6 +26,7 @@ public sealed class AccessoryUnboundedPhysicsTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
+    [TestCategory("LegacyModuleIntegration")]
     public void RealBodyWalksBeyondBothOriginalFloorEdgesWithoutResettingShapeVelocityOrIdentity()
     {
         using var rolling = new DesktopPhysicsScene(NativePath, Bounds);
@@ -81,6 +82,7 @@ public sealed class AccessoryUnboundedPhysicsTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
+    [TestCategory("LegacyModuleIntegration")]
     public void RollingPreviewKeepsGaitAndElasticAccessoryMotionContinuousWithOneStepPerTick()
     {
         var root = Path.Combine(TestRepository.Root, "artifacts", "accessory-verification", "unbounded", Guid.NewGuid().ToString("N"));
@@ -165,6 +167,7 @@ public sealed class AccessoryUnboundedPhysicsTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
+    [TestCategory("LegacyModuleIntegration")]
     public void PreviewCapabilityIsExplicitAndCannotMixWithRoomWalls()
     {
         using var scene = new DesktopPhysicsScene(NativePath, Bounds);
@@ -182,41 +185,27 @@ public sealed class AccessoryUnboundedPhysicsTests
     public void ColdHomeCanOpenWardrobeBeforeItsFirstNativeFrameAndFinishPreparation()
     {
         var root = Path.Combine(TestRepository.Root, "artifacts", "accessory-verification", "unbounded-cold-home", Guid.NewGuid().ToString("N"));
-        using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"), nativeLibraryPath: NativePath);
+        using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"));
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
-        Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
-        Assert.IsNull(runtime.LastFrame, "The cold-start gate must begin before a published live body frame.");
-        ControlCenterWindow? window = null;
-        try
-        {
-            // Window.Show can synchronously produce a Rendering callback. Build
-            // the actual product view without showing it, then open Wardrobe
-            // before any visible host can publish a native body frame.
-            window = (ControlCenterWindow)typeof(DangoApplicationHost)
-                .GetMethod("GetOrCreateControlCenter", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(host, null)!;
-            var home = window.ProductHome;
-            Assert.IsFalse(home.IsLoaded, "The cold fixture must not load or show a host before opening Wardrobe.");
-            Assert.IsNull(runtime.LastFrame, "Opening Wardrobe after a warm-up would miss the first-frame preparation regression.");
-            var entity = runtime.EntityIds.Single();
-            home.ShowEditor(HomeEditor.Wardrobe);
-            Assert.IsNull(runtime.LastFrame, "Opening the hidden editor must not create a second body clock.");
-            host.ShowControlCenter();
-            Pump(600);
-            Assert.IsTrue(home.IsEditing); Assert.AreEqual(HomeEditor.Wardrobe, home.SelectedEditor);
-            Assert.IsTrue(home.OwnsLiveFrameDriver);
-            Assert.IsTrue(runtime.UnboundedHorizontalPreview);
-            Assert.AreEqual(entity, runtime.EntityIds.Single());
-            Assert.IsNotNull(runtime.LastFrame);
-            Assert.IsNull(runtime.LastError);
-            Assert.IsFalse(Field<bool>(home, "liveSurfaceNeedsAlignment"));
-            Assert.IsNull(Field<string?>(home, "liveSurfaceFailure"), "A transient first-frame preparation must not latch a permanent failure.");
-            var body = Field<DeformableDangoVisual>(home, "LiveDangoVisual");
-            Assert.AreEqual(Visibility.Visible, body.Visibility);
-            Assert.AreEqual(DangoContourFailure.None, body.LastContourFailure);
-            Assert.IsNotNull(body.RenderedBodyBottom, "A fallback silhouette cannot establish a healthy preview.");
-            Assert.AreEqual(Visibility.Collapsed, Field<FrameworkElement>(home, "LiveSceneStatusText").Visibility);
-        }
-        finally { window?.Close(); }
+        Assert.AreEqual(0, runtime.EntityIds.Count);
+        var window = (ControlCenterWindow)typeof(DangoApplicationHost)
+            .GetMethod("GetOrCreateControlCenter", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(host, null)!;
+        var home = window.ProductHome;
+        Assert.IsFalse(home.IsLoaded);
+        Assert.IsNull(home.DisplayedBeltSnapshot, "The cold fixture must begin before an acknowledged native body frame.");
+        var worker = home.BoundBeltBody;
+        home.ShowEditor(HomeEditor.Wardrobe);
+        Assert.IsNull(home.DisplayedBeltSnapshot, "Opening the hidden editor cannot manufacture a displayed frame.");
+        host.ShowControlCenter();
+        Dango.Desktop.Tests.AppShell.ProductHostTestSupport.WaitForHome(host);
+        Assert.IsTrue(home.IsEditing); Assert.AreEqual(HomeEditor.Wardrobe, home.SelectedEditor);
+        Assert.AreSame(worker, home.BoundBeltBody);
+        Assert.IsTrue(worker!.Metrics.Running);
+        Assert.IsNotNull(home.BoundBeltPresenter!.Inspect().Body);
+        Assert.IsNull(home.BoundBeltPresenter.RuntimeError);
+        Assert.IsNull(home.BoundRuntime, "The cold-start path cannot revive the retired product world.");
+        Assert.IsTrue(home.BoundBeltPresenter.View.IsVisible);
+        Assert.AreEqual(0, runtime.EntityIds.Count, "Wardrobe startup must leave the independent room world deferred.");
     }
 
     private static T Field<T>(object target, string name) =>

@@ -69,6 +69,7 @@ public sealed class AccessoryIntegrationTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
+    [TestCategory("LegacyModuleIntegration")]
     [DataRow(false)]
     [DataRow(true)]
     public void MultipleSoftGravityAndElasticAccessoriesCannotAlterAnyNativeOrBodyStep(bool folding)
@@ -147,6 +148,7 @@ public sealed class AccessoryIntegrationTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
+    [TestCategory("LegacyModuleIntegration")]
     public void StableEquippedHostNeverReshowsOrRebuildsItsHiddenLegacyHatWhileAllEightMeshesAdvance()
     {
         var configuration = new AccessoryConfiguration(Enumerable.Range(0, 8).Select(index =>
@@ -218,6 +220,7 @@ public sealed class AccessoryIntegrationTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
+    [TestCategory("LegacyModuleIntegration")]
     public void CancelingCompatibilityPreviewRestoresTheCurrentLegacyAppearanceHatPoseAndGaitImmediately()
     {
         var session = new AccessorySettingsSession(NewRoot(), "top-hat");
@@ -261,6 +264,7 @@ public sealed class AccessoryIntegrationTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
+    [TestCategory("LegacyModuleIntegration")]
     public void AccessoryHatSuppressionRequiresACanvasHostAndUsesTheRuntimeAppearanceEntity()
     {
         using var runtime = Ready(Multiple());
@@ -285,6 +289,7 @@ public sealed class AccessoryIntegrationTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
+    [TestCategory("LegacyModuleIntegration")]
     public void ActualHostCanvasGroupsLayersByEntityAndHidesOnlyTheCustomizedLegacyHat()
     {
         using var runtime = Ready(Multiple());
@@ -322,6 +327,7 @@ public sealed class AccessoryIntegrationTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
+    [TestCategory("LegacyModuleIntegration")]
     public void EqualOrderAccessoriesKeepStableCanvasOrderAfterCrossLayerPreviewMigration()
     {
         var a = new AccessoryItem("a", "Fictional migrating accessory", "builtin-sprout", 64, 64)
@@ -395,6 +401,7 @@ public sealed class AccessoryIntegrationTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
+    [TestCategory("LegacyModuleIntegration")]
     public void ActualCurvedBodyKeepsTopAndInteriorAnchorsOnItsDisplayedShapeThroughGaitSquashAndJump()
     {
         var top = new AccessoryItem("top", "Top geometric anchor", "builtin-sprout", 64, 64) { BodyAnchorX = .5, BodyAnchorY = 0 };
@@ -435,31 +442,30 @@ public sealed class AccessoryIntegrationTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
-    public void SavedAccessoriesFollowOneEntityAndDriverAcrossHomePorchRoomWindowWallpaperAndReturn()
+    public void SavedAccessoriesFollowDefaultHomeAndRoomAcrossWindowWallpaperAndReturn()
     {
         var root = NewRoot(); var configuration = Multiple(); var session = new AccessorySettingsSession(root);
         session.Stage(configuration); Assert.IsTrue(session.TrySave());
-        using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"), isolatedLocalRoomReview: true);
+        using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"));
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
-        Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
+        Assert.IsTrue(runtime.UsesBeltRoom);
         host.ShowControlCenter();
+        Dango.Desktop.Tests.AppShell.ProductHostTestSupport.WaitForHome(host);
         var home = Field<ControlCenterWindow>(host, "controlCenterWindow").ProductHome; home.ReduceMotion = true;
-        var homeBody = E<DeformableDangoVisual>(home, "LiveDangoVisual");
-        WaitUntil(() => home.OwnsLiveFrameDriver && homeBody.Visibility == Visibility.Visible);
-        var id = runtime.EntityIds.Single(); AssertAccessories(runtime, homeBody, id, configuration);
+        var homeOwner = home.BoundBeltBody!;
+        WaitUntil(() => home.BoundBeltPresenter!.Inspect().Accessories.Count == configuration.Items.Count);
         home.ShowEditor(HomeEditor.Wardrobe); Capture(home, "home-wardrobe"); home.CloseEditor();
         home.ResumePorch();
         var porch = E<PorchSceneView>(home, "PorchScene");
-        WaitUntil(() => home.IsInPorch && home.OwnsLiveFrameDriver && porch.LiveBody.Visibility == Visibility.Visible);
-        AssertAccessories(runtime, porch.LiveBody, id, configuration);
-
+        WaitUntil(() => home.IsInPorch && porch.HasBeltBody && homeOwner.Metrics.Running);
+        Assert.AreEqual(configuration.Items.Count, home.BoundBeltPresenter!.Inspect().Accessories.Count);
         host.EnterLocalRoom(); WaitForRoom(host, LocalRoomPresentation.Window);
+        var id = runtime.EntityIds.Single();
         var driver = Field<LocalRoomSceneDriver>(host, "localRoomDriver"); var owner = runtime.FrameDriver;
-        Assert.IsTrue(driver.OwnsRuntime); Assert.IsFalse(home.OwnsLiveFrameDriver);
+        Assert.IsTrue(driver.OwnsRuntime); Assert.IsFalse(homeOwner.Metrics.Running);
         AssertAccessories(runtime, Field<DeformableDangoVisual>(host.LocalWindow!.Scene, "body"), id, configuration);
         Capture(host.LocalWindow.Scene, "local-room-window");
         host.ShowControlCenter(); Assert.IsTrue(home.IsDangoAway); Assert.AreSame(owner, runtime.FrameDriver);
-
         host.SwitchLocalRoomPresentation(LocalRoomPresentation.Wallpaper); WaitForRoom(host, LocalRoomPresentation.Wallpaper);
         var wallpaper = Field<LocalRoomWallpaperHost>(host, "localRoomWallpaper");
         Assert.IsTrue(wallpaper.Scene.HasHealthyFrame); Assert.AreSame(owner, runtime.FrameDriver);
@@ -467,15 +473,18 @@ public sealed class AccessoryIntegrationTests
         host.SwitchLocalRoomPresentation(LocalRoomPresentation.Window); WaitForRoom(host, LocalRoomPresentation.Window);
         AssertAccessories(runtime, Field<DeformableDangoVisual>(host.LocalWindow.Scene, "body"), id, configuration);
         host.ReturnToPorch(); WaitForRoom(host, LocalRoomPresentation.Porch);
-        Assert.IsTrue(home.OwnsLiveFrameDriver); Assert.IsFalse(driver.OwnsRuntime); Assert.AreNotSame(owner, runtime.FrameDriver);
-        AssertAccessories(runtime, porch.LiveBody, id, configuration);
-        host.ShowControlCenter(); WaitUntil(() => !home.IsInPorch && homeBody.Visibility == Visibility.Visible);
-        AssertAccessories(runtime, homeBody, id, configuration);
+        WaitUntil(() => homeOwner.Metrics.Running && porch.HasBeltBody);
+        Assert.IsFalse(driver.OwnsRuntime); Assert.IsNull(runtime.FrameDriver);
+        Assert.AreSame(homeOwner, home.BoundBeltBody);
+        Assert.AreEqual(configuration.Items.Count, home.BoundBeltPresenter!.Inspect().Accessories.Count);
+        host.ShowControlCenter(); WaitUntil(() => !home.IsInPorch && home.BoundBeltPresenter!.View.IsVisible);
+        Assert.AreEqual(configuration.Items.Count, home.BoundBeltPresenter!.Inspect().Accessories.Count);
         Assert.AreEqual(configuration, new AccessorySettingsSession(root).SavedConfiguration);
     }
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
+    [TestCategory("LegacyModuleIntegration")]
     [DataRow(false)]
     [DataRow(true)]
     public void StandardAndWorkerWControlsConsumeOneFrameAndLayerChangesKeepLegacyHatHidden(bool wallpaper)
@@ -515,6 +524,7 @@ public sealed class AccessoryIntegrationTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
+    [TestCategory("LegacyModuleIntegration")]
     [DataRow(false, false)]
     [DataRow(false, true)]
     [DataRow(true, false)]
@@ -554,6 +564,7 @@ public sealed class AccessoryIntegrationTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
+    [TestCategory("LegacyModuleIntegration")]
     public void ActualWorkerWAttachmentReceivesAccessoriesAcrossAnExclusiveWindowHandoff()
     {
         var configuration = Multiple(); using var runtime = Ready(configuration);

@@ -10,7 +10,7 @@ internal sealed partial class DangoApplicationHost
     {
         var pending = LocalHandoffPending;
         var room = localRoomSelected;
-        if (usesContinuousBody && !room && !pending) return controlCenterWindow?.ProductHome.ReadBeltBodySettingsScene()
+        if (!room && !pending) return controlCenterWindow?.ProductHome.ReadBeltBodySettingsScene()
             ?? new("我的团子", "等待窗口启动");
         var presentation = roomHandoff.Pending ? roomHandoff.Target
             : catalogEntryLoading ? LocalRoomPresentation.Window : preferredRoomPresentation;
@@ -51,21 +51,7 @@ internal sealed partial class DangoApplicationHost
     {
         if (!ReadProductSettingsScene().CanReinitialize) return;
         if (localRoomSelected) { RecoverLocalRoom(); return; }
-        if (usesContinuousBody) { controlCenterWindow?.ProductHome.RecoverBeltBody(); return; }
-        // A home/porch failure must not enter the remembered room as a side effect.
-        if (!stackedRuntime.TryDetachOrdinaryFurniture())
-        {
-            localRoomFailure = "家具状态尚未核对，请完成当前操作后重试。";
-            return;
-        }
-        controlCenterWindow!.ProductHome.SuspendForRoom();
-        if (!stackedRuntime.TryInitialize())
-        {
-            localRoomFailure = stackedRuntime.LastError ?? "团子初始化失败，请重试。";
-            return;
-        }
-        stackedRuntime.RegenerateDango();
-        localRoomFailure = null;
-        controlCenterWindow.ProductHome.ResumeAfterSettingsRecovery();
+        // Recover the home worker without entering or advancing the remembered room.
+        controlCenterWindow?.ProductHome.RecoverBeltBody();
     }
 }

@@ -16,33 +16,27 @@ public sealed class LocalRoomAppearanceIntegrationTests
 {
     private static DangoAppearanceConfiguration Choice => new(new(41, 83, 127), new(119, 37, 73), new(137, -83, 33, 12.5));
 
-    [STATestMethod]
-    public void FaceAndRoomReviewAreMutuallyExclusiveAndUseDifferentMutexes()
+    [TestMethod]
+    public void RetiredFaceAndRoomArgumentsCannotSelectAnOldProductWorld()
     {
-        App.ValidateIsolatedReviewSelection(["--face-review"]);
-        App.ValidateIsolatedReviewSelection(["--local-room-review"]);
-        Assert.ThrowsExactly<ArgumentException>(() => App.ValidateIsolatedReviewSelection(["--face-review", "--local-room-review"]));
-        Assert.AreNotEqual(App.ResolveSingleInstanceName(["--face-review"]), App.ResolveSingleInstanceName(["--local-room-review"]));
-        Assert.AreNotEqual(App.ResolveSingleInstanceName([]), App.ResolveSingleInstanceName(["--local-room-review"]));
-        Assert.ThrowsExactly<ArgumentException>(() => new DangoApplicationHost(isolatedFaceReview: true, isolatedLocalRoomReview: true));
+        foreach (var argument in new[] { "--face-review", "--local-room-review" })
+            Assert.ThrowsExactly<ArgumentException>(() => App.ValidateStartupArguments([argument]));
+        Assert.ThrowsExactly<ArgumentException>(() => App.ValidateStartupArguments(["--face-review", "--local-room-review"]));
     }
 
     [STATestMethod]
-    [DataRow(true)]
-    [DataRow(false)]
-    public void FaceAndRoomReviewKeepTheirOwnRoomEntry(bool faceReview)
+    public void DefaultProductPublishesTheLocalCatalogWithoutFabricatingFormalAdmission()
     {
-        using var host = new DangoApplicationHost(settingsFile: Path.Combine(NewRoot(), "settings.json"),
-            isolatedFaceReview: faceReview, isolatedLocalRoomReview: !faceReview);
+        using var host = new DangoApplicationHost(settingsFile: Path.Combine(NewRoot(), "settings.json"));
         host.ShowControlCenter();
+        ProductHostTestSupport.WaitForHome(host);
         var home = Field<ControlCenterWindow>(host, "controlCenterWindow").ProductHome;
         var porch = E<PorchSceneView>(home, "PorchScene");
-        if (!faceReview) WaitUntil(() => home.CatalogSnapshot is not null, 3000);
-        Assert.AreEqual(faceReview ? 0 : 3, porch.DoorCount,
-            "Room review exposes desktop pet, one active ordinary room and one create entry; face review exposes none.");
-        if (!faceReview) { WaitUntil(() => home.CatalogSnapshot is not null, 3000); Assert.AreEqual(1, home.CatalogSnapshot!.ActiveCount); }
-        Assert.AreEqual(faceReview, host.LocalWindow is null);
-        Assert.IsFalse(porch.CanEnterRoom, "Neither isolated review can fabricate formal admission.");
+        Assert.AreEqual(3, porch.DoorCount, "The product exposes desktop pet, its saved ordinary room and create entry.");
+        Assert.AreEqual(1, home.CatalogSnapshot!.ActiveCount);
+        Assert.IsNotNull(host.LocalWindow);
+        Assert.IsNotNull(home.BoundBeltBody);
+        Assert.IsFalse(porch.CanEnterRoom, "Local catalog entries cannot fabricate formal admission.");
     }
 
     [STATestMethod]
@@ -81,36 +75,36 @@ public sealed class LocalRoomAppearanceIntegrationTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
-    public void SavedAppearanceFollowsTheSameEntityAcrossRoomWindowWallpaperAndReturn()
+    public void SavedAppearanceFollowsDefaultHomeAndRoomAcrossWindowWallpaperAndReturn()
     {
         var root = NewRoot();
         var appearance = new AppearanceSettingsSession(Path.Combine(root, "appearance.json"));
         appearance.StagePreview(Choice); Assert.IsTrue(appearance.TrySave());
-        using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"), isolatedLocalRoomReview: true);
+        using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"));
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
-        Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
+        Assert.IsTrue(runtime.UsesBeltRoom);
+        Assert.AreEqual(0, runtime.EntityIds.Count, "The room owner must stay deferred while the default home starts.");
         host.ShowControlCenter();
+        ProductHostTestSupport.WaitForHome(host);
         var home = Field<ControlCenterWindow>(host, "controlCenterWindow").ProductHome;
         home.ReduceMotion = true;
-        WaitUntil(() => home.OwnsLiveFrameDriver && E<DeformableDangoVisual>(home, "LiveDangoVisual").Visibility == Visibility.Visible);
-        var id = runtime.EntityIds.Single();
-        AssertAppearance(runtime, E<DeformableDangoVisual>(home, "LiveDangoVisual"), id);
+        var homeOwner = home.BoundBeltBody;
+        Assert.AreEqual(Choice, home.BoundBeltPresenter!.Appearance);
         home.ResumePorch();
-        WaitUntil(() => home.IsInPorch && home.OwnsLiveFrameDriver && E<PorchSceneView>(home, "PorchScene").LiveBody.Visibility == Visibility.Visible);
-        AssertAppearance(runtime, E<PorchSceneView>(home, "PorchScene").LiveBody, id);
-
+        WaitUntil(() => home.IsInPorch && home.PorchScene.HasBeltBody);
+        Assert.AreEqual(Choice, home.BoundBeltPresenter.Appearance);
         host.EnterLocalRoom();
         WaitForRoom(host, LocalRoomPresentation.Window);
         var driver = Field<LocalRoomSceneDriver>(host, "localRoomDriver");
+        var id = runtime.EntityIds.Single();
         Assert.IsTrue(driver.OwnsRuntime);
-        Assert.IsFalse(home.OwnsLiveFrameDriver);
+        Assert.IsFalse(homeOwner!.Metrics.Running, "Entry must pause the home worker before the room can run.");
         AssertAppearance(runtime, Field<DeformableDangoVisual>(host.LocalWindow!.Scene, "body"), id);
         var owner = runtime.FrameDriver;
         host.ShowControlCenter();
         AssertAway(home);
-        Assert.AreSame(owner, runtime.FrameDriver, "Away Home must preserve the room's only frame driver.");
-        Assert.IsFalse(home.OwnsLiveFrameDriver);
-
+        Assert.AreSame(owner, runtime.FrameDriver);
+        Assert.IsFalse(homeOwner.Metrics.Running);
         host.SwitchLocalRoomPresentation(LocalRoomPresentation.Wallpaper);
         WaitForRoom(host, LocalRoomPresentation.Wallpaper);
         var wallpaper = Field<LocalRoomWallpaperHost>(host, "localRoomWallpaper");
@@ -118,20 +112,20 @@ public sealed class LocalRoomAppearanceIntegrationTests
         Assert.IsTrue(driver.OwnsRuntime);
         Assert.AreSame(owner, runtime.FrameDriver);
         AssertAppearance(runtime, Field<DeformableDangoVisual>(wallpaper.Scene, "body"), id);
-
         host.SwitchLocalRoomPresentation(LocalRoomPresentation.Window);
         WaitForRoom(host, LocalRoomPresentation.Window);
         AssertAppearance(runtime, Field<DeformableDangoVisual>(host.LocalWindow.Scene, "body"), id);
         host.ReturnToPorch();
         WaitForRoom(host, LocalRoomPresentation.Porch);
+        WaitUntil(() => homeOwner.Metrics.Running && home.PorchScene.HasBeltBody);
         Assert.IsFalse(home.IsDangoAway);
-        Assert.IsTrue(home.OwnsLiveFrameDriver);
         Assert.IsFalse(driver.OwnsRuntime);
-        Assert.AreNotSame(owner, runtime.FrameDriver);
-        AssertAppearance(runtime, E<PorchSceneView>(home, "PorchScene").LiveBody, id);
+        Assert.IsNull(runtime.FrameDriver, "Returning to the independent home worker must release the room scheduler.");
+        Assert.AreSame(homeOwner, home.BoundBeltBody);
+        Assert.AreEqual(Choice, home.BoundBeltPresenter.Appearance);
         host.ShowControlCenter();
-        WaitUntil(() => !home.IsInPorch && E<DeformableDangoVisual>(home, "LiveDangoVisual").Visibility == Visibility.Visible);
-        AssertAppearance(runtime, E<DeformableDangoVisual>(home, "LiveDangoVisual"), id);
+        WaitUntil(() => !home.IsInPorch && home.BoundBeltPresenter.View.IsVisible);
+        Assert.AreEqual(Choice, home.BoundBeltPresenter.Appearance);
         Assert.AreEqual(Choice, new AppearanceSettingsSession(Path.Combine(root, "appearance.json")).SavedAppearance);
     }
 

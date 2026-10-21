@@ -43,7 +43,7 @@ function Get-PackageFileRecord([string]$Root, [string]$Path) {
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $nativeInputs = & (Join-Path $PSScriptRoot 'test-desktop-publish-inputs.ps1') -PhysicsModulePath $PhysicsModulePath -RepositoryRoot $repoRoot
 Import-Module (Join-Path $PSScriptRoot 'local-install\Dango.LocalInstall.psm1') -Force
-$settingsContract = 'dango-desktop-settings-v4-belt-default-v1'
+$settingsContract = 'dango-desktop-settings-v4-belt-default-v2'
 $settingsSourceHashes = Get-DangoSettingsSourceContract -RepositoryRoot $repoRoot -SettingsContract $settingsContract
 $projectPath = Join-Path $repoRoot 'src\Dango.Desktop\Dango.Desktop.csproj'
 $oldLibraryPath = Join-Path $repoRoot 'src\Dango.Desktop\runtimes\win-x64\native\dango_box2d.dll'

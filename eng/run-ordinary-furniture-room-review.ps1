@@ -1,7 +1,6 @@
 param(
     [Parameter(Mandatory)][ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$')][string]$RunName,
-    [Parameter(Mandatory)][string]$NativeModule,
-    [switch]$NoLaunch,
+    [switch]$Show,
     [switch]$Verify,
     [switch]$Observe,
     [ValidateRange(0, 3600)][double]$ActiveSeconds = 600
@@ -9,14 +8,13 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $taskRepo = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-$taskModule = (Resolve-Path -LiteralPath $NativeModule).Path
-$taskExpectedHash = 'EFEBFC2E8F93953F8DA91244BF70363773A01E58C07C490A87B56C25BEC4815A'
 $taskExpectedProtectedHash = '6712D66ECEF9588123CAFCD868455080598B5B58711A698FB8AF022A0CDA191A'
 $taskProtectedModule = Join-Path $taskRepo 'src/Dango.Desktop/runtimes/win-x64/native/dango_box2d.dll'
 $taskBuild = Join-Path $taskRepo "artifacts/furniture-room/$RunName"
 if (Test-Path -LiteralPath $taskBuild) { throw 'Use a fresh RunName; existing artifacts and data are preserved.' }
-if ($taskModule -eq $taskProtectedModule) { throw 'Use the frozen isolated Furniture ABI candidate module.' }
-if ((Get-FileHash -LiteralPath $taskModule -Algorithm SHA256).Hash -ne $taskExpectedHash) { throw 'Candidate SHA-256 differs from the approved furniture candidate.' }
+for ($taskCursor = $taskBuild; $taskCursor; $taskCursor = Split-Path -Parent $taskCursor) {
+    if ((Test-Path -LiteralPath $taskCursor) -and ((Get-Item -LiteralPath $taskCursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Acceptance paths cannot traverse links.' }
+}
 if ((Get-FileHash -LiteralPath $taskProtectedModule -Algorithm SHA256).Hash -ne $taskExpectedProtectedHash) { throw 'Protected production DLL differs from the frozen source.' }
 
 function Get-TaskSourceSnapshot {
@@ -51,20 +49,18 @@ $taskSourceBefore = Get-TaskSourceSnapshot
 New-Item -ItemType Directory -Path $taskBuild | Out-Null
 $taskSourceBefore | ConvertTo-Json -Depth 6 |
     Set-Content -LiteralPath (Join-Path $taskBuild 'source-snapshot.json') -Encoding utf8
-$taskModuleLock = [System.IO.File]::Open($taskModule, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
 try {
     # One serial build creates both the actual Desktop application and its friend verification tool.
-    & dotnet build (Join-Path $taskRepo 'eng/tools/Dango.JointReview/Dango.JointReview.csproj') -c Release --artifacts-path $taskBuild "-p:DangoPhysicsModulePath=$taskModule"
+    & dotnet build (Join-Path $taskRepo 'eng/tools/Dango.JointReview/Dango.JointReview.csproj') -c Release --artifacts-path $taskBuild
     if ($LASTEXITCODE -ne 0) { throw 'Ordinary-room furniture candidate build failed.' }
     $taskReviewExe = Join-Path $taskBuild 'bin/Dango.JointReview/release/Dango.JointReview.exe'
     $taskDesktopExe = Join-Path $taskBuild 'bin/Dango.Desktop/release/Dango.Desktop.exe'
     if (!(Test-Path -LiteralPath $taskReviewExe) -or !(Test-Path -LiteralPath $taskDesktopExe)) { throw 'Build did not produce the actual Desktop application and verification tool.' }
-    $taskReviewModule = Join-Path (Split-Path -Parent $taskReviewExe) 'dango_physics_module.dll'
-    $taskDesktopModule = Join-Path (Split-Path -Parent $taskDesktopExe) 'dango_physics_module.dll'
-    foreach ($taskCopy in @($taskReviewModule, $taskDesktopModule)) {
-        if ((Get-FileHash -LiteralPath $taskCopy -Algorithm SHA256).Hash -ne $taskExpectedHash) { throw 'Copied candidate module differs.' }
-    }
-    if ((Get-FileHash -LiteralPath $taskModule -Algorithm SHA256).Hash -ne $taskExpectedHash) { throw 'Candidate source changed during build.' }
+    $taskReviewModule = Join-Path (Split-Path -Parent $taskReviewExe) 'dango_belt_room.dll'
+    $taskDesktopModule = Join-Path (Split-Path -Parent $taskDesktopExe) 'dango_belt_room.dll'
+    $taskModule = $taskDesktopModule
+    $taskExpectedHash = (Get-FileHash -LiteralPath $taskModule -Algorithm SHA256).Hash
+    if ((Get-FileHash -LiteralPath $taskReviewModule -Algorithm SHA256).Hash -ne $taskExpectedHash) { throw 'Default room module copies differ.' }
     $taskSourceAfter = Get-TaskSourceSnapshot
     if ($taskSourceAfter.sourceSnapshotSha256 -ne $taskSourceBefore.sourceSnapshotSha256 -or
         $taskSourceAfter.baseHead -ne $taskSourceBefore.baseHead -or $taskSourceAfter.sourceDirty -ne $taskSourceBefore.sourceDirty) {
@@ -74,24 +70,24 @@ try {
     }
 }
 finally {
-    $taskModuleLock.Dispose()
     if ((Get-FileHash -LiteralPath $taskProtectedModule -Algorithm SHA256).Hash -ne $taskExpectedProtectedHash) { throw 'Protected production DLL changed during build.' }
 }
 
-$taskData = Join-Path (Split-Path -Parent $taskDesktopExe) 'local-room-review-state'
+$taskData = Join-Path $taskBuild 'acceptance-data'
 if (Test-Path -LiteralPath $taskData) { throw 'Actual Desktop review data must be fresh and owned by this run.' }
 New-Item -ItemType Directory -Path $taskData | Out-Null
 [ordered]@{ purpose = 'ordinary-furniture-room-acceptance'; schema = 1; owner = [guid]::NewGuid().ToString() } |
     ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskData 'owner.json') -Encoding utf8
+Set-Content -LiteralPath (Join-Path $taskData '.dango-local-install-acceptance.json') -Encoding utf8 -Value '{"application":"Dango","acceptanceFormat":1,"fictional":true}'
 [ordered]@{
     schema = 1; sourceBaseHead = $taskSourceBefore.baseHead; sourceDirty = $taskSourceBefore.sourceDirty
     sourceSnapshotSha256 = $taskSourceBefore.sourceSnapshotSha256; sourceSnapshot = 'source-snapshot.json'
     sourceIdentityMeaning = 'Base HEAD is not the dirty candidate; source snapshot identifies actual tested files'
     candidateSha256 = $taskExpectedHash
     protectedDllSha256 = $taskExpectedProtectedHash
-    scope = 'actual main-program ordinary room; Windows local single-player; original body and one official static platform'
+    scope = 'actual main-program ordinary room; Windows local single-player; default continuous body and one official static platform'
     executable = 'bin/Dango.Desktop/release/Dango.Desktop.exe'
-    arguments = @('--local-room-review'); data = 'bin/Dango.Desktop/release/local-room-review-state'
+    arguments = @('--local-install-acceptance-settings', $taskData); data = 'acceptance-data'
     verificationTool = 'bin/Dango.JointReview/release/Dango.JointReview.exe'
     humanAcceptance = 'pending'; hardwareInput = 'not verified by software-driven gates'
     composition59FpsGate = 'separate and pending'; realOs150PercentDpi = 'separate and pending'
@@ -133,30 +129,20 @@ try {
     Write-Output "Actual Desktop acceptance executable: $taskDesktopExe"
     Write-Output "Candidate SHA-256: $taskExpectedHash"
     Write-Output "Owned actual Desktop data: $taskData"
-    if (!$NoLaunch) {
-        # An existing local-room review uses the same product mutex even if its build RunName differs.
-        # Detect that exact review context without activating or closing the existing candidate.
-        try {
-            $taskExistingReview = [System.Threading.Mutex]::OpenExisting('Local\Dango.Phase1.App.LocalRoomReview.Mutex')
-            $taskExistingReview.Dispose()
-            throw 'An existing local-room review owns the product mutex; it was preserved. Close that review before launching this candidate.'
-        }
-        catch [System.Threading.WaitHandleCannotBeOpenedException] {
-            # No existing review mutex. The application's normal single-instance coordinator remains authoritative.
-        }
-        # The user authorized a visible actual ordinary-room acceptance window.
-        $taskWindow = Start-Process -FilePath $taskDesktopExe -ArgumentList '--local-room-review' -PassThru
+    if ($Show) {
+        # -Show explicitly requests a visible window; enter the room through the actual product porch.
+        $taskWindow = Start-Process -FilePath $taskDesktopExe -ArgumentList @('--local-install-acceptance-settings', ('"{0}"' -f $taskData)) -PassThru
         if ($taskWindow.WaitForExit(2000)) {
             $taskWindow.Refresh()
             [ordered]@{ processId = $taskWindow.Id; exitCode = $taskWindow.ExitCode;
                 processStatus = 'new candidate exited during launch; no acceptance window confirmed';
-                executable = 'bin/Dango.Desktop/release/Dango.Desktop.exe'; arguments = @('--local-room-review') } |
+                executable = 'bin/Dango.Desktop/release/Dango.Desktop.exe'; arguments = @('--local-install-acceptance-settings', $taskData) } |
                 ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskBuild 'manual-window.json') -Encoding utf8
             throw 'The new actual Desktop candidate exited during launch; an old review or startup failure cannot count as this candidate opening.'
         }
         $taskWindow.Refresh()
         [ordered]@{ processId = $taskWindow.Id; executable = 'bin/Dango.Desktop/release/Dango.Desktop.exe';
-            arguments = @('--local-room-review'); data = 'bin/Dango.Desktop/release/local-room-review-state';
+            arguments = @('--local-install-acceptance-settings', $taskData); data = 'acceptance-data';
             survivedInitialLaunch = $true; visibleMainWindowHandleObserved = $taskWindow.MainWindowHandle -ne [IntPtr]::Zero;
             processStatus = 'left open for user manual acceptance' } |
             ConvertTo-Json | Set-Content -LiteralPath (Join-Path $taskBuild 'manual-window.json') -Encoding utf8

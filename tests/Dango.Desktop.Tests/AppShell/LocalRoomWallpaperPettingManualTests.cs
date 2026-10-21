@@ -29,19 +29,22 @@ public sealed class LocalRoomWallpaperPettingManualTests
         var output = Path.Combine(TestRepository.Root, "artifacts", "local-room", "manual-petting", Guid.NewGuid().ToString("N"));
         var readiness = Path.Combine(TestRepository.Root, "artifacts", "local-room", "manual-petting-readiness.json");
         Directory.CreateDirectory(output);
-        var host = new DangoApplicationHost(settingsFile: Path.Combine(output, "settings.json"),
-            nativeLibraryPath: Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName),
-            isolatedLocalRoomReview: true);
+        var host = new DangoApplicationHost(settingsFile: Path.Combine(output, "settings.json"));
         WallpaperGameplayInputBridge? bridge = null;
         WallpaperWheelInputBridge? wheelBridge = null;
         Observation? observation = null;
         try
         {
             var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
-            Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
-            host.ShowControlCenter(); Pump(350);
+            Assert.IsTrue(runtime.UsesBeltRoom);
+            host.ShowControlCenter(); ProductHostTestSupport.WaitForHome(host);
             host.EnterLocalRoom(); WaitForHandoff(host);
             Assert.AreEqual(LocalRoomPresentation.Window, host.LocalPresentation, host.LocalRoomFailure);
+            Assert.IsTrue(runtime.LastPhysicsFrame!.Succeeded);
+            Assert.AreEqual(0, runtime.LastBeltRoomFrame!.Fault);
+            var home = Field<Dango.Desktop.AppShell.ControlCenter.ControlCenterWindow>(host, "controlCenterWindow").ProductHome;
+            Assert.IsNull(home.BoundRuntime);
+            Assert.IsFalse(home.BoundBeltBody!.Metrics.Running, "Physical wallpaper input must not leave a second home worker advancing.");
             host.SwitchLocalRoomPresentation(LocalRoomPresentation.Wallpaper); WaitForHandoff(host);
             Assert.AreEqual(LocalRoomPresentation.Wallpaper, host.LocalPresentation, host.LocalRoomFailure);
             var wallpaper = Field<LocalRoomWallpaperHost>(host, "localRoomWallpaper");
@@ -512,8 +515,10 @@ public sealed class LocalRoomWallpaperPettingManualTests
     private static void WaitForHandoff(DangoApplicationHost host)
     {
         var watch = Stopwatch.StartNew();
-        while (host.LocalHandoffPending && watch.Elapsed < TimeSpan.FromSeconds(2)) Pump(25);
+        while ((host.LocalHandoffPending || Field<bool>(host, "catalogEntryLoading")) && watch.Elapsed < TimeSpan.FromSeconds(8)) Pump(25);
+        Assert.IsFalse(Field<bool>(host, "catalogEntryLoading"));
         Assert.IsFalse(host.LocalHandoffPending, "A healthy real room frame is required: " + host.LocalRoomFailure);
+        Assert.IsNull(host.LocalRoomFailure);
     }
 
     private static void Pump(int milliseconds)

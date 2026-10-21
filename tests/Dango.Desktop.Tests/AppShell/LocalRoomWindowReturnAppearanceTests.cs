@@ -28,23 +28,26 @@ public sealed class LocalRoomWindowReturnAppearanceTests
         var seed = new AppearanceSettingsSession(appearancePath);
         seed.StagePreview(InitialAppearance);
         Assert.IsTrue(seed.TrySave());
-        using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"), isolatedLocalRoomReview: true);
+        using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"));
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
-        Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
+        Assert.IsTrue(runtime.UsesBeltRoom);
         host.ShowControlCenter();
+        ProductHostTestSupport.WaitForHome(host);
         var home = Field<ControlCenterWindow>(host, "controlCenterWindow").ProductHome;
         var appearance = home.BoundAppearance!;
         home.ReduceMotion = true; // The separate test exercises interruption of real transitions.
-        WaitUntil(() => home.OwnsLiveFrameDriver && E<DeformableDangoVisual>(home, "LiveDangoVisual").IsVisible);
-        var entity = runtime.EntityIds.Single();
-        AssertRenderedAppearance(runtime, E<DeformableDangoVisual>(home, "LiveDangoVisual"), entity, InitialAppearance);
+        WaitUntil(() => home.BoundBeltPresenter!.View.IsVisible);
+        var homeOwner = home.BoundBeltBody!;
+        Assert.AreEqual(InitialAppearance, home.BoundBeltPresenter!.Appearance);
 
         Click(home, "EnterRoomButton");
         var porch = E<PorchSceneView>(home, "PorchScene");
-        WaitUntil(() => home.IsInPorch && home.OwnsLiveFrameDriver && porch.LiveBody.IsVisible);
-        AssertRenderedAppearance(runtime, porch.LiveBody, entity, InitialAppearance);
+        WaitUntil(() => home.IsInPorch && homeOwner.Metrics.Running && porch.HasBeltBody);
+        Assert.AreEqual(InitialAppearance, home.BoundBeltPresenter!.Appearance);
         host.EnterLocalRoom();
         WaitForPresentation(host, LocalRoomPresentation.Window);
+        var entity = runtime.EntityIds.Single();
+        var initialRoomEpoch = runtime.LastBeltRoomFrame!.OwnerEpoch;
         var driver = Field<LocalRoomSceneDriver>(host, "localRoomDriver");
         var window = host.LocalWindow!;
         var roomOwner = runtime.FrameDriver;
@@ -65,12 +68,13 @@ public sealed class LocalRoomWindowReturnAppearanceTests
         WaitForPresentation(host, LocalRoomPresentation.Porch);
         Assert.IsFalse(home.IsDangoAway);
         Assert.IsTrue(home.IsInPorch);
-        Assert.IsTrue(home.OwnsLiveFrameDriver);
+        Assert.IsTrue((home.BoundBeltBody?.Metrics.Running == true));
         Assert.IsFalse(driver.OwnsRuntime);
-        Assert.AreNotSame(roomOwner, runtime.FrameDriver);
-        AssertRenderedAppearance(runtime, porch.LiveBody, entity, InitialAppearance);
+        Assert.IsNull(runtime.FrameDriver);
+        Assert.AreSame(homeOwner, home.BoundBeltBody);
+        Assert.AreEqual(InitialAppearance, home.BoundBeltPresenter!.Appearance);
         host.ShowControlCenter();
-        WaitUntil(() => !home.IsInPorch && home.OwnsLiveFrameDriver && E<DeformableDangoVisual>(home, "LiveDangoVisual").IsVisible);
+        WaitUntil(() => !home.IsInPorch && homeOwner.Metrics.Running && home.BoundBeltPresenter!.View.IsVisible);
 
         Click(home, "FaceButton");
         Assert.IsTrue(home.IsEditing, "Returning from a real healthy porch frame must restore face editing.");
@@ -94,35 +98,25 @@ public sealed class LocalRoomWindowReturnAppearanceTests
         Assert.AreEqual(EditedAppearance, appearance.SavedAppearance);
         Assert.AreEqual(EditedAppearance, new AppearanceSettingsSession(appearancePath).SavedAppearance);
         Assert.IsFalse(appearance.IsDirty);
-        WaitUntil(() => RenderedEyesMatch(runtime, EditedAppearance));
-        AssertRenderedAppearance(runtime, E<DeformableDangoVisual>(home, "LiveDangoVisual"), entity, EditedAppearance);
+        WaitUntil(() => home.BoundBeltPresenter!.Appearance == EditedAppearance);
+        Assert.AreEqual(EditedAppearance, home.BoundBeltPresenter!.Appearance);
         Click(home, "CancelAppearanceButton");
         Assert.IsFalse(home.IsEditing);
         Assert.AreEqual(EditedAppearance, home.DraftAppearance, "Closing an applied editor must keep the newly saved choice.");
 
         Click(home, "EnterRoomButton");
-        WaitUntil(() => home.IsInPorch && home.OwnsLiveFrameDriver && porch.LiveBody.IsVisible);
-        var previousStep = runtime.LastFrame!.Bodies.Single().Attachments!.StepIndex;
-        var appliedStep = previousStep;
-        void ObserveAppliedFrame()
-        {
-            if (window.Scene.HasHealthyFrame && runtime.LastFrame?.Bodies.Single().Attachments is { } attachments)
-                appliedStep = Math.Max(appliedStep, attachments.StepIndex);
-        }
-        window.Scene.FrameApplied += ObserveAppliedFrame;
-        try
-        {
-            host.EnterLocalRoom();
-            WaitForPresentation(host, LocalRoomPresentation.Window);
-            WaitUntil(() => appliedStep > previousStep && RenderedEyesMatch(runtime, EditedAppearance));
-            Assert.IsTrue(window.Scene.HasHealthyFrame);
-            Assert.IsTrue(window.IsVisible);
-            AssertWindowOwner(runtime, driver, home, roomOwner!);
-            Assert.AreEqual(entity, runtime.EntityIds.Single());
-            AssertRenderedAppearance(runtime, Field<DeformableDangoVisual>(window.Scene, "body"), entity, EditedAppearance);
-            Assert.AreEqual(EditedAppearance, new AppearanceSettingsSession(appearancePath).SavedAppearance);
-        }
-        finally { window.Scene.FrameApplied -= ObserveAppliedFrame; }
+        WaitUntil(() => home.IsInPorch && homeOwner.Metrics.Running && porch.HasBeltBody);
+        host.EnterLocalRoom();
+        WaitForPresentation(host, LocalRoomPresentation.Window);
+        WaitUntil(() => RenderedEyesMatch(runtime, EditedAppearance));
+        Assert.IsTrue(window.Scene.HasHealthyFrame);
+        Assert.IsTrue(window.IsVisible);
+        AssertWindowOwner(runtime, driver, home, roomOwner!);
+        Assert.AreNotEqual(initialRoomEpoch, runtime.LastBeltRoomFrame!.OwnerEpoch,
+            "Fresh entry must create a room owner from the newly saved appearance, never reuse the old physical world.");
+        Assert.AreEqual(1, runtime.EntityIds.Count);
+        AssertRenderedAppearance(runtime, Field<DeformableDangoVisual>(window.Scene, "body"), runtime.EntityIds.Single(), EditedAppearance);
+        Assert.AreEqual(EditedAppearance, new AppearanceSettingsSession(appearancePath).SavedAppearance);
     }
 
     [STATestMethod]
@@ -180,7 +174,7 @@ public sealed class LocalRoomWindowReturnAppearanceTests
     private static void AssertWindowOwner(StackedDangoSceneRuntime runtime, LocalRoomSceneDriver driver, ProductHomeView home, object expectedOwner)
     {
         Assert.IsTrue(driver.OwnsRuntime);
-        Assert.IsFalse(home.OwnsLiveFrameDriver);
+        Assert.IsFalse((home.BoundBeltBody?.Metrics.Running == true));
         Assert.AreSame(Field<object>(driver, "scheduler"), runtime.FrameDriver);
         Assert.AreSame(expectedOwner, runtime.FrameDriver);
     }

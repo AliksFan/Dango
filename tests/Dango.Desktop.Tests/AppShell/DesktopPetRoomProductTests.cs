@@ -29,7 +29,7 @@ public sealed class DesktopPetRoomProductTests
     public void EachUnpresentedSurfaceKeepsTheRecoverablePorchAndRetryRequiresBoth(bool blockEnvironment)
     {
         using var rig = new DesktopPetRoomFixture();
-        rig.Host.EnterDesktopPetRoom();
+        rig.BeginEntry(holdEnvironment: blockEnvironment, holdPet: !blockEnvironment);
         var unreadyWindow = rig.Window;
         var missing = blockEnvironment ? (UIElement)rig.Pet.Scene : unreadyWindow;
         missing.Visibility = Visibility.Hidden;
@@ -44,7 +44,7 @@ public sealed class DesktopPetRoomProductTests
         Assert.IsNotNull(rig.Host.LocalRoomFailure);
         Assert.IsTrue(rig.HomeWindow.IsVisible);
         Assert.IsTrue(rig.Home.IsInPorch);
-        Assert.IsTrue(rig.Home.OwnsLiveFrameDriver);
+        rig.AssertHomeBodyReady();
         Assert.IsFalse(rig.Driver.OwnsRuntime);
         Assert.IsFalse(rig.Pet.IsVisible);
         if (blockEnvironment) rig.Pet.Scene.Visibility = Visibility.Visible;
@@ -58,14 +58,17 @@ public sealed class DesktopPetRoomProductTests
     public void TwoRealSurfacesRenderOneEntityAndControlCenterCannotAddAnOwner()
     {
         using var rig = new DesktopPetRoomFixture();
-        var entity = rig.Runtime.EntityIds.Single();
+        var homeOwner = rig.Home.BoundBeltBody;
+        Assert.HasCount(0, rig.Runtime.EntityIds, "The home worker must not initialize a second room world.");
         rig.Enter();
+        var entity = rig.BodyIdentity;
+        Assert.AreSame(homeOwner, rig.Home.BoundBeltBody);
         var owner = rig.Runtime.FrameDriver;
         Assert.IsNotNull(owner);
         Assert.IsTrue(rig.Driver.OwnsRuntime);
-        Assert.IsFalse(rig.Home.OwnsLiveFrameDriver);
+        rig.AssertHomeBodyPaused();
         Assert.IsFalse(rig.HomeWindow.IsVisible);
-        Assert.AreEqual(entity, rig.Runtime.EntityIds.Single());
+        Assert.AreEqual(entity, rig.BodyIdentity, "Room presentation must retain the actual native owner, world generation and body.");
         var wallpaperSource = rig.Pet.WallpaperSource ?? throw new AssertFailedException("The wallpaper source must exist after entry.");
         Assert.IsNotNull(PresentationSource.FromVisual(rig.Window));
         Assert.AreNotEqual(wallpaperSource.Handle, rig.Window.Handle);
@@ -80,9 +83,9 @@ public sealed class DesktopPetRoomProductTests
         DesktopPetRoomFixture.Pump(100);
         Assert.IsTrue(rig.HomeWindow.IsVisible);
         Assert.IsTrue(rig.Home.IsDangoAway);
-        Assert.IsFalse(rig.Home.OwnsLiveFrameDriver);
+        rig.AssertHomeBodyPaused();
         Assert.AreSame(owner, rig.Runtime.FrameDriver);
-        Assert.AreEqual(entity, rig.Runtime.EntityIds.Single());
+        Assert.AreEqual(entity, rig.BodyIdentity, "Room presentation must retain the actual native owner, world generation and body.");
         Assert.IsNull(rig.Home.RoomNavigation.Authority.RoomId, "Local single-player entry cannot fabricate online admission.");
     }
 
@@ -92,7 +95,7 @@ public sealed class DesktopPetRoomProductTests
     {
         using var rig = new DesktopPetRoomFixture();
         rig.Enter();
-        var entity = rig.Runtime.EntityIds.Single();
+        var entity = rig.BodyIdentity;
         var owner = rig.Runtime.FrameDriver;
         var floor = rig.Runtime.LocalGroundY;
         // Entry readiness proves presentation health, not that the native soft body has finished falling.
@@ -163,7 +166,7 @@ public sealed class DesktopPetRoomProductTests
                 Math.Abs(rig.Runtime.CurrentSelectedCenter!.Value.Y - initial.Y) < 10, rig.Runtime,
                 timeoutMilliseconds: 4500, diagnostic: DragDiagnostic);
             Assert.AreEqual(floor, rig.Runtime.LocalGroundY, "The application-facing surface must not create a second screen-edge floor.");
-            Assert.AreEqual(entity, rig.Runtime.EntityIds.Single());
+            Assert.AreEqual(entity, rig.BodyIdentity, "Room presentation must retain the actual native owner, world generation and body.");
             Assert.AreSame(owner, rig.Runtime.FrameDriver);
             Assert.IsTrue(Math.Abs(rig.Runtime.CurrentSelectedCenter!.Value.Y - initial.Y) < 10,
                 $"After release, the same entity must settle back onto its original room floor. {DragDiagnostic()}");
@@ -178,7 +181,7 @@ public sealed class DesktopPetRoomProductTests
         var appearance = new DangoAppearanceConfiguration(new(59, 91, 131), new(119, 47, 79), new(104, 12, 41, 22));
         using var rig = new DesktopPetRoomFixture(appearance);
         rig.Enter();
-        var entity = rig.Runtime.EntityIds.Single();
+        var entity = rig.BodyIdentity;
         var center = rig.Runtime.CurrentSelectedCenter!.Value;
         var point = rig.ToScene(new(center.X, center.Y + rig.Runtime.NeutralBodyGroundOffset));
         var target = rig.ToScene(new(center.X + 145, center.Y + rig.Runtime.NeutralBodyGroundOffset));
@@ -217,7 +220,7 @@ public sealed class DesktopPetRoomProductTests
         Assert.IsTrue(Math.Abs(restoredPosition.X - hiddenPosition.X) < 3,
             "Restore must resume the current entity position, rather than re-enter at the default centre.");
         Assert.IsTrue(Math.Abs(restoredPosition.Y - hiddenPosition.Y) < 3);
-        Assert.AreEqual(entity, rig.Runtime.EntityIds.Single());
+        Assert.AreEqual(entity, rig.BodyIdentity, "Room presentation must retain the actual native owner, world generation and body.");
         Assert.AreEqual(appearance, rig.Runtime.EffectiveAppearance);
         var body = DesktopPetRoomFixture.Descendants<DeformableDangoVisual>(rig.Window).Single(value => value.IsVisible);
         Assert.AreEqual(Color.FromRgb(59, 91, 131), ((SolidColorBrush)body.BodyFill).Color);
@@ -229,7 +232,7 @@ public sealed class DesktopPetRoomProductTests
     public void CancelledEntryCannotReopenLayersOrReplayTheOldHealthyCallback()
     {
         using var rig = new DesktopPetRoomFixture();
-        rig.Host.EnterDesktopPetRoom();
+        rig.BeginEntry(holdEnvironment: true);
         var attempt = rig.Pet.Generation;
         var unreadyWindow = rig.Window;
         rig.Host.HideLocalRoom();
@@ -241,7 +244,7 @@ public sealed class DesktopPetRoomProductTests
         Assert.IsNull(rig.Pet.PetWindow);
         Assert.IsFalse(rig.Driver.OwnsRuntime);
         Assert.IsTrue(rig.HomeWindow.IsVisible);
-        Assert.IsTrue(rig.Home.OwnsLiveFrameDriver);
+        rig.AssertHomeBodyReady();
         rig.Enter();
         Assert.AreNotEqual(attempt, rig.Pet.Generation);
         Assert.IsTrue(rig.Driver.OwnsRuntime);
@@ -249,11 +252,15 @@ public sealed class DesktopPetRoomProductTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
-    public void CachedPorchFrameAndPrematureConfirmationCannotCommitTheNewDualSurfaceEntry()
+    public void CachedRoomFrameAndPrematureConfirmationCannotCommitANewDualSurfaceEntry()
     {
         using var rig = new DesktopPetRoomFixture();
+        rig.Enter();
         var oldFrame = rig.Runtime.LastFrame!;
-        rig.Host.EnterDesktopPetRoom();
+        rig.Host.ReturnToPorch();
+        DesktopPetRoomFixture.WaitUntil(() => !rig.Host.LocalHandoffPending && rig.Home.IsInPorch, rig.Runtime);
+        rig.AssertHomeBodyReady();
+        rig.BeginEntry(holdEnvironment: true);
         var attempt = rig.Pet.Generation;
         _ = rig.Pet.Scene.ApplyFrame(oldFrame, rig.Runtime);
         rig.Pet.ConfirmReady(attempt);
@@ -261,6 +268,7 @@ public sealed class DesktopPetRoomProductTests
         Assert.IsTrue(rig.HomeWindow.IsVisible);
         Assert.IsFalse(rig.Pet.IsReady);
         Assert.IsFalse(rig.Window.InteractionEnabled);
+        rig.Pet.Scene.Visibility = Visibility.Visible;
         rig.WaitForEntry();
         Assert.AreNotSame(oldFrame, rig.Pet.Scene.LastAppliedFrame,
             "Entry requires a newly advanced native frame from the new driver generation.");
@@ -273,7 +281,7 @@ public sealed class DesktopPetRoomProductTests
     {
         using var rig = new DesktopPetRoomFixture();
         rig.Enter();
-        var entity = rig.Runtime.EntityIds.Single();
+        var entity = rig.BodyIdentity;
         var initial = rig.Runtime.CurrentSelectedCenter!.Value;
         var point = rig.ToScene(new(initial.X, initial.Y + rig.Runtime.NeutralBodyGroundOffset));
         var moved = rig.ToScene(new(initial.X + 145, initial.Y + rig.Runtime.NeutralBodyGroundOffset));
@@ -293,14 +301,14 @@ public sealed class DesktopPetRoomProductTests
             "A failed hidden-room restore must retain the current desktop-pet room for retry.");
         Assert.IsNotNull(rig.Host.LocalRoomFailure);
         Assert.IsTrue(rig.Home.IsDangoAway);
-        Assert.IsFalse(rig.Home.OwnsLiveFrameDriver, "Recovery UI cannot take the failed hidden room's runtime owner.");
+        rig.AssertHomeBodyPaused();
         Assert.IsFalse(rig.Runtime.IsRunning);
         Assert.IsNull(rig.Runtime.FrameDriver);
         Assert.IsFalse(rig.Pet.IsVisible);
         Assert.IsNull(rig.Pet.PetWindow);
         Assert.IsFalse(failedWindow.IsVisible);
         Assert.IsFalse(failedWindow.InteractionEnabled);
-        Assert.AreEqual(entity, rig.Runtime.EntityIds.Single());
+        Assert.AreEqual(entity, rig.BodyIdentity, "Room presentation must retain the actual native owner, world generation and body.");
         var retryPosition = rig.Runtime.CurrentSelectedCenter!.Value;
         Assert.IsTrue(Math.Abs(retryPosition.X - hiddenPosition.X) < 3,
             "A partial failed restore cannot reset the selected entity to its entry position.");
@@ -309,11 +317,11 @@ public sealed class DesktopPetRoomProductTests
         Assert.IsTrue(rig.Host.LocalHandoffPending);
         Assert.IsFalse(rig.Window.InteractionEnabled);
         rig.WaitForEntry();
-        Assert.AreEqual(entity, rig.Runtime.EntityIds.Single());
+        Assert.AreEqual(entity, rig.BodyIdentity, "Room presentation must retain the actual native owner, world generation and body.");
         Assert.IsTrue(rig.Runtime.CurrentSelectedCenter!.Value.X > initial.X + 60,
             "Retry must keep the deliberately moved entity instead of creating the default centre placement.");
         Assert.IsTrue(rig.Driver.OwnsRuntime);
-        Assert.IsFalse(rig.Home.OwnsLiveFrameDriver);
+        rig.AssertHomeBodyPaused();
     }
 
     [STATestMethod]
@@ -326,7 +334,7 @@ public sealed class DesktopPetRoomProductTests
     {
         using var rig = new DesktopPetRoomFixture();
         rig.Enter();
-        var entity = rig.Runtime.EntityIds.Single();
+        var entity = rig.BodyIdentity;
         var owner = rig.Runtime.FrameDriver;
         var safe = IndependentPrimarySafePixels(rig.Window);
         var center = rig.Runtime.CurrentSelectedCenter!.Value;
@@ -407,7 +415,7 @@ public sealed class DesktopPetRoomProductTests
             $"The actual {edge} footprint must approach the requested boundary rather than silently rejecting the extreme drag. {ExtremeDiagnostic()}");
         rig.Driver.CancelPointer();
         Assert.IsFalse(rig.Runtime.IsDragging);
-        Assert.AreEqual(entity, rig.Runtime.EntityIds.Single());
+        Assert.AreEqual(entity, rig.BodyIdentity, "Room presentation must retain the actual native owner, world generation and body.");
         Assert.AreSame(owner, rig.Runtime.FrameDriver);
     }
 
@@ -417,7 +425,7 @@ public sealed class DesktopPetRoomProductTests
     {
         using var rig = new DesktopPetRoomFixture();
         rig.Enter();
-        var entity = rig.Runtime.EntityIds.Single();
+        var entity = rig.BodyIdentity;
         var window = rig.Window;
         var petHandle = window.Handle;
         var wallpaperHandle = rig.Pet.WallpaperSource!.Handle;
@@ -452,9 +460,9 @@ public sealed class DesktopPetRoomProductTests
         Assert.IsTrue(rig.Host.LocalHandoffPending);
         Assert.IsFalse(rig.Window.InteractionEnabled);
         rig.WaitForEntry();
-        Assert.AreEqual(entity, rig.Runtime.EntityIds.Single());
+        Assert.AreEqual(entity, rig.BodyIdentity, "Room presentation must retain the actual native owner, world generation and body.");
         Assert.IsTrue(rig.Driver.OwnsRuntime);
-        Assert.IsFalse(rig.Home.OwnsLiveFrameDriver);
+        rig.AssertHomeBodyPaused();
     }
 
     private static Rect IndependentPrimarySafePixels(Window window)
@@ -491,7 +499,6 @@ public sealed class DesktopPetRoomProductTests
     {
         using var rig = new DesktopPetRoomFixture();
         rig.Enter();
-        var entity = rig.Runtime.EntityIds.Single();
         var wallpaper = rig.Pet.WallpaperSource!.Handle;
         var petWindow = rig.Window;
         var pet = petWindow.Handle;
@@ -510,8 +517,10 @@ public sealed class DesktopPetRoomProductTests
         Assert.IsFalse(IsWindow(pet), "Return must release the transparent interactive HWND.");
         Assert.IsFalse(rig.Driver.OwnsRuntime);
         Assert.IsTrue(rig.Home.IsInPorch);
-        Assert.IsTrue(rig.Home.OwnsLiveFrameDriver);
-        Assert.AreEqual(entity, rig.Runtime.EntityIds.Single());
+        rig.AssertHomeBodyReady();
+        Assert.IsFalse(rig.Runtime.IsRunning, "The resumed porch worker must not share the room scheduler.");
+        Assert.IsNull(rig.Runtime.FrameDriver);
+        Assert.AreEqual(rig.Runtime.EffectiveAppearance, rig.Home.BoundAppearance!.SavedAppearance);
         Assert.IsFalse(rig.Home.IsDangoAway);
     }
 
@@ -532,6 +541,9 @@ internal sealed class DesktopPetRoomFixture : IDisposable
     internal DesktopPetDangoWindow Window => Pet.PetWindow ?? throw new AssertFailedException("The active desktop-pet surface was not created.");
     internal LocalRoomSceneDriver Driver => Field<LocalRoomSceneDriver>(Host, "localRoomDriver");
     internal HostFrameScheduler Scheduler => Field<HostFrameScheduler>(Driver, "scheduler");
+    internal (ulong OwnerEpoch, ulong Generation, ulong BodyId) BodyIdentity => Runtime.LastBeltRoomFrame is { } frame
+        ? (frame.OwnerEpoch, frame.Generation, frame.BodyId)
+        : throw new AssertFailedException("A successful native room frame is required before reading body identity.");
 
     internal DesktopPetRoomFixture(DangoAppearanceConfiguration? savedAppearance = null)
     {
@@ -543,26 +555,57 @@ internal sealed class DesktopPetRoomFixture : IDisposable
             seed.StagePreview(choice);
             Assert.IsTrue(seed.TrySave(), "The fixture must save its fictional appearance before the product host loads it.");
         }
-        Host = new(settingsFile: Path.Combine(root, "settings.json"), isolatedDesktopPetRoomReview: true);
+        Host = new(settingsFile: Path.Combine(root, "settings.json"));
         try
         {
             Runtime = Field<StackedDangoSceneRuntime>(Host, "stackedRuntime");
-            Assert.IsTrue(Runtime.TryInitialize(), Runtime.LastError);
-            if (savedAppearance is { } expected)
-                Assert.AreEqual(expected, Runtime.EffectiveAppearance, "The actual host must load the saved fixture appearance.");
+            Assert.IsTrue(Runtime.UsesBeltRoom);
+            Assert.HasCount(0, Runtime.EntityIds, "The room world is created only after the home worker pause barrier.");
             Host.ShowControlCenter();
+            ProductHostTestSupport.WaitForHome(Host);
             HomeWindow = Field<ControlCenterWindow>(Host, "controlCenterWindow");
             Home.ReduceMotion = true;
             Home.ResumePorch();
-            WaitUntil(() => Home.IsInPorch && Home.OwnsLiveFrameDriver && Runtime.LastFrame is not null &&
-                ((PorchSceneView)Home.FindName("PorchScene")).LiveBody.IsVisible, Runtime);
+            AssertHomeBodyReady();
+            if (savedAppearance is { } expected)
+                Assert.AreEqual(expected, Home.BoundAppearance!.SavedAppearance, "The actual home must load the saved fixture appearance.");
         }
         catch { Host.Dispose(); throw; }
     }
 
+    internal void BeginEntry(bool holdEnvironment = false, bool holdPet = false)
+    {
+        // Withhold the environment while the real async home-owner pause is acknowledged.
+        // This prevents a dispatcher pump from accidentally committing the dual-surface entry.
+        Pet.Scene.Visibility = Visibility.Hidden;
+        Host.EnterDesktopPetRoom();
+        WaitUntil(() => Pet.PetWindow is not null && Host.LocalHandoffPending, Runtime);
+        AssertHomeBodyPaused();
+        if (holdPet) Window.Visibility = Visibility.Hidden;
+        if (!holdEnvironment) Pet.Scene.Visibility = Visibility.Visible;
+    }
+
+    internal void AssertHomeBodyReady()
+    {
+        WaitUntil(() => Home.IsInPorch && Home.DisplayedBeltSnapshot is { Error: null, Frame: not null } &&
+            !Home.IsDangoAway && ((PorchSceneView)Home.FindName("PorchScene")).HasBeltBody, Runtime, timeoutMilliseconds: 8000);
+        Assert.IsNotNull(Home.BoundBeltBody);
+        Assert.IsNull(Home.BoundRuntime, "The home/porch uses its worker rather than the room scheduler.");
+        Assert.IsFalse(Home.OwnsLiveFrameDriver);
+        Assert.IsNull(Home.BoundBeltBody.Metrics.Error);
+    }
+
+    internal void AssertHomeBodyPaused()
+    {
+        Assert.IsNotNull(Home.BoundBeltBody);
+        Assert.IsFalse(Home.BoundBeltBody.Metrics.Running, "The home worker pause barrier must precede room ownership.");
+        Assert.IsFalse(Home.OwnsLiveFrameDriver);
+        Assert.IsNull(Home.BoundRuntime);
+    }
+
     internal void Enter()
     {
-        Host.EnterDesktopPetRoom();
+        BeginEntry();
         Assert.IsTrue(Host.LocalHandoffPending);
         Assert.IsTrue(HomeWindow.IsVisible, "Show alone must leave the source recoverable.");
         Assert.IsFalse(Window.InteractionEnabled);
@@ -583,6 +626,13 @@ internal sealed class DesktopPetRoomFixture : IDisposable
         Assert.IsTrue(Pet.Scene.HasHealthyFrame);
         Assert.IsTrue(Window.HasHealthyFrame);
         Assert.IsTrue(Window.InteractionEnabled);
+        AssertHomeBodyPaused();
+        Assert.IsTrue(Runtime.UsesBeltRoom);
+        Assert.IsTrue(Runtime.LastPhysicsFrame!.Succeeded);
+        Assert.AreEqual(0, Runtime.LastBeltRoomFrame!.Fault);
+        Assert.AreEqual(256, Runtime.LastFrame!.Bodies.Single().Contour.Count);
+        Assert.AreSame(Runtime.LastFrame, Pet.Scene.LastAppliedFrame);
+        Assert.AreSame(Pet.Scene.LastAppliedFrame, Window.LastAppliedFrame);
     }
 
     internal static T Field<T>(object value, string name) =>

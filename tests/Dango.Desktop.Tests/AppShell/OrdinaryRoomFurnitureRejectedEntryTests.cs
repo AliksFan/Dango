@@ -19,17 +19,16 @@ public sealed class OrdinaryRoomFurnitureRejectedEntryTests
     [TestCategory("NativeIntegration")]
     public void CorruptRoomLayoutNeverAcknowledgesAHealthyEmptyRoomAndPreservesOriginalBytes()
     {
-        var module = Environment.GetEnvironmentVariable("DANGO_ORDINARY_FURNITURE_TEST_MODULE") ??
-            throw new InvalidOperationException("The real candidate furniture module is required.");
+        var module = Environment.GetEnvironmentVariable("DANGO_BELT_ROOM_MODULE") ??
+            Path.Combine(AppContext.BaseDirectory, "dango_belt_room.dll");
         RejectEntry(module, Encoding.UTF8.GetBytes("{\"schemaVersion\":999}"), expectedProtected: true);
     }
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
-    public void NonemptyLayoutWithMissingFurnitureAbiCannotEnterAnEmptyRoomOrRewriteItsLayout()
+    public void NonemptyLayoutWithLegacyModuleCannotEnterAnEmptyRoomOrRewriteItsLayout()
     {
-        var module = Environment.GetEnvironmentVariable("DANGO_ORDINARY_FURNITURE_BASELINE_PATH") ??
-            throw new InvalidOperationException("The separate room-bounds module without collection ABI is required.");
+        var module = Path.Combine(AppContext.BaseDirectory, Dango.Physics.DangoPhysicsWorld.NativeLibraryFileName);
         var layout = new FurnitureLayout(3, Guid.NewGuid(), new(Guid.NewGuid(), FurnitureLayoutContract.OrdinaryRoom.DefaultAnchor));
         var bytes = FurnitureLayoutSerializer.Serialize(layout, FurnitureLayoutContract.OrdinaryRoom);
         RejectEntry(module, bytes, expectedProtected: false);
@@ -42,11 +41,14 @@ public sealed class OrdinaryRoomFurnitureRejectedEntryTests
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllBytes(path, original);
         using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"),
-            nativeLibraryPath: module, isolatedLocalRoomReview: true);
+            roomModulePath: module);
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
-        Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
+        Assert.IsTrue(runtime.UsesBeltRoom);
+        Assert.AreEqual(0, runtime.EntityIds.Count);
         host.ShowControlCenter(); Pump(250);
         var home = Field<ControlCenterWindow>(host, "controlCenterWindow").ProductHome;
+        ProductHostTestSupport.WaitFor(() => home.DisplayedBeltSnapshot?.Frame is not null &&
+            !Field<bool>(home, "roomCatalogRefreshing"), "Body presentation and the real catalog attempt must finish.");
         home.ResumePorch(); Pump(300);
         var driver = Field<LocalRoomSceneDriver>(host, "localRoomDriver");
         var readyAcknowledgements = 0;
@@ -57,7 +59,12 @@ public sealed class OrdinaryRoomFurnitureRejectedEntryTests
             Assert.IsFalse(home.PorchScene.RequestNearbyFurniture());
             Assert.IsFalse(File.Exists(Path.Combine(root, LocalRoomCatalogStore.CatalogPath)));
         }
-        else Assert.IsTrue(home.PorchScene.RequestNearbyFurniture(), "A valid catalog must reach the real doorway before the missing-ABI rejection.");
+        else
+        {
+            Assert.IsNotNull(home.CatalogSnapshot);
+            Assert.IsTrue(home.PorchScene.RequestNearbyFurniture(), "A valid catalog must reach the real doorway before module rejection.");
+            Until(() => host.LocalRoomFailure is not null, 4500);
+        }
         Until(() => !host.LocalHandoffPending, 4500);
         Pump(100);
         if (!expectedProtected) Assert.IsNotNull(host.LocalRoomFailure, "The actual host must expose its failed entry result.");
@@ -70,14 +77,12 @@ public sealed class OrdinaryRoomFurnitureRejectedEntryTests
         if (expectedProtected) Assert.IsNull(runtime.Furniture, "A corrupt unpublished room cannot create a synthetic empty furniture session.");
         else
         {
-            Assert.IsNotNull(runtime.Furniture);
-            Assert.IsFalse(runtime.Furniture.CanEdit);
-            Assert.IsFalse(runtime.Furniture.IsAttached);
-            Assert.IsNotNull(runtime.Furniture.Layout.Platform, "The nonempty saved layout remains known; it is not replaced by a synthetic empty layout.");
+            Assert.IsNull(runtime.Furniture, "A module rejected before initialization must not create a synthetic furniture session.");
+            Assert.IsNotNull(runtime.LastError);
         }
         CollectionAssert.AreEqual(original, File.ReadAllBytes(path));
         Assert.IsFalse(File.Exists(FurnitureLayoutStore.GetLayoutPath(root)), "The rejected room cannot create or overwrite the independent trial namespace.");
-        Assert.AreEqual(1, runtime.EntityIds.Count, "A failed entry does not fabricate another room Dango.");
+        Assert.AreEqual(0, runtime.EntityIds.Count, "A rejected layout or module must never create a playable room body.");
     }
 
     private static T Field<T>(object instance, string name) =>

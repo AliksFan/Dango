@@ -6,31 +6,32 @@ namespace Dango.Desktop.Tests.AppShell;
 public sealed class FaceReviewEntryTests
 {
     [TestMethod]
-    public void FaceReviewCannotBeCombinedWithAnyOtherReviewMode()
+    [DataRow("--face-review")]
+    [DataRow("--face-review-settings")]
+    public void RetiredFaceArgumentsAreRejectedBeforeSettingsSelection(string argument)
     {
-        App.ValidateIsolatedReviewSelection(["--face-review"]);
-        foreach (var other in new[] { "--home-ui-review", "--settings-ui-review", "--physics-host-review",
-                     "--eye-hat-review", "--unified-live-home-review", "--porch-scene-review" })
-            Assert.ThrowsExactly<ArgumentException>(() => App.ValidateIsolatedReviewSelection(["--face-review", other]), other);
+        Assert.ThrowsExactly<ArgumentException>(() => App.ValidateStartupArguments([argument]));
+        Assert.ThrowsExactly<ArgumentException>(() => App.ResolveSingleInstanceName([argument]));
+        Assert.ThrowsExactly<ArgumentException>(() => App.ResolveLocalInstallAcceptanceSettingsFile([argument, NewRoot()]));
     }
 
     [TestMethod]
-    public void FaceReviewHasItsOwnMutexAndRequiresExplicitOwnedSettings()
+    public void OwnedAcceptanceHasAPathScopedMutexAndRequiresExplicitOwnedSettings()
     {
-        var instance = App.ResolveSingleInstanceName(["--face-review"]);
+        var root = NewOwnedRoot();
+        var other = NewOwnedRoot();
+        var instance = App.ResolveSingleInstanceName(["--local-install-acceptance-settings", root]);
         Assert.AreNotEqual(App.ResolveSingleInstanceName([]), instance);
-        foreach (var other in new[] { "--physics-host-review", "--eye-hat-review", "--unified-live-home-review",
-                     "--porch-scene-review" })
-            Assert.AreNotEqual(App.ResolveSingleInstanceName([other]), instance, other);
-        Assert.IsNull(App.ResolveFaceReviewSettingsFile([]));
-        Assert.ThrowsExactly<ArgumentException>(() => App.ResolveFaceReviewSettingsFile(["--face-review"]));
-        Assert.ThrowsExactly<ArgumentException>(() => App.ResolveFaceReviewSettingsFile(["--face-review-settings", NewRoot()]));
-        Assert.ThrowsExactly<ArgumentException>(() => App.ResolveFaceReviewSettingsFile(
-            ["--face-review", "--face-review-settings", NewRoot(), "--smoke-test"]));
+        Assert.AreNotEqual(App.ResolveSingleInstanceName(["--local-install-acceptance-settings", other]), instance);
+        Assert.AreEqual(instance, App.ResolveSingleInstanceName(["--local-install-acceptance-settings", root.ToUpperInvariant() + Path.DirectorySeparatorChar]));
+        Assert.IsNull(App.ResolveLocalInstallAcceptanceSettingsFile([]));
+        Assert.ThrowsExactly<ArgumentException>(() => App.ResolveLocalInstallAcceptanceSettingsFile(["--local-install-acceptance-settings"]));
+        Assert.ThrowsExactly<ArgumentException>(() => App.ResolveLocalInstallAcceptanceSettingsFile(
+            ["--local-install-acceptance-settings", root, "--smoke-test"]));
     }
 
     [TestMethod]
-    public void OwnedReviewUsesSettingsBesideAppearanceWithoutReadingOrWritingEitherFile()
+    public void OwnedAcceptanceUsesSettingsBesideAppearanceWithoutReadingOrWritingEitherFile()
     {
         var root = NewOwnedRoot();
         var settings = Path.Combine(root, "settings.json");
@@ -44,7 +45,7 @@ public sealed class FaceReviewEntryTests
     }
 
     [TestMethod]
-    public void ReviewRejectsUnownedDailyPackageRelativeAndDriveDirectories()
+    public void AcceptanceRejectsUnownedDailyPackageRelativeAndDriveDirectories()
     {
         Assert.ThrowsExactly<FileNotFoundException>(() => Resolve(NewRoot()));
         var daily = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Dango");
@@ -63,8 +64,8 @@ public sealed class FaceReviewEntryTests
     [DataRow("settings.json")]
     [DataRow("settings.window-preset.json")]
     [DataRow("appearance.json")]
-    [DataRow(".dango-face-review.json")]
-    public void ReviewRejectsDirectoriesAtEverySettingsOrOwnerPath(string fileName)
+    [DataRow(".dango-local-install-acceptance.json")]
+    public void AcceptanceRejectsDirectoriesAtEverySettingsOrOwnerPath(string fileName)
     {
         var root = NewOwnedRoot();
         var path = Path.Combine(root, fileName);
@@ -77,8 +78,8 @@ public sealed class FaceReviewEntryTests
     [DataRow("settings.json")]
     [DataRow("settings.window-preset.json")]
     [DataRow("appearance.json")]
-    [DataRow(".dango-face-review.json")]
-    public void ReviewRejectsJunctionsAtEverySettingsOrOwnerPath(string fileName)
+    [DataRow(".dango-local-install-acceptance.json")]
+    public void AcceptanceRejectsJunctionsAtEverySettingsOrOwnerPath(string fileName)
     {
         var root = NewOwnedRoot();
         var path = Path.Combine(root, fileName);
@@ -90,7 +91,7 @@ public sealed class FaceReviewEntryTests
     }
 
     [TestMethod]
-    public void ReviewRejectsJunctionAncestorBeforeOpeningTheOwnerMarker()
+    public void AcceptanceRejectsJunctionAncestorBeforeOpeningTheOwnerMarker()
     {
         var root = NewRoot();
         var target = NewOwnedRoot();
@@ -101,24 +102,24 @@ public sealed class FaceReviewEntryTests
     }
 
     [TestMethod]
-    [DataRow("{\"application\":\"Dango\",\"faceReviewFormat\":2,\"fictional\":true}")]
-    [DataRow("{\"application\":\"Dango\",\"faceReviewFormat\":1,\"fictional\":false}")]
-    [DataRow("{\"application\":\"Other\",\"faceReviewFormat\":1,\"fictional\":true}")]
-    [DataRow("{\"application\":\"Dango\",\"faceReviewFormat\":1,\"fictional\":true,\"extra\":true}")]
-    public void ReviewRejectsIncorrectOwnerMarker(string marker)
+    [DataRow("{\"application\":\"Dango\",\"acceptanceFormat\":2,\"fictional\":true}")]
+    [DataRow("{\"application\":\"Dango\",\"acceptanceFormat\":1,\"fictional\":false}")]
+    [DataRow("{\"application\":\"Other\",\"acceptanceFormat\":1,\"fictional\":true}")]
+    [DataRow("{\"application\":\"Dango\",\"acceptanceFormat\":1,\"fictional\":true,\"extra\":true}")]
+    public void AcceptanceRejectsIncorrectOwnerMarker(string marker)
     {
         var root = NewOwnedRoot();
-        File.WriteAllText(Path.Combine(root, ".dango-face-review.json"), marker);
+        File.WriteAllText(Path.Combine(root, ".dango-local-install-acceptance.json"), marker);
         Assert.ThrowsExactly<InvalidDataException>(() => Resolve(root));
     }
 
-    private static string? Resolve(string root) => App.ResolveFaceReviewSettingsFile(["--face-review", "--face-review-settings", root]);
+    private static string? Resolve(string root) => App.ResolveLocalInstallAcceptanceSettingsFile(["--local-install-acceptance-settings", root]);
 
     private static string NewOwnedRoot()
     {
         var root = NewRoot();
-        File.WriteAllText(Path.Combine(root, ".dango-face-review.json"),
-            """{"application":"Dango","faceReviewFormat":1,"fictional":true}""");
+        File.WriteAllText(Path.Combine(root, ".dango-local-install-acceptance.json"),
+            """{"application":"Dango","acceptanceFormat":1,"fictional":true}""");
         return root;
     }
 

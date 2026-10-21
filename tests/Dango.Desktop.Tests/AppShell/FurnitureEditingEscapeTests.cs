@@ -29,11 +29,11 @@ public sealed class FurnitureEditingEscapeTests
         var root = Path.Combine(TestRepository.Root, "artifacts", "furniture-feedback", "escape-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"),
-            nativeLibraryPath: Environment.GetEnvironmentVariable("DANGO_ORDINARY_FURNITURE_TEST_MODULE") ??
-                throw new InvalidOperationException("Use the explicit isolated collection module."), isolatedLocalRoomReview: true);
+            roomModulePath: Environment.GetEnvironmentVariable("DANGO_BELT_ROOM_MODULE") ??
+                Path.Combine(AppContext.BaseDirectory, "dango_belt_room.dll"));
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
-        Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
-        host.ShowControlCenter(); Pump(100);
+        Assert.IsTrue(runtime.UsesBeltRoom, "Product rooms must use the continuous body module.");
+        host.ShowControlCenter(); ProductHostTestSupport.WaitForHome(host); Pump(100);
         Field<ControlCenterWindow>(host, "controlCenterWindow").ProductHome.ResumePorch(); Pump(100);
         host.EnterLocalRoom();
         Until(() => !host.LocalHandoffPending && host.LocalWindow?.Scene.HasHealthyFrame == true);

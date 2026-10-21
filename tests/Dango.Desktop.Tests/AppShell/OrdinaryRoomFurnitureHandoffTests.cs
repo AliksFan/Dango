@@ -18,23 +18,10 @@ namespace Dango.Desktop.Tests.AppShell;
 [TestClass]
 public sealed class OrdinaryRoomFurnitureHandoffTests
 {
-    [STATestMethod]
-    [TestCategory("NativeIntegration")]
-    public void GroundedSupportWithoutFloorContactPreservesThePreviousGroundCheckpoint()
-    {
-        using var rig = new ProductRig(); rig.EnterRoom();
-        var driver = Field<LocalRoomSceneDriver>(rig.Host, "localRoomDriver");
-        typeof(LocalRoomSceneDriver).GetField("safeCheckpoint", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(driver, new RoomSafePosition(500, 0));
-        var original = rig.Scene.LastFrame!;
-        // The native adapter marks platform support grounded while floor contacts remain zero.
-        // Feed that adapter snapshot to the real checkpoint path without changing native state.
-        var supported = original.Physics.Bodies.Single() with { IsGrounded = true, GroundContactCount = 0 };
-        typeof(DesktopPhysicsScene).GetProperty(nameof(DesktopPhysicsScene.LastFrame))!
-            .SetValue(rig.Scene, original with { Physics = original.Physics with { Bodies = [supported] } });
-        try { Assert.AreEqual(500, driver.CaptureCheckpoint()!.Value.Position!.X); }
-        finally { typeof(DesktopPhysicsScene).GetProperty(nameof(DesktopPhysicsScene.LastFrame))!.SetValue(rig.Scene, original); }
-    }
+    // Retired GroundedSupportWithoutFloorContactPreservesThePreviousGroundCheckpoint:
+    // it mutated the old adapter Physics frame, which is not Belt's checkpoint source.
+    // BeltRoomResumeSafetyTests.PlatformSupportAndJumpingCannotBeSavedAsFloorSupport
+    // covers the production native envelope/support gate for the default room owner.
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
@@ -55,7 +42,7 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
         try
         {
             rig.Host.EnterCatalogRoom(rig.RoomId, false);
-            Until(() => dissolved && !rig.Host.LocalHandoffPending && rig.Home.OwnsLiveFrameDriver,
+            Until(() => dissolved && !rig.Host.LocalHandoffPending && (rig.Home.BoundBeltBody?.Metrics.Running == true),
                 "A target dissolved after attach must return ownership to the porch.");
             Pump(150);
             Assert.AreEqual(LocalRoomPresentation.Porch, rig.Host.LocalPresentation);
@@ -75,7 +62,7 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
             .SetValue(rig.Host, new RoomResumeStore(rig.Catalog, new UnknownCommitWriter()));
         rig.EnterRoom();
         rig.Host.ReturnToPorch();
-        Until(() => !rig.Host.LocalHandoffPending && rig.Home.OwnsLiveFrameDriver, "Return must retain the porch.");
+        Until(() => !rig.Host.LocalHandoffPending && (rig.Home.BoundBeltBody?.Metrics.Running == true), "Return must retain the porch.");
         var notice = (System.Windows.Controls.Button)rig.Home.FindName("NoticeButton");
         Until(() => Equals(notice.Content, "位置／视角未保存 · 查看"), "The failed source-room checkpoint must remain visible outside the hidden room window.");
         rig.Home.SetNotice(null, null); // The normal home status refresh cannot erase a room failure.
@@ -92,7 +79,10 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
     public void DissolvedTargetCannotEnterFromAnAlreadyPreparedCallback(bool furniture)
     {
         using var rig = new ProductRig();
+        var priorPreparation = Field<Task>(rig.Host, "roomPreparationTask");
         rig.Host.EnterCatalogRoom(rig.RoomId, furniture);
+        Until(() => !ReferenceEquals(priorPreparation, Field<Task>(rig.Host, "roomPreparationTask")),
+            "The default home must acknowledge pause before room IO preparation begins.");
         // Keep this Dispatcher paused after IO prepares the target, before its callback binds it.
         var preparation = Field<Task>(rig.Host, "roomPreparationTask");
         Assert.IsTrue(preparation.Wait(TimeSpan.FromSeconds(10)), "Target preparation did not finish.");
@@ -101,7 +91,8 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
         Assert.AreEqual(LocalRoomPresentation.Porch, rig.Host.LocalPresentation);
         Assert.IsFalse(rig.Host.LocalWindow!.IsVisible);
         Assert.IsFalse(rig.Home.IsDangoAway);
-        Assert.HasCount(0, rig.Scene.ReadFurnitureCollectionFrame().Items);
+        Assert.AreEqual(0, rig.Runtime.EntityIds.Count, "A dissolved prepared target cannot create a native room body.");
+        Assert.IsNull(rig.Runtime.FrameDriver);
     }
 
     [STATestMethod]
@@ -131,7 +122,7 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
         try
         {
             Until(() => cancelled, "The test must intercept the real attached first frame before confirmation.");
-            Until(() => !rig.Host.LocalHandoffPending && rig.Home.OwnsLiveFrameDriver && rig.Home.PorchScene.LiveBody.IsVisible,
+            Until(() => !rig.Host.LocalHandoffPending && (rig.Home.BoundBeltBody?.Metrics.Running == true) && rig.Home.BoundBeltPresenter?.View.IsVisible == true,
                 "Cancellation must restore a real porch owner and body frame.");
             Pump(150); // Any already-queued room confirmation must remain harmless.
             Assert.AreEqual(LocalRoomPresentation.Porch, rig.Host.LocalPresentation);
@@ -397,14 +388,13 @@ public sealed class OrdinaryRoomFurnitureHandoffTests
             Catalog = new(Root); var imported = Catalog.Refresh(); Assert.IsTrue(imported.Success, imported.Warning);
             RoomId = imported.Catalog!.Rooms.Single().RoomId; Path = Catalog.LayoutPath(RoomId);
             Host = new(settingsFile: System.IO.Path.Combine(Root, "settings.json"),
-                nativeLibraryPath: Environment.GetEnvironmentVariable("DANGO_ORDINARY_FURNITURE_TEST_MODULE") ??
-                    throw new InvalidOperationException("Use the explicit isolated furniture candidate for these product handoff gates."),
-                isolatedLocalRoomReview: true);
+                roomModulePath: Environment.GetEnvironmentVariable("DANGO_BELT_ROOM_MODULE") ??
+                    System.IO.Path.Combine(AppContext.BaseDirectory, "dango_belt_room.dll"));
             Runtime = Field<StackedDangoSceneRuntime>(Host, "stackedRuntime");
             try
             {
-                Assert.IsTrue(Runtime.TryInitialize(), Runtime.LastError);
-                Host.ShowControlCenter(); Pump(250);
+                Assert.IsTrue(Runtime.UsesBeltRoom, "Product rooms must use the continuous body module.");
+                Host.ShowControlCenter(); ProductHostTestSupport.WaitForHome(Host); Pump(250);
                 HomeWindow = Field<ControlCenterWindow>(Host, "controlCenterWindow");
                 Home.ResumePorch(); Pump(250);
             }

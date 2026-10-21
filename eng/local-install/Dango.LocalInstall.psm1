@@ -29,6 +29,16 @@ $script:SettingsContracts['dango-desktop-settings-v4-belt-default-v1'] = @{
     'App.xaml.cs' = 'F8B88AE99D7B6A739BAE59DEA5181E14E802A1CA4531D2961106F5E4C32063B7'
     'Verification/VerificationSessionStore.cs' = '925A313A44DBE72C35FBA230010A521E384C529D0EA705788E1D8AE4D7B2ACBD'
 }
+# Same persisted format, with one product route and directory-scoped acceptance instances.
+# Keep the v1 source identity intact so existing packages can still be verified and rolled back.
+$script:SettingsContracts['dango-desktop-settings-v4-belt-default-v2'] = @{
+    'AppShell/ControlCenter/ControlCenterWindowSettingsStore.cs' = '48FF4A9AB801FFF52228E6DB760F9248E047111DDBF0DA5AD22E78B32DE97329'
+    'AppShell/ControlCenter/ApplicationSettingsSession.cs' = 'E68D1E6997AF8E73305C1D374978B60B18FF107A4C07825B4A2C86212F96FB6E'
+    'AppShell/DangoApplicationHost.cs' = '6A9252BA0C1B10A7233C7F3397CDED666D9E6C966AE3A588CABE165E819DC7BE'
+    'App.xaml.cs' = 'CB0A83CA07F6D34CFDF761A027DF28F4B55DAE40E5F94B2C1D6F1FCA22A3A6DD'
+    'Verification/VerificationSessionStore.cs' = '925A313A44DBE72C35FBA230010A521E384C529D0EA705788E1D8AE4D7B2ACBD'
+}
+$script:BeltSettingsContracts = @('dango-desktop-settings-v4-belt-default-v1', 'dango-desktop-settings-v4-belt-default-v2')
 $script:LegacyToolHashes = @{
     'Dango.LocalInstall.psm1' = '5500CB19FFE0486C82DE9C42EC0C41DA27E65606618A2360DDA97AC6F9CCA77B'
     'Manage-Dango.ps1' = '58668DDD3C117BF8F82E0F83F6C32D847CDDB6AB3B44564D11ED8EC946C11738'
@@ -189,12 +199,12 @@ function Test-DangoPackage {
         # Belt-default packages use the independent native room. The historical module is optional,
         # but remains hash-protected when supplied for older diagnostics.
         if ($required -ceq 'dango_physics_module.dll' -and
-            $manifest.settingsContract -ceq 'dango-desktop-settings-v4-belt-default-v1' -and -not $paths.Contains($required)) { continue }
+            $manifest.settingsContract -cin $script:BeltSettingsContracts -and -not $paths.Contains($required)) { continue }
         if (-not $paths.Contains($required) -or (Get-DangoHash (Join-Path $root $required)) -ne $script:RequiredHashes[$required]) {
             throw "Protected package input differs from the accepted baseline: $required"
         }
     }
-    if ($manifest.settingsContract -ceq 'dango-desktop-settings-v4-belt-default-v1') {
+    if ($manifest.settingsContract -cin $script:BeltSettingsContracts) {
         Assert-DangoBeltPackageContract $root $manifest $paths
     }
     return [pscustomobject]@{
@@ -310,11 +320,32 @@ function Initialize-DangoRoot([string]$Root) {
     Write-DangoAtomicJson (Join-Path $Root 'install-owner.json') ([ordered]@{ application = 'Dango'; installFormat = 1 })
 }
 
-function Test-DangoProductRunning {
-    try { $mutex = [Threading.Mutex]::OpenExisting('Local\Dango.Phase1.App.Mutex') }
+function Test-DangoInstanceRunning([string]$InstanceName) {
+    try { $mutex = [Threading.Mutex]::OpenExisting($InstanceName + '.Mutex') }
     catch [Threading.WaitHandleCannotBeOpenedException] { return $false }
     try { return $true }
     finally { $mutex.Dispose() }
+}
+
+function Test-DangoProductRunning {
+    if (Test-DangoInstanceRunning 'Local\Dango.Phase1.App') { return $true }
+    # Current products may own a directory-scoped mutex. Process metadata also
+    # guards activation/rollback when no legacy global mutex exists.
+    return @(Get-DangoOrdinaryProcesses).Count -gt 0
+}
+
+function Get-DangoInstalledInstanceName([string]$SettingsContract, [string]$SettingsScope) {
+    $name = 'Local\Dango.Phase1.App'
+    if ($SettingsContract -ceq 'dango-desktop-settings-v4-belt-default-v2' -and $null -ne $SettingsScope -and $SettingsScope.Length -gt 0) {
+        # Match App.ProductInstanceName: absolute settings.json path, invariant
+        # uppercase, UTF-8 SHA256, first 24 uppercase hex characters.
+        $settings = [IO.Path]::GetFullPath((Join-Path $SettingsScope 'settings.json')).ToUpperInvariant()
+        $sha = [Security.Cryptography.SHA256]::Create()
+        try { $identity = [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($settings))).Replace('-', '') }
+        finally { $sha.Dispose() }
+        return $name + '.Data.' + $identity.Substring(0, 24)
+    }
+    return $name
 }
 
 function Assert-DangoProductStopped {
@@ -324,7 +355,7 @@ function Assert-DangoProductStopped {
 function Get-DangoOrdinaryProcesses {
     $session = [Diagnostics.Process]::GetCurrentProcess().SessionId
     foreach ($process in Get-CimInstance Win32_Process -Filter "Name = 'Dango.Desktop.exe'") {
-        if ($process.SessionId -eq $session -and $process.CommandLine -and
+        if ($process.SessionId -eq $session -and
             $process.CommandLine -notmatch '--(physics-host-review|eye-hat-review|soft-body-preview|paired-contact-preview|smoke-test|box2d-native-probe)') {
             [pscustomobject]@{ Id = $process.ProcessId; Path = $process.ExecutablePath; CommandLine = $process.CommandLine }
         }
@@ -478,7 +509,8 @@ function Start-DangoInstalled {
         $executable = Join-Path $package.Root 'Dango.Desktop.exe'
         $settingsScope = $null
         if ($PSBoundParameters.ContainsKey('AcceptanceSettingsRoot')) {
-            if ($package.Manifest.settingsContract -cnotin @('dango-desktop-settings-v4-preset-sidecar-v1', 'dango-desktop-settings-v4-belt-default-v1')) {
+            if ($package.Manifest.settingsContract -cne 'dango-desktop-settings-v4-preset-sidecar-v1' -and
+                $package.Manifest.settingsContract -cnotin $script:BeltSettingsContracts) {
                 throw 'This package does not support isolated local-install acceptance settings.'
             }
             $settingsScope = Assert-DangoAcceptanceSettingsRoot $AcceptanceSettingsRoot $package.Root
@@ -489,11 +521,13 @@ function Start-DangoInstalled {
             if ((Get-DangoProcessSettingsScope $same[0].CommandLine) -ine $settingsScope) {
                 throw 'Dango is running with a different settings scope. Exit it normally before this launch.'
             }
-            $activation = [Threading.EventWaitHandle]::OpenExisting('Local\Dango.Phase1.App.Activate')
+            $instanceName = Get-DangoInstalledInstanceName $package.Manifest.settingsContract $settingsScope
+            $activation = [Threading.EventWaitHandle]::OpenExisting($instanceName + '.Activate')
             try { $null = $activation.Set() }
             finally { $activation.Dispose() }
             return [pscustomobject]@{ VersionId = $state.current; ProcessId = $same[0].Id; ActivatedExisting = $true }
         }
+        $instanceName = Get-DangoInstalledInstanceName $package.Manifest.settingsContract $settingsScope
         $launchParameters = @{ FilePath = $executable; WorkingDirectory = $package.Root; WindowStyle = 'Normal'; PassThru = $true }
         if ($null -ne $settingsScope) { $launchParameters.ArgumentList = '--local-install-acceptance-settings "' + $settingsScope + '"' }
         $process = Start-Process @launchParameters
@@ -501,7 +535,7 @@ function Start-DangoInstalled {
         do {
             $process.Refresh()
             if ($process.HasExited) { throw 'Dango exited before its ordinary instance was confirmed. No running-version success is reported.' }
-            if (Test-DangoProductRunning) {
+            if (Test-DangoInstanceRunning $instanceName) {
                 $same = @(Get-DangoOrdinaryProcesses | Where-Object { $_.Path -ieq $executable })
                 if ($same.Count -eq 1 -and $same[0].Id -eq $process.Id) {
                     if ((Get-DangoProcessSettingsScope $same[0].CommandLine) -ine $settingsScope) {

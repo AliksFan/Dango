@@ -18,11 +18,11 @@ namespace Dango.Desktop.Tests.AppShell;
 public sealed class PorchSceneIntegrationTests
 {
     [TestMethod]
-    public void PorchReviewCannotBeCombinedWithOtherReviewModes()
+    public void RetiredPorchReviewCannotSelectAProductOrDiagnosticStartup()
     {
-        App.ValidateIsolatedReviewSelection(["--porch-scene-review"]);
-        foreach (var other in new[] { "--home-ui-review", "--settings-ui-review", "--physics-host-review", "--eye-hat-review", "--unified-live-home-review" })
-            Assert.Throws<ArgumentException>(() => App.ValidateIsolatedReviewSelection(["--porch-scene-review", other]));
+        Assert.ThrowsExactly<ArgumentException>(() => App.ValidateStartupArguments(["--porch-scene-review"]));
+        foreach (var other in new[] { "--home-ui-review", "--settings-ui-review", "--physics-host-review", "--eye-hat-review" })
+            Assert.ThrowsExactly<ArgumentException>(() => App.ValidateStartupArguments(["--porch-scene-review", other]));
     }
 
     [STATestMethod]

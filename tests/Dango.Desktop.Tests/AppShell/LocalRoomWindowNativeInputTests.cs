@@ -239,6 +239,7 @@ public sealed class LocalRoomWindowNativeInputTests
         private bool disposed;
         private object? originalOwner;
         private DangoEntityId originalEntity;
+        private ulong originalRoomEpoch;
         internal DangoApplicationHost Host => host!;
         internal LocalRoomWindow Window => Host.LocalWindow!;
         internal LocalRoomSceneView Scene => Window.Scene;
@@ -266,9 +267,9 @@ public sealed class LocalRoomWindowNativeInputTests
             RequireNoForeignInput();
             var root = Path.Combine(TestRepository.Root, "artifacts", "local-room", "tests", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root);
-            host = new(settingsFile: Path.Combine(root, "settings.json"), isolatedLocalRoomReview: true);
-            Assert.IsTrue(Runtime.TryInitialize(), Runtime.LastError);
-            Host.ShowControlCenter();
+            host = new(settingsFile: Path.Combine(root, "settings.json"));
+            Assert.IsTrue(Runtime.UsesBeltRoom, "Product rooms must use the continuous body module.");
+        Host.ShowControlCenter(); ProductHostTestSupport.WaitForHome(Host);
             Pump(350);
             var area = SystemParameters.WorkArea;
             if (area.Width < Window.MinWidth + 40 || area.Height < Window.MinHeight + 40)
@@ -289,6 +290,7 @@ public sealed class LocalRoomWindowNativeInputTests
             originalOwner = Runtime.FrameDriver;
             Assert.IsNotNull(originalOwner);
             originalEntity = Runtime.EntityIds.Single();
+            originalRoomEpoch = Runtime.LastBeltRoomFrame!.OwnerEpoch;
             MoveTo(new(Scene.ActualWidth / 2, Scene.ActualHeight / 2));
         }
 
@@ -296,6 +298,7 @@ public sealed class LocalRoomWindowNativeInputTests
         {
             Assert.AreSame(originalOwner, Runtime.FrameDriver);
             Assert.AreEqual(originalEntity, Runtime.EntityIds.Single());
+            Assert.AreEqual(originalRoomEpoch, Runtime.LastBeltRoomFrame!.OwnerEpoch, "Input must not replace the physical room owner.");
             Assert.AreEqual(LocalRoomPresentation.Window, Host.LocalPresentation);
             Assert.IsTrue(Driver.OwnsRuntime);
             Assert.IsNull(Runtime.LastError);

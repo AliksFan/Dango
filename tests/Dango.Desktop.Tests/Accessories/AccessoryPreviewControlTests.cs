@@ -39,21 +39,22 @@ public sealed class AccessoryPreviewControlTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
+    [TestCategory("LegacyModuleIntegration")]
     public void ActualWardrobeUsesSpaceOnlyAndEscapeCancelsBufferedInputAndRestoresJumpSpeed()
     {
         var root = Path.Combine(TestRepository.Root, "artifacts", "accessory-verification", "preview-controls", Guid.NewGuid().ToString("N"));
         var native = Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName);
         Assert.IsTrue(File.Exists(native));
-        using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"), nativeLibraryPath: native);
-        var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
+        using var fixture = new LegacyProductPreviewFixture(root, native);
+        var runtime = fixture.Runtime;
         Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
-        ControlCenterWindow? reviewWindow = null;
+        Window? reviewWindow = null;
         try
         {
-            host.ShowControlCenter(); Pump(400);
-            var window = Field<ControlCenterWindow>(host, "controlCenterWindow");
+            fixture.Show(); Pump(400);
+            var window = fixture.Window;
             reviewWindow = window;
-            var home = window.ProductHome;
+            var home = fixture.Home;
             home.ShowEditor(HomeEditor.Wardrobe); Pump(160);
             Assert.IsTrue(home.OwnsLiveFrameDriver);
             Assert.IsTrue(runtime.UnboundedHorizontalPreview);
@@ -114,21 +115,22 @@ public sealed class AccessoryPreviewControlTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
+    [TestCategory("LegacyModuleIntegration")]
     public void MissingLowJumpExportShowsUnavailableAndEscStillLeavesThePreview()
     {
         var root = Path.Combine(TestRepository.Root, "artifacts", "accessory-verification", "preview-controls", Guid.NewGuid().ToString("N"));
         var baseline = Path.Combine(TestRepository.Root, "artifacts", "native-spike", "physics-module-unified-build", "Release",
             DangoPhysicsWorld.NativeLibraryFileName);
         Assert.IsTrue(File.Exists(baseline));
-        using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"), nativeLibraryPath: baseline);
-        var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
+        using var fixture = new LegacyProductPreviewFixture(root, baseline);
+        var runtime = fixture.Runtime;
         Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
-        ControlCenterWindow? reviewWindow = null;
+        Window? reviewWindow = null;
         try
         {
-            host.ShowControlCenter(); Pump(250);
-            reviewWindow = Field<ControlCenterWindow>(host, "controlCenterWindow");
-            var home = reviewWindow.ProductHome;
+            fixture.Show(); Pump(250);
+            reviewWindow = fixture.Window;
+            var home = fixture.Home;
             home.ShowEditor(HomeEditor.Wardrobe); Pump(100);
             var error = Field<DangoPhysicsException>(home, "liveSurfacePhysicsError");
             Assert.AreEqual(DangoPhysicsFailureKind.MissingExport, error.Kind);

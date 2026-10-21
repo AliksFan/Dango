@@ -19,7 +19,6 @@ namespace Dango.LocalRoomProbe;
 internal static class Program
 {
     private const string Marker = ".dango-local-room-catalog-probe.json";
-    private const string FurnitureHash = "BA6E92D57CAFBD5CC806F709890AA1E8ED784F97CF42A09F4168EE08065E97A0";
     [STAThread]
     private static int Main(string[] args)
     {
@@ -91,6 +90,8 @@ internal static class Program
         {
             if (Directory.Exists(root)) throw new IOException("Use a fresh root; existing data is preserved.");
             Directory.CreateDirectory(root); File.WriteAllText(Path.Combine(root, Marker), "{\"format\":1}");
+            File.WriteAllText(Path.Combine(root, ".dango-local-install-acceptance.json"),
+                "{\"application\":\"Dango\",\"acceptanceFormat\":1,\"fictional\":true}");
         }
         if (!File.Exists(Path.Combine(root, Marker)) || File.ReadAllText(Path.Combine(root, Marker)) != "{\"format\":1}")
             throw new InvalidDataException("Missing owned probe marker.");
@@ -132,11 +133,11 @@ internal static class Program
     private static void Show(string root, string native, bool verify)
     {
         native = Path.GetFullPath(native);
-        Require(Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(native))) == FurnitureHash, "Native candidate differs from admitted furniture DLL.");
+        Require(Path.GetFileName(native) == "dango_belt_room.dll" && File.Exists(native), "Specify the built default Belt room module.");
         using var singleton = new Mutex(true, "Local\\Dango.RoomCatalogReview." + Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(root))), out var created);
         Require(created, "This owned review root is already running.");
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        using var host = new DangoApplicationHost(isolatedLocalRoomReview: true, settingsFile: Path.Combine(root, "settings.json"), nativeLibraryPath: native);
+        using var host = new DangoApplicationHost(settingsFile: Dango.Desktop.App.ResolveLocalInstallAcceptanceSettingsFile(["--local-install-acceptance-settings", root]), roomModulePath: native);
         host.Start();
         if (!verify) { app.Run(); return; }
         try
@@ -145,7 +146,7 @@ internal static class Program
             Pump(() => home.CatalogSnapshot is not null, "Catalog startup");
             Require(!home.IsDangoAway && !home.IsInPorch && host.LocalWindow?.IsVisible == false, "Startup automatically entered a room.");
             home.ReduceMotion = true;
-            home.ResumePorch(); Pump(() => home.OwnsLiveFrameDriver && home.PorchScene.LiveBody.IsVisible, "Porch healthy frame");
+            home.ResumePorch(); Pump(() => home.DisplayedBeltSnapshot is { Error: null, Frame: not null } && home.BoundBeltBody!.Metrics.Running, "Porch healthy frame");
             var catalog = home.CatalogSnapshot!; Require(catalog.ActiveCount >= 2, "UI verification needs the two-room fixture.");
             SaveWindowPreview(Window.GetWindow(home), Path.Combine(root, "porch.png"));
             home.PorchScene.ResetProjection(1000); home.PorchScene.InteractNearestDoor();
@@ -170,7 +171,7 @@ internal static class Program
             home.CloseRoomDialog();
             host.EnterCatalogRoom(catalog.Rooms[0].RoomId, false);
             host.ReturnToPorch();
-            Pump(() => !host.LocalHandoffPending && home.OwnsLiveFrameDriver, "Cancel preparation");
+            Pump(() => !host.LocalHandoffPending && home.BoundBeltBody!.Metrics.Running, "Cancel preparation");
             var cancelled = (Task)typeof(DangoApplicationHost).GetField("roomCheckpointTask", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host)!;
             Require(cancelled.IsCompleted && host.LocalWindow!.IsVisible == false && !home.IsDangoAway, "A cancelled preparation changed presentation.");
             host.EnterCatalogRoom(catalog.Rooms[0].RoomId, false);
@@ -184,28 +185,45 @@ internal static class Program
             Pump(() => !host.LocalHandoffPending, "Dissolved target callback");
             Require(host.LocalPresentation == LocalRoomPresentation.Porch && !host.LocalWindow!.IsVisible && !home.IsDangoAway, "A concurrently dissolved target was entered.");
             Require(new LocalRoomCatalogStore(root).Restore(Guid.NewGuid(), catalog.Rooms[0].RoomId).Success, "Fixture restoration failed.");
-            object? runtime = null; Dango.Physics.DangoEntityId? entity = null;
+            object? runtime = null; ulong? previousOwner = null; var verifiedPresentations = false;
             foreach (var room in new[] { catalog.Rooms[0], catalog.Rooms[1], catalog.Rooms[0] })
             {
                 host.EnterCatalogRoom(room.RoomId, false);
                 Pump(() => host.LocalPresentation == LocalRoomPresentation.Window && !host.LocalHandoffPending && host.LocalWindow!.Scene.HasHealthyFrame, "Enter " + room.Name);
                 var actual = host.LocalWindow!.Scene.LastAppliedRuntime!;
-                if (runtime is null) { runtime = actual; entity = actual.AppearanceEntity; }
-                Require(ReferenceEquals(runtime, actual) && entity is not null && actual.AppearanceEntity == entity, "Room handoff replaced the Dango identity or runtime.");
+                if (runtime is null) runtime = actual;
+                Require(ReferenceEquals(runtime, actual) && actual.UsesBeltRoom && actual.LastBeltRoomFrame is { Fault: 0 }, "Room handoff did not use the healthy default Belt runtime.");
+                Require(previousOwner is null || previousOwner != actual.LastBeltRoomFrame!.OwnerEpoch, "Porch reentry retained the prior physical room owner.");
+                previousOwner = actual.LastBeltRoomFrame!.OwnerEpoch;
                 Require(actual.Furniture!.PersistedLayout == new LocalRoomCatalogStore(root).ReadLayout(room.RoomId), "Wrong room layout attached.");
-                Require(actual.FrameDriver is not null && !home.OwnsLiveFrameDriver && actual.DangoCount == 1 &&
+                Require(actual.FrameDriver is not null && !home.BoundBeltBody!.Metrics.Running && actual.DangoCount == 1 &&
                     host.LocalWindow.Scene.Camera.CameraMode == (room.RoomId == catalog.Rooms[0].RoomId ? RoomCameraMode.Manual : RoomCameraMode.EdgeFollow), "Owner or per-room camera incorrect.");
+                if (!verifiedPresentations)
+                {
+                    verifiedPresentations = true;
+                    var ownerEpoch = actual.LastBeltRoomFrame!.OwnerEpoch;
+                    var scheduler = actual.FrameDriver;
+                    var scene = typeof(Dango.Desktop.Rendering.Visuals.StackedDangoSceneRuntime).GetField("scene", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(actual);
+                    foreach (var presentation in new[] { LocalRoomPresentation.Wallpaper, LocalRoomPresentation.Window })
+                    {
+                        host.SwitchLocalRoomPresentation(presentation);
+                        Pump(() => !host.LocalHandoffPending && host.LocalPresentation == presentation, "Same-room presentation " + presentation);
+                        Require(ReferenceEquals(scene, typeof(Dango.Desktop.Rendering.Visuals.StackedDangoSceneRuntime).GetField("scene", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(actual)) &&
+                            actual.LastBeltRoomFrame!.OwnerEpoch == ownerEpoch && ReferenceEquals(scheduler, actual.FrameDriver),
+                            "Same-room presentation changed the physical world or scheduler owner.");
+                    }
+                }
                 var userCamera = host.LocalWindow.Scene.Camera.CaptureState();
                 Require(host.LocalWindow.BeginFurnitureEditing(), "Furniture editor could not enter.");
-                host.ReturnToPorch(); Pump(() => !host.LocalHandoffPending && home.OwnsLiveFrameDriver && host.LocalWindow.IsVisible == false, "Return to porch");
+                host.ReturnToPorch(); Pump(() => !host.LocalHandoffPending && home.BoundBeltBody!.Metrics.Running && host.LocalWindow.IsVisible == false, "Return to porch");
                 Pump(() => ((Task)typeof(DangoApplicationHost).GetField("roomCheckpointTask", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host)!).IsCompleted, "Checkpoint flush");
                 var saved = new RoomResumeStore(new LocalRoomCatalogStore(root)).Load(room.RoomId).Value!;
                 Require(saved.Camera.Preset == userCamera.Preset && saved.Camera.RequestedPercent == userCamera.RequestedPercent, "Temporary furniture camera overwrote the room checkpoint.");
             }
             host.EnterDesktopPetRoom();
             Pump(() => host.LocalPresentation == LocalRoomPresentation.DesktopPet && !host.LocalHandoffPending, "Desktop pet healthy layered frame");
-            host.ReturnToPorch(); Pump(() => !host.LocalHandoffPending && home.OwnsLiveFrameDriver, "Desktop pet return");
-            File.WriteAllText(Path.Combine(root, "ui-check-result.json"), JsonSerializer.Serialize(new { passed = true, checks = "startup, creation overlay and validation, cancelled preparation, concurrent dissolution, A-B-A identity/layout/camera, editor camera protection, unique owner, desktop-pet handoff", manualInput = false }));
+            host.ReturnToPorch(); Pump(() => !host.LocalHandoffPending && home.BoundBeltBody!.Metrics.Running, "Desktop pet return");
+            File.WriteAllText(Path.Combine(root, "ui-check-result.json"), JsonSerializer.Serialize(new { passed = true, checks = "startup, creation overlay and validation, cancelled preparation, concurrent dissolution, A-B-A default Belt owner/layout/camera, same-room window-wallpaper owner, editor camera protection, unique owner, separate desktop-pet door handoff", manualInput = false }));
         }
         finally { host.Dispose(); app.Shutdown(); }
     }

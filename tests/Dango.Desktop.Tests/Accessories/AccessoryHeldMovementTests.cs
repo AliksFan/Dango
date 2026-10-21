@@ -21,6 +21,7 @@ using ShapePath = System.Windows.Shapes.Path;
 namespace Dango.Desktop.Tests.Accessories;
 
 [TestClass]
+[TestCategory("LegacyModuleIntegration")]
 [DoNotParallelize]
 public sealed class AccessoryHeldMovementTests
 {
@@ -284,11 +285,11 @@ public sealed class AccessoryHeldMovementTests
 
     private sealed class Rig : IDisposable
     {
-        private readonly DangoApplicationHost host;
+        private readonly LegacyProductPreviewFixture fixture;
         internal string RunRoot { get; }
         internal string NativeSha256 { get; }
-        internal ControlCenterWindow Window { get; }
-        internal ProductHomeView Home => Window.ProductHome;
+        internal Window Window { get; }
+        internal ProductHomeView Home => fixture.Home;
         internal StackedDangoSceneRuntime Runtime { get; }
         internal HostFrameScheduler Scheduler { get; }
         internal DeformableDangoVisual Body { get; }
@@ -326,11 +327,11 @@ public sealed class AccessoryHeldMovementTests
                 Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName);
             Assert.IsTrue(File.Exists(native), "The low-jump native candidate must be supplied to the actual Home fixture.");
             NativeSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(native)));
-            host = new(settingsFile: Path.Combine(settings, "settings.json"), nativeLibraryPath: native);
-            Runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
+            fixture = new(settings, native);
+            Runtime = fixture.Runtime;
             Assert.IsTrue(Runtime.TryInitialize(), Runtime.LastError);
-            host.ShowControlCenter();
-            Window = Field<ControlCenterWindow>(host, "controlCenterWindow");
+            fixture.Show();
+            Window = fixture.Window;
             Home.ShowEditor(HomeEditor.Wardrobe);
             Pump(1200);
             Assert.IsTrue(Home.OwnsLiveFrameDriver && Runtime.IsRunning);
@@ -370,7 +371,7 @@ public sealed class AccessoryHeldMovementTests
             return path;
         }
 
-        public void Dispose() { Window.Close(); host.Dispose(); }
+        public void Dispose() { fixture.Dispose(); }
     }
 
     private static void Pump(int milliseconds)

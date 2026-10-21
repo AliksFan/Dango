@@ -15,8 +15,8 @@ namespace Dango.Desktop.Tests.Accessories;
 [DoNotParallelize]
 public sealed class AccessoryProcessRestartTests
 {
-    private const string MarkerName = ".dango-accessory-review.json";
-    private const string Marker = "{\"application\":\"Dango\",\"accessoryReviewFormat\":1,\"fictional\":true}";
+    private const string MarkerName = ".dango-local-install-acceptance.json";
+    private const string Marker = "{\"application\":\"Dango\",\"acceptanceFormat\":1,\"fictional\":true}";
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
@@ -36,7 +36,7 @@ public sealed class AccessoryProcessRestartTests
         try
         {
             AssertRuntimeFiles();
-            AssertReviewMutexIsFree();
+            AssertReviewMutexIsFree(reviewRoot);
             var mainSettings = ControlCenterWindowSettings.CreateDefault() with
             {
                 IntroSeen = true,
@@ -156,21 +156,21 @@ public sealed class AccessoryProcessRestartTests
     }
 
     [TestMethod]
-    public void ReviewRequiresExactArgumentsAndHasAnIndependentMutex()
+    public void OwnedProductAcceptanceUsesAnIndependentDirectoryMutexAndRejectsRetiredArguments()
     {
-        App.ValidateIsolatedReviewSelection(["--accessory-review"]);
-        foreach (var other in new[] { "--home-ui-review", "--settings-ui-review", "--physics-host-review", "--eye-hat-review",
-            "--unified-live-home-review", "--porch-scene-review", "--local-room-review", "--face-review", "--desktop-pet-room-review" })
+        var root = NewRunRoot("owned-instance");
+        File.WriteAllText(Path.Combine(root, MarkerName), Marker);
+        var args = new[] { "--local-install-acceptance-settings", root };
+        App.ValidateStartupArguments(args);
+        Assert.AreNotEqual(App.ResolveSingleInstanceName([]), App.ResolveSingleInstanceName(args));
+        Assert.AreEqual(Path.Combine(root, "settings.json"), Resolve(root));
+        foreach (var retired in new[] { "--accessory-review", "--accessory-review-settings" })
         {
-            Assert.ThrowsExactly<ArgumentException>(() => App.ValidateIsolatedReviewSelection(["--accessory-review", other]));
-            Assert.AreNotEqual(App.ResolveSingleInstanceName([other]), App.ResolveSingleInstanceName(["--accessory-review"]));
+            Assert.ThrowsExactly<ArgumentException>(() => App.ValidateStartupArguments([retired]));
+            Assert.ThrowsExactly<ArgumentException>(() => App.ResolveSingleInstanceName([retired]));
         }
-        Assert.AreNotEqual(App.ResolveSingleInstanceName([]), App.ResolveSingleInstanceName(["--accessory-review"]));
-        Assert.IsNull(App.ResolveAccessoryReviewSettingsFile([]));
-        Assert.ThrowsExactly<ArgumentException>(() => App.ResolveAccessoryReviewSettingsFile(["--accessory-review"]));
-        Assert.ThrowsExactly<ArgumentException>(() => App.ResolveAccessoryReviewSettingsFile(["--accessory-review-settings", "fictional-root"]));
-        Assert.ThrowsExactly<ArgumentException>(() => App.ResolveAccessoryReviewSettingsFile(
-            ["--accessory-review", "--accessory-review-settings", "fictional-root", "--smoke-test"]));
+        Assert.ThrowsExactly<ArgumentException>(() => App.ResolveLocalInstallAcceptanceSettingsFile(
+            ["--local-install-acceptance-settings", root, "--eye-hat-review"]));
     }
 
     [TestMethod]
@@ -187,10 +187,10 @@ public sealed class AccessoryProcessRestartTests
     }
 
     [TestMethod]
-    [DataRow("{\"application\":\"Other\",\"accessoryReviewFormat\":1,\"fictional\":true}")]
-    [DataRow("{\"application\":\"Dango\",\"accessoryReviewFormat\":2,\"fictional\":true}")]
-    [DataRow("{\"application\":\"Dango\",\"accessoryReviewFormat\":1,\"fictional\":false}")]
-    [DataRow("{\"application\":\"Dango\",\"accessoryReviewFormat\":1,\"fictional\":true,\"extra\":true}")]
+    [DataRow("{\"application\":\"Other\",\"acceptanceFormat\":1,\"fictional\":true}")]
+    [DataRow("{\"application\":\"Dango\",\"acceptanceFormat\":2,\"fictional\":true}")]
+    [DataRow("{\"application\":\"Dango\",\"acceptanceFormat\":1,\"fictional\":false}")]
+    [DataRow("{\"application\":\"Dango\",\"acceptanceFormat\":1,\"fictional\":true,\"extra\":true}")]
     public void ReviewRejectsWrongOwnershipMarkers(string marker)
     {
         var root = NewRunRoot("wrong-marker");
@@ -213,7 +213,7 @@ public sealed class AccessoryProcessRestartTests
         Assert.ThrowsExactly<InvalidDataException>(() => Resolve(root));
     }
 
-    private static string? Resolve(string root) => App.ResolveAccessoryReviewSettingsFile(["--accessory-review", "--accessory-review-settings", root]);
+    private static string? Resolve(string root) => App.ResolveLocalInstallAcceptanceSettingsFile(["--local-install-acceptance-settings", root]);
 
     private static string NewRunRoot(string label)
     {
@@ -240,18 +240,30 @@ public sealed class AccessoryProcessRestartTests
         return path;
     }
 
-    private static void AssertRuntimeFiles()
+    private static string ProductPackageDirectory
     {
-        foreach (var name in new[] { "Dango.Desktop.exe", "Dango.Desktop.runtimeconfig.json", "dango_physics_module.dll", "dango_box2d.dll" })
-            Assert.IsTrue(File.Exists(Path.Combine(AppContext.BaseDirectory, name)), "The real process acceptance requires output file " + name);
+        get
+        {
+            var configured = Environment.GetEnvironmentVariable("DANGO_PRODUCT_PACKAGE");
+            if (string.IsNullOrWhiteSpace(configured)) return AppContext.BaseDirectory;
+            Assert.IsTrue(Path.IsPathFullyQualified(configured), "DANGO_PRODUCT_PACKAGE must identify an absolute product package directory.");
+            return Path.GetFullPath(configured);
+        }
     }
 
-    private static void AssertReviewMutexIsFree()
+    private static void AssertRuntimeFiles()
+    {
+        var package = ProductPackageDirectory;
+        foreach (var name in new[] { "Dango.Desktop.exe", "Dango.Desktop.runtimeconfig.json", "dango_belt_product.dll", "dango_belt_room.dll", "dango_box2d.dll" })
+            Assert.IsTrue(File.Exists(Path.Combine(package, name)), "The real process acceptance requires output file " + name);
+    }
+
+    private static void AssertReviewMutexIsFree(string root)
     {
         try
         {
-            using var existing = Mutex.OpenExisting(App.ResolveSingleInstanceName(["--accessory-review"]) + ".Mutex");
-            Assert.Fail("An accessory review instance is already active. This test must not activate or automate an unrelated review window.");
+            using var existing = Mutex.OpenExisting(App.ResolveSingleInstanceName(["--local-install-acceptance-settings", root]) + ".Mutex");
+            Assert.Fail("An owned product acceptance instance is already active. This test must not activate or automate an unrelated review window.");
         }
         catch (WaitHandleCannotBeOpenedException) { }
     }
@@ -400,17 +412,18 @@ public sealed class AccessoryProcessRestartTests
         }
         public static ReviewProcess Start(string reviewRoot, string label, string evidenceRoot, VerificationLog log)
         {
-            var info = new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, "Dango.Desktop.exe"))
+            var package = ProductPackageDirectory;
+            var info = new ProcessStartInfo(Path.Combine(package, "Dango.Desktop.exe"))
             {
-                WorkingDirectory = AppContext.BaseDirectory,
+                WorkingDirectory = package,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
             };
-            info.ArgumentList.Add("--accessory-review"); info.ArgumentList.Add("--accessory-review-settings"); info.ArgumentList.Add(reviewRoot);
+            info.ArgumentList.Add("--local-install-acceptance-settings"); info.ArgumentList.Add(reviewRoot);
             var process = System.Diagnostics.Process.Start(info) ?? throw new InvalidOperationException("The owned review process could not start.");
-            log.Write("owned-process-started", new { label, process.Id });
+            log.Write("owned-process-started", new { label, process.Id, package });
             try { return new(process, label, evidenceRoot, log); }
             catch
             {

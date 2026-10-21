@@ -379,7 +379,7 @@ public sealed class FixedWindowPresetTests
             property.SetValue(settings, Enum.Parse(property.PropertyType, "Landscape1440p"));
             new ControlCenterWindowSettingsStore().Save(path, settings);
 
-            using (var host = new DangoApplicationHost(settingsFile: path, nativeLibraryPath: path + ".missing.dll"))
+            using (var host = new DangoApplicationHost(settingsFile: path, roomModulePath: path + ".missing.dll"))
             {
                 var window = (ControlCenterWindow)typeof(DangoApplicationHost)
                     .GetMethod("GetOrCreateControlCenter", BindingFlags.Instance | BindingFlags.NonPublic)!

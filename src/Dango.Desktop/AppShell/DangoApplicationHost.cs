@@ -26,9 +26,6 @@ internal sealed partial class DangoApplicationHost : IDisposable
     private readonly AppearanceSettingsSession appearance;
     private readonly AccessorySettingsSession accessories;
     private readonly bool eyeHatReview;
-    private readonly bool porchReview;
-    private readonly bool faceReview;
-    private readonly bool usesContinuousBody;
     private readonly ApplicationUiMode uiMode;
     private readonly DispatcherTimer geometrySaveTimer = new() { Interval = TimeSpan.FromMilliseconds(300) };
     private ControlCenterWindow? controlCenterWindow;
@@ -41,44 +38,27 @@ internal sealed partial class DangoApplicationHost : IDisposable
 
     public DangoApplicationHost(bool isolatedPhysicsReview = false, bool isolatedEyeHatReview = false,
         string? settingsFile = null, string? nativeLibraryPath = null, ControlCenterWindowSettingsStore? settingsStore = null,
-        bool isolatedUnifiedHomeReview = false, bool isolatedPorchReview = false, bool isolatedLocalRoomReview = false,
-        bool isolatedFaceReview = false, bool isolatedDesktopPetRoomReview = false,
         string? roomModulePath = null)
     {
-        if ((isolatedPhysicsReview ? 1 : 0) + (isolatedEyeHatReview ? 1 : 0) +
-            (isolatedUnifiedHomeReview ? 1 : 0) + (isolatedPorchReview ? 1 : 0) +
-            (isolatedLocalRoomReview ? 1 : 0) + (isolatedFaceReview ? 1 : 0) + (isolatedDesktopPetRoomReview ? 1 : 0) > 1)
+        if (isolatedPhysicsReview && isolatedEyeHatReview)
             throw new ArgumentException("Choose one isolated review mode.");
-        porchReview = isolatedPorchReview;
-        faceReview = isolatedFaceReview;
-        usesContinuousBody = !(isolatedPhysicsReview || isolatedEyeHatReview || isolatedUnifiedHomeReview || isolatedPorchReview ||
-            isolatedLocalRoomReview || isolatedFaceReview || isolatedDesktopPetRoomReview);
-        if (roomModulePath is not null && (!usesContinuousBody || !Path.IsPathFullyQualified(roomModulePath)))
+        uiMode = isolatedPhysicsReview || isolatedEyeHatReview ? ApplicationUiMode.DeveloperReview : ApplicationUiMode.Product;
+        if (uiMode == ApplicationUiMode.Product && nativeLibraryPath is not null)
+            throw new ArgumentException("A legacy native library override requires an explicit diagnostic host.", nameof(nativeLibraryPath));
+        if (roomModulePath is not null && (uiMode != ApplicationUiMode.Product || !Path.IsPathFullyQualified(roomModulePath)))
             throw new ArgumentException("A room module override requires the product runtime and an absolute path.", nameof(roomModulePath));
         eyeHatReview = isolatedEyeHatReview;
-        uiMode = isolatedPhysicsReview || isolatedEyeHatReview ? ApplicationUiMode.DeveloperReview : ApplicationUiMode.Product;
         sceneSession = new DesktopSceneSession();
         stackedRuntime = isolatedEyeHatReview ? StackedDangoSceneRuntime.CreateEyeHatReview(nativeLibraryPath, deferInitialization: true)
             : isolatedPhysicsReview ? new StackedDangoSceneRuntime(nativeLibraryPath)
-            : usesContinuousBody ? StackedDangoSceneRuntime.CreateBeltRoom(roomModulePath ?? Path.Combine(AppContext.BaseDirectory, "dango_belt_room.dll"))
-            : StackedDangoSceneRuntime.CreateProduct(nativeLibraryPath);
+            : StackedDangoSceneRuntime.CreateBeltRoom(roomModulePath ?? Path.Combine(AppContext.BaseDirectory, "dango_belt_room.dll"));
         workerWWindow = new WorkerWWindow(sceneSession, stackedRuntime);
         sceneWindow = new DangoSceneWindow(sceneSession, stackedRuntime);
         desktopHost = new DesktopHostCoordinator(workerWWindow, sceneWindow, stackedRuntime);
         if (uiMode == ApplicationUiMode.Product) desktopHost.SetRoomPresentationAllowed(false);
         commandController = new ApplicationCommandController(desktopHost, uiMode);
         verificationDefinition = isolatedEyeHatReview ? VerificationDefinition.CreateEyeHatHosts() : VerificationDefinition.CreatePhysicsModuleHosts();
-        settingsPath = settingsFile ?? (isolatedDesktopPetRoomReview
-            ? Path.Combine(AppContext.BaseDirectory, "desktop-pet-room-review-state", "settings.json")
-            : isolatedLocalRoomReview
-            ? Path.Combine(AppContext.BaseDirectory, "local-room-review-state", "settings.json")
-            : isolatedFaceReview
-            ? Path.Combine(AppContext.BaseDirectory, "face-review-state", "settings.json")
-            : isolatedPorchReview
-            ? Path.Combine(AppContext.BaseDirectory, "porch-scene-review-state", "settings.json")
-            : isolatedUnifiedHomeReview
-            ? Path.Combine(AppContext.BaseDirectory, "unified-home-review-state", "settings.json")
-            : isolatedEyeHatReview
+        settingsPath = settingsFile ?? (isolatedEyeHatReview
             ? Path.Combine(AppContext.BaseDirectory, "eye-hat-review-state", "settings.json")
             : isolatedPhysicsReview
                 ? Path.Combine(AppContext.BaseDirectory, "physics-review-state", "settings.json")
@@ -112,8 +92,8 @@ internal sealed partial class DangoApplicationHost : IDisposable
         started = true;
         // Establish recovery entry points before touching the native module.
         trayIcon = new DangoTrayIcon(commandController, ShowControlCenter, ShowDiagnostics, RequestExit,
-            uiMode == ApplicationUiMode.Product && !porchReview && !faceReview ? CreateLocalRoomTrayActions() : null);
-        var initialized = !usesContinuousBody && stackedRuntime.TryInitialize();
+            uiMode == ApplicationUiMode.Product ? CreateLocalRoomTrayActions() : null);
+        var initialized = uiMode == ApplicationUiMode.DeveloperReview && stackedRuntime.TryInitialize();
         if (uiMode == ApplicationUiMode.Product)
         {
             ShowControlCenter();
@@ -215,12 +195,9 @@ internal sealed partial class DangoApplicationHost : IDisposable
         {
             controlCenterWindow.ProductHome.BindAppearance(appearance);
             controlCenterWindow.ProductHome.BindAccessories(accessories);
-            if (usesContinuousBody) controlCenterWindow.ProductHome.BindBeltBody(settingsPath);
-            else controlCenterWindow.ProductHome.BindLiveScene(sceneSession, stackedRuntime);
-            controlCenterWindow.ProductHome.SetPorchReviewMode(porchReview);
-            if (!porchReview && !faceReview) BindLocalRoom(controlCenterWindow);
+            controlCenterWindow.ProductHome.BindBeltBody(settingsPath);
+            BindLocalRoom(controlCenterWindow);
             controlCenterWindow.BindSettingsScene(ReadProductSettingsScene, RestoreRoomDisplayFromSettings, ReinitializeSceneFromSettings);
-            if (porchReview) controlCenterWindow.Title = "Dango · 门廊 E1 场景预览";
         }
         controlCenterWindow.OverviewPresented += () =>
         {

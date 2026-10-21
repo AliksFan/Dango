@@ -2,6 +2,8 @@
 
 日期：2026-10-21。状态：**已完成静态盘点；建议待批准，未实施**。配套[设计与分批计划](2026-10-21-post-merge-organization-plan.md)。
 
+后续实施说明：本盘点保留为 `main@5ae2292` 的来源快照。B1已退役／迁移的文件改以代码路径记载，可用 `git show 5ae2292:<路径>` 查回原文；不为维持历史链接而留下生产空壳。
+
 ## 1. 快照、方法与限制
 
 - 源快照：本地 `main@5ae22926d45d2e35f71f7791e509ec1db9ff7beb`，已实时核对 HEAD、分支、index、status 和 worktree 列表。main 唯一既有修改是未暂存 `AGENTS.md`，无暂存项；原交付 `codex/belt-page-completion@c55245f` 工作区干净，未清理其 ignored 包、负控或冻结证据。
@@ -61,12 +63,12 @@ App第163～166行当前列出14个无值运行选项：**10个review＋2个prev
 
 | 候选与事实证据 | 建议／替代位置 | 影响、风险与最小验证 |
 | --- | --- | --- |
-| [SingleDangoMotionRuntime](../../src/Dango.Desktop/Rendering/Dango/SingleDangoMotionRuntime.cs)第7行；仅[同名生命周期测试](../../tests/Dango.Desktop.Tests/Rendering/SingleDangoMotionRuntimeTests.cs)第10行使用 | 建议退役生产中的旧包装及只测该包装的专用测试；仍有价值的启动／停止／释放不变量由现有Stacked runtime测试承接。无活跃测试消费者则不为保留类型而复制到tests | 不声称两个runtime行为等价；确认生命周期覆盖没有缺口后再删，产品启动／关闭定向回归 |
-| [DragGrabPointMapper](../../src/Dango.Desktop/Physics/Presentation/DragGrabPointMapper.cs)第3行；仅[映射测试](../../tests/Dango.Desktop.Tests/Physics/Presentation/DragGrabPointMapperTests.cs)第7行 | 建议退役未消费的视觉归一化映射与仅验证它的测试；不把它重新接入生产 | 当前实际链见DangoSceneWindow第415／438行、WorkerWWindow第580～627行、LocalRoomSceneDriver第201／210行、DesktopPhysicsScene第290～345行。host/world坐标转换并不等价于旧局部抓点语义；须保留现有拖拽／缩放安全断言 |
-| [DangoBodyColorPolicy／DangoBodyPalette](../../src/Dango.Desktop/Rendering/Dango/DangoBodyColorPolicy.cs)第4／31行；仅[同名测试](../../tests/Dango.Desktop.Tests/Rendering/DangoBodyColorPolicyTests.cs)第6行；旧[外观整理计划](2026-10-05-appearance-consolidation.md)第14行提及辅助槽位 | 建议退役未消费的辅助色策略。主色不变，真实颜色直接来自配置；若批准保留辅助槽位产品意图，则此项暂缓，不能把无调用解释成意图已取消 | 当前主色：[AppearanceSettingsSession](../../src/Dango.Desktop/AppShell/ControlCenter/AppearanceSettingsSession.cs)第52～53行、[Belt presenter](../../src/Dango.Desktop/Rendering/Dango/BeltBodyAppearancePresenter.cs)第95／223行。验证主色编辑／取消／保存／重载与呈现；不改外观格式 |
-| [DeterministicFakePhysicsWorld](../../src/Dango.Desktop/Physics/Presentation/DeterministicFakePhysicsWorld.cs)第3行；构造仅见[表现契约测试](../../tests/Dango.Desktop.Tests/Physics/Presentation/PhysicsPresentationContractTests.cs)第22行起 | 将假世界迁到 `tests/Dango.Desktop.Tests/Physics/Presentation/Support/`；其使用的真实模型留生产 | 同文件第18行的AuthoredPoseSampler须先原样拆为独立生产文件；契约／fallback诊断定向回归，不删整文件及枚举 |
-| [AuthoredPoseSampler](../../src/Dango.Desktop/Physics/Presentation/DeterministicFakePhysicsWorld.cs)第18行起 | **保留生产职责**，只拆文件；不是假世界一起迁出 | [IPhysicsPresentationWorld](../../src/Dango.Desktop/Physics/Presentation/IPhysicsPresentationWorld.cs)第30行、[网络宠物](../../src/Dango.Desktop/Multiplayer/NetworkPetPresentation.cs)第114行、Stacked runtime第920行、Box2D与Dango适配器都调用。保留轮廓／附件／错误原因及native错误诊断 |
-| [PlaceholderSceneFactory](../../src/Dango.Core/Scene/PlaceholderSceneFactory.cs)第7行；只见[资产测试](../../tests/Dango.Core.Tests/Assets/AssetPackageParserTests.cs)第122～123行 | 迁入该Core测试项目的Scene夹具，保留确定性构造能力 | 只移动工厂，placeholder资源及其[构建校验](../../Directory.Build.targets)仍有职责；资产包解析／确定性快照测试即可 |
+| `src/Dango.Desktop/Rendering/Dango/SingleDangoMotionRuntime.cs`（源快照）第7行；仅`tests/Dango.Desktop.Tests/Rendering/SingleDangoMotionRuntimeTests.cs`（源快照）第10行使用 | 建议退役生产中的旧包装及只测该包装的专用测试；仍有价值的启动／停止／释放不变量由现有Stacked runtime测试承接。无活跃测试消费者则不为保留类型而复制到tests | 不声称两个runtime行为等价；确认生命周期覆盖没有缺口后再删，产品启动／关闭定向回归 |
+| `src/Dango.Desktop/Physics/Presentation/DragGrabPointMapper.cs`（源快照）第3行；仅`tests/Dango.Desktop.Tests/Physics/Presentation/DragGrabPointMapperTests.cs`（源快照）第7行 | 建议退役未消费的视觉归一化映射与仅验证它的测试；不把它重新接入生产 | 当前实际链见DangoSceneWindow第415／438行、WorkerWWindow第580～627行、LocalRoomSceneDriver第201／210行、DesktopPhysicsScene第290～345行。host/world坐标转换并不等价于旧局部抓点语义；须保留现有拖拽／缩放安全断言 |
+| `src/Dango.Desktop/Rendering/Dango/DangoBodyColorPolicy.cs`（源快照）第4／31行；仅`tests/Dango.Desktop.Tests/Rendering/DangoBodyColorPolicyTests.cs`（源快照）第6行；旧[外观整理计划](2026-10-05-appearance-consolidation.md)第14行提及辅助槽位 | 建议退役未消费的辅助色策略。主色不变，真实颜色直接来自配置；若批准保留辅助槽位产品意图，则此项暂缓，不能把无调用解释成意图已取消 | 当前主色：[AppearanceSettingsSession](../../src/Dango.Desktop/AppShell/ControlCenter/AppearanceSettingsSession.cs)第52～53行、[Belt presenter](../../src/Dango.Desktop/Rendering/Dango/BeltBodyAppearancePresenter.cs)第95／223行。验证主色编辑／取消／保存／重载与呈现；不改外观格式 |
+| `src/Dango.Desktop/Physics/Presentation/DeterministicFakePhysicsWorld.cs`（源快照）第3行；构造仅见[表现契约测试](../../tests/Dango.Desktop.Tests/Physics/Presentation/PhysicsPresentationContractTests.cs)第22行起 | 将假世界迁到 `tests/Dango.Desktop.Tests/Physics/Presentation/Support/`；其使用的真实模型留生产 | 同文件第18行的AuthoredPoseSampler须先原样拆为独立生产文件；契约／fallback诊断定向回归，不删整文件及枚举 |
+| `src/Dango.Desktop/Physics/Presentation/DeterministicFakePhysicsWorld.cs`（源快照）第18行起 | **保留生产职责**，只拆文件；不是假世界一起迁出 | [IPhysicsPresentationWorld](../../src/Dango.Desktop/Physics/Presentation/IPhysicsPresentationWorld.cs)第30行、[网络宠物](../../src/Dango.Desktop/Multiplayer/NetworkPetPresentation.cs)第114行、Stacked runtime第920行、Box2D与Dango适配器都调用。保留轮廓／附件／错误原因及native错误诊断 |
+| `src/Dango.Core/Scene/PlaceholderSceneFactory.cs`（源快照）第7行；只见[资产测试](../../tests/Dango.Core.Tests/Assets/AssetPackageParserTests.cs)第122～123行 | 迁入该Core测试项目的Scene夹具，保留确定性构造能力 | 只移动工厂，placeholder资源及其[构建校验](../../Directory.Build.targets)仍有职责；资产包解析／确定性快照测试即可 |
 | [Box2DStackedContactPresentationWorld](../../src/Dango.Desktop/Physics/Presentation/Box2DStackedContactPresentationWorld.cs)第7～19行同时定义StackedPhysicsPresentationFrame，含新room帧 | 保留共享契约；若后续迁旧实现，先拆共享记录，当前不删整文件 | 当前DesktopPhysicsScene／runtime仍消费共享帧。旧Box2D目录整体退役不属于本阶段 |
 
 上述三个候选包装／映射／辅助色策略的建议是“确认无真实职责后退役”，与假世界／场景工厂的“迁移活跃测试夹具”不同。所有候选均未实施删除。

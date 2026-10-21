@@ -6,7 +6,8 @@ param(
 
     [string]$EvidenceRoot,
     [string]$SettingsRepositoryRoot,
-    [string]$LegacyToolsPath
+    [string]$LegacyToolsPath,
+    [string]$CaseFilter
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,6 +38,7 @@ function Add-Result([string]$Name, [bool]$Passed, [string]$Detail) {
 }
 
 function Invoke-Case([string]$Name, [scriptblock]$Body) {
+    if ($CaseFilter -and $Name -notlike $CaseFilter) { return }
     try { & $Body; Add-Result $Name $true '' }
     catch { Add-Result $Name $false $_.Exception.Message }
 }
@@ -665,6 +667,74 @@ Invoke-Case 'running-product-rejects-activation-with-state-preserved' {
     $mutex = New-Object Threading.Mutex($false, 'Local\Dango.Phase1.App.Mutex')
     try { $before = Read-StateBytes $installRoot; $b = (Test-DangoPackage $packageB).VersionId; Assert-Throws { Set-DangoActiveVersion -InstallRoot $installRoot -VersionId $b } 'Running product did not block activation.'; Assert-BytesEqual $before (Read-StateBytes $installRoot) 'State changed while product guard rejected activation.' }
     finally { $mutex.Dispose() }
+}
+
+Invoke-Case 'v2-scoped-instance-blocks-switches-and-activates-only-its-owned-event' {
+    # Restore the real stop guard; all application processes and package contracts
+    # below are module-local fixtures. Start-Process is trapped before any Start call.
+    Remove-Module Dango.LocalInstall -Force; Import-Module $modulePath -Force
+    $scopedModule = Get-Module Dango.LocalInstall
+    Assert-Equal 'Local\Dango.Phase1.App.Data.F0E4A86115DF67A14E248712' (& $scopedModule { Get-DangoInstalledInstanceName 'dango-desktop-settings-v4-belt-default-v2' 'C:\Fixture\Settings with spaces' }) 'Management instance identity differs from the fixed App cross-language vector.'
+    if (& $scopedModule { Test-DangoProductRunning }) { throw 'A real ordinary Dango instance prevents this fixture-only instance test.' }
+    $root = Join-Path $EvidenceRoot 'v2-scoped-existing'
+    $null = Install-DangoPackage $packageA $root
+    $null = Install-DangoPackage $packageB $root
+    $state = Get-DangoInstallState $root
+    $before = Read-StateBytes $root
+    $settingsA = New-AcceptanceSettingsFixture 'v2-scoped-settings-A'
+    $settingsB = New-AcceptanceSettingsFixture 'v2-scoped-settings-B'
+    $executable = Join-Path $root ('versions\' + $state.current + '\Dango.Desktop.exe')
+    # Independently encode the App contract, rather than deriving the expected
+    # name from the management helper under test.
+    $settingsFile = [IO.Path]::GetFullPath((Join-Path $settingsA 'settings.json')).ToUpperInvariant()
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { $digest = [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($settingsFile))).Replace('-', '') }
+    finally { $sha.Dispose() }
+    $instance = 'Local\Dango.Phase1.App.Data.' + $digest.Substring(0, 24)
+    $mutex = [Threading.Mutex]::new($false, ($instance + '.Mutex'))
+    $activation = [Threading.EventWaitHandle]::new($false, [Threading.EventResetMode]::AutoReset, ($instance + '.Activate'))
+    & $scopedModule {
+        param($path, $scope, $packageRoot, $version)
+        $script:V2ProcessesBefore = ${function:Get-DangoOrdinaryProcesses}
+        $script:V2PackageBefore = ${function:Get-DangoInstalledPackage}
+        $script:V2FixtureProcess = [pscustomobject]@{ Id = 434343; Path = $path; CommandLine = '"' + $path + '" --local-install-acceptance-settings "' + $scope + '"' }
+        $script:V2FixturePackage = [pscustomobject]@{ Root = $packageRoot; VersionId = $version; Manifest = [pscustomobject]@{ settingsContract = 'dango-desktop-settings-v4-belt-default-v2' } }
+        $script:V2LaunchAttempts = 0
+        $script:V2StartProcessBefore = Get-Item Function:Start-Process -ErrorAction SilentlyContinue
+        Set-Item Function:Get-DangoOrdinaryProcesses -Value { $script:V2FixtureProcess }
+        Set-Item Function:Get-DangoInstalledPackage -Value { param($Root, $VersionId) $script:V2FixturePackage }
+        function script:Start-Process { $script:V2LaunchAttempts++; throw 'Fixture forbids starting an actual executable.' }
+    } $executable $settingsA (Split-Path -Parent $executable) $state.current
+    try {
+        # This assertion fails the old global-mutex implementation before it can
+        # enter any launch branch. The mocked Start-Process is a second barrier.
+        Assert-True (& $scopedModule { (Get-Command Start-Process).CommandType -eq 'Function' }) 'Fixture launch trap did not survive setup scope.'
+        Assert-True (& $scopedModule { Test-DangoProductRunning }) 'Scoped product was invisible without a legacy global mutex.'
+        Assert-True (-not (& $scopedModule { param($scope) Test-DangoInstanceRunning (Get-DangoInstalledInstanceName 'dango-desktop-settings-v4-belt-default-v2' $scope) } $settingsB)) 'A process in one scope falsely confirmed another scope mutex.'
+        Assert-Throws { Set-DangoActiveVersion $root $state.previous } 'Scoped product allowed active-version switching.'
+        Assert-Throws { Undo-DangoUpdate $root } 'Scoped product allowed rollback.'
+        Assert-BytesEqual $before (Read-StateBytes $root) 'Scoped running guard changed install state.'
+        Assert-Throws { Start-DangoInstalled $root } 'Daily launch claimed an existing scoped instance.'
+        Assert-Throws { Start-DangoInstalled $root -AcceptanceSettingsRoot $settingsB } 'Different owned scope claimed the running instance.'
+        Assert-True (-not $activation.WaitOne(0)) 'Rejected scope activated the running acceptance instance.'
+        $same = Start-DangoInstalled $root -AcceptanceSettingsRoot ($settingsA.ToUpperInvariant() + '\')
+        Assert-True ($same.ActivatedExisting -and $same.ProcessId -eq 434343 -and $activation.WaitOne(0)) 'V2 did not activate the existing directory-scoped event.'
+        Assert-Equal 'Local\Dango.Phase1.App' (& $scopedModule { param($scope) Get-DangoInstalledInstanceName 'dango-desktop-settings-v4-belt-default-v1' $scope } $settingsA) 'Historical v1 owned launch changed its global instance contract.'
+        Assert-Equal 'Local\Dango.Phase1.App' (& $scopedModule { Get-DangoInstalledInstanceName 'dango-desktop-settings-v4-belt-default-v2' $null }) 'V2 daily launch changed its global instance contract.'
+        Assert-Equal 0 (& $scopedModule { $script:V2LaunchAttempts }) 'Fixture reached a real launch branch.'
+    }
+    finally {
+        & $scopedModule {
+            Set-Item Function:Get-DangoOrdinaryProcesses -Value $script:V2ProcessesBefore
+            Set-Item Function:Get-DangoInstalledPackage -Value $script:V2PackageBefore
+            if ($null -ne $script:V2StartProcessBefore) {
+                Set-Item Function:script:Start-Process -Value $script:V2StartProcessBefore.ScriptBlock
+            } else {
+                Remove-Item Function:script:Start-Process -ErrorAction SilentlyContinue
+            }
+        }
+        $activation.Dispose(); $mutex.Dispose()
+    }
 }
 
 $passed = @($results | Where-Object { $_.passed }).Count
