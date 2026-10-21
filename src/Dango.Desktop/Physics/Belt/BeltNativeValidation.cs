@@ -120,5 +120,3 @@ internal static class BeltNativeValidation
     }
 
 }
-
-

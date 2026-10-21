@@ -75,4 +75,3 @@ native 源码顺序说明绝对系数 v 不等于整个 tick 的净坐标变化�
 忽略产物：`artifacts/belt-runtime/initial-sleep-gate-failure.json`、`trend-gate-elapsed-semantics-failure.json`、`sleep-motion-initial/`、`sleep-motion/`（含 `motion-nine-with-velocity-trends.trx`）、`trend-gate/trend-gate-corrected-cooldown.trx`。测试源为 `tests/Dango.Desktop.Tests/Physics/Belt/`。
 
 当前只有本地候选实现和后台定向证据。默认休眠关闭；产品实际三工况 CPU／外观继续更新、真实输入唤醒显示和用户人工验收仍由产品接入批次分别验证。无 main 合并、推送、发布、安装或日常数据写入。
-
