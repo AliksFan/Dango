@@ -2,9 +2,11 @@ using Dango.Core.Animation;
 using Dango.Core.Assets;
 using Dango.Core.Coordinates;
 
-namespace Dango.Core.Scene;
+using Dango.Core.Scene;
 
-public static class PlaceholderSceneFactory
+namespace Dango.Core.Tests.Scene.Support;
+
+internal static class PlaceholderSceneFactory
 {
     private const double IslandWidth = 320;
     private const double IslandHeight = 120;

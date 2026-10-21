@@ -3,6 +3,7 @@ using Dango.Core.Coordinates;
 using Dango.Core.Scene;
 using Dango.Desktop.Physics.Native;
 using Dango.Desktop.Physics.Presentation;
+using Dango.Desktop.Tests.Physics.Presentation.Support;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Dango.Desktop.Tests.Physics.Presentation;
@@ -143,6 +144,23 @@ public sealed class PhysicsPresentationContractTests
         Assert.AreEqual(PhysicsPresentationBackend.AuthoredFallback, frame.Diagnostics.Backend);
         Assert.AreEqual(0, frame.Diagnostics.SimulatedStepCount);
         Assert.AreEqual(PhysicsPresentationWorldState.Suspended, world.State);
+    }
+
+    [TestMethod]
+    public void AuthoredFallbackPreservesFailureReasonAndNativeDiagnostics()
+    {
+        var input = PhysicsPresentationInput.FromSnapshot(CreateSnapshot(DangoActionState.Idle));
+
+        var frame = AuthoredPoseSampler.CreateFallback(
+            input, PhysicsPresentationFallbackReason.NativeUnavailable, nativeErrorCode: 731);
+
+        Assert.IsTrue(frame.IsVisible);
+        Assert.IsTrue(frame.Contour.Count >= 8);
+        Assert.AreEqual(PhysicsPresentationFallbackReason.NativeUnavailable, frame.FallbackReason);
+        Assert.AreEqual(PhysicsPresentationBackend.AuthoredFallback, frame.Diagnostics.Backend);
+        Assert.AreEqual(PhysicsPresentationDiagnosticCode.Fallback, frame.Diagnostics.Code);
+        Assert.AreEqual(0, frame.Diagnostics.SimulatedStepCount);
+        Assert.AreEqual(731, frame.Diagnostics.NativeErrorCode);
     }
 
     [TestMethod]

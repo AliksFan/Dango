@@ -1,20 +1,5 @@
 namespace Dango.Desktop.Physics.Presentation;
 
-public sealed class DeterministicFakePhysicsWorld : PhysicsPresentationWorldBase
-{
-    private int _stepCount;
-
-    protected override PhysicsPresentationFrame StepActive(PhysicsPresentationInput input, TimeSpan fixedStep)
-    {
-        _stepCount++;
-        return AuthoredPoseSampler.CreateActive(
-            input,
-            PhysicsPresentationBackend.DeterministicFake,
-            _stepCount,
-            PhysicsPresentationDiagnosticCode.FakeActive);
-    }
-}
-
 internal static class AuthoredPoseSampler
 {
     private const int ContourPointCount = 12;
