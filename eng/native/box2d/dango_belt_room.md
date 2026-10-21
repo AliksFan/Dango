@@ -133,12 +133,23 @@ F7-1 deliberately keeps original floor-proximity brake behavior: extension of
 that brake to elevated support is a separate, currently unsupported behavior;
 this limitation must remain visible in acceptance.
 
-Position correction is mass-metric Jn projection; rebuild continuous features
-after each correction. Active corner distance roots use complete interval isolation
+Position correction uses the local elastic metric of the existing fixed-step
+objective: A=M+h^2 sum((k(1+scalar_curvature)+c/h) J_material^T J_material),
+with h=.0166666f/4. Solve A z=Jn^T and use delta_q=z*(depth+2e-9)/(Jn z),
+scaled to the existing per-coordinate .01 cap, including the core response.
+This changes only the position correction metric; material, free integration,
+velocity impulse metric and acceptance gates remain unchanged. Rebuild continuous
+features after each correction. Active corner distance roots use complete interval isolation
 of F=(P-C).P-prime: conservative distance/Voronoi/derivative bounds discard
 no-root cells, monotonicity certifies unique bracketed roots, and unresolved
 near-multiple roots fail at the frozen work/depth caps. Every correction passes
 unchanged shape/material guards.
+The local quadratic metric is not a global nonlinear-energy guarantee. Every
+projection adds a 36-dimensional metric assembly and Cholesky solve, at most32
+per substep/128 per tick; unchanged certificate/iteration caps do not imply
+unchanged runtime cost. Nonfinite, non-SPD or nonpositive effective response
+refuses without a mass-only projection. Position correction does not write speed,
+and elastic/gravity correction work remains separately reported.
 If a rigid common translation is attempted, all surfaces and swept geometry
 must still pass; there is no unconditional upward fallback. Ground is solved
 again after platform corrections. A failed shape/material check rejects.

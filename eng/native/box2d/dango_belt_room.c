@@ -196,13 +196,28 @@ static int room_rows(room_world* w,belt_body* b,room_row* rows){
  }
  return n;
 }
+/* Same local SPD metric as the fixed-step elastic objective, scaled by h^2.
+   Unlike a point mass projection, this accounts for the bending/damping cost
+   of moving each Fourier mode and includes the coupled core response. It is
+   a local correction metric, not a nonlinear energy or feasibility proof. */
+static int room_projection_direction(const belt_body* b,double theta,belt_v normal,double* direction,double* effective){
+ const double h=(double).0166666f/4;double basis[BELT_B],jacobian[BELT_D]={0},matrix[BELT_D][BELT_D],gradient[BELT_D],elastic,damping,derivative;
+ if(!isfinite(theta)||!isfinite(normal.x)||!isfinite(normal.y))return 0;
+ belt_residual previous[BELT_MAX_RESIDUALS];if(belt_residuals(b,b->q,previous,&derivative)<0)return 0;
+ if(!isfinite(belt_objective(b,b->q,b->q,b->q,previous,h,gradient,matrix,&elastic,&damping,&derivative)))return 0;
+ for(int j=0;j<BELT_D;++j)for(int k=0;k<=j;++k)matrix[j][k]*=h*h;
+ belt_basis(theta,0,basis);for(int j=0;j<BELT_B;++j){jacobian[2*j]=basis[j]*normal.x;jacobian[2*j+1]=basis[j]*normal.y;}
+ if(!belt_cholesky(matrix,jacobian,direction))return 0;*effective=0;
+ for(int j=0;j<BELT_D;++j){if(!isfinite(direction[j]))return 0;*effective+=jacobian[j]*direction[j];}
+ return isfinite(*effective)&&*effective>0;
+}
 static int room_project(room_world* w,belt_body* b,double theta,belt_v normal,double penetration){
- double basis[BELT_B],effective=0,trial[BELT_D];belt_basis(theta,0,basis);
- for(int j=0;j<BELT_B;++j)effective+=basis[j]*basis[j]/b->mass[2*j];if(!(effective>0)||!isfinite(penetration))return room_refuse(w,DANGO_BELT_ROOM_REJECTED,1);
- double lambda=(penetration+2e-9)/effective,max_change=0;memcpy(trial,b->q,sizeof trial);
- for(int j=0;j<BELT_B;++j){double delta=lambda*basis[j]/b->mass[2*j];max_change=fmax(max_change,fabs(delta*normal.x));max_change=fmax(max_change,fabs(delta*normal.y));}
- double scale=max_change>ROOM_POSITION_LIMIT?ROOM_POSITION_LIMIT/max_change:1;
- for(int j=0;j<BELT_B;++j){double delta=scale*lambda*basis[j]/b->mass[2*j];trial[2*j]+=delta*normal.x;trial[2*j+1]+=delta*normal.y;}
+ double direction[BELT_D],effective,trial[BELT_D];
+ if(!isfinite(penetration)||!room_projection_direction(b,theta,normal,direction,&effective))return room_refuse(w,DANGO_BELT_ROOM_REJECTED,1);
+ double lambda=(penetration+2e-9)/effective,max_change=0;
+ for(int j=0;j<BELT_D;++j){double delta=lambda*direction[j];if(!isfinite(delta))return room_refuse(w,DANGO_BELT_ROOM_REJECTED,1);max_change=fmax(max_change,fabs(delta));}
+ if(max_change>ROOM_POSITION_LIMIT)lambda*=ROOM_POSITION_LIMIT/max_change;
+ for(int j=0;j<BELT_D;++j)trial[j]=b->q[j]+lambda*direction[j];
  if(!belt_guard_path(b,b->q,trial,3)||!belt_material_domain_valid(b,trial)){
   if(b->guard[9]==BELT_GUARD_BUDGET)return room_refuse(w,DANGO_BELT_ROOM_REJECTED,1);
   /* Shape-preserving candidate only: final all-surface and swept certificates

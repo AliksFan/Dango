@@ -29,7 +29,7 @@ public sealed class BeltRoomFurnitureIntegrationTests
         Assert.AreEqual(-.72 + platform.Anchor.Y / 72, top.CenterY + top.Height / 2, 1e-12);
         Assert.AreEqual((platform.Anchor.X - 1080) / 72, top.CenterX, 1e-12);
         Assert.AreEqual(-.72 + ball.Anchor.Y / 72, definitions[1].Ball!.CenterQY, 1e-12);
-        var output = Path.Combine(TestRepository.Root, "artifacts", "belt-ball-platform-diagnosis", "managed-definitions.json");
+        var output = Path.Combine(TestRepository.Root, "artifacts", "belt-contact-metric-integration", "managed-definitions.json");
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
         File.WriteAllText(output, Json(new
         {
@@ -62,7 +62,8 @@ public sealed class BeltRoomFurnitureIntegrationTests
             var failure = $"input tick={tick}; code={fixture.Scene.LastErrorCode}; fault={fixture.Scene.BeltRoomFrame?.Fault}; diagnostics={Json(fixture.Scene.BeltRoomFrame?.Diagnostics)}";
             if (fixture.Scene.LastErrorCode != 0)
             {
-                var output = Path.Combine(TestRepository.Root, "artifacts", "belt-ball-platform-diagnosis", $"managed-case-{startX}-{jumpPhase}-failure-{Guid.NewGuid():N}.json");
+                var output = Path.Combine(TestRepository.Root, "artifacts", "belt-contact-metric-integration", $"managed-case-{startX}-{jumpPhase}-failure-{Guid.NewGuid():N}.json");
+                Directory.CreateDirectory(Path.GetDirectoryName(output)!);
                 File.WriteAllText(output, Json(new { tick, startX, jumpPhase, errorCode = fixture.Scene.LastErrorCode, frame = fixture.Scene.BeltRoomFrame }));
             }
             Assert.IsTrue(frame.Physics.Succeeded, failure);

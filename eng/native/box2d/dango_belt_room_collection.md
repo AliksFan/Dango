@@ -47,7 +47,12 @@ Disks remain active; room body sleep uses the managed conservative ball veto.
 
 Position rounds are bounded at32, with at most one body projection and one
 projection per disk per round, each coordinate <=.01. A disk pair marks both
-disks as moved. A complete round without changes is required to pass. Candidate
+disks as moved. Body/static projections use the shared local elastic metric A
+described in dango_belt_room.md; body/disk projections use diag(A,m_disk I),
+including the coupled core response. Both sides commit after the original body
+guards and position correction writes neither body's nor disk's speed. Disk-only
+projections and the joint velocity impulse metric remain mass based. A complete
+round without changes is required to pass. Candidate
 root/sample location cannot certify geometry. Fourier/disk acceptance uses the
 theta/time cell certificate plus containment; box bounds are supplemented by an
 outward-rounded radial Taylor lower bound which retains tangency correlation.

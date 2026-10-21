@@ -127,13 +127,16 @@ static void collection_before_integrate(room_world* w,belt_body* b){
   a->ball.vy-=.5*b->cfg.gravity*h;a->ball.x+=a->ball.vx*h;a->ball.y+=a->ball.vy*h;a->ball.angle+=a->ball.omega*h;a->ball.integrations++;a->ball.sleeping=0;
   if(!collection_ball_valid(a))w->collection_error=1;}
 }
-/* Symmetric mass-metric position projection for the actual Fourier point and
-   disk. Both writes commit only after the unchanged body path/material guards. */
+/* Symmetric local elastic-metric projection of the Fourier point and disk.
+   The block metric is diag(A_body,m_disk I); both writes commit only after
+   the unchanged body path/material guards. Position correction writes no speed. */
 static int collection_project_body_ball(room_world* w,belt_body* b,int slot,double theta,belt_v n,double depth){
- dango_belt_room_collection_item* a=&w->items[slot];double basis[BELT_B],k=1/a->definition.ball.mass,trial[BELT_D];belt_basis(theta,0,basis);
- for(int j=0;j<BELT_B;++j)k+=basis[j]*basis[j]/b->mass[2*j];double lambda=(depth+2e-9)/k,maxchange=lambda/a->definition.ball.mass;
- for(int j=0;j<BELT_B;++j)maxchange=fmax(maxchange,fabs(lambda*basis[j]/b->mass[2*j]));if(maxchange>ROOM_POSITION_LIMIT)lambda*=ROOM_POSITION_LIMIT/maxchange;
- memcpy(trial,b->q,sizeof trial);for(int j=0;j<BELT_B;++j){trial[2*j]-=lambda*basis[j]/b->mass[2*j]*n.x;trial[2*j+1]-=lambda*basis[j]/b->mass[2*j]*n.y;}
+ dango_belt_room_collection_item* a=&w->items[slot];double direction[BELT_D],k,trial[BELT_D];
+ if(!isfinite(depth)||!room_projection_direction(b,theta,n,direction,&k))return room_refuse(w,DANGO_BELT_ROOM_REJECTED,1);
+ k+=1/a->definition.ball.mass;double lambda=(depth+2e-9)/k,maxchange=lambda/a->definition.ball.mass;
+ if(!isfinite(maxchange))return room_refuse(w,DANGO_BELT_ROOM_REJECTED,1);
+ for(int j=0;j<BELT_D;++j){double delta=lambda*direction[j];if(!isfinite(delta))return room_refuse(w,DANGO_BELT_ROOM_REJECTED,1);maxchange=fmax(maxchange,fabs(delta));}if(maxchange>ROOM_POSITION_LIMIT)lambda*=ROOM_POSITION_LIMIT/maxchange;
+ for(int j=0;j<BELT_D;++j)trial[j]=b->q[j]-lambda*direction[j];
  if(!belt_guard_path(b,b->q,trial,3)||!belt_material_domain_valid(b,trial))return room_refuse(w,DANGO_BELT_ROOM_REJECTED,1);
  double elastic=belt_elastic_energy(b),gravity=belt_gravity_energy(b),by=a->ball.y;memcpy(b->q,trial,sizeof trial);
  a->ball.x+=lambda/a->definition.ball.mass*n.x;a->ball.y+=lambda/a->definition.ball.mass*n.y;
