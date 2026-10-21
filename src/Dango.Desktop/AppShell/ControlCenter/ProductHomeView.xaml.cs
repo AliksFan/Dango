@@ -32,6 +32,7 @@ public sealed record ProductSettingsState(
 public partial class ProductHomeView : UserControl
 {
     private int transitionVersion;
+    private (bool Editing, HomeEditor Editor, bool Porch, bool Away)? transitionState;
     private bool reduceMotion;
     private bool highContrast;
     private double minimumStageHeight = 330;
@@ -323,6 +324,7 @@ public partial class ProductHomeView : UserControl
     private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (HandleBeltKey(e, true)) return;
+        var key = NavigationKey(e);
         if (IsRoomDialogOpen)
         {
             ClearLiveDirectionalInput();
@@ -338,7 +340,7 @@ public partial class ProductHomeView : UserControl
         if (!IsKeyboardFocusWithin || Keyboard.Modifiers != ModifierKeys.None ||
             Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.ComboBox or PasswordBox)
             return;
-        if (IsInPorch && PorchScene.IsCatalogEntryFocused && e.Key is (Key.A or Key.D or Key.S or Key.W or Key.E)) Stage.Focus();
+        if (IsInPorch && PorchScene.IsCatalogEntryFocused && key is (Key.A or Key.D or Key.S or Key.W or Key.E or Key.F)) Stage.Focus();
         if (IsInPorch && IsAppearanceInputFocused())
             return;
         if (e.Key == Key.Escape)
@@ -355,37 +357,47 @@ public partial class ProductHomeView : UserControl
             e.Handled = true;
             return;
         }
+        if (TryHandleNavigationKey(key, e.IsRepeat))
+        {
+            e.Handled = true;
+            return;
+        }
         if (IsAccessoryPreview && !IsSettingsOpen && !IsDangoAway)
         {
-            e.Handled = SetLiveDirectionalKey(e.Key, true, e.IsRepeat);
+            e.Handled = SetLiveDirectionalKey(key, true, e.IsRepeat);
             return;
         }
         if (IsSettingsOpen || IsDangoAway || IsAppearanceInputFocused())
             return;
-        if (!IsInPorch && e.Key is (Key.A or Key.D))
-        {
-            if (!e.IsRepeat) ShowEditor(e.Key == Key.D ? HomeEditor.Face : HomeEditor.Wardrobe);
-            e.Handled = true;
-            return;
-        }
         if (IsEditing && e.Key is not (Key.S or Key.Space)) return;
-        if (IsInPorch && e.Key == Key.E)
+        e.Handled = SetLiveDirectionalKey(key, true, e.IsRepeat);
+    }
+
+    private static Key NavigationKey(System.Windows.Input.KeyEventArgs e) =>
+        e.Key == Key.ImeProcessed ? e.ImeProcessedKey : e.Key == Key.System ? e.SystemKey : e.Key;
+
+    internal bool TryHandleNavigationKey(Key key, bool repeat)
+    {
+        if (IsSettingsOpen || IsDangoAway || IsRoomDialogOpen || beltWindowMenuOpen ||
+            Keyboard.Modifiers != ModifierKeys.None || IsAppearanceInputFocused()) return false;
+        if (IsInPorch)
         {
-            if (!e.IsRepeat) PorchScene.RequestNearbyFurniture();
-            e.Handled = true;
-            return;
-        }
-        if (e.Key == Key.W)
-        {
-            if (!e.IsRepeat)
+            if (key is not (Key.F or Key.E)) return false;
+            if (!repeat)
             {
-                if (IsInPorch) PorchScene.InteractNearestDoor();
-                else EnterPorch();
+                if (key == Key.F) PorchScene.InteractNearestDoor();
+                else PorchScene.RequestNearbyFurniture();
             }
-            e.Handled = true;
-            return;
+            return true;
         }
-        e.Handled = SetLiveDirectionalKey(e.Key, true, e.IsRepeat);
+        if (key is Key.Q or Key.E)
+        {
+            if (!repeat) ShowEditor(key == Key.Q ? HomeEditor.Wardrobe : HomeEditor.Face);
+            return true;
+        }
+        if (key != Key.F || IsEditing) return false;
+        if (!repeat) EnterPorch();
+        return true;
     }
 
     private void OnPreviewKeyUp(object sender, System.Windows.Input.KeyEventArgs e)
@@ -398,8 +410,7 @@ public partial class ProductHomeView : UserControl
             return;
         }
         if (IsSettingsOpen || IsDangoAway || IsAppearanceInputFocused()) { ClearLiveDirectionalInput(); return; }
-        if (!IsInPorch && e.Key is (Key.A or Key.D)) { e.Handled = true; return; }
-        e.Handled = SetLiveDirectionalKey(e.Key, false, false);
+        e.Handled = SetLiveDirectionalKey(NavigationKey(e), false, false);
     }
 
     private void OnBackFromPorchClick(object sender, RoutedEventArgs e) => LeavePorch();
@@ -679,7 +690,12 @@ public partial class ProductHomeView : UserControl
         // Hidden tools still measure. Entering/leaving face mode must refresh the
         // stage even when the preview slot itself does not raise SizeChanged.
         UpdateStageSizing();
-        var version = ++transitionVersion;
+        var state = (IsEditing, SelectedEditor, IsInPorch, IsDangoAway);
+        var sameState = transitionState == state;
+        if (!sameState) { transitionState = state; transitionVersion++; }
+        var version = transitionVersion;
+        var motionEnabled = IsLoaded && !ReduceMotion && SystemParameters.ClientAreaAnimation;
+        var preserveAnimation = sameState && motionEnabled;
         var width = Math.Max(0, Stage.ActualWidth);
         var height = Math.Max(0, Stage.ActualHeight);
         var portrait = IsPortraitLayout;
@@ -747,7 +763,7 @@ public partial class ProductHomeView : UserControl
         var offsetX = portrait ? 0 : IsEditing ? panelOnLeft ? (width - right) / 2 : -(width - left) / 2
             : IsInPorch ? -48 : 0;
         const double offsetY = 0;
-        animate &= IsLoaded && !ReduceMotion && SystemParameters.ClientAreaAnimation;
+        animate &= motionEnabled;
         UpdateLauncherSelection();
         var horizontalPanelHeight = Math.Max(EditorPanel.MinHeight,
             IsEditing ? height - EditorPanel.Margin.Top - EditorPanel.Margin.Bottom
@@ -781,30 +797,33 @@ public partial class ProductHomeView : UserControl
         PorchContent.IsEnabled = IsInPorch;
         PorchContent.IsHitTestVisible = IsInPorch;
         if (IsInPorch) PorchContent.Visibility = Visibility.Visible;
-        Animate(PresenceTranslation, TranslateTransform.XProperty, offsetX, animate);
-        Animate(PresenceTranslation, TranslateTransform.YProperty, offsetY, animate);
-        Animate(Presence, OpacityProperty, IsInPorch ? 0 : 1, animate);
-        Animate(PanelTranslation, TranslateTransform.XProperty, IsEditing ? 0 : EditorRestingOffset(SelectedEditor), animate);
-        Animate(PorchTranslation, TranslateTransform.XProperty, IsInPorch ? 0 : portrait ? 120 : 46, animate);
-        Animate(Launchers, OpacityProperty, IsInPorch ? 0 : 1, animate);
-        Animate(TopNavigation, OpacityProperty, IsInPorch ? 0 : 1, animate);
-        Animate(HomeFooter, OpacityProperty, IsInPorch ? 0 : 1, animate);
+        // Content measurement can raise SizeChanged before the first painted
+        // frame. Keep clocks whose target did not change, including completion
+        // callbacks for the same semantic state.
+        Animate(PresenceTranslation, TranslateTransform.XProperty, offsetX, animate, preserveAnimation);
+        Animate(PresenceTranslation, TranslateTransform.YProperty, offsetY, animate, preserveAnimation);
+        Animate(Presence, OpacityProperty, IsInPorch ? 0 : 1, animate, preserveAnimation);
+        Animate(PanelTranslation, TranslateTransform.XProperty, IsEditing ? 0 : EditorRestingOffset(SelectedEditor), animate, preserveAnimation);
+        Animate(PorchTranslation, TranslateTransform.XProperty, IsInPorch ? 0 : portrait ? 120 : 46, animate, preserveAnimation);
+        Animate(Launchers, OpacityProperty, IsInPorch ? 0 : 1, animate, preserveAnimation);
+        Animate(TopNavigation, OpacityProperty, IsInPorch ? 0 : 1, animate, preserveAnimation);
+        Animate(HomeFooter, OpacityProperty, IsInPorch ? 0 : 1, animate, preserveAnimation);
         Animate(EditorPanel, OpacityProperty, IsEditing ? 1 : 0, animate, () =>
         {
             if (version == transitionVersion && !IsEditing && !IsDangoAway) EditorPanel.Visibility = Visibility.Hidden;
-        });
+        }, preserveAnimation);
         Animate(FaceEditorTools, OpacityProperty, faceEditing ? 1 : 0, animate, () =>
         {
             if (version == transitionVersion && !faceEditing && !IsDangoAway) FaceEditorTools.Visibility = Visibility.Hidden;
-        });
+        }, preserveAnimation);
         Animate(AccessoryEditorTools, OpacityProperty, accessoryEditing ? 1 : 0, animate, () =>
         {
             if (version == transitionVersion && !accessoryEditing && !IsDangoAway) AccessoryEditorTools.Visibility = Visibility.Hidden;
-        });
+        }, preserveAnimation);
         Animate(PorchContent, OpacityProperty, IsInPorch ? 1 : 0, animate, () =>
         {
             if (version == transitionVersion && !IsInPorch && !IsDangoAway) PorchContent.Visibility = Visibility.Hidden;
-        });
+        }, preserveAnimation);
         UpdateRoomAwayPresentation();
     }
 
@@ -824,19 +843,23 @@ public partial class ProductHomeView : UserControl
         Canvas.SetTop(WardrobeButton, top);
     }
 
-    private static void Animate(Animatable target, DependencyProperty property, double destination, bool animate)
+    private static void Animate(Animatable target, DependencyProperty property, double destination, bool animate, bool preserveAnimation)
     {
+        if (preserveAnimation && target.HasAnimatedProperties &&
+            (double)target.GetAnimationBaseValue(property) == destination) return;
         var from = (double)target.GetValue(property);
         target.BeginAnimation(property, null);
         target.SetValue(property, destination);
         if (animate) target.BeginAnimation(property, CreateAnimation(from, destination), HandoffBehavior.SnapshotAndReplace);
     }
 
-    private static void Animate(UIElement target, DependencyProperty property, double destination, bool animate) =>
-        Animate(target, property, destination, animate, static () => { });
+    private static void Animate(UIElement target, DependencyProperty property, double destination, bool animate, bool preserveAnimation) =>
+        Animate(target, property, destination, animate, static () => { }, preserveAnimation);
 
-    private static void Animate(UIElement target, DependencyProperty property, double destination, bool animate, Action completed)
+    private static void Animate(UIElement target, DependencyProperty property, double destination, bool animate, Action completed, bool preserveAnimation)
     {
+        if (preserveAnimation && target.HasAnimatedProperties &&
+            (double)target.GetAnimationBaseValue(property) == destination) return;
         var from = (double)target.GetValue(property);
         target.BeginAnimation(property, null);
         target.SetValue(property, destination);

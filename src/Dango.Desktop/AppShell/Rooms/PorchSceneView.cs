@@ -31,8 +31,8 @@ public sealed partial class PorchSceneView : Grid
         new("preview-public", "云间", "公共共同房", 1220),
     ];
     private static readonly PreviewDoor[] OrdinaryDoors = [new("local-single", "普通房", "本地单人", 560)];
-    private static readonly PreviewDoor[] DesktopPetDoors = [new("local-desktop-pet", "桌宠房", "桌宠房", 780)];
-    private static readonly PreviewDoor[] LocalDoors = [.. OrdinaryDoors, .. DesktopPetDoors];
+    private static readonly PreviewDoor[] DesktopPetDoors = [new("local-desktop-pet", "桌宠房", "桌宠房", 560)];
+    private static readonly PreviewDoor[] LocalDoors = [.. DesktopPetDoors, OrdinaryDoors[0] with { X = 780 }];
     private bool localRoomEnabled;
     private bool desktopPetRoomEnabled;
     private PreviewDoor[] VisibleDoors => IsReviewMode ? ReviewDoors : catalogProvided ? catalogDoors : localRoomEnabled && desktopPetRoomEnabled ? LocalDoors
@@ -103,6 +103,7 @@ public sealed partial class PorchSceneView : Grid
         IsReviewMode = enabled;
         selectedDoor = status = null;
         AutomationProperties.SetName(this, enabled ? "门廊场景预览，虚构房门，未接房间业务" : "二维门廊，房间目录尚未接入");
+        UpdateCatalogControls();
         InvalidateVisual();
     }
 
@@ -167,6 +168,7 @@ public sealed partial class PorchSceneView : Grid
         beltBodyPresented = false;
         unavailable = true;
         status = message ?? "团子暂不可用 · 请返回设置重试";
+        UpdateCatalogControls();
         InvalidateVisual();
     }
 
@@ -179,7 +181,7 @@ public sealed partial class PorchSceneView : Grid
     internal bool RequestNearbyFurniture()
     {
         if (catalogProvided) return RequestCatalogFurniture();
-        if (!localRoomEnabled || unavailable || NearbyDoorId != "local-single") return false;
+        if (catalogInputBlocked || !localRoomEnabled || unavailable || NearbyDoorId != "local-single") return false;
         selectedDoor = "local-single";
         LocalFurnitureRequested?.Invoke();
         return true;
@@ -193,9 +195,9 @@ public sealed partial class PorchSceneView : Grid
 
     private bool SelectPreviewDoor(PreviewDoor door)
     {
-        if (catalogInputBlocked) return false;
+        if (catalogInputBlocked || unavailable) return false;
         if (Math.Abs(door.X - PetWorldX) > InteractionDistance)
-        { status = "走近房门，再按 W"; InvalidateVisual(); return false; }
+        { status = "走近房门，再按 F"; InvalidateVisual(); return false; }
         selectedDoor = door.Id;
         if (catalogProvided) return ActivateCatalogDoor(door);
         if (door.Id == "local-single")
@@ -223,18 +225,13 @@ public sealed partial class PorchSceneView : Grid
         if (catalogInputBlocked || e.Handled) return;
         GameplayFocusRequested?.Invoke();
         base.OnMouseLeftButtonDown(e);
-        var pointer = e.GetPosition(this);
-        foreach (var door in VisibleDoors)
-            if (DoorRect(door).Contains(pointer)) { SelectPreviewDoor(door); e.Handled = true; break; }
     }
 
     private Rect DoorRect(PreviewDoor door)
     {
-        if (door.Id is "room-archive" or "room-retry")
-            return new((door.X - CameraX - 72) * SceneScale, BackWallGroundY - 178 * SceneScale, 144 * SceneScale, 80 * SceneScale);
         var top = BackWallGroundY - 194 * SceneScale;
-        // Reserve the action row and the two captions above the door in short windows.
-        if (catalogProvided) top = Math.Max(top, 56 + 42 * SceneScale);
+        // Keep the top tool row separate from nearby actions and both door captions.
+        if (catalogProvided) top = Math.Max(top, 112 + 42 * SceneScale);
         return new((door.X - CameraX - 62) * SceneScale, top, 124 * SceneScale, Math.Max(0, BackWallGroundY - top));
     }
 
@@ -258,13 +255,6 @@ public sealed partial class PorchSceneView : Grid
             {
                 var rect = DoorRect(door);
                 if (rect.Right < 0 || rect.Left > ActualWidth) continue;
-                if (door.Id is "room-archive" or "room-retry")
-                {
-                    dc.DrawRoundedRectangle(soft, new Pen(line, 1), rect, 5, 5);
-                    Text(dc, "↶ " + door.Name, new(rect.Left + rect.Width / 2, rect.Top + 16 * SceneScale), 13, ink, centered: true);
-                    Text(dc, "查看与恢复", new(rect.Left + rect.Width / 2, rect.Top + 43 * SceneScale), 11, muted, centered: true);
-                    continue;
-                }
                 var geometry = new StreamGeometry();
                 using (var g = geometry.Open())
                 {
@@ -291,15 +281,20 @@ public sealed partial class PorchSceneView : Grid
                 Text(dc, door.Name, new Point(rect.Left + rect.Width / 2, rect.Top - 42 * SceneScale), 14, ink, centered: true,
                     maxWidth: Math.Max(80, rect.Width + 32));
                 Text(dc, door.Kind, new Point(rect.Left + rect.Width / 2, rect.Top - 21 * SceneScale), 11, muted, centered: true);
-                if (near) Text(dc, "W", new Point(rect.Left + rect.Width / 2, rect.Top + rect.Height * .58), 13, accent, centered: true);
+                if (near)
+                {
+                    var creationBlocked = catalogProvided && door.Kind == "空门位" && (!catalogHealthy || catalogRooms.Count >= 3);
+                    var hint = creationBlocked ? catalogHealthy ? "已满" : "待核对" : "F";
+                    Text(dc, hint, new Point(rect.Left + rect.Width / 2, rect.Top + rect.Height * .58), 13, creationBlocked ? muted : accent, centered: true);
+                }
             }
             if (body.Visibility == Visibility.Visible || HasBeltBody)
                 dc.DrawEllipse(line, null, new Point((PetWorldX - CameraX) * SceneScale, FrontGroundY + 3 * SceneScale), 38 * SceneScale, 4 * SceneScale);
         }
         else Text(dc, "房间目录尚未接入", new Point(ActualWidth / 2, Math.Max(72, BackWallGroundY - 100)), 13, muted, centered: true);
-        if (catalogProvided) Text(dc, catalogHealthy ? $"普通房 {catalogRooms.Count}/3" : "普通房 · 目录待核对", new(ActualWidth - 92, 32), 12, muted, centered: true);
+        if (catalogProvided) Text(dc, catalogHealthy ? $"普通房 {catalogRooms.Count}/3" : "普通房 · 目录待核对", new(ActualWidth - 92, 68), 12, muted, centered: true);
         if (!catalogProvided || status is null)
-            Text(dc, status ?? "A / D 移动    S 轻压    空格跳跃    W 选门", new Point(ActualWidth / 2, ActualHeight - 22), 11, muted, centered: true);
+            Text(dc, status ?? "A / D 移动    W 拉伸    S 轻压    空格跳跃    F 进入", new Point(ActualWidth / 2, ActualHeight - 22), 11, muted, centered: true);
     }
 
     private Brush ResourceBrush(string key, Brush fallback) => TryFindResource(key) as Brush ?? fallback;

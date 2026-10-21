@@ -103,6 +103,12 @@ public sealed class BeltPorchIntegrationTests
         var runtime = home.BoundBeltBody;
         var presenter = home.BoundBeltPresenter;
         var scene = Element<PorchSceneView>(home, "PorchScene");
+        foreach (var (name, key) in new[] { ("FaceButton", "E"), ("WardrobeButton", "Q"), ("EnterRoomButton", "F") })
+        {
+            var button = Element<Button>(home, name);
+            Assert.HasCount(1, Descendants(button).OfType<TextBlock>().Where(text => text.Text == key),
+                "Binding the actual belt host must keep each advertised shortcut keycap.");
+        }
         home.EnableLocalRoomDoor();
         fixture.Click("EnterRoomButton");
         fixture.Wait(() => scene.HasBeltBody, "continuous body enters the porch");
@@ -118,7 +124,12 @@ public sealed class BeltPorchIntegrationTests
         SetDirection(home, Key.D, false);
         Assert.IsTrue(home.DisplayedBeltSnapshot!.Tick > initialTick);
         Assert.IsNull(runtime!.Metrics.Error, home.ReadBeltBodySettingsScene().Diagnostics);
-        Assert.IsFalse(SetDirection(home, Key.W, true), "Porch W remains the existing door action, not body stretch.");
+        var stretchTick = home.DisplayedBeltSnapshot!.Tick;
+        Assert.IsTrue(SetDirection(home, Key.W, true), "Porch W must reach body stretch.");
+        fixture.Wait(() => home.DisplayedBeltSnapshot!.Tick > stretchTick + 3, "porch stretch advances the real native body");
+        var held = (HashSet<Key>)typeof(ProductHomeView).GetField("beltHeld", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(home)!;
+        Assert.Contains(Key.W, held, "W must remain a body input instead of entering a door.");
+        SetDirection(home, Key.W, false);
         var entries = 0;
         home.LocalRoomRequested += () => entries++;
         Assert.IsTrue(scene.InteractNearestDoor());

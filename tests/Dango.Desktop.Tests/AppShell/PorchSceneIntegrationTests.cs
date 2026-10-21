@@ -125,7 +125,7 @@ public sealed class PorchSceneIntegrationTests
     }
 
     [STATestMethod]
-    public void InputControlsOwnEscapeAndWAndDoorClickRestoresGameplayFocus()
+    public void InputControlsOwnEscapeAndFAndDoorClickRestoresGameplayFocus()
     {
         var home = new ProductHomeView { ReduceMotion = true };
         var window = WindowFor(home);
@@ -140,7 +140,7 @@ public sealed class PorchSceneIntegrationTests
             input.Focus();
             Assert.IsFalse(Press(home, window, Key.Escape).Handled);
             Assert.IsTrue(home.IsInPorch);
-            Assert.IsFalse(Press(home, window, Key.W).Handled);
+            Assert.IsFalse(Press(home, window, Key.F).Handled);
             stage.Children.Remove(input);
             ((Button)home.FindName("BackFromPorchButton")).Focus();
             var scene = (PorchSceneView)home.FindName("PorchScene");
@@ -406,7 +406,7 @@ public sealed class PorchSceneIntegrationTests
     private static void Enter(ProductHomeView home, Window window)
     {
         ((FrameworkElement)home.FindName("Stage")).Focus();
-        Press(home, window, Key.W);
+        Press(home, window, Key.F);
         window.UpdateLayout();
         Assert.IsTrue(home.IsInPorch);
     }

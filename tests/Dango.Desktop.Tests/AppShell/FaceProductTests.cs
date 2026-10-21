@@ -177,7 +177,7 @@ public sealed class FaceProductTests
         Assert.IsTrue(runtime.LastFrame!.Bodies.Single().Attachments!.Face.Left.Openness > .9);
         home.CloseEditor(); Assert.AreEqual(Choice, runtime.EffectiveAppearance);
         var steps = scheduler.Snapshot.SuccessfulSteps;
-        Assert.IsTrue(Press(home, window, Key.W).Handled); Pump(500);
+        Assert.IsTrue(Press(home, window, Key.F).Handled); Pump(500);
         Assert.IsTrue(home.IsInPorch); Assert.IsTrue(home.OwnsLiveFrameDriver); Assert.AreSame(owner, runtime.FrameDriver);
         Assert.IsTrue(scheduler.Snapshot.SuccessfulSteps > steps, "The porch must advance real native frames after the handoff.");
         var porch = E<PorchSceneView>(home, "PorchScene");

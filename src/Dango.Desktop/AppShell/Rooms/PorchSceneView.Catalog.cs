@@ -1,14 +1,10 @@
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
-using System.Windows.Media;
 using Dango.Desktop.AppShell.Rooms.Storage;
 using Button = System.Windows.Controls.Button;
-using Canvas = System.Windows.Controls.Canvas;
 using StackPanel = System.Windows.Controls.StackPanel;
 using Orientation = System.Windows.Controls.Orientation;
-using Point = System.Windows.Point;
-using Brushes = System.Windows.Media.Brushes;
 
 namespace Dango.Desktop.AppShell.Rooms;
 
@@ -17,7 +13,11 @@ public sealed partial class PorchSceneView
     private bool catalogProvided, catalogHealthy, catalogInputBlocked;
     private PreviewDoor[] catalogDoors = [];
     private Dictionary<string, LocalRoomRecord> catalogRooms = [];
-    private readonly Canvas catalogControls = new();
+    private readonly StackPanel catalogControls = new()
+    {
+        Orientation = Orientation.Horizontal, HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+        VerticalAlignment = VerticalAlignment.Top, Margin = new(8, 12, 16, 0)
+    };
     private readonly TextBlock catalogFeedback = new()
     {
         Margin = new(16, 0, 16, 12),
@@ -37,7 +37,7 @@ public sealed partial class PorchSceneView
     internal bool CatalogInputBlocked
     {
         get => catalogInputBlocked;
-        set { catalogInputBlocked = value; catalogControls.IsEnabled = catalogActions.IsEnabled = !value; }
+        set { catalogInputBlocked = value; UpdateCatalogControls(); }
     }
     internal void SetCatalog(LocalRoomCatalog? catalog, Guid? selection = null, string? message = null)
     {
@@ -45,68 +45,76 @@ public sealed partial class PorchSceneView
         catalogFeedback.SetResourceReference(TextBlock.ForegroundProperty, "HomeMuted");
         AutomationProperties.SetLiveSetting(catalogFeedback, AutomationLiveSetting.Polite);
         catalogRooms = catalog?.Rooms.Where(room => room.Life == LocalRoomLife.Active).ToDictionary(room => room.RoomId.ToString("D")) ?? [];
-        var active = catalogRooms.Values.ToArray(); var doors = new List<PreviewDoor>();
-        for (var i = 0; i < 3; i++) doors.Add(i < active.Length ?
-            new(active[i].RoomId.ToString("D"), active[i].Name, active[i].CanEditOffline ? "本地单人" : "家具只读", 560 + i * 220) :
-            new("new-room-" + i, catalogHealthy ? "新建普通房" : "目录待核对", "空门位", 560 + i * 220));
-        doors.Add(new("local-desktop-pet", "桌宠房", "桌宠房", 1220));
-        doors.Add(catalogHealthy ? new("room-archive", "已解散房间", "恢复", 1440) : new("room-retry", "重新读取目录", "恢复", 1440));
+        var active = catalogRooms.Values.ToArray();
+        var doors = new List<PreviewDoor> { new("local-desktop-pet", "桌宠房", "桌宠房", 560) };
+        for (var i = 0; i < active.Length; i++)
+            doors.Add(new(active[i].RoomId.ToString("D"), active[i].Name, active[i].CanEditOffline ? "本地单人" : "家具只读", 780 + i * 220));
+        doors.Add(new("new-room", catalogHealthy ? "新建普通房" : "目录待核对", "空门位", 780 + active.Length * 220));
         catalogDoors = doors.ToArray(); selectedDoor = selection?.ToString("D"); status = message; actionDoorId = null;
         catalogControls.Children.Clear(); catalogActions.Children.Clear();
-        foreach (var door in catalogDoors)
+        var recovery = new Button { Content = catalogHealthy ? "↶ 已解散房间" : "↶ 重新读取", MinHeight = 40, Padding = new(14, 8, 14, 8) };
+        AutomationProperties.SetName(recovery, catalogHealthy ? "查看与恢复已解散房间" : "重新读取房间目录");
+        recovery.Click += (_, e) =>
         {
-            var button = new Button { Tag = door.Id, Background = Brushes.Transparent, BorderThickness = new(0), Style = new(typeof(Button)), Focusable = true };
-            AutomationProperties.SetName(button, door.Name);
-            button.ToolTip = door.Name + " · 走近后激活";
-            button.Click += (_, e) => { e.Handled = true; SelectPreviewDoor(door); };
-            button.GotKeyboardFocus += (_, _) => { selectedDoor = door.Id; InvalidateVisual(); };
-            catalogControls.Children.Add(button);
-        }
-        AutomationProperties.SetName(this, "门廊场景，三个普通房门位、桌宠房及恢复标牌");
+            e.Handled = true;
+            if (catalogInputBlocked || unavailable) return;
+            if (catalogHealthy) CatalogRecoveryRequested?.Invoke(); else CatalogReloadRequested?.Invoke();
+        };
+        catalogControls.Children.Add(recovery);
+        AutomationProperties.SetName(this, "门廊场景，桌宠房、普通房与一个新建入口；恢复入口位于工具区");
         UpdateCatalogControls(); InvalidateVisual();
     }
     internal void SetCatalogStatus(string? message) { status = message; UpdateCatalogControls(); InvalidateVisual(); }
     private bool ActivateCatalogDoor(PreviewDoor door)
     {
-        if (unavailable) return false;
+        if (catalogInputBlocked || unavailable) return false;
         GameplayFocusRequested?.Invoke();
         if (door.Id == "local-desktop-pet") { DesktopPetRoomRequested?.Invoke(); return true; }
-        if (door.Id == "room-retry") { CatalogReloadRequested?.Invoke(); return true; }
         if (!catalogHealthy) { SetCatalogStatus("目录受保护，请先重新读取；桌宠仍可使用。"); return false; }
-        if (door.Id == "room-archive") CatalogRecoveryRequested?.Invoke();
-        else if (door.Kind == "空门位") CatalogCreateRequested?.Invoke();
+        if (door.Kind == "空门位")
+        {
+            if (catalogRooms.Count >= 3) { SetCatalogStatus("普通房已满（3/3），可先解散房间再新建。"); return false; }
+            CatalogCreateRequested?.Invoke();
+        }
         else if (catalogRooms.TryGetValue(door.Id, out var room))
         { DoorSelected?.Invoke(door.Id); CatalogRoomRequested?.Invoke(room.RoomId); }
         UpdateCatalogControls(); InvalidateVisual(); return true;
     }
     private bool RequestCatalogFurniture()
     {
-        if (catalogInputBlocked || unavailable || NearbyDoorId is not { } id || !catalogRooms.TryGetValue(id, out var room)) return false;
+        if (catalogInputBlocked || unavailable || !catalogHealthy || NearbyDoorId is not { } id || !catalogRooms.TryGetValue(id, out var room)) return false;
         if (!room.CanEditOffline) { SetCatalogStatus("离线缓存布局只读，可单人游玩。"); return false; }
         selectedDoor = id; CatalogFurnitureRequested?.Invoke(room.RoomId); return true;
     }
     private void UpdateCatalogControls()
     {
         if (!catalogProvided) return;
+        catalogControls.Visibility = IsReviewMode ? Visibility.Collapsed : Visibility.Visible;
+        if (IsReviewMode)
+        {
+            catalogActions.Visibility = catalogFeedback.Visibility = Visibility.Collapsed;
+            return;
+        }
         catalogFeedback.Text = status;
         catalogFeedback.Visibility = string.IsNullOrEmpty(status) ? Visibility.Collapsed : Visibility.Visible;
-        foreach (Button button in catalogControls.Children)
-        {
-            var door = catalogDoors.Single(value => value.Id == (string)button.Tag);
-            var rect = DoorRect(door);
-            button.Width = rect.Width; button.Height = rect.Height;
-            Canvas.SetLeft(button, rect.Left); Canvas.SetTop(button, rect.Top);
-            button.IsEnabled = !catalogInputBlocked && (catalogHealthy || door.Id is "local-desktop-pet" or "room-retry");
-        }
+        catalogControls.IsEnabled = !catalogInputBlocked && !unavailable;
         var nearby = NearbyDoorId;
-        if (nearby is null || !catalogRooms.TryGetValue(nearby, out var room) || unavailable || catalogInputBlocked)
+        if (nearby is null || unavailable || catalogInputBlocked)
         { catalogActions.Visibility = Visibility.Collapsed; return; }
+        var door = catalogDoors.Single(value => value.Id == nearby);
         if (actionDoorId != nearby)
         {
             actionDoorId = nearby; catalogActions.Children.Clear();
-            AddAction("↗ 进入", "进入" + room.Name, () => CatalogRoomRequested?.Invoke(room.RoomId));
-            AddAction("◇ 布置", "布置" + room.Name, () => CatalogFurnitureRequested?.Invoke(room.RoomId), room.CanEditOffline);
-            AddAction("× 解散", "解散" + room.Name, () => CatalogDissolveRequested?.Invoke(room.RoomId), room.Source == LocalRoomSource.LocalOnly);
+            if (catalogRooms.TryGetValue(nearby, out var room))
+            {
+                AddAction("↗ 进入", "进入" + room.Name, () => SelectPreviewDoor(door));
+                AddAction("◇ 布置", "布置" + room.Name, () => RequestCatalogFurniture(), room.CanEditOffline);
+                AddAction("× 解散", "解散" + room.Name, () => RequestCatalogDissolve(room.RoomId), room.Source == LocalRoomSource.LocalOnly);
+            }
+            else if (door.Kind == "空门位")
+                AddAction("＋ 新建", "新建普通房", () => SelectPreviewDoor(door), catalogHealthy && catalogRooms.Count < 3,
+                    catalogHealthy ? "普通房已满（3/3）" : "目录受保护，请先重新读取");
+            else AddAction("↗ 进入", "进入桌宠房", () => SelectPreviewDoor(door));
         }
         catalogActions.Visibility = Visibility.Visible;
         catalogActions.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
@@ -119,12 +127,12 @@ public sealed partial class PorchSceneView
             Math.Max(0, catalogActions.DesiredSize.Height - margin.Top - margin.Bottom));
         catalogActions.Margin = new(
             Math.Clamp(target.Left + target.Width / 2 - actions.Width / 2, 8, Math.Max(8, ActualWidth - actions.Width - 8)),
-            Math.Max(8, target.Top - 42 * SceneScale - actions.Height - 8), 0, 0);
+            Math.Max(64, target.Top - 42 * SceneScale - actions.Height - 8), 0, 0);
     }
-    private void AddAction(string label, string name, Action action, bool enabled = true)
+    private void AddAction(string label, string name, Action action, bool enabled = true, string? disabledReason = null)
     {
         var button = new Button { Content = label, MinHeight = 40, Padding = new(8, 6, 8, 6), Margin = new(0, 0, 6, 0), IsEnabled = enabled };
-        button.ToolTip = enabled ? name : "离线不可执行，需要联网确认资格";
+        button.ToolTip = enabled ? name : disabledReason ?? "离线不可执行，需要联网确认资格";
         AutomationProperties.SetName(button, name);
         button.Click += (_, e) =>
         {
@@ -133,10 +141,17 @@ public sealed partial class PorchSceneView
         };
         catalogActions.Children.Add(button);
     }
+    private void RequestCatalogDissolve(Guid roomId)
+    {
+        if (catalogInputBlocked || unavailable || !catalogHealthy || NearbyDoorId != roomId.ToString("D") ||
+            !catalogRooms.TryGetValue(roomId.ToString("D"), out var room) || room.Source != LocalRoomSource.LocalOnly) return;
+        CatalogDissolveRequested?.Invoke(roomId);
+    }
     internal void FocusCatalogOrigin()
     {
-        var id = selectedDoor ?? NearbyDoorId;
-        var button = catalogControls.Children.Cast<Button>().FirstOrDefault(value => (string)value.Tag == id);
-        if (button?.IsVisible == true) button.Focus(); else GameplayFocusRequested?.Invoke();
+        UpdateCatalogControls();
+        var button = catalogActions.Children.Cast<Button>().FirstOrDefault(value => value.IsEnabled);
+        if (catalogActions.Visibility == Visibility.Visible && button is not null) button.Focus();
+        else GameplayFocusRequested?.Invoke();
     }
 }

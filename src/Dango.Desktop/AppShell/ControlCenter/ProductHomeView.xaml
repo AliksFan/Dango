@@ -396,10 +396,10 @@
                 </StackPanel>
                 <Canvas x:Name="Launchers" Grid.RowSpan="2" Grid.ColumnSpan="3" VerticalAlignment="Top">
                         <Button x:Name="EnterRoomButton" Style="{StaticResource Launcher}"
-                                Click="OnEnterRoomClick" ToolTip="W · 进入门廊，前往房间" AutomationProperties.Name="W · 进入门廊，前往房间">
+                                Click="OnEnterRoomClick" ToolTip="F · 进入门廊，前往房间" AutomationProperties.Name="F · 进入门廊，前往房间">
                             <StackPanel Orientation="Horizontal">
                                 <Border Style="{StaticResource ShortcutKeycap}">
-                                    <TextBlock Text="W" FontSize="12" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <TextBlock Text="F" FontSize="12" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                                 <Viewbox Width="20" Height="20"><Canvas Width="24" Height="24" IsHitTestVisible="False">
                                     <Path Data="M5,21 L5,3 L19,3 L19,21 M3,21 L21,21 M8,21 L8,6 L16,4 L16,21 Z M13,13 L14,13"
@@ -407,10 +407,10 @@
                                 </Canvas></Viewbox>
                             </StackPanel>
                         </Button>
-                        <Button x:Name="FaceButton" Style="{StaticResource Launcher}" Click="OnFaceClick" ToolTip="D · 捏脸" AutomationProperties.Name="D · 捏脸">
+                        <Button x:Name="FaceButton" Style="{StaticResource Launcher}" Click="OnFaceClick" ToolTip="E · 捏脸" AutomationProperties.Name="E · 捏脸">
                             <StackPanel Orientation="Horizontal">
                                 <Border Style="{StaticResource ShortcutKeycap}">
-                                    <TextBlock Text="D" FontSize="12" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <TextBlock Text="E" FontSize="12" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                                 <Viewbox Width="20" Height="20"><Canvas Width="24" Height="24" IsHitTestVisible="False">
                                     <Path Data="M3,16 C3,10 7,7 12,7 C17,7 21,10 21,16 C21,20 17,21 12,21 C7,21 3,20 3,16 Z M12,7 L12,3 M12,5 Q7,5 7,2 Q11,2 12,5 M12,5 Q17,5 17,2 Q13,2 12,5"
@@ -420,10 +420,10 @@
                                 </Canvas></Viewbox>
                             </StackPanel>
                         </Button>
-                        <Button x:Name="WardrobeButton" Style="{StaticResource Launcher}" Click="OnWardrobeClick" ToolTip="A · 换装" AutomationProperties.Name="A · 换装">
+                        <Button x:Name="WardrobeButton" Style="{StaticResource Launcher}" Click="OnWardrobeClick" ToolTip="Q · 换装" AutomationProperties.Name="Q · 换装">
                             <StackPanel Orientation="Horizontal">
                                 <Border Style="{StaticResource ShortcutKeycap}">
-                                    <TextBlock Text="A" FontSize="12" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <TextBlock Text="Q" FontSize="12" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                                 <Viewbox Width="20" Height="20"><Canvas Width="24" Height="24" IsHitTestVisible="False">
                                     <Path Data="M8,4 L3,7 L1,12 L6,14 L7,11 L7,21 L17,21 L17,11 L18,14 L23,12 L21,7 L16,4 Q12,9 8,4 Z"
@@ -629,7 +629,7 @@
                     <TextBlock x:Name="PorchReviewNotice" Text="场景预览 · 未接房间业务" FontSize="10"
                                HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12,8"
                                Foreground="{DynamicResource HomeMuted}" Visibility="Collapsed" />
-                    <Button x:Name="BackFromPorchButton" Content="首页 ↗" HorizontalAlignment="Right" VerticalAlignment="Top" BorderBrush="Transparent"
+                    <Button x:Name="BackFromPorchButton" Content="↖ 首页" HorizontalAlignment="Left" VerticalAlignment="Top" BorderBrush="Transparent"
                             Padding="8,4" MinHeight="30" Click="OnBackFromPorchClick" AutomationProperties.Name="返回我的团子" ToolTip="Esc · 返回首页" />
                 </Grid>
                 <TextBlock x:Name="RoomAwayNotice" Grid.ColumnSpan="3" Grid.RowSpan="2"
@@ -677,7 +677,7 @@
                             </Border>
                             <TextBlock Text="操作帮助" FontSize="15" Margin="0,22,0,8" />
                             <Expander x:Name="HomeOperationHelp" Header="首页与门廊" Padding="0,8" IsExpanded="False" Foreground="{DynamicResource HomeInk}">
-                                <TextBlock Text="首页：W 房门 · A 换装 · D 捏脸&#10;门廊：A / D 走动 · W 进门 · E 布置普通房&#10;Esc 返回／收起当前页面" Margin="20,8,0,8" LineHeight="23"
+                                <TextBlock Text="首页：Q 换装 · E 捏脸 · F 进入门廊&#10;门廊：F 进入／新建 · E 布置普通房&#10;A / D 移动 · W 拉伸 · S 下压 · 空格跳跃&#10;Esc 返回／收起当前页面" Margin="20,8,0,8" LineHeight="23"
                                            TextWrapping="Wrap" Foreground="{DynamicResource HomeMuted}" />
                             </Expander>
                             <Expander x:Name="RoomOperationHelp" Header="普通房" Padding="0,8" Foreground="{DynamicResource HomeInk}">

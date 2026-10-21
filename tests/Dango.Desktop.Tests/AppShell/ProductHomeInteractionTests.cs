@@ -289,10 +289,10 @@ public sealed class ProductHomeInteractionTests
         {
             window.Show();
             Pump(50);
-            Assert.IsTrue(RaiseKey(home, window, Key.D, Keyboard.PreviewKeyDownEvent).Handled);
-            Assert.AreEqual(HomeEditor.Face, home.SelectedEditor, "Closed home retains D as the face shortcut.");
-            Assert.IsTrue(RaiseKey(home, window, Key.A, Keyboard.PreviewKeyDownEvent).Handled);
-            Assert.AreEqual(HomeEditor.Wardrobe, home.SelectedEditor, "A outside wardrobe retains the wardrobe shortcut.");
+            Assert.IsTrue(RaiseKey(home, window, Key.E, Keyboard.PreviewKeyDownEvent).Handled);
+            Assert.AreEqual(HomeEditor.Face, home.SelectedEditor, "Closed home retains E as the face shortcut.");
+            Assert.IsTrue(RaiseKey(home, window, Key.Q, Keyboard.PreviewKeyDownEvent).Handled);
+            Assert.AreEqual(HomeEditor.Wardrobe, home.SelectedEditor, "Q outside wardrobe retains the wardrobe shortcut.");
             var panel = Element<StackPanel>(home, "WardrobeOptions").Children.OfType<AccessoryEditorPanel>().Single();
             panel.SetBodyAnchor(new Point(.34, .59));
             var draft = session.DraftConfiguration;
@@ -328,9 +328,9 @@ public sealed class ProductHomeInteractionTests
             Assert.AreEqual(saved, session.DraftConfiguration, "Esc must cancel all unsaved accessory parameters and buffered field text.");
             CollectionAssert.AreEqual(savedBytes, File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root)));
             Assert.IsTrue(Element<FrameworkElement>(home, "Stage").IsKeyboardFocused);
-            Assert.IsTrue(RaiseKey(home, window, Key.D, Keyboard.PreviewKeyDownEvent).Handled);
-            Assert.AreEqual(HomeEditor.Face, home.SelectedEditor, "Closing wardrobe must restore the home D shortcut.");
-            Assert.IsTrue(RaiseKey(home, window, Key.A, Keyboard.PreviewKeyDownEvent).Handled);
+            Assert.IsTrue(RaiseKey(home, window, Key.E, Keyboard.PreviewKeyDownEvent).Handled);
+            Assert.AreEqual(HomeEditor.Face, home.SelectedEditor, "Closing wardrobe must restore the home E shortcut.");
+            Assert.IsTrue(RaiseKey(home, window, Key.Q, Keyboard.PreviewKeyDownEvent).Handled);
             Assert.AreEqual(HomeEditor.Wardrobe, home.SelectedEditor);
             Assert.IsTrue(panel.SelectSection(AccessoryEditorSection.Placement));
             Assert.AreEqual(saved.Items.Single(item => item.Id == panel.SelectedItem!.Id).Name, name.Text,

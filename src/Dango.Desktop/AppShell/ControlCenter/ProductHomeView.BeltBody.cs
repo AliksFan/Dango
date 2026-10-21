@@ -48,9 +48,6 @@ public partial class ProductHomeView
         if (beltRuntime is not null || BoundRuntime is not null) throw new InvalidOperationException("主页已绑定实时场景。");
         beltSettingsPath = settingsPath;
         beltRuntime = new BeltBodyRuntime(Path.Combine(AppContext.BaseDirectory, "dango_belt_product.dll")) { SleepEnabled = true };
-        ConfigureBeltLauncher(FaceButton, "捏脸");
-        ConfigureBeltLauncher(WardrobeButton, "换装");
-        ConfigureBeltLauncher(EnterRoomButton, "房间");
         InputMethod.SetIsInputMethodEnabled(Stage, false);
         OptionsBody.Resources[typeof(System.Windows.Controls.Primitives.ScrollBar)] = Resources["SettingsScrollBar"];
         HomeContent.Resources[typeof(System.Windows.Controls.Primitives.ScrollBar)] = Resources["SettingsScrollBar"];
@@ -366,11 +363,9 @@ public partial class ProductHomeView
     {
         if (beltRuntime is null) return false;
         var key = e.Key == Key.ImeProcessed ? e.ImeProcessedKey : e.Key == Key.System ? e.SystemKey : e.Key;
-        // Porch keeps its existing W door action; all other surfaces use W to stretch.
-        if (IsInPorch && key == Key.W) return false;
         if (key is not (Key.A or Key.D or Key.W or Key.S or Key.Space)) return false;
         if (!down) SetBeltDirectionalKey(key, false, false);
-        // A recognized belt key never falls through to the legacy A/D/W navigation mapping.
+        // Body keys stay separate from Q/E/F navigation on every surface.
         // Text/menu controls still receive unhandled events when gameplay is unavailable.
         if (ownerWindow?.IsActive != true || !beltVisible || IsSettingsOpen || IsDangoAway || IsRoomDialogOpen || beltFatalError || beltWindowMenuOpen ||
             IsBeltTextEntry(Keyboard.FocusedElement) || Keyboard.Modifiers != ModifierKeys.None)
@@ -423,24 +418,11 @@ public partial class ProductHomeView
     private bool SetBeltDirectionalKey(Key key, bool down, bool repeat)
     {
         if (beltRuntime is null || key is not (Key.A or Key.D or Key.W or Key.S or Key.Space)) return false;
-        if (IsInPorch && key == Key.W) return false;
         if (!down && !beltHeld.Contains(key) && !beltSuppressed.Contains(key)) return true;
         if (!down) { beltHeld.Remove(key); beltSuppressed.Remove(key); }
         else if (!beltSuppressed.Contains(key) && !(repeat && key == Key.Space) && beltHeld.Add(key) && key == Key.Space) beltJump = true;
         PublishBeltInput();
         return true;
-    }
-
-    private static void ConfigureBeltLauncher(System.Windows.Controls.Button button, string label)
-    {
-        // The belt owns WASD in the home too; do not advertise legacy navigation keys.
-        if (button.Content is StackPanel panel && panel.Children.Count == 2 && panel.Children[0] is Border)
-        {
-            panel.Children.RemoveAt(0);
-            panel.Children.Add(new TextBlock { Text = label, FontSize = 12, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
-        }
-        button.ToolTip = label;
-        System.Windows.Automation.AutomationProperties.SetName(button, label);
     }
 
     private void PublishBeltInput()

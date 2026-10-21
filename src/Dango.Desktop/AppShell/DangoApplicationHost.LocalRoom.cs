@@ -176,7 +176,7 @@ internal sealed partial class DangoApplicationHost
                 await home.Dispatcher.InvokeAsync(() =>
                 {
                     if (disposed || request != catalogEntryGeneration || roomHandoff.Pending || localRoomSelected || !home.IsVisible) return;
-                    stackedRuntime.ConfigureBeltRoomAppearance(appearance.SavedAppearance, beginRoom: true);
+                    PrepareBeltRoomEntry();
                     if (!stackedRuntime.TryInitialize())
                         throw new InvalidOperationException("新身体房间模块初始化失败。");
                     if (!stackedRuntime.TryDetachOrdinaryFurniture())
@@ -648,7 +648,7 @@ internal sealed partial class DangoApplicationHost
                 if (disposed || request != catalogEntryGeneration || roomHandoff.Pending || localRoomSelected || !home.IsVisible) return;
                 if (usesContinuousBody)
                 {
-                    stackedRuntime.ConfigureBeltRoomAppearance(appearance.SavedAppearance, beginRoom: true);
+                    PrepareBeltRoomEntry();
                     if (!stackedRuntime.TryInitialize())
                         throw new InvalidOperationException("新身体房间模块初始化失败；原房间布局保留。");
                     if ((furniture || roomCatalogStore.ReadLayout(id).Items.Count != 0) && !stackedRuntime.SupportsFurnitureCollection)
@@ -704,6 +704,14 @@ internal sealed partial class DangoApplicationHost
                 }
             });
         }
+    }
+
+    private void PrepareBeltRoomEntry()
+    {
+        stackedRuntime.ConfigureBeltRoomAppearance(appearance.SavedAppearance, beginRoom: true);
+        // The homepage owns a separate continuous-body presenter. Transfer only
+        // committed accessories when either room takes ownership of this runtime.
+        stackedRuntime.SetAccessories(accessories.SavedConfiguration, !accessories.IsCompatibilityMode);
     }
 
     internal static void ValidateBeltRoomAdmission(Dango.Core.Furniture.FurnitureLayout layout, bool furniture, bool candidate)
