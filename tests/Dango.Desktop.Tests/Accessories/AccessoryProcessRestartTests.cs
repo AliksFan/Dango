@@ -64,7 +64,7 @@ public sealed class AccessoryProcessRestartTests
 
             first = ReviewProcess.Start(reviewRoot, "first", runRoot, log);
             var firstWindow = WaitForMainWindow(first, log);
-            Invoke(WaitForControl(first, firstWindow, "A · 换装", ControlType.Button, log), log, "open-wardrobe-first");
+            Invoke(WaitForControl(first, firstWindow, "Q · 换装", ControlType.Button, log), log, "open-wardrobe-first");
             SelectLibraryItem(first, firstWindow, imported.Name, log);
             OpenPlacementSection(first, firstWindow, log, "open-placement-first");
             var initialRange = GetRange(WaitForControl(first, firstWindow, "身体附着 X", ControlType.Slider, log));
@@ -124,7 +124,7 @@ public sealed class AccessoryProcessRestartTests
             second = ReviewProcess.Start(reviewRoot, "second", runRoot, log);
             Assert.AreNotEqual(firstPid, second.Process.Id, "Restart must create an actual different app process.");
             var secondWindow = WaitForMainWindow(second, log);
-            Invoke(WaitForControl(second, secondWindow, "A · 换装", ControlType.Button, log), log, "open-wardrobe-second");
+            Invoke(WaitForControl(second, secondWindow, "Q · 换装", ControlType.Button, log), log, "open-wardrobe-second");
             SelectLibraryItem(second, secondWindow, imported.Name, log);
             OpenPlacementSection(second, secondWindow, log, "open-placement-second");
             var restored = GetRange(WaitForControl(second, secondWindow, "身体附着 X", ControlType.Slider, log)).Current.Value;
