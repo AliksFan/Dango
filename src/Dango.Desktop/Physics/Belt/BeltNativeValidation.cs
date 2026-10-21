@@ -11,6 +11,9 @@ internal static class BeltNativeValidation
         if (forceLedger is { } forces && (forces.Length != 1024 || forces[0] != 1 || forces[1] != 1024 ||
             forces[2] != tick || forces[4] < 0 || forces[4] > 97 || forces[6] != 6 || forces[7] != 64))
             throw new InvalidOperationException("真实施力明细格式或同帧诊断失败");
+        if (forceLedger is { } verticalLedger)
+            ValidateVerticalLedger(verticalLedger, input.CancelForces || input.Stretch > 0 && input.Downward > 0 || frame.JumpAccepted ? 0 :
+                (float)belt.Configuration.DownwardForce * (s[17] - (float)input.Downward));
         if (belt.RadialDriveEnabled && (radialDriveDiagnostics is not { } radial || radial.Any(x => !double.IsFinite(x)) || radial[0] != 3 || radial[1] != 1 || radial[2] != tick ||
             (radial[4] != 0 && radial[4] != 8) || radial[10] >= 1e-9 || radial[11] >= 1e-9))
             throw new InvalidOperationException("8点推动同帧、点数或参考合力诊断失败");
@@ -43,6 +46,37 @@ internal static class BeltNativeValidation
             throw new InvalidOperationException("形状保护同帧、核心在内或硬边界诊断失败");
         if (s[36] != 0 || s[31] > .0001 || s[39] != 0) throw new InvalidOperationException("闭合带本帧安全诊断失败");
     }
+    internal static void ValidateVerticalLedger(double[] ledger, double upperForce)
+    {
+        if (ledger.Length != 1024 || ledger[4] != Math.Truncate(ledger[4]) || ledger[4] < 0 || ledger[4] > 97 || !double.IsFinite(upperForce))
+            throw new InvalidOperationException("W/S force ledger schema or budget is invalid.");
+        double upper = 0, lower = 0, upperY = 0, lowerY = 0;
+        var upperBins = new HashSet<int>(); var lowerBins = new HashSet<int>();
+        var tolerance = 1e-6 * (1 + Math.Abs(upperForce));
+        for (var i = 0; i < (int)ledger[4]; i++)
+        {
+            var row = 8 + 6 * i;
+            if (ledger[row + 4] != 2) continue;
+            var fy = ledger[row + 3]; var part = ledger[row + 5];
+            if (Enumerable.Range(row, 6).Any(index => !double.IsFinite(ledger[index])) || ledger[row + 2] != 0 ||
+                fy == 0 || upperForce == 0 || part != Math.Truncate(part) || part < 0 || part >= 16)
+                throw new InvalidOperationException("W/S contains an invalid, horizontal or ungated load.");
+            if (Math.Sign(fy) == Math.Sign(upperForce))
+            {
+                if (!upperBins.Add((int)part)) throw new InvalidOperationException("W/S repeats an upper material bin.");
+                upper += fy; upperY += ledger[row + 1] * fy;
+            }
+            else
+            {
+                if (!lowerBins.Add((int)part)) throw new InvalidOperationException("W/S repeats a lower material bin.");
+                lower += fy; lowerY += ledger[row + 1] * fy;
+            }
+        }
+        if (Math.Abs(upper - upperForce) > tolerance || Math.Abs(lower + upperForce) > tolerance || Math.Abs(upper + lower) > tolerance ||
+            upperForce != 0 && (upperBins.Count == 0 || lowerBins.Count == 0 || upperY / upper <= lowerY / lower))
+            throw new InvalidOperationException("W/S must apply equal opposite totals to the upper and lower world halves.");
+    }
+
     internal static void ValidateRearLedger(double[] rear, double[] main, double[] ledger, int tick, bool enabled,
         double movement, double radius, double statsFx, double statsFy)
     {

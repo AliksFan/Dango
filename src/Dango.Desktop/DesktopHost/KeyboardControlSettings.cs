@@ -32,6 +32,7 @@ public enum DirectionalControlKey
     Right,
     Jump,
     Squash,
+    Stretch,
 }
 
 public static class KeyboardControlKeyPolicy
@@ -46,6 +47,7 @@ public static class KeyboardControlKeyPolicy
             0x44 => Set(DirectionalControlKey.Right, out key),
             0x20 => Set(DirectionalControlKey.Jump, out key),
             0x53 => Set(DirectionalControlKey.Squash, out key),
+            0x57 => Set(DirectionalControlKey.Stretch, out key),
             _ => false,
         };
     }

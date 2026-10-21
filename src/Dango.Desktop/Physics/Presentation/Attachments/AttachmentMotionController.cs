@@ -29,18 +29,19 @@ public sealed class AttachmentMotionController(AttachmentCommandRouter router, A
         eyeLayout = parameters;
     }
     public bool Paused { get => clock.Paused; set { if (clock.Paused != value) { hat?.ResetSignals(); previousBodyY = null; } clock.Paused = value; } }
-    public AttachmentPresentationFrame? Update(PhysicsPresentationFrame body, long stepIndex, double seconds, DangoFacingDirection facing = DangoFacingDirection.Center, HatBodySample? bodyMotion = null, bool hatBodyFollowEnabled = true)
-        => UpdateCore(body, stepIndex, seconds, facing, bodyMotion, hatBodyFollowEnabled, null);
+    public AttachmentPresentationFrame? Update(PhysicsPresentationFrame body, long stepIndex, double seconds, DangoFacingDirection facing = DangoFacingDirection.Center, HatBodySample? bodyMotion = null, bool hatBodyFollowEnabled = true, int verticalDeformationAxis = 0)
+        => UpdateCore(body, stepIndex, seconds, facing, bodyMotion, hatBodyFollowEnabled, null, verticalDeformationAxis);
 
     /// <summary>Presentation consumers can supply an exact sampled body boundary without fitting a second curve.</summary>
     internal AttachmentPresentationFrame? UpdateBoundary(PhysicsPresentationFrame body, AttachmentShapeGeometry shape,
-        long stepIndex, double seconds, DangoFacingDirection facing, HatBodySample bodyMotion)
-        => UpdateCore(body, stepIndex, seconds, facing, bodyMotion, false, shape);
+        long stepIndex, double seconds, DangoFacingDirection facing, HatBodySample bodyMotion, int verticalDeformationAxis = 0)
+        => UpdateCore(body, stepIndex, seconds, facing, bodyMotion, false, shape, verticalDeformationAxis);
 
     private AttachmentPresentationFrame? UpdateCore(PhysicsPresentationFrame body, long stepIndex, double seconds,
-        DangoFacingDirection facing, HatBodySample? bodyMotion, bool hatBodyFollowEnabled, AttachmentShapeGeometry? sourceShape)
+        DangoFacingDirection facing, HatBodySample? bodyMotion, bool hatBodyFollowEnabled, AttachmentShapeGeometry? sourceShape, int verticalDeformationAxis)
     {
         if (!double.IsFinite(seconds) || seconds is <= 0 or > 0.1 || stepIndex < 0) throw new ArgumentOutOfRangeException(nameof(seconds));
+        if (verticalDeformationAxis is < -1 or > 1) throw new ArgumentOutOfRangeException(nameof(verticalDeformationAxis));
         if (Paused || stepIndex <= clock.StepIndex) return Current;
         if (!body.IsVisible || body.FallbackReason != PhysicsPresentationFallbackReason.None) { hat?.ResetSignals(); previousBodyY = null; return Current; }
         if (bodyMotion is { } sample && (!double.IsFinite(sample.X) || !double.IsFinite(sample.Y))) throw new ArgumentOutOfRangeException(nameof(bodyMotion));
@@ -125,7 +126,10 @@ public sealed class AttachmentMotionController(AttachmentCommandRouter router, A
             // Keep explicit gaze at its existing 5 DIP range within the 7 DIP facing range.
             eye.X = DampedSpring.AdvanceBounded(eye.X, gaze is null ? defaultX : gaze.X * 5d / 7, gaze is null ? 4.5 : 5,
                 gaze is null ? 0.75 : 1, slice.Seconds, -1, 1);
-            eye.Y = DampedSpring.AdvanceBounded(eye.Y, gaze?.Y ?? defaultY, gaze is null ? 4.5 : 5,
+            // Gaze is expressed in world coordinates; the shared geometry factory
+            // flips Y once for the screen. Keyboard deformation overrides only Y.
+            var gazeY = verticalDeformationAxis == 0 ? gaze?.Y ?? defaultY : verticalDeformationAxis;
+            eye.Y = DampedSpring.AdvanceBounded(eye.Y, gazeY, gaze is null ? 4.5 : 5,
                 gaze is null ? 0.75 : 1, slice.Seconds, -1, 1);
             eye.Open = DampedSpring.AdvanceBounded(eye.Open, pose?.Openness ?? 1, 8, 1, slice.Seconds, 0, 1);
             var softTarget = pose?.Shape == EyeShape.Soft ? pose.Strength : 0;

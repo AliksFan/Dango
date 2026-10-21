@@ -231,6 +231,29 @@ public sealed class BeltPorchIntegrationTests
         Assert.IsNull(runtime.Metrics.Error);
     }
 
+    [STATestMethod]
+    [DataRow("home")]
+    [DataRow("face")]
+    [DataRow("wardrobe")]
+    [DataRow("porch")]
+    public void BothVerticalKeysKeepHorizontalDriveOnEveryHomeSurface(string surface)
+    {
+        using var fixture = new HiddenHome();
+        var home = fixture.Home;
+        if (surface == "face") home.ShowEditor(HomeEditor.Face);
+        if (surface == "wardrobe") home.ShowEditor(HomeEditor.Wardrobe);
+        if (surface == "porch") fixture.Click("EnterRoomButton");
+        SetDirection(home, Key.D, true); SetDirection(home, Key.W, true); SetDirection(home, Key.S, true);
+        fixture.Wait(() => home.DisplayedBeltSnapshot is { ActualInput: { Horizontal: 1, Stretch: 1, Downward: 1, CancelForces: false } } snapshot &&
+            snapshot.Frame!.Stats[18] > 0, "W+S must cancel the vertical pair while D retains actual native horizontal force");
+        SetDirection(home, Key.W, false);
+        fixture.Wait(() => home.DisplayedBeltSnapshot is { ActualInput: { Stretch: 0, Downward: 1, CancelForces: false } },
+            "releasing W leaves S active");
+        SetDirection(home, Key.S, false); SetDirection(home, Key.D, false);
+        fixture.Wait(() => home.DisplayedBeltSnapshot is { ActualInput: { Horizontal: 0, Stretch: 0, Downward: 0 } },
+            "all released controls reach the native owner");
+    }
+
     private static bool SetDirection(ProductHomeView home, Key key, bool down) => (bool)typeof(ProductHomeView)
         .GetMethod("SetBeltDirectionalKey", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(home, [key, down, false])!;
     private static T Element<T>(ProductHomeView home, string name) => (T)home.FindName(name);

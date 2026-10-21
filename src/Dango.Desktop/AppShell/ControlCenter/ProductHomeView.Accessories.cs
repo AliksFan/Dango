@@ -71,7 +71,7 @@ public partial class ProductHomeView
         }), true);
     }
 
-    private string AccessoryNotice => accessoryPanel.PreviewNotice + "\nA/D 移动 · S 压扁 · 空格 跳跃 · Esc 退出";
+    private string AccessoryNotice => accessoryPanel.PreviewNotice + "\nA/D 移动 · W 上看／拉伸 · S 下看／轻压 · 空格 跳跃 · Esc 退出";
 
     private void OnAccessorySaveActionsSizeChanged(object sender, SizeChangedEventArgs e)
     {

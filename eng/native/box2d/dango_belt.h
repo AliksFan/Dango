@@ -94,7 +94,11 @@ DANGO_BELT_API int dango_belt_read_rear_drive(void*,double*,int);
    3 zero-based lastSubstep (-1 before step),4 rowCount (max97),5 sourceMask,
    6 rowWidth6,7 referenceIntegrationCount64 (not actual load count). Rows from8: x,y,fx,fy,sourceKind,material.
    Kind1 horizontal and kind2 vertical are exact resultants of 16 material bins,
-   material=binIndex (not physical nodes); kind3 is actual projected whale point
+   material=binIndex (not physical nodes). Kind2 includes independent upper and
+   lower world-half loads, equal and opposite in total; a bin crossing the
+   midline may have one row for each half. Stats19/58 report their net (zero),
+   stats24 includes their actual couple, stats22/23 retain the upper resultant
+   location (not a point of application for the zero net). Kind3 is actual projected whale point
    weight t/64, material=theta; kind4 actual drag point, material=theta.
    Kind5 eight actual grouped point loads (Fx preserved/Fy two-thirds), material=theta.
    Kind6 actual rear scaffold endpoint force, material=theta, mask32.

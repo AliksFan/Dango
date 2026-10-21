@@ -311,6 +311,7 @@ public partial class DangoSceneWindow : System.Windows.Window, IDesktopHostContr
             Right = mapped == DirectionalControlKey.Right ? isDown : currentIntent.Right,
             Jump = mapped == DirectionalControlKey.Jump ? isDown : currentIntent.Jump,
             Squash = mapped == DirectionalControlKey.Squash ? isDown : currentIntent.Squash,
+            Stretch = mapped == DirectionalControlKey.Stretch ? isDown : currentIntent.Stretch,
         };
         return true;
     }

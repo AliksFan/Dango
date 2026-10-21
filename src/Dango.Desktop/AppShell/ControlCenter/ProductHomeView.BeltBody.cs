@@ -430,8 +430,8 @@ public partial class ProductHomeView
         if (beltRuntime is null) return;
         var w = beltHeld.Contains(Key.W); var s = beltHeld.Contains(Key.S);
         beltRuntime.PublishInput(new((beltHeld.Contains(Key.D) ? 1 : 0) - (beltHeld.Contains(Key.A) ? 1 : 0),
-            w && !s ? 1 : 0, s && !w ? 1 : 0, beltJump, beltDragging,
-            beltDragTarget.X, beltDragTarget.Y, beltHeld.Count > 0 || beltDragging, beltCancel || w && s));
+            w ? 1 : 0, s ? 1 : 0, beltJump, beltDragging,
+            beltDragTarget.X, beltDragTarget.Y, beltHeld.Count > 0 || beltDragging, beltCancel));
         beltJump = beltCancel = false;
     }
 

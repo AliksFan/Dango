@@ -20,7 +20,7 @@ W/S双按时互相抵消，松开、失焦、输入取消或切换场景时清�
 - `eng/native/box2d/dango_belt.c` 的 `dango_belt_step` 现在只给上半轮廓施加W/S竖直力，所以存在整体净推力；`belt_region_force` 已能按当前连续轮廓上下半分别分配归一化总力，可作为共用实现基础。
 - room模块嵌入同一身体求解器。应修改共用施力点，删除单侧载荷，不在每个场景额外加抵消冲量，也不逐家具打补丁。统计、力账本、扭矩与托管验证必须随新物理语义一致更新。
 - 首页／门廊已统一W/S及双按取消；普通房已传Stretch／Squash，但双按取消尚不一致。桌宠的 `KeyboardControlSettings`、两个WorkerW输入桥及窗口输入转换尚缺W，必须一起补齐。
-- 首页 `BeltBodyAppearancePresenter` 与房间 `StackedDangoSceneRuntime` 有两条呈现链，目前均未实现按W/S朝上下看。应共用目光规则，显式覆盖竖直目光，释放时撤销；注意屏幕目光坐标向上为负Y。
+- 首页 `BeltBodyAppearancePresenter` 与房间 `StackedDangoSceneRuntime` 有两条呈现链，基线均未实现按W/S朝上下看。应共用目光规则，显式覆盖竖直目光，释放时撤销；附件目光采用世界Y向上，公共几何工厂在绘制屏幕时翻转Y一次。
 
 ## 必须保留的物理边界
 

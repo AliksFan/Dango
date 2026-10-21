@@ -77,10 +77,16 @@ public sealed class BeltRoomHostEntryTests
         Assert.IsTrue(driver.Key(Key.W, true, false));
         Advance();
         Assert.IsTrue(Field<DirectionalControlIntent>(runtime, "directionalIntent").Stretch);
-        Assert.IsTrue(driver.Key(Key.W, false, false));
+        Assert.AreEqual(1, Field<DirectionalControlIntent>(runtime, "directionalIntent").VerticalDeformationAxis);
+        Assert.IsTrue(driver.Key(Key.W, true, true));
         Assert.IsTrue(driver.Key(Key.S, true, false));
         Advance();
+        Assert.AreEqual(0, Field<DirectionalControlIntent>(runtime, "directionalIntent").VerticalDeformationAxis);
+        Assert.IsTrue(driver.Key(Key.W, false, false));
+        Advance();
         Assert.IsTrue(Field<DirectionalControlIntent>(runtime, "directionalIntent").Squash);
+        Assert.IsFalse(Field<DirectionalControlIntent>(runtime, "directionalIntent").Stretch);
+        Assert.AreEqual(-1, Field<DirectionalControlIntent>(runtime, "directionalIntent").VerticalDeformationAxis);
         Assert.IsTrue(driver.Key(Key.S, false, false));
         Assert.IsTrue(driver.Key(Key.Space, true, false));
         Advance();
@@ -132,8 +138,10 @@ public sealed class BeltRoomHostEntryTests
         Render(view);
         PumpUntil(() => healthyNotifications == 2);
         Assert.IsTrue(driver.Key(Key.A, true, false));
+        Assert.IsTrue(driver.Key(Key.W, true, false));
         driver.Stop();
         Assert.IsFalse(driver.Key(Key.A, true, false));
+        Assert.AreEqual(DirectionalControlIntent.None, Field<DirectionalControlIntent>(runtime, "directionalIntent"));
         Assert.IsFalse(IsWindowVisible(hiddenSource.Handle), "No stage of the test may show the hidden surface.");
     }
 

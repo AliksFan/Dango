@@ -361,7 +361,7 @@
                                           Unchecked="OnKeyboardControlChanged" />
                                 <TextBlock Margin="24,6,0,14"
                                            Foreground="{StaticResource MutedTextBrush}"
-                                           Text="仅进入房间且玩法输入已激活时生效。A 左、S 轻压、D 右、空格跳；W 交互。"
+                                           Text="仅进入房间且玩法输入已激活时生效。A/D 移动、W 上看／拉伸、S 下看／轻压、空格跳。"
                                            TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>

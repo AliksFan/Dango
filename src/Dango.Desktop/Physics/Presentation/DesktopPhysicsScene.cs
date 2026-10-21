@@ -371,6 +371,8 @@ public sealed partial class DesktopPhysicsScene : IDisposable
         {
             var axis = intent.Left == intent.Right ? 0d : intent.Left ? -1d : 1d;
             if (axis == 0 && !intent.Jump && !intent.Squash && !intent.Stretch && !dragActive) axis = autonomousHorizontal;
+            // Native owns vertical-only cancellation when both channels are held;
+            // a full cancellation would also erase the current A/D force.
             var result = beltRoom.Step(new(axis, intent.Stretch ? 1 : 0, intent.Squash ? 1 : 0,
                 intent.Jump && !jumpWasHeld, dragActive, dragTarget.X, dragTarget.Y,
                 intent.Left || intent.Right || intent.Jump || intent.Squash || intent.Stretch || dragActive));

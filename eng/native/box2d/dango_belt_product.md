@@ -1,5 +1,19 @@
 # Product continuous belt ABI 1 / hot configuration contract
 
+2026-10-21 approved control update: W/S now applies equal opposite **total**
+vertical forces to the upper/lower halves of the current continuous boundary.
+Each half is normalized independently; W stretches and S compresses. Holding
+both cancels only this vertical pair and its ramp, preserving A/D, drag and the
+existing jump gate. `CancelForces` remains the separate full-input cancellation.
+There is no COM velocity correction or fixed jump-height rule. The real couple
+is retained on asymmetric shapes. Kind2 ledger rows can contain one resultant
+per material bin **per half**; the W/S contribution to stats19/58 is zero,
+stats24 includes both moments, and stats22/23 retain the upper action point.
+ABI/layout/configuration identities are unchanged; source/module hashes bind
+the new behavior. The historical extraction and frozen comparisons below remain
+evidence for their original revision; old W/S trajectories are intentionally
+different and are not claimed bitwise equivalent by this update.
+
 Source: frozen `refs/archive/2026-10-19/continuous-belt-lab` at
 `75621d31e8de2c7f85699bcded503d2088a45c0d`. The existing solver, guard,
 basis cache, force mappings and successful-step channels are extracted without

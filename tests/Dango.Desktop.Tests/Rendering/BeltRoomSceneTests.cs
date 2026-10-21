@@ -23,6 +23,42 @@ public sealed class BeltRoomSceneTests
     private static readonly TimeSpan Dt = TimeSpan.FromSeconds(1d/60);
 
     [TestMethod]
+    public void VerticalPairCancellationAndReleaseMatchNativeWithoutDroppingMovement()
+    {
+        using var scene = new DesktopPhysicsScene(Module, Bounds, DangoBodyControls.Default);
+        using var reference = new DangoBeltRoomWorld(Module,
+            DangoBodyMaterial.Configure(DangoBodyControls.Default), left: -256, right: 256);
+        var sequence = new[]
+        {
+            (W: true, S: false), (W: true, S: true), (W: true, S: true),
+            (W: false, S: true), (W: false, S: false),
+            (W: true, S: false), (W: true, S: true), (W: true, S: false),
+            (W: false, S: false),
+        };
+        foreach (var (w, s) in sequence)
+        {
+            scene.SetInput(new(false, true, false, s) { Stretch = w });
+            scene.Step(Dt);
+            reference.Step(1, new(Horizontal: 1, Stretch: w ? 1 : 0,
+                Downward: s ? 1 : 0, InputActive: true));
+            Assert.AreEqual(0, scene.LastErrorCode);
+            CollectionAssert.AreEqual(reference.Read().Curve, scene.BeltRoomFrame!.Curve,
+                $"W={w}, S={s} must cancel only the vertical pair and retain D.");
+            if (w && s)
+                Assert.IsGreaterThan(0f, scene.BeltRoomFrame!.Stats[18],
+                    "D + W + S must continue to apply positive horizontal force, not merely retain D's held state.");
+        }
+        scene.CancelInput();
+        for (var i = 0; i < 3; i++)
+        {
+            scene.Step(Dt);
+            reference.Step(1);
+            CollectionAssert.AreEqual(reference.Read().Curve, scene.BeltRoomFrame!.Curve,
+                "Scene cancellation must clear both vertical controls and held movement.");
+        }
+    }
+
+    [TestMethod]
     public void NativeFrameMappingIsExactAndDetachedForAllBodyControls()
     {
         using var scene = new DesktopPhysicsScene(Module,Bounds,new(120,100,0));

@@ -294,7 +294,7 @@ public sealed partial class PorchSceneView : Grid
         else Text(dc, "房间目录尚未接入", new Point(ActualWidth / 2, Math.Max(72, BackWallGroundY - 100)), 13, muted, centered: true);
         if (catalogProvided) Text(dc, catalogHealthy ? $"普通房 {catalogRooms.Count}/3" : "普通房 · 目录待核对", new(ActualWidth - 92, 68), 12, muted, centered: true);
         if (!catalogProvided || status is null)
-            Text(dc, status ?? "A / D 移动    W 拉伸    S 轻压    空格跳跃    F 进入", new Point(ActualWidth / 2, ActualHeight - 22), 11, muted, centered: true);
+            Text(dc, status ?? "A / D 移动    W 上看／拉伸    S 下看／轻压    空格跳跃    F 进入", new Point(ActualWidth / 2, ActualHeight - 22), 11, muted, centered: true);
     }
 
     private Brush ResourceBrush(string key, Brush fallback) => TryFindResource(key) as Brush ?? fallback;

@@ -785,7 +785,7 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
             var attachmentFrames = attachments?.Advance(motionFrame, fixedStep.TotalSeconds, scene.SelectedEntity,
                 directionalIntent.Left == directionalIntent.Right ?
                     (autonomousHorizontal < 0 ? DangoFacingDirection.Left : autonomousHorizontal > 0 ? DangoFacingDirection.Right : DangoFacingDirection.Center) :
-                directionalIntent.Left ? DangoFacingDirection.Left : DangoFacingDirection.Right);
+                directionalIntent.Left ? DangoFacingDirection.Left : DangoFacingDirection.Right, directionalIntent);
             if (attachmentFrames is not null && Doze.Sleeping)
                 attachmentFrames = attachmentFrames.Select(body => body with { DozeSeconds = Doze.SleepSeconds }).ToArray();
             if (frame.Physics.Succeeded) AfterLightFeedbackStep(fixedStep.TotalSeconds);

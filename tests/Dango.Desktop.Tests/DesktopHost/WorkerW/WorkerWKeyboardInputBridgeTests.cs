@@ -19,7 +19,7 @@ public sealed class WorkerWKeyboardInputBridgeTests
     }
 
     [TestMethod]
-    public void ApprovedMovementKeysReserveWForInteractionAndIgnoreArrows()
+    public void ApprovedMovementKeysMapWToStretchAndIgnoreArrows()
     {
         Assert.IsTrue(KeyboardControlKeyPolicy.TryMap(0x41, KeyboardControlScheme.Wasd, out var left));
         Assert.AreEqual(DirectionalControlKey.Left, left);
@@ -29,8 +29,8 @@ public sealed class WorkerWKeyboardInputBridgeTests
         Assert.AreEqual(DirectionalControlKey.Squash, squash);
         Assert.IsTrue(KeyboardControlKeyPolicy.TryMap(0x20, KeyboardControlScheme.Wasd, out var jump));
         Assert.AreEqual(DirectionalControlKey.Jump, jump);
-        Assert.IsFalse(KeyboardControlKeyPolicy.TryMap(0x57, KeyboardControlScheme.Wasd, out _),
-            "W is an interaction request, never a jump.");
+        Assert.IsTrue(KeyboardControlKeyPolicy.TryMap(0x57, KeyboardControlScheme.Wasd, out var stretch));
+        Assert.AreEqual(DirectionalControlKey.Stretch, stretch);
         foreach (var arrow in new[] { 0x25, 0x26, 0x27, 0x28 })
             Assert.IsFalse(KeyboardControlKeyPolicy.TryMap(arrow, KeyboardControlScheme.Wasd, out _));
         Assert.IsFalse(KeyboardControlKeyPolicy.TryMap(0x25, KeyboardControlScheme.ArrowKeys, out _),
@@ -46,6 +46,48 @@ public sealed class WorkerWKeyboardInputBridgeTests
         Assert.AreEqual(new DirectionalControlIntent(false, false, true, false), state.Snapshot);
         state.Clear();
         Assert.AreEqual(DirectionalControlIntent.None, state.Snapshot);
+    }
+
+    [TestMethod]
+    public void VerticalKeysCancelAsAPairAndReleaseWithoutLosingHorizontalInput()
+    {
+        var state = new DirectionalControlHeldState();
+        state.Set(DirectionalControlKey.Left, true);
+        state.Set(DirectionalControlKey.Stretch, true);
+        state.Set(DirectionalControlKey.Stretch, true);
+        Assert.IsTrue(state.Snapshot.Stretch);
+        Assert.IsFalse(state.Snapshot.Jump);
+        Assert.AreEqual(1, state.Snapshot.VerticalDeformationAxis);
+        state.Set(DirectionalControlKey.Squash, true);
+        Assert.AreEqual(0, state.Snapshot.VerticalDeformationAxis);
+        Assert.IsTrue(state.Snapshot.Left);
+        state.Set(DirectionalControlKey.Stretch, false);
+        Assert.AreEqual(-1, state.Snapshot.VerticalDeformationAxis);
+        state.Set(DirectionalControlKey.Squash, false);
+        Assert.AreEqual(0, state.Snapshot.VerticalDeformationAxis);
+        Assert.IsTrue(state.Snapshot.Left);
+        state.Clear();
+        Assert.AreEqual(DirectionalControlIntent.None, state.Snapshot);
+    }
+
+    [TestMethod]
+    public void StretchCancellationSuppressesHeldRepeatUntilPhysicalRelease()
+    {
+        var state = new DirectionalControlHeldState();
+        state.Set(DirectionalControlKey.Stretch, true);
+        state.ClearUntilRelease();
+        state.Set(DirectionalControlKey.Stretch, true);
+        Assert.AreEqual(DirectionalControlIntent.None, state.Snapshot);
+        state.Set(DirectionalControlKey.Stretch, false);
+        state.Set(DirectionalControlKey.Stretch, true);
+        Assert.AreEqual(1, state.Snapshot.VerticalDeformationAxis);
+        state.Clear();
+        state.SuppressUntilRelease(DirectionalControlKey.Stretch);
+        state.Set(DirectionalControlKey.Stretch, true);
+        Assert.AreEqual(DirectionalControlIntent.None, state.Snapshot);
+        state.Set(DirectionalControlKey.Stretch, false);
+        state.Set(DirectionalControlKey.Stretch, true);
+        Assert.AreEqual(1, state.Snapshot.VerticalDeformationAxis);
     }
 
     [TestMethod]

@@ -338,7 +338,7 @@ public sealed class BeltBodyAppearancePresenter : IDisposable
                 new SetGaze(EyeSelection.Both, action == QuietIdleAction.LookLeft ? -.4 : .4, 0)), ReleaseQuiet))
             throw new InvalidOperationException("待机眼睛动作取消失败。");
         var attachments = motion.UpdateBoundary(presentation, shape, frame.Tick, frame.Seconds, facing,
-            new(frame.CoreX, frame.CoreY));
+            new(frame.CoreX, frame.CoreY), DirectionalControlIntent.ResolveVerticalDeformation(frame.Stretch, frame.Down));
         quiet.AfterStep(frame.Seconds);
         router.ConsumeResults(target);
         currentShape = shape;

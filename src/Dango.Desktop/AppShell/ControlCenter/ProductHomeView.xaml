@@ -677,11 +677,11 @@
                             </Border>
                             <TextBlock Text="操作帮助" FontSize="15" Margin="0,22,0,8" />
                             <Expander x:Name="HomeOperationHelp" Header="首页与门廊" Padding="0,8" IsExpanded="False" Foreground="{DynamicResource HomeInk}">
-                                <TextBlock Text="首页：Q 换装 · E 捏脸 · F 进入门廊&#10;门廊：F 进入／新建 · E 布置普通房&#10;A / D 移动 · W 拉伸 · S 下压 · 空格跳跃&#10;Esc 返回／收起当前页面" Margin="20,8,0,8" LineHeight="23"
+                                <TextBlock Text="首页：Q 换装 · E 捏脸 · F 进入门廊&#10;门廊：F 进入／新建 · E 布置普通房&#10;A / D 移动 · W 上看／拉伸 · S 下看／轻压 · 空格跳跃&#10;Esc 返回／收起当前页面" Margin="20,8,0,8" LineHeight="23"
                                            TextWrapping="Wrap" Foreground="{DynamicResource HomeMuted}" />
                             </Expander>
                             <Expander x:Name="RoomOperationHelp" Header="普通房" Padding="0,8" Foreground="{DynamicResource HomeInk}">
-                                <TextBlock Text="A / D 移动 · S 轻压 · 空格跳跃&#10;滚轮调视距 · Shift＋左键横移轻抚&#10;Esc 打开菜单；布置家具时退出编辑&#10;房门返回门廊，关闭窗口暂时隐藏房间" Margin="20,8,0,8" LineHeight="23"
+                                <TextBlock Text="A / D 移动 · W 上看／拉伸 · S 下看／轻压 · 空格跳跃&#10;滚轮调视距 · Shift＋左键横移轻抚&#10;Esc 打开菜单；布置家具时退出编辑&#10;房门返回门廊，关闭窗口暂时隐藏房间" Margin="20,8,0,8" LineHeight="23"
                                            TextWrapping="Wrap" Foreground="{DynamicResource HomeMuted}" />
                             </Expander>
                             <Expander x:Name="DesktopPetOperationHelp" Header="桌宠房" Padding="0,8" Foreground="{DynamicResource HomeInk}">

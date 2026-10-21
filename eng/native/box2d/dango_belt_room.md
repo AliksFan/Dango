@@ -1,5 +1,12 @@
 # F7-0 independent belt room ABI 1
 
+2026-10-21 W/S update: this room embeds the same balanced upper/lower deformation
+control as [the product body](dango_belt_product.md). Both held channels cancel
+only the vertical pair; horizontal input, drag and original jump gates remain.
+Contact forces and elastic energy can still alter takeoff or flight indirectly;
+there is no trajectory lock or additional COM correction. ABI, collection
+transactions and contact budgets are unchanged; the rebuilt module hash changes.
+
 Current collection extension (R3, 2026-10-20): capabilities255 adds an independent
 `belt-room-furniture-r3-v1` interface, while retaining ABI1/frame4472 and the R1
 base contact identity. See [R3 contract](../../../docs/planning/2026-10-20-belt-room-furniture-r3.md)
