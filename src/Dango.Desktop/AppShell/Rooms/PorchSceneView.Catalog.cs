@@ -125,9 +125,21 @@ public sealed partial class PorchSceneView
         var actions = new System.Windows.Size(
             Math.Max(0, catalogActions.DesiredSize.Width - margin.Left - margin.Right),
             Math.Max(0, catalogActions.DesiredSize.Height - margin.Top - margin.Bottom));
-        catalogActions.Margin = new(
-            Math.Clamp(target.Left + target.Width / 2 - actions.Width / 2, 8, Math.Max(8, ActualWidth - actions.Width - 8)),
-            Math.Max(64, target.Top - 42 * SceneScale - actions.Height - 8), 0, 0);
+        var left = Math.Clamp(target.Left + target.Width / 2 - actions.Width / 2, 8, Math.Max(8, ActualWidth - actions.Width - 8));
+        var top = Math.Max(8, target.Top - 42 * SceneScale - actions.Height - 8);
+        catalogControls.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+        var toolsMargin = catalogControls.Margin;
+        var toolsWidth = Math.Max(0, catalogControls.DesiredSize.Width - toolsMargin.Left - toolsMargin.Right);
+        var toolsHeight = Math.Max(0, catalogControls.DesiredSize.Height - toolsMargin.Top - toolsMargin.Bottom);
+        var tools = new Rect(Math.Max(0, ActualWidth - toolsMargin.Right - toolsWidth), toolsMargin.Top, toolsWidth, toolsHeight);
+        if (new Rect(left, top, actions.Width, actions.Height).IntersectsWith(tools))
+        {
+            // Move the action row, never the door geometry, to clear top tools.
+            var beside = tools.Left - actions.Width - 8;
+            if (beside >= 8) left = Math.Min(left, beside);
+            else top = Math.Max(top, tools.Bottom + 8);
+        }
+        catalogActions.Margin = new(left, top, 0, 0);
     }
     private void AddAction(string label, string name, Action action, bool enabled = true, string? disabledReason = null)
     {

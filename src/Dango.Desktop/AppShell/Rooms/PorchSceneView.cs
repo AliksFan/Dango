@@ -230,8 +230,8 @@ public sealed partial class PorchSceneView : Grid
     private Rect DoorRect(PreviewDoor door)
     {
         var top = BackWallGroundY - 194 * SceneScale;
-        // Keep the top tool row separate from nearby actions and both door captions.
-        if (catalogProvided) top = Math.Max(top, 112 + 42 * SceneScale);
+        // Preserve the original door height; tools must fit around the doors.
+        if (catalogProvided) top = Math.Max(top, 56 + 42 * SceneScale);
         return new((door.X - CameraX - 62) * SceneScale, top, 124 * SceneScale, Math.Max(0, BackWallGroundY - top));
     }
 

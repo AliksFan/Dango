@@ -142,6 +142,12 @@ public sealed class PorchDoorInteractionTests
         scene.Measure(new Size(width, height)); scene.Arrange(new Rect(0, 0, width, height)); scene.UpdateLayout();
         scene.ResetProjection(780);
         scene.Measure(new Size(width, height)); scene.Arrange(new Rect(0, 0, width, height)); scene.UpdateLayout();
+        foreach (var door in scene.DoorBounds)
+        {
+            Assert.AreEqual(194 * scene.SceneScale, door.Height, .001,
+                "At supported viewport sizes the original full-height doors fit; tool spacing must not shorten them.");
+            Assert.AreEqual(scene.BackWallGroundY, door.Bottom, .001, "Doors keep their original ground baseline.");
+        }
         var rows = new[] { Actions(scene), Tools(scene) };
         var rectangles = rows.Select(row => new Rect(row.TranslatePoint(new System.Windows.Point(), scene), new Size(row.ActualWidth, row.ActualHeight))).ToArray();
         Assert.IsFalse(rectangles[0].IntersectsWith(rectangles[1]), "Recovery tools must not cover nearby door actions.");
