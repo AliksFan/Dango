@@ -105,7 +105,7 @@ B1不依赖B2；考虑本项目默认一次委派一个子任务，推荐顺序�
 
 ## 7. 审阅与下一阶段授权边界
 
-建议批准B1～B4的上述范围，并明确包含清单中的类型退役、入口迁移与最小规则增补后，才进入实施；用户也可以只批准其中批次。辅助色槽位若仍需保留产品意图，可从B1退役范围移出，不影响其余批次。
+建议优先实施B1＋B2，并配套补必要导航和最小规则；B3可以后置，B4不要求整份AGENTS重写。明确批准选定批次及其中的类型退役、入口迁移与规则增补后，才进入实施。辅助色槽位若仍需保留产品意图，可从B1退役范围移出，不影响其余批次。
 
 实施许可不包含main合并、推送、安装／部署、删除分支／worktree／证据／数据，也不包含任何前台屏幕使用。占屏项目须按AGENTS第4节说明目的、方式与时长后单独请求；后台验证也仅报告实际覆盖行为。
 
@@ -116,3 +116,23 @@ B1不依赖B2；考虑本项目默认一次委派一个子任务，推荐顺序�
 - 两份新文档的72处相对文件链接及README新增的2处导航目标均存在；独立只读复核确认四候选、12入口计数和owner职责与源码一致。
 - `git diff --cached --check`通过；差异仅两份新规划文档和README一条导航，无生产／测试／AGENTS／受保护DLL改动。主仓库HEAD、无暂存项状态、既有AGENTS及受保护DLL哈希与开始时一致。
 - 本轮未构建或运行自动／后台／前台／人工测试；没有新增运行进程、监听端口、测试窗口、输入占用或日常存档写入。规划文档保留在独立分支，本地提交不合main、不推送。
+
+## 9. 对多人方向分支的影响与取舍
+
+2026-10-21补充：用户询问多人方向影响，并明确表示接受影响、必要时可以重做。以下为只读影响判断；这是对兼容性取舍的确认，不将其扩大成生产实施、合并、删除分支或数据库重跑授权。
+
+核查了account-live-sync（0c722ac）、backend-b5-windows（8bd824d）、backend-b5c-acceptance（34e0360）、porch-account-scenes（866cbc9）、accessory-account-c2（011647e）、ordinary-room-physics-admission（b1cb2fe）、ordinary-room-multiplayer-design（9656fce）及p2a-minimal-multiplayer-sync（b6b367a）八个本地ref。方法为merge-base／changed-file交集和分支内符号核对；未模拟最终合并或构建，不根据分支名、文件数或聊天状态判定当前正在开发。存在多个共同基线时，差异规模随基线不同；这里不以文件数量衡量冲突或重做量。
+
+| 范围 | 已核实的交集 | 影响判断／建议 |
+| --- | --- | --- |
+| B1候选与共享回退 | 八个ref对所核对共同基线均未改四候选及场景工厂文件；main的 `Multiplayer/NetworkPetPresentation.cs:114` 仍调用AuthoredPoseSampler | B1同文件改动冲突风险较低；保持sampler命名空间／生产职责，不将其迁到tests，仍需验证合并后消费关系 |
+| 账号／配饰／门廊集成 | account-live-sync、backend-b5-windows／b5c-acceptance、porch-account-scenes、accessory-account-c2均改过 `DangoApplicationHost`／`.LocalRoom`、`ProductHomeView`／LiveScene等B2涉及的接线；B5还有 `CreateForAccountIntegration` 及PorchCrudC1DesktopRig消费者 | 预计需要处理语义冲突、调整构造与事件接线、迁移受影响验证。优先新主线职责，可重做客户端适配，不为保留旧入口而增加长期兼容层 |
+| 多人协议／服务端／同步逻辑 | 上述集成分支另含 `Dango.Protocol`、`Dango.Server`、`Dango.Client.Sync` 的账号、房间访问、session或配饰同步实现 | B1／B2方案不修改这些合同。保留业务实现和历史证据，后续按模块接入并重新验证所需边界；不能把客户端重接等同于全部业务推倒重做 |
+| 普通房物理准入 | ordinary-room-physics-admission改过LocalRoom／Porch／家具及旧物理绑定；没有Protocol／Server／Client.Sync差异 | 需要按当前新身体重新判断可复用的准入／呈现与接线；既有物理证据只对原模块和快照有效，不能直接外推 |
+| 设计／已在main的代码来源 | ordinary-room-multiplayer-design对共同基线只增加规则及设计／计划文档；p2a-minimal-multiplayer-sync对共同基线仅有AGENTS差异 | 不能按名称把它们算成两套待迁移的多人实现。保留设计及来源，按当前主线核对其假设 |
+
+另外，backend-b5-windows的 `docs/planning/2026-10-11-porch-crud-c1r2-local-plan.md:11` 仍绑定B772旧物理，准备记录明确真实C1r2未执行；已读取原聊天的最新结论，完整实机闭环曾决定等待新模型。即使不清理，接入当前新身体主线也需要适配、受影响验证和重新冻结；这部分不能全部归因于本次整理，更不能直接复用旧资源／屏幕授权。
+
+推荐集成顺序：先完成获批的主线整理，保留旧分支作为实现来源；后续从整理后的稳定主线按业务模块接回多人客户端，重做必要入口及验收。独立后端／协议工作可继续；客户端入口改造宜基于同一新基线，避免在旧review链上继续堆接线。此处仅是顺序建议，没有给其它聊天发指令或暂停其工作。
+
+本次复核未改任何相关分支。account-live-sync工作区现有两个PostgreSQL脚本／模块修改保留；main仍仅原AGENTS修改。新增内容仅本节及实施优先级说明。
