@@ -1,0 +1,6 @@
+case=10 input_tick=610 accepted=790 refusal_line=0 input= 0 0 0 0 0 0 0 0 0
+diag= 1 791 -705 -605 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+cell=0 0 0 0 0 0 radius=0
+endpoint_min_gap=0 theta=0
+circle_from= 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+circle_to= 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0

@@ -108,7 +108,78 @@ static int saved_platform_case(float x,int jump){
   for(int endpoint=0;endpoint<2;++endpoint){const double* q=endpoint?room_trace_to:room_trace_from;fprintf(stderr,"%s={",endpoint?"to":"from");for(int j=0;j<BELT_D;++j)fprintf(stderr,"%s%.17g",j?",":"",q[j]);fprintf(stderr,"}\n");}}
  CHECK(!rc&&tick==600);CHECK(!dango_belt_room_destroy(h));printf("saved x%.0f jump%d platform approach 600 ticks PASS\n",x,jump);return 0;
 }
+/* Exact furniture DTOs from DesktopPhysicsScene.OrdinaryFurnitureDefinition;
+   the world ground offset is already included, unlike the historic elevated
+   platform-only exercise above. No velocity/state injection in this replay. */
+static int combined_ball_platform_case(int jump,int legacy,float start,int require_top){
+ void* h=NULL;CHECK(!dango_belt_room_create(&cfg,cal,11,start,0,-15,15,&h));CHECK(!dango_belt_room_set_solid_walls(h,1,0)&&!dango_belt_room_enable_collection(h,1));CHECK(!step(h,180));
+ dango_belt_room_definition p={.kind=1,.x=8.827849252112726,.y=.8933278319903329,.width=3.7777777777777777,.height=.2916666666666667,.friction=.72};
+ CHECK(!add(h,p)&&!add(h,ball(3.1999147569060984,3.183787110963082,.9166666666666666)));
+ room_world* w=room_lookup(h);collection_test_disable_block=legacy;int initial_blocks=collection_test_block_accepted,rc=0,tick,top_contacts=0;double maximum_ball_x=0;
+ for(tick=0;tick<1000;++tick){room_world saved=*w;belt_body body=*room_body(w);dango_belt_room_input input={.body_id=1};input.controls[0]=tick<600?1.f:0;input.controls[2]=tick>=jump&&(tick-jump)%65==0?1.f:0;
+  rc=dango_belt_room_step(h,.0166666f,&input,1);if(rc){CHECK(legacy&&rc==DANGO_BELT_ROOM_REJECTED&&w->diag[9]>2e-6&&w->diag[17]>=300);
+   CHECK(!memcmp(&body,room_body(w),sizeof body)&&!memcmp(saved.items,w->items,sizeof saved.items)&&saved.tick==w->tick&&saved.revision==w->revision);
+   CHECK(dango_belt_room_step(h,.0166666f,&input,1)==DANGO_BELT_ROOM_FAULT);break;}
+  CHECK(w->collection_count==2&&w->items[0].definition.kind==1&&w->items[1].definition.kind==2&&w->items[1].ball.integrations==(uint64_t)(tick+1)*4);
+  CHECK(w->diag[9]<=2e-6&&w->diag[11]<=w->diag[10]+1e-9*(4+w->diag[10])&&w->diag[17]<=1200);
+  dango_belt_room_collection_item* disk=&w->items[1];dango_belt_room_platform platform=collection_platform(&w->items[0]);belt_v normal;
+  CHECK(collection_circle_rectangle((belt_v){disk->ball.x,disk->ball.y},disk->definition.ball.radius,&platform,&normal)>=-ROOM_PENETRATION&&disk->ball.y-disk->definition.ball.radius>=room_body(w)->cfg.ground_height-ROOM_PENETRATION);
+  maximum_ball_x=fmax(maximum_ball_x,disk->ball.x);double top=platform.y+.5*platform.height;
+  if(disk->surface_contact.touching&&disk->surface_contact.object_id==(int)w->items[0].instance&&disk->surface_contact.ny>=.7&&disk->ball.y-disk->definition.ball.radius>=top-ROOM_PENETRATION&&fabs(disk->ball.x-platform.x)<=platform.width*.5)top_contacts++;}
+ collection_test_disable_block=0;CHECK(legacy?(rc&&tick<1000):(!rc&&tick==1000&&collection_test_block_accepted>initial_blocks));
+ CHECK(!require_top||top_contacts>0);CHECK(!dango_belt_room_destroy(h));printf("combined exact saved DTO start%.0f jump%d %s tick%d blocks%d topContacts%d maximumBallX%.17g PASS\n",start,jump,legacy?"PGS-only refusal/rollback":"bounded coupled solve",tick,collection_test_block_accepted-initial_blocks,top_contacts,maximum_ball_x);return 0;
+}
+/* Frozen first swept disk refusal after the coupled-solver repair: both
+   endpoints satisfy the penetration shell, but interpolation has a witness
+   in a pending cell beyond the first depth-limited uncertain cell. */
+static int ball_wall_shell_projection(void){
+ for(int right=0;right<2;++right){void* h=NULL;CHECK(!create(0,&h)&&!add(h,ball(right?19:-19,0,.4)));room_world* w=room_lookup(h);belt_body* b=room_body(w);dango_belt_room_collection_item* a=&w->items[0];double radius=a->definition.ball.radius;
+  a->ball.x=right?b->right-radius+.00028538138926492707:b->left+radius-.00028538138926492707;a->ball.y=b->cfg.ground_height+radius;
+  a->ball.vx=right?-.7:.7;memcpy(w->old_q,b->q,sizeof w->old_q);w->ball_old[0][0]=a->ball.x+(right?-.01:.01);w->ball_old[0][1]=a->ball.y;
+  /* This post-integration shell overlap was formerly ignored, even though
+     the subsequent strict wall guard refused the already-reflected ball. */
+  CHECK(collection_positions(w,b)&&a->ball.x-radius>=b->left&&a->ball.x+radius<=b->right&&w->diag[14]<=ROOM_POSITION_LIMIT);
+  CHECK(!dango_belt_room_destroy(h));}
+ puts("both solid walls project shell-sized ball overlap before the unchanged strict bounds guard PASS");return 0;
+}
+static int circle_pending_witness(void){
+ static const double from[BELT_D]={-1.571920151511029,-0.30767195617672494,-0.73390269624518234,-0.19326715852519261,0.27461490280394119,-0.56658783752250219,-0.033233063282209353,-0.045405115497566227,-0.0047366365055471968,0.048791256129332529,0.00091406538464337524,-0.030784454784694174,0.01755762246642956,-0.031605962258717028,-0.025212031153902442,-0.00138425744043174,0.010679504907947035,-0.013301464626850581,0.0076866554661123281,0.0012986039868145751,-0.0090984115315249827,0.00066565283463214365,-0.0043118101579442403,-0.0050066720418449305,0.010874186819641987,-0.0017422388893534157,-0.0010795073783608519,0.0021248833012008344,-0.0067596794512289034,-0.0041901124503907622,0.0020192033363304017,-0.00020733950937788526,0.0043659403733919818,0.0024128642194298183,4.6379013039489996,-0.18597893749222691};
+ static const double to[BELT_D]={-1.5689479994534041,-0.28582795556636376,-0.73062044491233313,-0.19115507988616295,0.27303553875100467,-0.57136092519204373,-0.034980301603459649,-0.044689267494276062,-0.0029914012648332936,0.049201095648699456,0.0023474492811749927,-0.030515687741404226,0.015795015778977853,-0.031965280048398666,-0.025406756730206516,-0.00091894003631818471,0.011992314248262166,-0.013272990897539581,0.0077120871403984111,0.0018754240341018356,-0.01001911689987553,0.00083823834928800547,-0.0037364966658211766,-0.0050053695309575904,0.011188017656906423,-0.0011879495869547955,-0.0013746495554947911,0.0015276413168952186,-0.0066192053627829369,-0.004237345684460261,0.0022255613300740155,0.0003462943597236579,0.0037171108895752251,0.0022600524001348383,4.6368406077716475,-0.15517384923049665};
+ room_world proof={0};double theta=0,radius=66.0/72;belt_v normal;
+ CHECK(collection_circle_closest(from,(belt_v){0,0},radius,&theta,&normal)>-ROOM_PENETRATION&&collection_circle_closest(to,(belt_v){0,0},radius,&theta,&normal)>-ROOM_PENETRATION);
+ collection_test_early_uncertain=1;CHECK(collection_circle_certificate(&proof,from,to,(belt_v){0,0},(belt_v){0,0},radius,&theta,1)==-1&&proof.diag[2]==DANGO_BELT_ROOM_UNCERTAIN);collection_test_early_uncertain=0;memset(&proof,0,sizeof proof);
+ CHECK(collection_circle_certificate(&proof,from,to,(belt_v){0,0},(belt_v){0,0},radius,&theta,1)==0&&proof.diag[4]<ROOM_GEOMETRY_BUDGET&&!proof.diag[2]);
+ double witness=theta;memset(&proof,0,sizeof proof);double distance=collection_circle_closest(from,(belt_v){0,0},0,&theta,&normal),tangent_radius=distance+ROOM_PENETRATION-1e-12;
+ CHECK(collection_circle_certificate(&proof,from,from,(belt_v){0,0},(belt_v){0,0},tangent_radius,&theta,0)==-1&&proof.diag[2]==DANGO_BELT_ROOM_UNCERTAIN);
+ printf("disk pending-cell swept witness theta%.17g; unresolved tangent still refuses PASS\n",witness);return 0;
+}
+static int block_small_velocity_cone(void){
+ void* h=NULL;CHECK(!create(-8,&h));dango_belt_room_definition d=ball(4,2,1);d.ball.mass=1;CHECK(!add(h,d));room_world* w=room_lookup(h);belt_body* b=room_body(w);
+ w->items[0].ball.vx=-3.7610783853592557e-7;w->items[0].ball.vy=-3.7991604726214715e-7;w->items[0].ball.omega=-2.9850675984255716e-7;
+ collection_row rows[2];int n=0;CHECK(collection_add_row(w,b,rows,&n,0,0,-1,(belt_v){0,1},0,.9006856827038201,0,0,0,0));double angle=1.3681433937973781;
+ CHECK(collection_add_row(w,b,rows,&n,0,0,-1,(belt_v){cos(angle),sin(angle)},0,.6275949905570387,0,0,0,0));
+ int blocks=collection_test_block_accepted,iterations=0;double before=collection_ke(w,b),residual=collection_solve_rows(w,b,rows,2,&iterations);
+ CHECK(collection_test_block_accepted>blocks&&iterations<=300&&residual<2e-8&&collection_ke(w,b)<=before+1e-20);
+ for(int i=0;i<2;++i)CHECK(rows[i].body.pn>=0&&fabs(rows[i].body.pt)<=rows[i].body.mu*rows[i].body.pn);
+ CHECK(!dango_belt_room_destroy(h));puts("tiny-velocity Newton step requires subsequent exact impulse-cone projection PASS");return 0;
+}
+static int block_invalid_systems(void){
+ void* h=NULL;CHECK(!create(-8,&h)&&!add(h,ball(4,2,.4)));room_world* w=room_lookup(h);belt_body* b=room_body(w);collection_row rows[2];int n=0;
+ CHECK(collection_add_row(w,b,rows,&n,0,0,-1,(belt_v){0,1},0,0,0,0,0,0)&&collection_add_row(w,b,rows,&n,0,0,-1,(belt_v){0,-1},0,0,0,0,0,0));
+ rows[0].target=rows[1].target=1;room_world saved=*w;belt_body body=*b;collection_row before[2];memcpy(before,rows,sizeof rows);double residual=123;
+ /* Opposite normals demanding +1 both ways are inconsistent. An exact solve
+    is singular; neither regularization nor a fake residual may admit it. */
+ CHECK(!collection_block_step(w,b,rows,2,&residual)&&residual==123&&!memcmp(&saved,w,sizeof saved)&&!memcmp(&body,b,sizeof body)&&!memcmp(before,rows,sizeof rows));CHECK(collection_residual(w,b,rows,2)>=1);
+ rows[0].target=NAN;CHECK(!collection_block_step(w,b,rows,2,&residual)&&residual==123&&!memcmp(&saved,w,sizeof saved)&&!memcmp(&body,b,sizeof body));
+ CHECK(!collection_block_step(w,b,rows,COLLECTION_BLOCK_ROWS+1,&residual)&&residual==123);memcpy(rows,before,sizeof rows);int iterations;CHECK(collection_solve_rows(w,b,rows,2,&iterations)>2e-6&&iterations==300);CHECK(!dango_belt_room_destroy(h));puts("inconsistent/singular/nonfinite/oversize block fallback has no writes and cannot certify PASS");return 0;
+}
 int main(int argc,char** argv){
+ if(argc>1&&!strcmp(argv[1],"--combined"))return ball_wall_shell_projection()||circle_pending_witness()||block_small_velocity_cone()||block_invalid_systems()||combined_ball_platform_case(0,1,0,0)||combined_ball_platform_case(0,0,0,0)||combined_ball_platform_case(30,0,0,0)||combined_ball_platform_case(60,0,0,0)||combined_ball_platform_case(60,0,2,1)||combined_ball_platform_case(90,0,2,0);
+ if(argc>1&&!strcmp(argv[1],"--combined-top"))return combined_ball_platform_case(60,0,2,1);
+ if(argc>1&&!strcmp(argv[1],"--combined-corner"))return combined_ball_platform_case(90,0,2,0);
+ if(argc>1&&!strcmp(argv[1],"--wall-shell"))return ball_wall_shell_projection();
+ if(argc>1&&!strcmp(argv[1],"--circle-pending"))return circle_pending_witness();
+ if(argc>1&&!strcmp(argv[1],"--block-invalid"))return block_small_velocity_cone()||block_invalid_systems();
  if(argc>1&&!strcmp(argv[1],"--saved-platform"))return saved_platform_case(6,20)||saved_platform_case(5,90)||saved_platform_case(5,120);
 #ifdef _WIN32
  if(argc>2&&!strcmp(argv[1],"--dll"))return actual_dll(argv[2],0);

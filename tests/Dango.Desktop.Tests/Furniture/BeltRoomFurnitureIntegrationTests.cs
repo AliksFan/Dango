@@ -19,6 +19,68 @@ public sealed class BeltRoomFurnitureIntegrationTests
     private static string Json<T>(T value) => JsonSerializer.Serialize(value);
 
     [TestMethod, TestCategory("NativeIntegration")]
+    public void SavedBallAndPlatformUseTheActualProductCoordinateConversion()
+    {
+        var platform = Item(1, FurnitureItemKind.StaticPlatform, 1715.6051461521163, 126.65960390330395);
+        var ball = Item(2, FurnitureItemKind.RoundBall, 1310.393862497239, 281.07267198934187);
+        using var fixture = new Fixture(Layout(platform, ball));
+        var definitions = new[] { fixture.Scene.OrdinaryFurnitureDefinition(platform), fixture.Scene.OrdinaryFurnitureDefinition(ball) };
+        var top = definitions[0].Platform!;
+        Assert.AreEqual(-.72 + platform.Anchor.Y / 72, top.CenterY + top.Height / 2, 1e-12);
+        Assert.AreEqual((platform.Anchor.X - 1080) / 72, top.CenterX, 1e-12);
+        Assert.AreEqual(-.72 + ball.Anchor.Y / 72, definitions[1].Ball!.CenterQY, 1e-12);
+        var output = Path.Combine(TestRepository.Root, "artifacts", "belt-ball-platform-diagnosis", "managed-definitions.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        File.WriteAllText(output, Json(new
+        {
+            source = "DesktopPhysicsScene.OrdinaryFurnitureDefinition",
+            hostGround = fixture.Scene.GroundY,
+            nativeGround = fixture.Scene.ToWorld(new(1080, fixture.Scene.GroundY)).Y,
+            definitions
+        }));
+    }
+
+    [TestMethod, TestCategory("NativeIntegration")]
+    [DataRow(0, 0)]
+    [DataRow(30, 0)]
+    [DataRow(60, 2)]
+    [DataRow(90, 2)]
+    public void SavedBallPushedIntoPlatformKeepsTheSameWorldRunning(int jumpPhase, int startX)
+    {
+        using var fixture = new Fixture(Layout(
+            Item(1, FurnitureItemKind.StaticPlatform, 1715.6051461521163, 126.65960390330395),
+            Item(2, FurnitureItemKind.RoundBall, 1310.393862497239, 281.07267198934187)), startX);
+        var original = File.ReadAllBytes(fixture.Path);
+        var initialTick = fixture.Scene.BeltRoomFrame!.Tick;
+        var topContacts = 0;
+        var maximumBallX = double.NegativeInfinity;
+        var platform = fixture.Scene.ReadFurnitureCollectionFrame().Items.Single(item => item.Definition.Kind == DangoFurnitureKind.StaticPlatform);
+        for (var tick = 0; tick < 1000; tick++)
+        {
+            fixture.Scene.SetInput(new(false, tick < 600, tick >= jumpPhase && (tick - jumpPhase) % 65 == 0, false));
+            var frame = fixture.Scene.Step(Dt);
+            var failure = $"input tick={tick}; code={fixture.Scene.LastErrorCode}; fault={fixture.Scene.BeltRoomFrame?.Fault}; diagnostics={Json(fixture.Scene.BeltRoomFrame?.Diagnostics)}";
+            if (fixture.Scene.LastErrorCode != 0)
+            {
+                var output = Path.Combine(TestRepository.Root, "artifacts", "belt-ball-platform-diagnosis", $"managed-case-{startX}-{jumpPhase}-failure-{Guid.NewGuid():N}.json");
+                File.WriteAllText(output, Json(new { tick, startX, jumpPhase, errorCode = fixture.Scene.LastErrorCode, frame = fixture.Scene.BeltRoomFrame }));
+            }
+            Assert.IsTrue(frame.Physics.Succeeded, failure);
+            Assert.AreEqual(0, fixture.Scene.LastErrorCode, failure);
+            Assert.AreEqual(initialTick + (ulong)tick + 1, fixture.Scene.BeltRoomFrame!.Tick, "Every requested physics tick must really advance.");
+            fixture.Session.OnFrame();
+            Assert.AreEqual(OrdinaryFurnitureSceneState.Synced, fixture.Session.State);
+            var ball = fixture.Session.NativeFrame!.Items.Single(item => item.Definition.Kind == DangoFurnitureKind.RoundBall);
+            maximumBallX = Math.Max(maximumBallX, ball.BallState!.CenterQX);
+            if (ball.SurfaceContact is { Touching: true } contact && contact.ObjectId == (int)platform.InstanceId && contact.NormalQY > .5)
+                topContacts++;
+        }
+        Console.WriteLine($"Product push start={startX}, phase={jumpPhase}, platform-top contact frames={topContacts}, maximum ball x={maximumBallX:G17}");
+        if (startX == 2 && jumpPhase == 60) Assert.IsGreaterThan(0, topContacts, "The regression must include a real ball contact on top of the platform.");
+        CollectionAssert.AreEqual(original, File.ReadAllBytes(fixture.Path), "Ordinary motion must preserve saved furniture anchors.");
+    }
+
+    [TestMethod, TestCategory("NativeIntegration")]
     public void DrivingTheRealBodyPushesTheRoomBallWithBilateralContact()
     {
         using var fixture = new Fixture(Layout(Item(1, FurnitureItemKind.RoundBall, 1360, 66)));
@@ -156,7 +218,7 @@ public sealed class BeltRoomFurnitureIntegrationTests
         internal OrdinaryRoomFurnitureSession Session { get; }
         internal FurnitureLayoutStore Store { get; } = new(contract: Contract);
         internal string Path { get; }
-        internal Fixture(FurnitureLayout layout)
+        internal Fixture(FurnitureLayout layout, double startX = 0)
         {
             var root = System.IO.Path.Combine(TestRepository.Root, "artifacts", "test-runs", "belt-room-furniture", Guid.NewGuid().ToString("N"));
             Path = FurnitureLayoutStore.GetLayoutPath(root, Contract);
@@ -164,7 +226,9 @@ public sealed class BeltRoomFurnitureIntegrationTests
             File.WriteAllBytes(Path, FurnitureLayoutSerializer.Serialize(layout, Contract));
             var module = Environment.GetEnvironmentVariable("DANGO_BELT_ROOM_MODULE")
                 ?? throw new InvalidOperationException("An explicit collection room module is required.");
-            Scene = new(module, new(1000, 240, 160, 120), DangoBodyControls.Default);
+            // Rebase the host origin before furniture is mapped. The body remains at native x=0;
+            // the saved room geometry is translated by -startX, equivalent to spawning at startX.
+            Scene = new(module, new(1000 + startX * 72, 240, 160, 120), DangoBodyControls.Default);
             try
             {
                 for (var i = 0; i < 180; i++) Assert.IsTrue(Scene.Step(Dt).Physics.Succeeded);

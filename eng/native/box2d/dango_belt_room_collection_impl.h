@@ -13,7 +13,7 @@ _Static_assert(sizeof(dango_belt_room_collection_token)==40,"collection token AB
 #endif
 static volatile int collection_negative_mode=DANGO_BELT_ROOM_COLLECTION_NEGATIVE;
 #ifdef DANGO_BELT_ROOM_COLLECTION_TESTS
-static int collection_test_fault;
+static int collection_test_fault,collection_test_disable_block,collection_test_block_accepted,collection_test_early_uncertain;
 static room_cell collection_failure_cell;
 static double collection_failure_from[BELT_D],collection_failure_to[BELT_D],collection_failure_radius;
 static dango_belt_room_collection_item collection_failure_ball;
@@ -95,7 +95,7 @@ static double collection_radial_lower(const double* a,const double* b,const room
    over the entire theta/time cell. No sampled contour can pass this test. */
 static int collection_circle_certificate(room_world* w,const double* from,const double* to,belt_v ca,belt_v cb,double radius,double* theta,int swept){
  double a[BELT_D],b[BELT_D];memcpy(a,from,sizeof a);memcpy(b,to,sizeof b);a[0]-=ca.x;a[1]-=ca.y;b[0]-=cb.x;b[1]-=cb.y;
- room_cell stack[64];int pending=1;stack[0]=(room_cell){BELT_PI,BELT_PI,0,swept?1:0,0,0};double allowed=radius-ROOM_PENETRATION;
+ room_cell stack[64];int pending=1,uncertain=0;stack[0]=(room_cell){BELT_PI,BELT_PI,0,swept?1:0,0,0};double allowed=radius-ROOM_PENETRATION;
  while(pending){if(w->diag[4]>=ROOM_GEOMETRY_BUDGET){room_refuse(w,DANGO_BELT_ROOM_BUDGET,2);return -1;}w->diag[4]++;
   room_cell c=stack[--pending];double box[4];room_cell_bounds(a,b,&c,box);w->diag[5]=fmax(w->diag[5],c.theta_depth);w->diag[6]=fmax(w->diag[6],c.time_depth);
   double dx=fmax(0,fmax(box[0],-box[2])),dy=fmax(0,fmax(box[1],-box[3]));if(hypot(dx,dy)>=allowed||collection_radial_lower(a,b,&c)>=nextafter(allowed*allowed,INFINITY))continue;
@@ -104,12 +104,15 @@ static int collection_circle_certificate(room_world* w,const double* from,const 
   if(c.theta_depth>=20&&(!swept||c.time_depth>=16)){
 #ifdef DANGO_BELT_ROOM_COLLECTION_TESTS
    collection_failure_cell=c;memcpy(collection_failure_from,a,sizeof a);memcpy(collection_failure_to,b,sizeof b);collection_failure_radius=radius;
+   if(collection_test_early_uncertain){room_refuse(w,DANGO_BELT_ROOM_UNCERTAIN,3);return -1;}
 #endif
-   room_refuse(w,DANGO_BELT_ROOM_UNCERTAIN,3);return -1;}
+   /* Preserve refusal unless another pending cell supplies an actual
+      penetration witness that the existing projector can correct. */
+   uncertain=1;continue;}
   belt_v p0=belt_eval(a,c.center,0),p1=belt_eval(b,c.center,0);double tw=hypot(p1.x-p0.x,p1.y-p0.y)*(c.hi-c.lo),width=fmax(box[2]-box[0],box[3]-box[1]);
   if(swept&&c.time_depth<16&&(c.theta_depth>=20||tw>width*.5)){double m=(c.lo+c.hi)*.5;room_cell r=c;r.lo=m;r.time_depth++;c.hi=m;c.time_depth++;stack[pending++]=r;stack[pending++]=c;}
   else {room_cell r=c;r.center+=c.half*.5;r.half*=.5;r.theta_depth++;c.center-=c.half*.5;c.half*=.5;c.theta_depth++;stack[pending++]=r;stack[pending++]=c;}}
- return 1;
+ if(uncertain){room_refuse(w,DANGO_BELT_ROOM_UNCERTAIN,3);return -1;}return 1;
 }
 static double collection_ball_ke(const dango_belt_room_collection_item* i){double m=i->definition.ball.mass,r=i->definition.ball.radius;return .5*m*(i->ball.vx*i->ball.vx+i->ball.vy*i->ball.vy)+.25*m*r*r*i->ball.omega*i->ball.omega;}
 static double collection_ke(room_world* w,belt_body* b){double e=belt_kinetic(b);for(int i=0;i<30;++i)if(w->items[i].instance&&w->items[i].definition.kind==2)e+=collection_ball_ke(&w->items[i]);return e;}
@@ -192,7 +195,9 @@ static int collection_positions(room_world* w,belt_body* b){
    if(w->solid_walls&&a->ball.x+r-b->right>depth){depth=a->ball.x+r-b->right;n=(belt_v){-1,0};}
    for(int j=0;j<30;++j)if(w->items[j].instance&&w->items[j].definition.kind==1){dango_belt_room_platform p=collection_platform(&w->items[j]);belt_v pn;double pg=collection_circle_rectangle(center,r,&p,&pn);
     if(-pg>depth){depth=-pg;n=pn;}belt_v old={w->ball_old[i][0],w->ball_old[i][1]};if(collection_swept_rectangle(old,center,&p)<r-ROOM_PENETRATION&&pg>=-ROOM_PENETRATION){double e[4];room_edges(&p,e);room_gap(old,e,&pn);double ox=fmax(e[0],fmin(e[2],old.x)),oy=fmax(e[1],fmin(e[3],old.y));double needed=r-belt_dot(belt_sub(center,(belt_v){ox,oy}),pn);if(needed>depth){depth=needed;n=pn;}}}
-   if(depth>ROOM_PENETRATION){if(iteration==32)return room_refuse(w,DANGO_BELT_ROOM_REJECTED,1);double delta=fmin(ROOM_POSITION_LIMIT,depth+ROOM_CLEARANCE);a->ball.x+=delta*n.x;a->ball.y+=delta*n.y;w->diag[13]+=.5*a->definition.ball.mass*b->cfg.gravity*delta*n.y;w->diag[14]=fmax(w->diag[14],delta);w->diag[15]+=fmax(0,.5*a->definition.ball.mass*b->cfg.gravity*delta*n.y);corrected=1;moved[i]=1;continue;}
+   /* Walls have a strict final bounds guard. Resolve even a shell-sized
+      wall overlap here; floor/platform retain their penetration tolerance. */
+   if(depth>ROOM_PENETRATION||(w->solid_walls&&(a->ball.x-r<b->left||a->ball.x+r>b->right))){if(iteration==32)return room_refuse(w,DANGO_BELT_ROOM_REJECTED,1);double delta=fmin(ROOM_POSITION_LIMIT,depth+ROOM_CLEARANCE);a->ball.x+=delta*n.x;a->ball.y+=delta*n.y;w->diag[13]+=.5*a->definition.ball.mass*b->cfg.gravity*delta*n.y;w->diag[14]=fmax(w->diag[14],delta);w->diag[15]+=fmax(0,.5*a->definition.ball.mass*b->cfg.gravity*delta*n.y);corrected=1;moved[i]=1;continue;}
    for(int j=i+1;j<30;++j)if(!moved[j]&&w->items[j].instance&&w->items[j].definition.kind==2){dango_belt_room_collection_item* other=&w->items[j];belt_v rel={other->ball.x-a->ball.x,other->ball.y-a->ball.y},old={w->ball_old[j][0]-w->ball_old[i][0],w->ball_old[j][1]-w->ball_old[i][1]};double rr=r+other->definition.ball.radius,length=hypot(rel.x,rel.y),t;
     double sweep=collection_swept_distance(old,rel,&t);if(length<rr-ROOM_PENETRATION||sweep<rr-ROOM_PENETRATION){if(iteration==32)return room_refuse(w,DANGO_BELT_ROOM_REJECTED,1);belt_v direction=length>1e-12?belt_mul(1/length,rel):(belt_v){1,0};if(length>=rr){double ol=hypot(old.x,old.y);if(ol>1e-12)direction=belt_mul(1/ol,old);}
      double distance=rr+ROOM_CLEARANCE-belt_dot(rel,direction),ma=a->definition.ball.mass,mb=other->definition.ball.mass,lambda=distance/(1/ma+1/mb),largest=fmax(lambda/ma,lambda/mb);if(largest>ROOM_POSITION_LIMIT)lambda*=ROOM_POSITION_LIMIT/largest;
@@ -258,6 +263,72 @@ static void collection_contact_record(room_world* w,belt_body* b,const collectio
  c->touching=1;c->normal_impulse+=r->body.pn;c->tangent_impulse+=r->body.pt;
 }
 static int belt_room_contact_empty_collection(room_world* w,belt_body* b){int enabled=w->collection_enabled;w->collection_enabled=0;int rc=belt_room_contact(b);w->collection_enabled=enabled;return rc;}
+/* Fixed-point residual of the original unilateral normal/Coulomb tangent
+   equations, evaluated after the complete coupled update. */
+static double collection_residual(room_world* w,belt_body* b,const collection_row* rows,int n){
+ double residual=0;
+ for(int i=0;i<n;++i){const collection_row* r=&rows[i];double kn,kt,vn,vt;collection_row_values(w,b,r,&kn,&kt,&vn,&vt);
+  if(!(kn>0&&kt>0)||!isfinite(kn)||!isfinite(kt)||!isfinite(vn)||!isfinite(vt)||!isfinite(r->target)||!isfinite(r->body.mu)||r->body.mu<0||!isfinite(r->body.pn)||!isfinite(r->body.pt))return INFINITY;
+  double pn=fmax(0,r->body.pn+(r->target-vn)/kn),pt=fmax(-r->body.mu*pn,fmin(r->body.mu*pn,r->body.pt-vt/kt));
+  residual=fmax(residual,fmax(kn*fabs(pn-r->body.pn),kt*fabs(pt-r->body.pt)));}
+ return residual;
+}
+#define COLLECTION_BLOCK_ROWS 16
+/* Small dense active-set Newton step for the same projected equations as PGS.
+   It replaces one sweep within the existing 300-iteration bound. Every block
+   step is followed by PGS before termination, restoring the exact impulse
+   cone even for tiny Newton roundoff. Larger or
+   singular systems retain PGS; there is no regularization or changed law.
+   At most 32 unknowns, one pivoted solve and eight residual-only trial scales. */
+static int collection_block_step(room_world* w,belt_body* b,collection_row* rows,int n,double* residual){
+ if(n<1||n>COLLECTION_BLOCK_ROWS)return 0;
+#ifdef DANGO_BELT_ROOM_COLLECTION_TESTS
+ if(collection_test_disable_block)return 0;
+#endif
+ const int d=2*n;double response[2*COLLECTION_BLOCK_ROWS][2*COLLECTION_BLOCK_ROWS]={{0}};
+ double matrix[2*COLLECTION_BLOCK_ROWS][2*COLLECTION_BLOCK_ROWS+1]={{0}},velocity[2*COLLECTION_BLOCK_ROWS],impulse[2*COLLECTION_BLOCK_ROWS];
+ for(int i=0;i<n;++i){double kn,kt;collection_row_values(w,b,&rows[i],&kn,&kt,&velocity[2*i],&velocity[2*i+1]);impulse[2*i]=rows[i].body.pn;impulse[2*i+1]=rows[i].body.pt;
+  for(int j=0;j<=i;++j){const collection_row *a=&rows[i],*c=&rows[j];double body=0;
+   if(a->body_sign&&c->body_sign)for(int k=0;k<BELT_B;++k)body+=a->body_sign*c->body_sign*a->body.basis[k]*c->body.basis[k]/b->mass[2*k];
+   for(int u=0;u<2;++u)for(int v=0;v<2;++v){belt_v ad=u?(belt_v){-a->body.n.y,a->body.n.x}:a->body.n,cd=v?(belt_v){-c->body.n.y,c->body.n.x}:c->body.n;
+    double value=body*belt_dot(ad,cd);
+    for(int ka=0;ka<2;++ka)for(int kc=0;kc<2;++kc){int ia=ka?a->b:a->a,ic=kc?c->b:c->a;if(ia<0||ia!=ic)continue;
+     double mass=w->items[ia].definition.ball.mass;value+=(ka?-1:1)*(kc?-1:1)*belt_dot(ad,cd)/mass;if(u&&v)value+=2/mass;}
+    response[2*i+u][2*j+v]=response[2*j+v][2*i+u]=value;}}}
+ for(int i=0;i<n;++i){int r=2*i;double kn=response[r][r],kt=response[r+1][r+1];if(!(kn>0&&kt>0))return 0;
+  double pn=impulse[r]+(rows[i].target-velocity[r])/kn,pt=impulse[r+1]-velocity[r+1]/kt,mu=rows[i].body.mu;
+  if(pn<=0){matrix[r][r]=1;matrix[r][d]=-impulse[r];matrix[r+1][r+1]=1;matrix[r+1][d]=-impulse[r+1];}
+  else {for(int j=0;j<d;++j)matrix[r][j]=response[r][j];matrix[r][d]=rows[i].target-velocity[r];
+   if(pt<=-mu*pn||pt>=mu*pn){double sign=pt>0?1:-1;matrix[r+1][r]=-sign*mu;matrix[r+1][r+1]=1;matrix[r+1][d]=sign*mu*impulse[r]-impulse[r+1];}
+   else {for(int j=0;j<d;++j)matrix[r+1][j]=response[r+1][j];matrix[r+1][d]=-velocity[r+1];}}}
+ /* Row scaling makes the singularity check independent of mass units. */
+ for(int i=0;i<d;++i){double scale=0;for(int j=0;j<d;++j)scale=fmax(scale,fabs(matrix[i][j]));if(!(scale>0&&isfinite(scale)))return 0;for(int j=0;j<=d;++j)matrix[i][j]/=scale;}
+ for(int j=0;j<d;++j){int pivot=j;for(int i=j+1;i<d;++i)if(fabs(matrix[i][j])>fabs(matrix[pivot][j]))pivot=i;
+  if(!isfinite(matrix[pivot][j])||fabs(matrix[pivot][j])<=64*DBL_EPSILON*d)return 0;
+  for(int k=j;k<=d;++k){double swap=matrix[j][k];matrix[j][k]=matrix[pivot][k];matrix[pivot][k]=swap;}
+  double divisor=matrix[j][j];for(int k=j;k<=d;++k)matrix[j][k]/=divisor;
+  for(int i=0;i<d;++i)if(i!=j){double factor=matrix[i][j];for(int k=j;k<=d;++k)matrix[i][k]-=factor*matrix[j][k];}}
+ for(int i=0;i<d;++i)if(!isfinite(matrix[i][d]))return 0;
+ double original=collection_residual(w,b,rows,n),alpha=1;
+ for(int trial=0;trial<8;++trial,alpha*=.5){double candidate=0;
+  for(int i=0;i<n;++i){int r=2*i;double vn=velocity[r],vt=velocity[r+1],kn=response[r][r],kt=response[r+1][r+1];for(int j=0;j<d;++j){vn+=alpha*response[r][j]*matrix[j][d];vt+=alpha*response[r+1][j]*matrix[j][d];}
+   double pn=impulse[r]+alpha*matrix[r][d],pt=impulse[r+1]+alpha*matrix[r+1][d],nextn=fmax(0,pn+(rows[i].target-vn)/kn),nextt=fmax(-rows[i].body.mu*nextn,fmin(rows[i].body.mu*nextn,pt-vt/kt));
+   if(!isfinite(vn)||!isfinite(vt)||!isfinite(pn)||!isfinite(pt)){candidate=INFINITY;break;}candidate=fmax(candidate,fmax(kn*fabs(nextn-pn),kt*fabs(nextt-pt)));}
+  if(candidate<original*(1-1e-6)){for(int i=0;i<n;++i){double dn=alpha*matrix[2*i][d],dt=alpha*matrix[2*i+1][d];rows[i].body.pn+=dn;rows[i].body.pt+=dt;collection_row_apply(w,b,&rows[i],dn,dt);}
+   *residual=collection_residual(w,b,rows,n);
+#ifdef DANGO_BELT_ROOM_COLLECTION_TESTS
+   collection_test_block_accepted++;
+#endif
+   return 1;}}
+ return 0;
+}
+static double collection_solve_rows(room_world* w,belt_body* b,collection_row* rows,int n,int* iterations){
+ double residual=0;int iteration;
+ for(iteration=0;iteration<300;++iteration){if(iteration%8==7&&collection_block_step(w,b,rows,n,&residual))continue;residual=0;for(int i=0;i<n;++i){collection_row* r=&rows[i];double kn,kt,vn,vt;collection_row_values(w,b,r,&kn,&kt,&vn,&vt);
+   double pn=fmax(0,r->body.pn+(r->target-vn)/kn),pt=fmax(-r->body.mu*pn,fmin(r->body.mu*pn,r->body.pt-vt/kt)),dn=pn-r->body.pn,dt=pt-r->body.pt;residual=fmax(residual,fmax(kn*fabs(dn),kt*fabs(dt)));r->body.pn=pn;r->body.pt=pt;collection_row_apply(w,b,r,dn,dt);}
+  residual=collection_residual(w,b,rows,n);if(residual<2e-8)break;}
+ *iterations=iteration<300?iteration+1:300;return residual;
+}
 static int collection_contact(room_world* w,belt_body* b){
 #ifdef DANGO_BELT_ROOM_COLLECTION_TESTS
  if(collection_test_fault&&b->solver_diag[4]==3){for(int i=0;i<30;++i)if(w->items[i].instance&&w->items[i].definition.kind==2){w->items[i].ball.x=NAN;w->collection_error=1;break;}collection_test_fault=0;}
@@ -270,11 +341,8 @@ static int collection_contact(room_world* w,belt_body* b){
  int capacity=512*(platforms+1)+balls*(platforms+4)+balls*(balls-1)/2;if(capacity>COLLECTION_ROWS)return room_refuse(w,DANGO_BELT_ROOM_BUDGET,2);
  collection_row* rows=calloc((size_t)capacity,sizeof *rows);if(!rows)return room_refuse(w,DANGO_BELT_ROOM_CAPACITY,2);int n=0;
  double floor_normal[30]={0},floor_tangent[30]={0};
- if(!collection_build_rows(w,b,rows,&n)){free(rows);return 0;}double before=collection_ke(w,b),body_before=belt_kinetic(b),residual=0;int iteration;
- for(iteration=0;iteration<300;++iteration){residual=0;for(int i=0;i<n;++i){collection_row* r=&rows[i];double kn,kt,vn,vt;collection_row_values(w,b,r,&kn,&kt,&vn,&vt);
-   double pn=fmax(0,r->body.pn+(r->target-vn)/kn),pt=fmax(-r->body.mu*pn,fmin(r->body.mu*pn,r->body.pt-vt/kt)),dn=pn-r->body.pn,dt=pt-r->body.pt;residual=fmax(residual,fmax(kn*fabs(dn),kt*fabs(dt)));r->body.pn=pn;r->body.pt=pt;collection_row_apply(w,b,r,dn,dt);}
-  if(residual<2e-8)break;}
- double after=collection_ke(w,b);w->diag[9]=fmax(w->diag[9],residual);w->diag[10]+=before;w->diag[11]+=after;w->diag[17]+=iteration<300?iteration+1:300;
+ if(!collection_build_rows(w,b,rows,&n)){free(rows);return 0;}double before=collection_ke(w,b),body_before=belt_kinetic(b);int iterations;double residual=collection_solve_rows(w,b,rows,n,&iterations);
+ double after=collection_ke(w,b);w->diag[9]=fmax(w->diag[9],residual);w->diag[10]+=before;w->diag[11]+=after;w->diag[17]+=iterations;
  if(!isfinite(after)||residual>2e-6||after>before+1e-9*(1+before)){free(rows);return room_refuse(w,DANGO_BELT_ROOM_REJECTED,1);}
  b->grounded=0;w->diag[18]=w->diag[19]=0;for(int i=0;i<n;++i){w->diag[20]+=rows[i].body.pn;w->diag[21]+=fabs(rows[i].body.pt);if(!rows[i].body_sign&&rows[i].a>=0&&rows[i].b<0&&rows[i].surface==0){floor_normal[rows[i].a]+=rows[i].body.pn;floor_tangent[rows[i].a]+=rows[i].body.pt;}collection_contact_record(w,b,&rows[i]);}free(rows);
  /* Accepted floor rolling resistance, bounded by the friction budget. Balls

@@ -1,0 +1,1 @@
+FAIL line 141: collection_positions(w,b)&&a->ball.x-radius>=b->left&&a->ball.x+radius<=b->right&&w->diag[14]<=ROOM_POSITION_LIMIT

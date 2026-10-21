@@ -1,0 +1,73 @@
+{
+  "format": 1,
+  "source_base": "05c8439d5bdad9aaf2fb337d3e01db04a826bcce",
+  "status": "OPEN - not merge ready; three local contact fixes, body integration still fails",
+  "running_user_package_room_sha256": "1C50E89C9983949A089A5859A3E86D175EBF02A01CAA895657F7FC823C884A58",
+  "partial_candidate_room_sha256": "1D3B87349589516FDCF7702B1415B3B1AE5D016A95A862133E4F36EA3FA9B74E",
+  "final_managed": {
+    "passed": 4,
+    "failed": 1,
+    "skipped": 0
+  },
+  "remaining_failure": "Body integrator site5, original 40/20 bounded solve does not meet unchanged 2e-7 residual",
+  "records": [
+    {
+      "path": "eng/native/box2d/dango_belt_room_collection_impl.h",
+      "sha256": "5AB075117C21329A61307512B536465897CF97669B72573EE4B3A86B63023BA5"
+    },
+    {
+      "path": "eng/native/box2d/dango_belt_room_collection_tests.c",
+      "sha256": "B7B2DC0E3601EEA98F73B6F70CC15E2A02BC650C3450E613D16C1518633FD544"
+    },
+    {
+      "path": "tests/Dango.Desktop.Tests/Furniture/BeltRoomFurnitureIntegrationTests.cs",
+      "sha256": "C9D3A263DA698D0BC4F04F218FD4B38A59661B1554CCE8BC04FCCC3060140ABD"
+    },
+    {
+      "path": "artifacts/belt-ball-platform-diagnosis/scene-754669ea57d042288dd21cbf15d29a05/scene-manifest.json",
+      "sha256": "62CE5A645F8A98123E63B76780C2503598A6D61D1E5AA5D870FF85A820A612B8"
+    },
+    {
+      "path": "artifacts/belt-ball-platform-diagnosis/managed-product-baseline.trx",
+      "sha256": "47472485EEBB40C77A8942FE5B5D6D300E13EB13192496E4FCC871FB0B1A507B"
+    },
+    {
+      "path": "artifacts/belt-ball-platform-diagnosis/managed-product-captured-failure.trx",
+      "sha256": "B65A6BE3B1A8A2CF9C348F6C092C6ED9B5B4CB5C56E3BF019967BC2F74A8C70E"
+    },
+    {
+      "path": "artifacts/belt-ball-platform-diagnosis/product-affected-source-final.trx",
+      "sha256": "DAC30CECC881EDE2D681E1A75D7C73CA7F8E779563C18C7FAAF350A902E8323B"
+    },
+    {
+      "path": "artifacts/belt-ball-platform-diagnosis/managed-cone-longer-paths.trx",
+      "sha256": "59B013BF66DFAF5B6FF34AD1E799A1CF3874E10CC35FC62FF09E6B1704E4B2C9"
+    },
+    {
+      "path": "artifacts/belt-ball-platform-diagnosis/managed-three-fixes-final.trx",
+      "sha256": "F0ECE6304CCB5A28772C6696A6841DF5947ACA6F7AC7AEE7609CBD78C280565A"
+    },
+    {
+      "path": "artifacts/belt-ball-platform-diagnosis/native-wall-contracts.log",
+      "sha256": "C3BF4350AB1293C8E04CBF0F1360D335A3890DA6DBF2134BC89F0AD9B5654182"
+    },
+    {
+      "path": "artifacts/belt-ball-platform-diagnosis/native-wall-old-negative.log",
+      "sha256": "7632E2AB481530701D62C06BDED05CE85558177A778E9963984005A66D89F37D"
+    },
+    {
+      "path": "artifacts/belt-ball-platform-diagnosis/body-internal-diagnosis/REPORT.md",
+      "sha256": "64EC30B71D3258D26A8371D1CCE762302FD6593C9A5F564434BAA4A138B19190"
+    },
+    {
+      "path": "artifacts/belt-ball-platform-diagnosis/native-repro/cone-top-run/case10-failure.bin",
+      "sha256": "277BF3A2DFD24A14046443E3B8C8034D170EAB2A3A3375AB9017FEB214B8507E"
+    },
+    {
+      "path": "artifacts/belt-ball-platform-diagnosis/native-repro/cone-top-run/case10-failure.txt",
+      "sha256": "F74799061B8B79D2298733BC3FDD8EBC374634FF2E2618B3153CB2F50D7072B7"
+    }
+  ],
+  "foreground": "No new foreground input or window test; original manual process15268 retained",
+  "delivery": "Local branch only; no replacement manual package, main merge, push or install"
+}
