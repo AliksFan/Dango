@@ -21,4 +21,11 @@
 
 正式Desktop最终Release构建通过，0警告／0错误，日志`artifacts/local-mode-closeout/control-focus-rules-build-final.log`。首次构建因WPF／WinForms的Button类型歧义失败，补显式WPF别名后通过，初次日志保留在`control-focus-rules-build.log`；中间两份成功构建日志也保留。静态审查所指内嵌模态边界与旧激活直接聚焦路径已修正，所有自动恢复均使用同一安全页面入口。没有把静态审查或构建当作真实输入验收。
 
+## 新候选交付
+
+- 正式发布脚本已完成，候选位于`artifacts/desktop-entry/local-closeout-control-focus-20261022-v1/package`；源码`512b9c4c19ea0282e57a4819113e72bb70082f83`，`sourceDirty=false`。
+- 现有包完整性检查核对481份清单文件及保护输入通过；清单SHA256为`39A4DF7609907D1C2A77A615CA0D9D98035CFE3921D3C1D7DB9FF51A810FA007`。发布日志`artifacts/local-mode-closeout/control-focus-publish.log`，完整性记录`artifacts/local-mode-closeout/control-focus-package-integrity.json`。这是构建与包来源检查，不是焦点实时行为验证。
+- 按此前人工查看流程打开新版PID27328，已观察到主窗口句柄且进程响应；保留旧查看窗口PID26224。新版使用独立虚构数据`artifacts/local-room-catalog/runs/control-focus-manual-20261022-01`，只复制旧查看档案的设置、窗口预设和内置配饰配置，不访问日常档案；来源及状态见该目录`manual-session.json`。
+- 新版留给用户手动确认“最小化→恢复→直接控制团子”及普通按钮操作后的焦点，无自动最小化、按键注入或延长占屏观察。本次人工结果仍为待确认。
+
 未合main、推送、更新日常安装或部署；保护DLL及main已有AGENTS修改保留。
