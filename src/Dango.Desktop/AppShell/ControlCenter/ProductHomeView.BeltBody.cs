@@ -425,8 +425,10 @@ public partial class ProductHomeView
     {
         if (beltRuntime is null) return;
         ReconcileBeltKeyboard();
-        if (ownerWindow?.IsActive == true && (Keyboard.FocusedElement is null || ReferenceEquals(Keyboard.FocusedElement, ownerWindow)))
-            Stage.Focus();
+        // The control center owns activation focus. Standalone hosts use the same
+        // guarded page entry so settings, text and dialogs are never bypassed.
+        if (ownerWindow is not ControlCenterWindow && ownerWindow?.IsActive == true)
+            TryRestoreControlFocus();
     }
 
     private void ReconcileBeltKeyboard()

@@ -628,6 +628,7 @@
                 <TextBlock Grid.Column="1" Text="设置" FontSize="20" VerticalAlignment="Center" />
             </Grid>
             <local:SettingsScrollViewer x:Name="SettingsPage" Grid.Row="1" Style="{StaticResource SettingsScroll}"
+                                       Focusable="True" FocusVisualStyle="{x:Null}"
                                        VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                                        HorizontalContentAlignment="Stretch" CanContentScroll="False">
                 <Grid x:Name="SettingsInner" Margin="38,0,38,16">

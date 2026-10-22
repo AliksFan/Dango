@@ -209,8 +209,11 @@ public sealed class BeltBodyProductTests
                 "face-button" => Element<Button>(home, "AppearanceBodyTab"),
                 _ => Element<FrameworkElement>(home, "Stage"),
             };
-            Assert.IsTrue(focus.Focus()); Pump(50);
-            Assert.IsTrue(focus.IsKeyboardFocused);
+            var stage = Element<FrameworkElement>(home, "Stage");
+            if (focus is Button) Assert.IsFalse(focus.Focus(), "Product commands must not retain keyboard focus.");
+            else Assert.IsTrue(focus.Focus());
+            Pump(120);
+            Assert.IsTrue(stage.IsKeyboardFocused);
             KeyDown(0x44);
             Wait(() => home.DisplayedBeltSnapshot?.ActualInput.Horizontal == 1, 1500, location + ": D reaches the visible body");
             if (location == "home") Assert.IsFalse(home.IsEditing, "D controls the body instead of navigating to face editing.");
@@ -224,7 +227,7 @@ public sealed class BeltBodyProductTests
             KeyDown(0x20); Pump(180); KeyUp(0x20);
             Wait(() => jumpEdges == 1, 1500, location + ": one Space edge reaches physics");
             Assert.IsFalse(((ContextMenu)window.FindName("WindowSizeMenu")).IsOpen, "Space must not invoke the focused size button.");
-            Assert.AreSame(focus, Keyboard.FocusedElement, "Nontext controls may retain focus while the window routes gameplay.");
+            Assert.AreSame(stage, Keyboard.FocusedElement, "Product commands leave gameplay focus on the common stage.");
         }
         finally
         {

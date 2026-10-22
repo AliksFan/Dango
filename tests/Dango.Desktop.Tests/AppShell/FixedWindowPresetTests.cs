@@ -107,7 +107,7 @@ public sealed class FixedWindowPresetTests
         var closedCount = 0;
         menu.Closed += (_, _) => closedCount++;
 
-        Assert.IsTrue(button.Focus(), "A real click focuses the chrome button before opening its menu.");
+        Assert.IsFalse(button.Focus(), "Chrome commands must not take keyboard focus from the product stage.");
         button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Assert.IsTrue(menu.IsOpen);
         Pump(50);
@@ -180,7 +180,7 @@ public sealed class FixedWindowPresetTests
         Assert.IsTrue(stage.Focus());
         var button = (Button)rig.Window.FindName("WindowSizeButton");
         var menu = Assert.IsInstanceOfType<ContextMenu>(button.ContextMenu);
-        Assert.IsTrue(button.Focus());
+        Assert.IsFalse(button.Focus(), "Chrome commands must not take keyboard focus from the product stage.");
         button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Assert.IsTrue(menu.IsOpen);
         Pump(50);

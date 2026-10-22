@@ -151,7 +151,7 @@ public partial class ProductHomeView : UserControl
         }
         else Dispatcher.BeginInvoke(() =>
         {
-            if (IsSettingsOpen) BackFromSettingsButton.Focus();
+            if (IsSettingsOpen) SettingsPage.Focus();
         }, System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
@@ -171,10 +171,22 @@ public partial class ProductHomeView : UserControl
         UpdateRoomAwayPresentation();
     }
 
-    public void RestoreKeyboardFocus()
+    public void RestoreKeyboardFocus() => TryRestoreControlFocus();
+
+    internal bool TryRestoreControlFocus()
     {
-        if (IsSettingsOpen) Keyboard.Focus(BackFromSettingsButton);
-        else Keyboard.Focus(Stage);
+        if (Window.GetWindow(this) is not { IsActive: true, IsVisible: true, IsEnabled: true,
+            WindowState: not WindowState.Minimized }) return false;
+        if (!IsVisible || !IsEnabled || IsRoomDialogOpen || beltWindowMenuOpen || Mouse.Captured is not null)
+            return false;
+        if (IsSettingsOpen)
+        {
+            if (IsBeltTextEntry(Keyboard.FocusedElement)) return false;
+            return SettingsPage.Focus();
+        }
+        if (Keyboard.FocusedElement is not Button && IsAppearanceInputFocused())
+            return false;
+        return Stage.Focus();
     }
 
     public void UpdateSettings(ProductSettingsState state)
