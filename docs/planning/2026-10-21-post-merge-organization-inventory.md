@@ -43,8 +43,8 @@ App第163～166行当前列出14个无值运行选项：**10个review＋2个prev
 | `--desktop-pet-room-review` | App第87、114～116行自动入桌宠；[脚本](../../eng/run-desktop-pet-room-review.ps1)第16～26行还写出CMD；[桌宠测试](../../tests/Dango.Desktop.Tests/AppShell/DesktopPetRoomProductTests.cs)直接构造 | 改默认链后沿真实门廊入桌宠；旧一键自动入场仅保留为工具驱动，不能新增生产行为开关替代 |
 | `--face-review` | App第88、129～136行强制owned设置；[脚本](../../eng/run-face-review.ps1)第21～35行绑定旧E1模块 | 先保证owner检查、实例隔离和默认新身体覆盖，再迁移脚本并退役CLI／专用settings选项 |
 | `--accessory-review` | App第89、139～146行强制owned设置，第112行实质选择旧local-room路径；[跨进程测试](../../tests/Dango.Desktop.Tests/Accessories/AccessoryProcessRestartTests.cs)第162行等仍引用 | 与face同批替换，继续验证真实保存／重启／桌宠交接；不将旧路径测试改名当作默认链验证 |
-| `--soft-body-preview` | App第59～64行；[窗口](../../src/Dango.Desktop/Rendering/Dango/SoftBodyPreviewWindow.xaml.cs)第17行起；老单体参数实验 | 迁入现有JointReview，连同配套XAML移动；保留真实实验，不冒充新身体参数效果 |
-| `--paired-contact-preview` | App第67～72行；[窗口](../../src/Dango.Desktop/Rendering/Dango/PairedContactPreviewWindow.xaml.cs)第12行起；[历史合同](../verification/phase-1-p2d-007-paired-contact.md)第38行是确定性时间线 | 迁入JointReview；旧[恢复设计](../phase-1-dango-physics-characteristics-restoration-design.md)第79行已将其排除当轮人工验收入口，物理回归仍保留 |
+| `--soft-body-preview` | App第59～64行；`src/Dango.Desktop/Rendering/Dango/SoftBodyPreviewWindow.xaml.cs`（源快照）第17行起；老单体参数实验 | 迁入现有JointReview，连同配套XAML移动；保留真实实验，不冒充新身体参数效果 |
+| `--paired-contact-preview` | App第67～72行；`src/Dango.Desktop/Rendering/Dango/PairedContactPreviewWindow.xaml.cs`（源快照）第12行起；[历史合同](../verification/phase-1-p2d-007-paired-contact.md)第38行是确定性时间线 | 迁入JointReview；旧[恢复设计](../phase-1-dango-physics-characteristics-restoration-design.md)第79行已将其排除当轮人工验收入口，物理回归仍保留 |
 
 当前互斥检查也有重复：App第90～93、228～234行和host第47～51行分别检查子集；preview／probe／smoke由分支顺序决定先后。本轮未做组合参数运行验证，不能宣称解析漏洞已修复。实施时由同一启动解析结果确定运行选项及数据作用域，针对不兼容组合在任何窗口、实例或设置加载前拒绝；不建立插件式启动框架。
 
