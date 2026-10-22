@@ -318,9 +318,14 @@ public sealed class BeltBodyProductTests
             KeyUp(0x41); KeyUp(0x44); Pump(80);
             KeyDown(0x57);
             Wait(() => home.DisplayedBeltSnapshot?.ActualInput.Stretch > 0, 2000, "OS W stretch");
+            KeyDown(0x44);
             KeyDown(0x53);
-            Wait(() => home.DisplayedBeltSnapshot is { ActualInput: { Stretch: 0, Downward: 0, CancelForces: true, InputActive: true } }, 2000, "opposing W/S cancellation");
-            KeyUp(0x57); KeyUp(0x53); Pump(80);
+            // W/S cancel only their vertical drive inside native. Full cancellation would
+            // incorrectly remove the independently held D force as well.
+            Wait(() => home.DisplayedBeltSnapshot is
+                { ActualInput: { Horizontal: 1, Stretch: 1, Downward: 1, CancelForces: false, InputActive: true }, Frame: { } frame } &&
+                frame.Stats[18] > 0, 2000, "opposing W/S retain the actual native horizontal force");
+            KeyUp(0x57); KeyUp(0x53); KeyUp(0x44); Pump(80);
             KeyDown(0x44); Pump(80);
             sibling.Show(); FocusOwnedWindow(sibling); Pump(80);
             KeyUp(0x44); Pump(40);
