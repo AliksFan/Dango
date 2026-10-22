@@ -2,7 +2,7 @@
 
 `Dango` 是一个多人联机桌面宠物项目的开发代号。
 
-2026-10-22 当前主线与本轮收口：B1～B4整理已获用户人工确认并[合入本地main](docs/verification/2026-10-22-post-merge-cleanup-main-integration.md)。本轮从该基线形成[本地模式收口差项清单](docs/planning/2026-10-22-local-mode-closeout-checklist.md)，沿用未受影响的既有验收，只补新内核恢复及实时体验缺口；另按用户指定在设置页加入[反馈QQ联系方式](docs/planning/2026-10-15-settings-refresh.md#2026-10-22-反馈联系方式)。本轮改动位于独立分支，未合main或更新日常安装；下方条目保留各轮历史状态。
+2026-10-22 当前主线与本轮收口：B1～B4整理已获用户人工确认并[合入本地main](docs/verification/2026-10-22-post-merge-cleanup-main-integration.md)。本轮从该基线形成[本地模式收口差项清单](docs/planning/2026-10-22-local-mode-closeout-checklist.md)，沿用未受影响的既有验收，只补新内核恢复及实时体验缺口；另按用户指定在设置页加入[反馈QQ联系方式](docs/planning/2026-10-15-settings-refresh.md#2026-10-22-反馈联系方式)。Release构建、5项无窗口设置检查与正式候选包校验通过，见[本轮交付记录](docs/verification/2026-10-22-local-mode-closeout-feedback.md)。本轮改动位于独立分支，未合main或更新日常安装；下方条目保留各轮历史状态。
 
 2026-10-22 B4首轮前台回归未通过：6分钟授权预算内执行339.1秒，最终去重12通过／3失败／1未执行。陈旧W/S全取消断言经整理前基线同输入对照后按已批准规则修正；竖屏两项亦在旧基线失败，普通房家具入场与真实尺寸菜单仍待处理，见[前台记录](docs/verification/2026-10-22-post-merge-cleanup-b4-foreground.md)。测试窗口和键鼠占用已释放，仍暂不合main。
 
