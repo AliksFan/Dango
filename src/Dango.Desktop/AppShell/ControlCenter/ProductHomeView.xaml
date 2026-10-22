@@ -695,6 +695,8 @@
                                              AutomationProperties.Name="当前场景诊断详情" />
                                 </StackPanel>
                             </Border>
+                            <TextBlock Text="反馈 QQ：2085475782" Margin="0,22,0,8" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource HomeMuted}" />
                         </StackPanel>
                     </Grid>
                 </Grid>
