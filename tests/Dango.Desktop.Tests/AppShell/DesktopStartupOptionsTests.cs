@@ -8,8 +8,7 @@ public sealed class DesktopStartupOptionsTests
 {
     private static readonly string[] DiagnosticModes =
     [
-        "--home-ui-review", "--settings-ui-review", "--physics-host-review", "--eye-hat-review",
-        "--soft-body-preview", "--paired-contact-preview", "--box2d-native-probe", "--smoke-test",
+        "--physics-host-review", "--eye-hat-review", "--box2d-native-probe", "--smoke-test",
     ];
 
     [TestMethod]
@@ -54,7 +53,8 @@ public sealed class DesktopStartupOptionsTests
     {
         string[] retired = ["--unified-live-home-review", "--porch-scene-review", "--local-room-review",
             "--desktop-pet-room-review", "--face-review", "--accessory-review", "--face-review-settings",
-            "--accessory-review-settings", "--belt-body-review", "--belt-room-module", "--unknown"];
+            "--accessory-review-settings", "--belt-body-review", "--belt-room-module", "--unknown",
+            "--home-ui-review", "--settings-ui-review", "--soft-body-preview", "--paired-contact-preview"];
         foreach (var flag in retired)
         {
             Assert.ThrowsExactly<ArgumentException>(() => App.ParseStartupArguments([flag]), flag);

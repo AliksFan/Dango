@@ -38,7 +38,15 @@ $script:SettingsContracts['dango-desktop-settings-v4-belt-default-v2'] = @{
     'App.xaml.cs' = 'CB0A83CA07F6D34CFDF761A027DF28F4B55DAE40E5F94B2C1D6F1FCA22A3A6DD'
     'Verification/VerificationSessionStore.cs' = '925A313A44DBE72C35FBA230010A521E384C529D0EA705788E1D8AE4D7B2ACBD'
 }
-$script:BeltSettingsContracts = @('dango-desktop-settings-v4-belt-default-v1', 'dango-desktop-settings-v4-belt-default-v2')
+# Tool-only previews are no longer compiled into the desktop product. Persisted data is unchanged.
+$script:SettingsContracts['dango-desktop-settings-v4-belt-default-v3'] = @{
+    'AppShell/ControlCenter/ControlCenterWindowSettingsStore.cs' = '48FF4A9AB801FFF52228E6DB760F9248E047111DDBF0DA5AD22E78B32DE97329'
+    'AppShell/ControlCenter/ApplicationSettingsSession.cs' = 'E68D1E6997AF8E73305C1D374978B60B18FF107A4C07825B4A2C86212F96FB6E'
+    'AppShell/DangoApplicationHost.cs' = '6A9252BA0C1B10A7233C7F3397CDED666D9E6C966AE3A588CABE165E819DC7BE'
+    'App.xaml.cs' = '8CBA416D20D59E43F1BB5C797A04E9D9821F0900EF1645B514D699FBCFF12B53'
+    'Verification/VerificationSessionStore.cs' = '925A313A44DBE72C35FBA230010A521E384C529D0EA705788E1D8AE4D7B2ACBD'
+}
+$script:BeltSettingsContracts = @('dango-desktop-settings-v4-belt-default-v1', 'dango-desktop-settings-v4-belt-default-v2', 'dango-desktop-settings-v4-belt-default-v3')
 $script:LegacyToolHashes = @{
     'Dango.LocalInstall.psm1' = '5500CB19FFE0486C82DE9C42EC0C41DA27E65606618A2360DDA97AC6F9CCA77B'
     'Manage-Dango.ps1' = '58668DDD3C117BF8F82E0F83F6C32D847CDDB6AB3B44564D11ED8EC946C11738'
@@ -336,7 +344,7 @@ function Test-DangoProductRunning {
 
 function Get-DangoInstalledInstanceName([string]$SettingsContract, [string]$SettingsScope) {
     $name = 'Local\Dango.Phase1.App'
-    if ($SettingsContract -ceq 'dango-desktop-settings-v4-belt-default-v2' -and $null -ne $SettingsScope -and $SettingsScope.Length -gt 0) {
+    if (@('dango-desktop-settings-v4-belt-default-v2', 'dango-desktop-settings-v4-belt-default-v3') -ccontains $SettingsContract -and $null -ne $SettingsScope -and $SettingsScope.Length -gt 0) {
         # Match App.ProductInstanceName: absolute settings.json path, invariant
         # uppercase, UTF-8 SHA256, first 24 uppercase hex characters.
         $settings = [IO.Path]::GetFullPath((Join-Path $SettingsScope 'settings.json')).ToUpperInvariant()

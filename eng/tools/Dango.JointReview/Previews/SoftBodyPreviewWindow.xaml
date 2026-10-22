@@ -1,7 +1,7 @@
-<Window x:Class="Dango.Desktop.Rendering.Visuals.SoftBodyPreviewWindow"
+<Window x:Class="Dango.JointReview.Previews.SoftBodyPreviewWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:local="clr-namespace:Dango.Desktop.Rendering.Visuals"
+        xmlns:local="clr-namespace:Dango.Desktop.Rendering.Visuals;assembly=Dango.Desktop"
         Title="Dango 落地果冻感调参台" Width="1180" Height="780" MinWidth="960" MinHeight="640"
         Background="#FFF5F1EA" WindowStartupLocation="CenterScreen">
     <Window.Resources>

@@ -1,5 +1,28 @@
 # 联合求解隔离预览
 
+## 首页、设置与旧物理独立预览（B3迁入）
+
+生产 Desktop 不再接受下面四个参数。JointReview 独立承接：
+
+```powershell
+dotnet build eng/tools/Dango.JointReview/Dango.JointReview.csproj
+$reviewExe = './eng/tools/Dango.JointReview/bin/Debug/net10.0-windows/Dango.JointReview.exe'
+& $reviewExe --home-ui-review
+& $reviewExe --settings-ui-review
+& $reviewExe --soft-body-preview
+& $reviewExe --paired-contact-preview
+```
+
+每次只接受一个模式，不接受数据路径或其它参数。前两项直接复用正式 `ProductHomeView`，保持原1024×640窗口和最小尺寸，不创建产品host、托盘、设置存储或网络连接。后两项保留历史调参／双体算法及窗口规格，只编译在本工具内，跨程序集复用正式团子视觉；它们使用固定SHA-256的旧 `dango_box2d.dll`（`Box2DNativeLoader.PinnedRequirements` ABI13／Box2D3.1.1），不使用连续身体产品模块。缺失、错误哈希、ABI或初始化／推进失败会明确失败，不能以fallback算成功。工具输出从现有Desktop项目引用取得旧DLL，不替换受保护源DLL。
+
+以下检查不调用Show／Activate，不置顶、不使用全局输入：
+
+```powershell
+& $reviewExe --verify-isolated-previews artifacts/isolated-previews-check
+```
+
+输出须为尚不存在的新目录，路径不能经过reparse point；已有文件／目录将拒绝，不覆盖证据。它构造四个窗口，执行控件Measure／Arrange、必要Dispatcher资源处理与真实旧模块帧，关闭后检查timer停止及native session／body句柄引用释放；结果写入 `isolated-previews.json`。只证明未显示的构造、布局、原生初始化／推进及关闭边界；真实前台呈现、输入与人工观感仍未验证。可见运行须遵守仓库屏幕使用授权规则。用途限于纯UI／历史诊断；后续不再有消费者时再审查退役，不扩展为产品验收框架。
+
 ## 官方静态平台：独立单人验收
 
 `--static-platform DLL` 打开一只团子和一件固定官方矮台的独立 Windows 窗口；不接入正式房间、设置、账号或多人。使用真实 `Dango.Physics` 世界和现有团子视觉。原始160×120视觉只做两轴相同的缩放，保留原造型比例；世界到屏幕沿用水平80／垂直60的原始标尺，平台、碰撞覆盖层和拖动反变换共用该坐标合同。官方木纹由内置 `DrawingImage` 绘制，透明圆角不定义碰撞；矩形碰撞和图片分别定义。

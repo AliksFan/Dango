@@ -66,7 +66,7 @@ public sealed class SoftBodyTuningTests
     [TestMethod]
     public void TuningWindowContainsEveryApprovedControlAndMetric()
     {
-        var path = Path.Combine(TestRepository.Root, "src", "Dango.Desktop", "Rendering", "Dango", "SoftBodyPreviewWindow.xaml");
+        var path = Path.Combine(TestRepository.Root, "eng", "tools", "Dango.JointReview", "Previews", "SoftBodyPreviewWindow.xaml");
         var root = XDocument.Load(path).Root!;
         var names = root.Descendants().Select(x => (string?)x.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml"))).Where(x => x is not null).ToHashSet();
         string[] controls = ["ParameterPanel", "ResetDropButton", "PauseToggle", "SlowMotionToggle", "CompareToggle", "DebugToggle", "ContourOnlyToggle", "ResetDefaultsButton", "SaveButton", "LoadButton", "MetricsText"];
@@ -74,7 +74,7 @@ public sealed class SoftBodyTuningTests
         string[] groups = ["常态轮廓", "落地动作", "果冻材质", "地面接触", "模拟质量"];
         var text = File.ReadAllText(path);
         foreach (var group in groups) StringAssert.Contains(text, group);
-        StringAssert.Contains(File.ReadAllText(Path.Combine(TestRepository.Root, "src", "Dango.Desktop", "Rendering", "Dango", "SoftBodyPreviewWindow.xaml.cs")), "增大：");
+        StringAssert.Contains(File.ReadAllText(Path.Combine(TestRepository.Root, "eng", "tools", "Dango.JointReview", "Previews", "SoftBodyPreviewWindow.xaml.cs")), "增大：");
     }
 
     [TestMethod]

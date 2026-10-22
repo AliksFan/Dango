@@ -7,14 +7,12 @@ using System.Text;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.Physics.Native;
-using Dango.Desktop.Rendering.Visuals;
 
 namespace Dango.Desktop;
 
 internal enum DesktopStartupMode
 {
-    Product, HomeUiReview, SettingsUiReview, PhysicsHostReview, EyeHatReview,
-    SoftBodyPreview, PairedContactPreview, Box2DNativeProbe, SmokeTest,
+    Product, PhysicsHostReview, EyeHatReview, Box2DNativeProbe, SmokeTest,
 }
 
 internal sealed record DesktopStartupOptions(DesktopStartupMode Mode, string? SettingsFile, string InstanceName);
@@ -30,48 +28,9 @@ public partial class App : System.Windows.Application
         var options = ParseStartupArguments(e.Args);
         base.OnStartup(e);
 
-        var homeUiReview = options.Mode == DesktopStartupMode.HomeUiReview;
-        var settingsUiReview = options.Mode == DesktopStartupMode.SettingsUiReview;
-        if (homeUiReview || settingsUiReview)
-        {
-            // Exercise the same product control without native physics, tray, user settings or network activity.
-            ShutdownMode = ShutdownMode.OnMainWindowClose;
-            var home = new ProductHomeView();
-            home.SettingsButton.ToolTip = "设置界面预览 · 未连接桌面";
-            if (settingsUiReview) home.ShowSettingsPage();
-            MainWindow = new Window
-            {
-                Title = settingsUiReview ? "Dango · 设置页视觉预览" : "Dango · 首页交互验收",
-                Width = 1024,
-                Height = 640,
-                MinWidth = 336,
-                MinHeight = 560,
-                Content = home,
-                WindowStartupLocation = WindowStartupLocation.CenterScreen,
-            };
-            MainWindow.Show();
-            return;
-        }
-
         if (options.Mode == DesktopStartupMode.Box2DNativeProbe)
         {
             Shutdown(RunBox2DNativeProbe());
-            return;
-        }
-
-        if (options.Mode == DesktopStartupMode.SoftBodyPreview)
-        {
-            ShutdownMode = ShutdownMode.OnMainWindowClose;
-            MainWindow = new SoftBodyPreviewWindow();
-            MainWindow.Show();
-            return;
-        }
-
-        if (options.Mode == DesktopStartupMode.PairedContactPreview)
-        {
-            ShutdownMode = ShutdownMode.OnMainWindowClose;
-            MainWindow = new PairedContactPreviewWindow();
-            MainWindow.Show();
             return;
         }
 
@@ -124,12 +83,8 @@ public partial class App : System.Windows.Application
         if (args.Length != 1) throw new ArgumentException("Choose one Dango startup mode or one explicit data scope.");
         var mode = args[0] switch
         {
-            "--home-ui-review" => DesktopStartupMode.HomeUiReview,
-            "--settings-ui-review" => DesktopStartupMode.SettingsUiReview,
             "--physics-host-review" => DesktopStartupMode.PhysicsHostReview,
             "--eye-hat-review" => DesktopStartupMode.EyeHatReview,
-            "--soft-body-preview" => DesktopStartupMode.SoftBodyPreview,
-            "--paired-contact-preview" => DesktopStartupMode.PairedContactPreview,
             "--box2d-native-probe" => DesktopStartupMode.Box2DNativeProbe,
             "--smoke-test" => DesktopStartupMode.SmokeTest,
             // Unknown/retired switches never fall through to the daily product.

@@ -1,7 +1,7 @@
-<Window x:Class="Dango.Desktop.Rendering.Visuals.PairedContactPreviewWindow"
+<Window x:Class="Dango.JointReview.Previews.PairedContactPreviewWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:local="clr-namespace:Dango.Desktop.Rendering.Visuals"
+        xmlns:local="clr-namespace:Dango.Desktop.Rendering.Visuals;assembly=Dango.Desktop"
         Title="P2D-007 双体接触技术证明" Width="920" Height="560"
         Background="#FFF5F1EA" WindowStartupLocation="CenterScreen">
     <Grid Margin="24">

@@ -5,9 +5,10 @@ using System.Windows.Threading;
 using Dango.Core.Animation;
 using Dango.Core.Coordinates;
 using Dango.Desktop.Physics.Native;
+using Dango.Desktop.Rendering.Visuals;
 using Dango.Desktop.Physics.Presentation;
 
-namespace Dango.Desktop.Rendering.Visuals;
+namespace Dango.JointReview.Previews;
 
 public partial class PairedContactPreviewWindow : Window
 {
@@ -21,9 +22,13 @@ public partial class PairedContactPreviewWindow : Window
     private readonly DispatcherTimer frameTimer;
     private Box2DPairedContactPresentationWorld world;
     private long cycle;
+    private bool resourcesReleased;
+    internal bool ResourcesReleased => resourcesReleased && !frameTimer.IsEnabled;
+    internal void VerifyNativeFrame() => OnTick(null, EventArgs.Empty);
 
     public PairedContactPreviewWindow()
     {
+        IsolatedPreviews.RequireLegacyNative();
         InitializeComponent();
         FirstDango.BodyFill = new System.Windows.Media.SolidColorBrush(
             System.Windows.Media.Color.FromRgb(255, 226, 181));
@@ -32,8 +37,9 @@ public partial class PairedContactPreviewWindow : Window
         world = CreateWorld();
         frameTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = FixedStep };
         frameTimer.Tick += OnTick;
-        frameTimer.Start();
         Closed += OnClosed;
+        try { VerifyNativeFrame(); frameTimer.Start(); }
+        catch { OnClosed(null, EventArgs.Empty); throw; }
     }
 
     private void OnTick(object? sender, EventArgs e)
@@ -68,6 +74,9 @@ public partial class PairedContactPreviewWindow : Window
                 phaseTime < 2.5 ? Ease((phaseTime - 1) / 1.5) : 1)
             : null;
         var frame = world.Step(firstInput, secondInput, cue, FixedStep);
+        if (frame.First.FallbackReason != PhysicsPresentationFallbackReason.None ||
+            frame.Second.FallbackReason != PhysicsPresentationFallbackReason.None)
+            throw new InvalidOperationException($"旧模块 paired-contact 预览初始化或推进失败：{frame.First.FallbackReason}/{frame.Second.FallbackReason}");
 
         Canvas.SetLeft(FirstDango, firstX + frame.FirstRenderOffsetX);
         Canvas.SetLeft(SecondDango, secondX + frame.SecondRenderOffsetX);
@@ -121,5 +130,6 @@ public partial class PairedContactPreviewWindow : Window
     {
         frameTimer.Stop();
         world.Dispose();
+        resourcesReleased = true;
     }
 }

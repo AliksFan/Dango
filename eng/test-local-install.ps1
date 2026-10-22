@@ -737,6 +737,20 @@ Invoke-Case 'v2-scoped-instance-blocks-switches-and-activates-only-its-owned-eve
     }
 }
 
+Invoke-Case 'v3-scoped-contract-binds-current-source-and-preserves-v2' {
+    Remove-Module Dango.LocalInstall -Force; Import-Module $modulePath -Force
+    $scopedModule = Get-Module Dango.LocalInstall
+    $currentContract = 'dango-desktop-settings-v4-belt-default-v3'
+    $current = Get-DangoSettingsCompatibilityContract $currentContract
+    $actual = Get-DangoSettingsSourceContract -RepositoryRoot $SettingsRepositoryRoot -SettingsContract $currentContract
+    foreach ($relative in $current.Keys) { Assert-Equal $current[$relative] $actual[$relative] "Current source differs: $relative" }
+    $previous = Get-DangoSettingsCompatibilityContract 'dango-desktop-settings-v4-belt-default-v2'
+    Assert-Equal 'CB0A83CA07F6D34CFDF761A027DF28F4B55DAE40E5F94B2C1D6F1FCA22A3A6DD' $previous['App.xaml.cs'] 'Historical v2 source identity was overwritten.'
+    Assert-Throws { Get-DangoSettingsSourceContract -RepositoryRoot $SettingsRepositoryRoot -SettingsContract 'dango-desktop-settings-v4-belt-default-v2' } 'Current App was falsely accepted as historical v2.'
+    Assert-Equal 'Local\Dango.Phase1.App.Data.F0E4A86115DF67A14E248712' (& $scopedModule { Get-DangoInstalledInstanceName 'dango-desktop-settings-v4-belt-default-v3' 'C:\Fixture\Settings with spaces' }) 'V3 lost the fixed App scoped identity.'
+    Assert-Equal 'Local\Dango.Phase1.App' (& $scopedModule { Get-DangoInstalledInstanceName 'dango-desktop-settings-v4-belt-default-v3' $null }) 'V3 daily launch changed its global identity.'
+}
+
 $passed = @($results | Where-Object { $_.passed }).Count
 $failed = $results.Count - $passed
 $summary = [ordered]@{ evidenceRoot = $EvidenceRoot; passed = $passed; failed = $failed; results = @($results) }

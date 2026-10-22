@@ -8,11 +8,12 @@ using System.Windows.Threading;
 using Dango.Core.Animation;
 using Dango.Core.Coordinates;
 using Dango.Desktop.Physics.Native;
+using Dango.Desktop.Rendering.Visuals;
 using Dango.Desktop.Physics.Presentation;
 using Dango.Desktop.Physics.Tuning;
 using Microsoft.Win32;
 
-namespace Dango.Desktop.Rendering.Visuals;
+namespace Dango.JointReview.Previews;
 
 public partial class SoftBodyPreviewWindow : Window
 {
@@ -25,9 +26,13 @@ public partial class SoftBodyPreviewWindow : Window
     private SoftBodyTuningParameters parameters = new();
     private long resetAt;
     private bool buildingControls;
+    internal bool ResourcesReleased => !frameTimer.IsEnabled && !rebuildTimer.IsEnabled && controller is null;
+
+    internal void VerifyNativeFrame() => OnTick(null, EventArgs.Empty);
 
     public SoftBodyPreviewWindow()
     {
+        IsolatedPreviews.RequireLegacyNative();
         InitializeComponent();
         BuildParameterEditors();
         rebuildTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(130) };
@@ -35,8 +40,9 @@ public partial class SoftBodyPreviewWindow : Window
         frameTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromSeconds(parameters.FixedStepSeconds) };
         frameTimer.Tick += OnTick;
         RebuildWorld();
-        frameTimer.Start();
         Closed += OnClosed;
+        try { VerifyNativeFrame(); frameTimer.Start(); }
+        catch { OnClosed(null, EventArgs.Empty); throw; }
     }
 
     private void OnTick(object? sender, EventArgs e)
@@ -66,8 +72,7 @@ public partial class SoftBodyPreviewWindow : Window
     {
         if (frame.FallbackReason != PhysicsPresentationFallbackReason.None || frame.Contour.Count == 0)
         {
-            MetricsText.Text = $"物理回退：{frame.FallbackReason} / native {frame.Diagnostics.NativeErrorCode}";
-            return;
+            throw new InvalidOperationException($"旧模块 soft-body 预览初始化或推进失败：{frame.FallbackReason} / native {frame.Diagnostics.NativeErrorCode}");
         }
         var width = frame.Contour.Max(x => x.X) - frame.Contour.Min(x => x.X);
         var height = frame.Contour.Max(x => x.Y) - frame.Contour.Min(x => x.Y);
