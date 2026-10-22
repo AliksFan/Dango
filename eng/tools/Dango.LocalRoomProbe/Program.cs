@@ -19,6 +19,11 @@ namespace Dango.LocalRoomProbe;
 internal static partial class Program
 {
     private const string Marker = ".dango-local-room-catalog-probe.json";
+    private static void ContinueScreenCheck(string root)
+    {
+        if (File.Exists(Path.Combine(root, "cancel-screen-requested")))
+            throw new OperationCanceledException("Owned screen check cancellation requested.");
+    }
     [STAThread]
     private static int Main(string[] args)
     {
@@ -30,6 +35,12 @@ internal static partial class Program
             switch (args[0])
             {
                 case "init": break;
+                case "visible-observe":
+                    Require(Environment.GetEnvironmentVariable("DANGO_LOCAL_SCREEN_AUTHORIZED") == "1", "Explicit screen authorization is required.");
+                    VisibleObserve(root, args[2], double.Parse(args[3], System.Globalization.CultureInfo.InvariantCulture)); break;
+                case "desktop-mouse":
+                    Require(Environment.GetEnvironmentVariable("DANGO_LOCAL_SCREEN_AUTHORIZED") == "1", "Explicit screen authorization is required.");
+                    VerifyDesktopMouse(root, args[2]); break;
                 case "recovery-write": WriteBeltRecovery(root, args[2]); break;
                 case "recovery-read": ReadBeltRecovery(root, args[2], unsafeCheckpoint: false); break;
                 case "recovery-unsafe": ReadBeltRecovery(root, args[2], unsafeCheckpoint: true); break;
