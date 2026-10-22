@@ -2,6 +2,8 @@
 
 `Dango` 是一个多人联机桌面宠物项目的开发代号。
 
+2026-10-22 新身体普通房后台恢复补验通过：直接使用正式候选包二进制，独立写入／重启读取两房外观、配饰PNG、家具、真实身体检查点及镜头，球回布置锚点、坏落点安全回退和释放后原件保护通过，见[跨进程验证](docs/verification/2026-10-22-local-mode-cross-process-recovery.md)。本轮仅新增验证工具与记录，不改生产代码；实际应用壳层／真实输入和持续游玩、桌宠穿透及人工观感仍待后续安排，未合main、推送或更新日常安装。
+
 2026-10-22 当前主线与本轮收口：B1～B4整理已获用户人工确认并[合入本地main](docs/verification/2026-10-22-post-merge-cleanup-main-integration.md)。本轮从该基线形成[本地模式收口差项清单](docs/planning/2026-10-22-local-mode-closeout-checklist.md)，沿用未受影响的既有验收，只补新内核恢复及实时体验缺口；另按用户指定在设置页加入[反馈QQ联系方式](docs/planning/2026-10-15-settings-refresh.md#2026-10-22-反馈联系方式)。Release构建、5项无窗口设置检查与正式候选包校验通过，见[本轮交付记录](docs/verification/2026-10-22-local-mode-closeout-feedback.md)。本轮改动位于独立分支，未合main或更新日常安装；下方条目保留各轮历史状态。
 
 2026-10-22 B4首轮前台回归未通过：6分钟授权预算内执行339.1秒，最终去重12通过／3失败／1未执行。陈旧W/S全取消断言经整理前基线同输入对照后按已批准规则修正；竖屏两项亦在旧基线失败，普通房家具入场与真实尺寸菜单仍待处理，见[前台记录](docs/verification/2026-10-22-post-merge-cleanup-b4-foreground.md)。测试窗口和键鼠占用已释放，仍暂不合main。
