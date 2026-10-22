@@ -3,20 +3,18 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:visuals="clr-namespace:Dango.Desktop.Rendering.Visuals"
              xmlns:rooms="clr-namespace:Dango.Desktop.AppShell.Rooms"
+             xmlns:theme="clr-namespace:Dango.Desktop.Resources"
              xmlns:local="clr-namespace:Dango.Desktop.AppShell.ControlCenter"
              xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-             Background="#FDFCF9" Foreground="#443D34" FontSize="14"
+             Background="{DynamicResource HomeBackground}" Foreground="{DynamicResource HomeInk}" FontSize="14"
              FontFamily="Segoe UI, Microsoft YaHei" UseLayoutRounding="True"
              PreviewKeyDown="OnPreviewKeyDown" PreviewKeyUp="OnPreviewKeyUp" SizeChanged="OnHomeSizeChanged">
     <UserControl.Resources>
-        <SolidColorBrush x:Key="HomeBackground" Color="#FDFCF9" />
-        <SolidColorBrush x:Key="HomeInk" Color="#443D34" />
-        <SolidColorBrush x:Key="HomePrimaryInk" Color="#443D34" />
-        <SolidColorBrush x:Key="HomeMuted" Color="#807568" />
-        <SolidColorBrush x:Key="HomeLine" Color="#E9E4DA" />
-        <SolidColorBrush x:Key="HomeSoft" Color="#F3EFE8" />
-        <SolidColorBrush x:Key="HomeAccent" Color="#885E3E" />
-        <SolidColorBrush x:Key="HomeSelected" Color="#EFE3D4" />
+        <ResourceDictionary>
+        <ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary Source="/Dango.Desktop;component/Resources/DesktopPalette.xaml" />
+            <ResourceDictionary Source="/Dango.Desktop;component/Resources/DesktopButtons.xaml" />
+        </ResourceDictionary.MergedDictionaries>
         <SolidColorBrush x:Key="SettingsScrollGrip" Color="#B7A28E" />
         <Style x:Key="ShortcutKeycap" TargetType="Border">
             <Setter Property="Width" Value="22" />
@@ -27,56 +25,9 @@
             <Setter Property="Margin" Value="0,0,8,0" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
-        <Style TargetType="Button">
-            <Setter Property="Foreground" Value="{DynamicResource HomeInk}" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderBrush" Value="{DynamicResource HomeLine}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="14,8" />
-            <Setter Property="MinHeight" Value="40" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="HorizontalContentAlignment" Value="Center" />
-            <Setter Property="VerticalContentAlignment" Value="Center" />
-            <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Chrome" CornerRadius="7" Padding="{TemplateBinding Padding}"
-                                Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}">
-                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HomeSoft}" />
-                            </Trigger>
-                            <MultiTrigger>
-                                <MultiTrigger.Conditions>
-                                    <Condition Property="IsMouseOver" Value="True" />
-                                    <Condition Property="Tag" Value="Selected" />
-                                </MultiTrigger.Conditions>
-                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HomeSelected}" />
-                            </MultiTrigger>
-                            <MultiTrigger>
-                                <MultiTrigger.Conditions>
-                                    <Condition Property="IsMouseOver" Value="True" />
-                                    <Condition Property="Tag" Value="Primary" />
-                                </MultiTrigger.Conditions>
-                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HomeSelected}" />
-                            </MultiTrigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource HomeAccent}" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Foreground" Value="{DynamicResource HomeMuted}" />
-                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource HomeSoft}" />
-                                <Setter Property="Cursor" Value="Arrow" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
+        <!-- Home preserves selected-hover chrome; accessory-only defaults remain separate. -->
+        <Style TargetType="Button" BasedOn="{StaticResource DesktopButton}">
+            <Setter Property="theme:DesktopTheme.PreserveSelectedHover" Value="True" />
         </Style>
         <Style x:Key="NavButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Padding" Value="4,8" />
@@ -290,6 +241,7 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        </ResourceDictionary>
     </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
