@@ -617,10 +617,13 @@ public partial class ProductHomeView : UserControl
     {
         if (Stage is null || HomeContent is null) return;
         var available = Math.Max(0, HomeContent.ActualHeight - Stage.Margin.Top - Stage.Margin.Bottom);
-        if (IsEditing && SelectedEditor == HomeEditor.Face && !IsPortraitLayout)
+        var previewFits = available >= BasePreviewWidth * .75 + PreviewBottomSpace + 8;
+        if (!IsPortraitLayout && !IsInPorch &&
+            (previewFits || IsEditing && SelectedEditor == HomeEditor.Face))
         {
-            // Face parameters have their own scroll viewport and actions stay in the preview
-            // column. Hidden home launchers must not impose a page-scrolling minimum height.
+            // Home and landscape editors share the visible stage. Parameters scroll
+            // inside their own viewport; preview actions stay inside this fixed height.
+            // Keep the existing overflow fallback when a genuinely short home cannot fit.
             Stage.MinHeight = 0;
             if (double.IsNaN(Stage.Height) || Math.Abs(Stage.Height - available) > .5) Stage.Height = available;
             return;
@@ -651,6 +654,11 @@ public partial class ProductHomeView : UserControl
     private double HomeLauncherSpace => ShadowHeight + 4 + 60;
     private double EditorSaveActionsHeight => SelectedEditor == HomeEditor.Face
         ? FaceEditorSaveActions.DesiredSize.Height : AccessorySaveActionsSlot.DesiredSize.Height;
+    // Reserve the same space in all three pages so switching the selected editor
+    // cannot change the preview baseline when its footer has a different height.
+    private double PreviewBottomSpace => Math.Max(HomeLauncherSpace,
+        ShadowHeight + Math.Max(FaceEditorSaveActions.DesiredSize.Height,
+            AccessorySaveActionsSlot.DesiredSize.Height) + 16);
     private double PortraitPreviewHeight => CommonPreviewTop + BasePreviewWidth * .75 + ShadowHeight +
         (IsEditing ? Math.Max(64, EditorSaveActionsHeight + 20) : 64);
     // Use the visible home area, not the editor's variable content height. The
@@ -667,9 +675,8 @@ public partial class ProductHomeView : UserControl
             var lowerBy = Math.Clamp(available - safeTop - BasePreviewWidth * .75 - HomeLauncherSpace, 0, 8);
             var preferred = Math.Max(safeTop + lowerBy, IsPortraitLayout ? 0 :
                 (Math.Max(minimumStageHeight, available) - BasePreviewWidth * .75 - HomeLauncherSpace) / 2);
-            if (IsEditing && SelectedEditor == HomeEditor.Face && !IsPortraitLayout)
-                return Math.Max(8, Math.Min(preferred, available - BasePreviewWidth * .75 - ShadowHeight -
-                    EditorSaveActionsHeight - 16));
+            if (!IsPortraitLayout && !IsInPorch)
+                return Math.Max(8, Math.Min(preferred, available - BasePreviewWidth * .75 - PreviewBottomSpace));
             return preferred;
         }
     }
@@ -711,7 +718,7 @@ public partial class ProductHomeView : UserControl
         EditorHeading.Visibility = EditorTitle.Visibility = Visibility.Collapsed;
         EditorHeadingRow.Height = new GridLength(0);
         OptionsBody.Margin = new Thickness(0);
-        EditorPanel.MinHeight = portrait || faceEditing ? 0 : shortLandscape ? 245 : compactLandscape ? 300 : 340;
+        EditorPanel.MinHeight = portrait || faceEditing || accessoryEditing ? 0 : shortLandscape ? 245 : compactLandscape ? 300 : 340;
         EditorPanel.Margin = portrait ? new Thickness(12, 4, 12, 8)
             : shortLandscape ? new Thickness(4) : new Thickness(4, 8, 4, 8);
         Grid.SetColumn(FaceEditorTools, 0);
