@@ -33,3 +33,5 @@
 - 当前未配置发布签名；代码签名、正式安装向导及自动更新留给后续发行工作。
 
 依据：[本地收口差项](2026-10-22-local-mode-closeout-checklist.md)、[焦点人工结果](../verification/2026-10-22-control-center-focus.md#用户收口反馈)、[本地安装合同](../local-desktop-install.md)。
+
+本地包准备结果见[构建与封装记录](../verification/2026-10-22-first-local-preview-package.md)。版本源码、完整ZIP及SHA256已形成，公开发布状态和未完成门禁保持上述边界。
