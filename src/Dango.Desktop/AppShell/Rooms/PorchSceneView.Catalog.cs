@@ -107,14 +107,14 @@ public sealed partial class PorchSceneView
             actionDoorId = nearby; catalogActions.Children.Clear();
             if (catalogRooms.TryGetValue(nearby, out var room))
             {
-                AddAction("↗ 进入", "进入" + room.Name, () => SelectPreviewDoor(door));
-                AddAction("◇ 布置", "布置" + room.Name, () => RequestCatalogFurniture(), room.CanEditOffline);
+                AddAction("↗ 进入", "进入" + room.Name, () => SelectPreviewDoor(door), shortcut: "F");
+                AddAction("◇ 布置", "布置" + room.Name, () => RequestCatalogFurniture(), room.CanEditOffline, shortcut: "E");
                 AddAction("× 解散", "解散" + room.Name, () => RequestCatalogDissolve(room.RoomId), room.Source == LocalRoomSource.LocalOnly);
             }
             else if (door.Kind == "空门位")
                 AddAction("＋ 新建", "新建普通房", () => SelectPreviewDoor(door), catalogHealthy && catalogRooms.Count < 3,
-                    catalogHealthy ? "普通房已满（3/3）" : "目录受保护，请先重新读取");
-            else AddAction("↗ 进入", "进入桌宠房", () => SelectPreviewDoor(door));
+                    catalogHealthy ? "普通房已满（3/3）" : "目录受保护，请先重新读取", shortcut: "F");
+            else AddAction("↗ 进入", "进入桌宠房", () => SelectPreviewDoor(door), shortcut: "F");
         }
         catalogActions.Visibility = Visibility.Visible;
         catalogActions.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
@@ -141,10 +141,23 @@ public sealed partial class PorchSceneView
         }
         catalogActions.Margin = new(left, top, 0, 0);
     }
-    private void AddAction(string label, string name, Action action, bool enabled = true, string? disabledReason = null)
+    private void AddAction(string label, string name, Action action, bool enabled = true, string? disabledReason = null, string? shortcut = null)
     {
         var button = new Button { Content = label, MinHeight = 40, Padding = new(8, 6, 8, 6), Margin = new(0, 0, 6, 0), IsEnabled = enabled };
         button.ToolTip = enabled ? name : disabledReason ?? "离线不可执行，需要联网确认资格";
+        if (shortcut is not null)
+        {
+            var keycap = new Border();
+            keycap.SetResourceReference(StyleProperty, "ShortcutKeycap");
+            keycap.Child = new TextBlock { Text = shortcut, FontSize = 12,
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+            var content = new StackPanel { Orientation = Orientation.Horizontal };
+            content.Children.Add(keycap);
+            content.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center });
+            button.Content = content;
+            button.ToolTip = shortcut + " · " + button.ToolTip;
+            AutomationProperties.SetAcceleratorKey(button, shortcut);
+        }
         AutomationProperties.SetName(button, name);
         button.Click += (_, e) =>
         {
