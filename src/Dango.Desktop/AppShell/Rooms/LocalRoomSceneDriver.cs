@@ -73,7 +73,7 @@ internal sealed class LocalRoomSceneDriver : IDisposable
         pendingResumePosition = resume?.Position;
         pendingResumeLayout = layout;
         ResumeWarning = null;
-        if (!runtime.UsesBeltRoom || runtime.LastBeltRoomFrame is not null) ResolveEntryPosition();
+        if (runtime.HasBodySnapshot) ResolveEntryPosition();
         pendingRoomCamera = resume?.Camera ?? new(RoomCameraMode.Follow, RoomViewPreset.Standard, 100, 0, 0);
     }
     internal (RoomSafePosition? Position, RoomCameraSnapshot Camera, long LayoutVersion)? CaptureCheckpoint()
@@ -83,13 +83,11 @@ internal sealed class LocalRoomSceneDriver : IDisposable
             return null;
         // The accepted handoff API relocates horizontally without injecting a vertical pose or velocity.
         // Keep the last verified ground checkpoint while jumping or standing on a dynamic support.
-        var envelope = runtime.UsesBeltRoom ? RoomResumeSafety.BeltEnvelope(runtime.LastBeltRoomFrame) : new RoomResumeSafety.Envelope(-80, 80, 120);
+        var envelope = runtime.SupportEnvelope;
         if (envelope is null) return null;
         if (safeCheckpoint is { } previous && !RoomResumeSafety.CanRestore(previous, furniture.PersistedLayout, envelope.Value))
             safeCheckpoint = null;
-        if ((runtime.UsesBeltRoom ? RoomResumeSafety.HasBeltFloorSupport(runtime.LastBeltRoomFrame) :
-                runtime.LastPhysicsFrame?.Bodies.SingleOrDefault() is { IsGrounded: true, GroundContactCount: > 0 }) &&
-            runtime.CurrentSelectedCenter is { } center)
+        if (runtime.HasFloorSupport && runtime.CurrentSelectedCenter is { } center)
         {
             var point = new RoomSafePosition(center.X, 0);
             if (RoomResumeSafety.CanRestore(point, furniture.PersistedLayout, envelope.Value)) safeCheckpoint = point;
@@ -100,7 +98,7 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     private void ResolveEntryPosition()
     {
         if (pendingResumeLayout is not { } layout) return;
-        var envelope = runtime.UsesBeltRoom ? RoomResumeSafety.BeltEnvelope(runtime.LastBeltRoomFrame) : new RoomResumeSafety.Envelope(-80, 80, 120);
+        var envelope = runtime.SupportEnvelope;
         if (envelope is null) throw new InvalidOperationException("房间身体几何尚未就绪，无法安全恢复位置。");
         safeCheckpoint = pendingResumePosition is { SupportHeight: 0 } point &&
             RoomResumeSafety.CanRestore(point, layout, envelope.Value) ? point : null;
@@ -353,17 +351,17 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     internal bool Key(System.Windows.Input.Key key, bool down, bool repeat)
     {
         if (!scheduler.OwnsRuntime || view?.InputBlocked == true || view?.DesktopPetPresentationEnabled == true || !readySent) return false;
-        if (down && repeat) return key is System.Windows.Input.Key.A or System.Windows.Input.Key.D or System.Windows.Input.Key.S or System.Windows.Input.Key.Space || runtime.UsesBeltRoom && key == System.Windows.Input.Key.W;
+        if (down && repeat) return key is System.Windows.Input.Key.A or System.Windows.Input.Key.D or System.Windows.Input.Key.S or System.Windows.Input.Key.Space || runtime.SupportsStretchControl && key == System.Windows.Input.Key.W;
         intent = key switch
         {
             System.Windows.Input.Key.A => intent with { Left = down },
             System.Windows.Input.Key.D => intent with { Right = down },
             System.Windows.Input.Key.S => intent with { Squash = down },
-            System.Windows.Input.Key.W when runtime.UsesBeltRoom => intent with { Stretch = down },
+            System.Windows.Input.Key.W when runtime.SupportsStretchControl => intent with { Stretch = down },
             System.Windows.Input.Key.Space => intent with { Jump = down },
             _ => intent,
         };
-        return key is System.Windows.Input.Key.A or System.Windows.Input.Key.D or System.Windows.Input.Key.S or System.Windows.Input.Key.Space || runtime.UsesBeltRoom && key == System.Windows.Input.Key.W;
+        return key is System.Windows.Input.Key.A or System.Windows.Input.Key.D or System.Windows.Input.Key.S or System.Windows.Input.Key.Space || runtime.SupportsStretchControl && key == System.Windows.Input.Key.W;
     }
 
     private bool Prepare()

@@ -46,7 +46,15 @@ $script:SettingsContracts['dango-desktop-settings-v4-belt-default-v3'] = @{
     'App.xaml.cs' = '8CBA416D20D59E43F1BB5C797A04E9D9821F0900EF1645B514D699FBCFF12B53'
     'Verification/VerificationSessionStore.cs' = '925A313A44DBE72C35FBA230010A521E384C529D0EA705788E1D8AE4D7B2ACBD'
 }
-$script:BeltSettingsContracts = @('dango-desktop-settings-v4-belt-default-v1', 'dango-desktop-settings-v4-belt-default-v2', 'dango-desktop-settings-v4-belt-default-v3')
+# B4 centralizes composition; persisted settings, scope identity and prior contracts are unchanged.
+$script:SettingsContracts['dango-desktop-settings-v4-belt-default-v4'] = @{
+    'AppShell/ControlCenter/ControlCenterWindowSettingsStore.cs' = '48FF4A9AB801FFF52228E6DB760F9248E047111DDBF0DA5AD22E78B32DE97329'
+    'AppShell/ControlCenter/ApplicationSettingsSession.cs' = 'E68D1E6997AF8E73305C1D374978B60B18FF107A4C07825B4A2C86212F96FB6E'
+    'AppShell/DangoApplicationHost.cs' = 'FD5B22CD2B5D4BC536836223B9211483A827BF6733C4F80E9F93BA1170415E8B'
+    'App.xaml.cs' = '8CBA416D20D59E43F1BB5C797A04E9D9821F0900EF1645B514D699FBCFF12B53'
+    'Verification/VerificationSessionStore.cs' = '925A313A44DBE72C35FBA230010A521E384C529D0EA705788E1D8AE4D7B2ACBD'
+}
+$script:BeltSettingsContracts = @('dango-desktop-settings-v4-belt-default-v1', 'dango-desktop-settings-v4-belt-default-v2', 'dango-desktop-settings-v4-belt-default-v3', 'dango-desktop-settings-v4-belt-default-v4')
 $script:LegacyToolHashes = @{
     'Dango.LocalInstall.psm1' = '5500CB19FFE0486C82DE9C42EC0C41DA27E65606618A2360DDA97AC6F9CCA77B'
     'Manage-Dango.ps1' = '58668DDD3C117BF8F82E0F83F6C32D847CDDB6AB3B44564D11ED8EC946C11738'
@@ -344,7 +352,7 @@ function Test-DangoProductRunning {
 
 function Get-DangoInstalledInstanceName([string]$SettingsContract, [string]$SettingsScope) {
     $name = 'Local\Dango.Phase1.App'
-    if (@('dango-desktop-settings-v4-belt-default-v2', 'dango-desktop-settings-v4-belt-default-v3') -ccontains $SettingsContract -and $null -ne $SettingsScope -and $SettingsScope.Length -gt 0) {
+    if (@('dango-desktop-settings-v4-belt-default-v2', 'dango-desktop-settings-v4-belt-default-v3', 'dango-desktop-settings-v4-belt-default-v4') -ccontains $SettingsContract -and $null -ne $SettingsScope -and $SettingsScope.Length -gt 0) {
         # Match App.ProductInstanceName: absolute settings.json path, invariant
         # uppercase, UTF-8 SHA256, first 24 uppercase hex characters.
         $settings = [IO.Path]::GetFullPath((Join-Path $SettingsScope 'settings.json')).ToUpperInvariant()

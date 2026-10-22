@@ -18,23 +18,23 @@ namespace Dango.Desktop.AppShell.ControlCenter;
 /// <summary>The actual home editor owns presentation; the worker alone owns the native body.</summary>
 public partial class ProductHomeView
 {
-    private BeltBodyRuntime? beltRuntime;
+    private readonly HomeBodyPreviewSession bodyPreview = new();
+    private IBodyPreviewRuntime? beltRuntime => bodyPreview.Runtime;
     private BeltBodyAppearancePresenter? beltPresenter;
     private BeltBodySnapshot? beltSnapshot, beltPendingDisplay;
     private IReadOnlyList<BeltBodyBoundaryPoint> beltBoundary = [];
     private BeltBodyAppearanceFrame? beltAppearanceFrame;
-    private readonly HashSet<Key> beltHeld = [], beltSuppressed = [];
     private long beltPresentationTick, beltRequestedRevision = -1, beltRequestedBodyEpoch = -1;
     private long beltRenderStamp, beltLastPresentedSequence = -1;
-    private bool beltVisible, beltPrimed, beltDragging, beltJump, beltCancel, beltFatalError, beltWindowMenuOpen;
-    private Point beltDragTarget;
+    private bool beltVisible, beltPrimed, beltFatalError, beltWindowMenuOpen;
     private string? beltError;
     private string? beltDiagnosticError;
     private string? beltSettingsPath;
     private bool beltRoomSuspended;
     private double beltPorchOriginX;
     private double BeltFloor => 120 + (PetShadow.Height / 2 - 1) / Math.Max(.1, PetPreview.Width / 160);
-    internal BeltBodyRuntime? BoundBeltBody => beltRuntime;
+    // Native inspection is a test/diagnostic seam; page operations use the preview contract.
+    internal BeltBodyRuntime? BoundBeltBody => beltRuntime as BeltBodyRuntime;
     internal BeltBodyAppearancePresenter? BoundBeltPresenter => beltPresenter;
     internal BeltBodySnapshot? DisplayedBeltSnapshot => beltSnapshot;
     internal event Action<BeltBodySnapshot>? BeltBodyDisplayConfirmed;
@@ -43,11 +43,11 @@ public partial class ProductHomeView
     private readonly List<BeltBodySnapshot> beltRenderBatch = new(2);
     internal double BeltBodyPresentationSeconds { get; private set; }
 
-    internal void BindBeltBody(string settingsPath)
+    internal void BindBeltBody(string settingsPath, ProductPhysicsComposition? composition = null)
     {
         if (beltRuntime is not null || BoundRuntime is not null) throw new InvalidOperationException("主页已绑定实时场景。");
         beltSettingsPath = settingsPath;
-        beltRuntime = new BeltBodyRuntime(Path.Combine(AppContext.BaseDirectory, "dango_belt_product.dll")) { SleepEnabled = true };
+        bodyPreview.Bind(composition);
         InputMethod.SetIsInputMethodEnabled(Stage, false);
         OptionsBody.Resources[typeof(System.Windows.Controls.Primitives.ScrollBar)] = Resources["SettingsScrollBar"];
         HomeContent.Resources[typeof(System.Windows.Controls.Primitives.ScrollBar)] = Resources["SettingsScrollBar"];
@@ -83,8 +83,7 @@ public partial class ProductHomeView
         PetPreview.MouseLeftButtonUp -= OnBeltPointerUp;
         PetPreview.LostMouseCapture -= OnBeltLostCapture;
         // Native calls are finite; disposal is performed by the owner after its in-flight call.
-        beltRuntime.CloseAsync().GetAwaiter().GetResult();
-        beltRuntime = null;
+        bodyPreview.Close();
         if (beltPresenter is not null) LiveEntityLayer.Children.Remove(beltPresenter.View);
         PorchScene.DetachBeltBody();
         beltPresenter?.Dispose();
@@ -176,7 +175,7 @@ public partial class ProductHomeView
         ObserveBeltOperation(ConfigureBeltDraftAsync(beltRuntime, DraftAppearance.Body, beltRequestedRevision, beltRequestedBodyEpoch));
     }
 
-    private async Task ConfigureBeltDraftAsync(BeltBodyRuntime runtime, DangoBodyControls body, long revision, long epoch)
+    private async Task ConfigureBeltDraftAsync(IBodyPreviewRuntime runtime, DangoBodyControls body, long revision, long epoch)
     {
         await runtime.ConfigureAsync(body, revision, epoch);
         var resume = await Dispatcher.InvokeAsync(() =>
@@ -415,40 +414,12 @@ public partial class ProductHomeView
         if (open) ClearBeltInput(); else ReconcileBeltKeyboard();
     }
 
-    private bool SetBeltDirectionalKey(Key key, bool down, bool repeat)
-    {
-        if (beltRuntime is null || key is not (Key.A or Key.D or Key.W or Key.S or Key.Space)) return false;
-        if (!down && !beltHeld.Contains(key) && !beltSuppressed.Contains(key)) return true;
-        if (!down) { beltHeld.Remove(key); beltSuppressed.Remove(key); }
-        else if (!beltSuppressed.Contains(key) && !(repeat && key == Key.Space) && beltHeld.Add(key) && key == Key.Space) beltJump = true;
-        PublishBeltInput();
-        return true;
-    }
+    private bool SetBeltDirectionalKey(Key key, bool down, bool repeat) => bodyPreview.SetKey(key, down, repeat);
 
-    private void PublishBeltInput()
+    private void ClearBeltInput() => bodyPreview.ClearInput(() =>
     {
-        if (beltRuntime is null) return;
-        var w = beltHeld.Contains(Key.W); var s = beltHeld.Contains(Key.S);
-        beltRuntime.PublishInput(new((beltHeld.Contains(Key.D) ? 1 : 0) - (beltHeld.Contains(Key.A) ? 1 : 0),
-            w ? 1 : 0, s ? 1 : 0, beltJump, beltDragging,
-            beltDragTarget.X, beltDragTarget.Y, beltHeld.Count > 0 || beltDragging, beltCancel));
-        beltJump = beltCancel = false;
-    }
-
-    private void ClearBeltInput()
-    {
-        if (beltRuntime is null) return;
-        var alreadyQuiet = beltRuntime.Metrics.Sleeping && beltHeld.Count == 0 && !beltDragging && !beltJump;
-        beltSuppressed.UnionWith(beltHeld);
-        beltHeld.Clear();
-        beltJump = false;
-        beltDragging = false;
         if (PetPreview.IsMouseCaptured) PetPreview.ReleaseMouseCapture();
-        if (alreadyQuiet) return; // Eye-only preview and focus changes do not require a new body solve.
-        beltCancel = true;
-        PublishBeltInput();
-        beltRuntime.ClearInput();
-    }
+    });
 
     private void OnBeltOwnerActivated(object? sender, EventArgs e)
     {
@@ -460,12 +431,7 @@ public partial class ProductHomeView
 
     private void ReconcileBeltKeyboard()
     {
-        var before = beltHeld.Count;
-        var physical = new[] { Key.A, Key.D, Key.W, Key.S, Key.Space }.Where(Keyboard.IsKeyDown).ToHashSet();
-        beltSuppressed.IntersectWith(physical);
-        beltSuppressed.UnionWith(physical.Except(beltHeld));
-        beltHeld.IntersectWith(physical);
-        if (beltHeld.Count != before) PublishBeltInput();
+        bodyPreview.ReconcileKeyboard(new[] { Key.A, Key.D, Key.W, Key.S, Key.Space }.Where(Keyboard.IsKeyDown));
     }
 
     private void OnBeltPointerDown(object sender, MouseButtonEventArgs e)
@@ -487,10 +453,9 @@ public partial class ProductHomeView
         }
         if (!inside) return false;
         Stage.Focus();
-        beltDragging = true;
-        beltDragTarget = world;
+        bodyPreview.BeginDrag(world);
         PetPreview.CaptureMouse();
-        PublishBeltInput();
+        bodyPreview.PublishInput();
         e.Handled = true;
         return true;
     }
@@ -498,25 +463,20 @@ public partial class ProductHomeView
         DangoBodyMaterial.Configure(beltSnapshot?.Body ?? DraftAppearance.Body).GroundHeight + (BeltFloor - p.Y) / BeltBodyAppearancePresenter.WorldToCanvas);
     private void OnBeltPointerMove(object sender, MouseEventArgs e)
     {
-        if (!beltDragging) return;
+        if (!bodyPreview.Dragging) return;
         if (e.LeftButton != MouseButtonState.Pressed) { ClearBeltInput(); return; }
-        beltDragTarget = BeltPointerToWorld(e.GetPosition(LiveSceneCanvas));
-        PublishBeltInput();
+        bodyPreview.MoveDrag(BeltPointerToWorld(e.GetPosition(LiveSceneCanvas)));
         e.Handled = true;
     }
     private void OnBeltPointerUp(object sender, MouseButtonEventArgs e)
     {
-        if (!beltDragging) return;
-        beltDragging = false;
-        PetPreview.ReleaseMouseCapture();
-        PublishBeltInput();
+        if (!bodyPreview.Dragging) return;
+        bodyPreview.EndDrag(releaseCapture: () => PetPreview.ReleaseMouseCapture());
         e.Handled = true;
     }
     private void OnBeltLostCapture(object sender, MouseEventArgs e)
     {
-        if (!beltDragging) return;
-        beltDragging = false;
-        beltCancel = true;
-        PublishBeltInput();
+        if (!bodyPreview.Dragging) return;
+        bodyPreview.EndDrag(cancelForces: true);
     }
 }

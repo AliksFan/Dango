@@ -66,6 +66,10 @@ public sealed partial class DesktopPhysicsScene : IDisposable
     }
     public bool UsesBeltRoom => beltRoom is not null;
     public DangoBeltRoomFrame? BeltRoomFrame => beltRoom?.Frame;
+    internal BodySupportEnvelope? SupportEnvelope => beltRoom is not null
+        ? BeltRoomBodyGeometry.SupportEnvelope(beltRoom.Frame) : new BodySupportEnvelope(-80, 80, 120);
+    internal bool HasFloorSupport => beltRoom is not null ? BeltRoomBodyGeometry.HasFloorSupport(beltRoom.Frame)
+        : LastFrame?.Physics.Bodies.SingleOrDefault() is { IsGrounded: true, GroundContactCount: > 0 };
     internal void ConfigureBeltSleepPresentationScale(double? scale) => beltRoom?.ConfigureSleepPresentationScale(scale);
     internal bool BeltRoomSleeping => beltRoom?.IsSleeping == true;
     internal long BeltRoomNativeStepCalls => beltRoom?.NativeStepCalls ?? 0;

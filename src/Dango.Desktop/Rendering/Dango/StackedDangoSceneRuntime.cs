@@ -27,6 +27,10 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
     private bool beltRoom;
     internal bool UsesBeltRoom => beltRoom;
     internal DangoBeltRoomFrame? LastBeltRoomFrame => scene?.BeltRoomFrame;
+    internal bool HasBodySnapshot => !beltRoom || scene is not null;
+    internal BodySupportEnvelope? SupportEnvelope => scene?.SupportEnvelope ?? (beltRoom ? null : new BodySupportEnvelope(-80, 80, 120));
+    internal bool HasFloorSupport => scene?.HasFloorSupport == true;
+    internal bool SupportsStretchControl => beltRoom;
     internal bool SupportsFurnitureCollection => scene?.SupportsFurnitureCollection == true;
     internal void ConfigureBeltSleepPresentationScale(double? scale) => scene?.ConfigureBeltSleepPresentationScale(scale);
     private LogicalPoint? hostOrigin;

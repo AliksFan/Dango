@@ -5,7 +5,7 @@
 - 当前默认配置版本：1。
 - 当前可创建容量：1、2 或 3，默认 3；支持空世界，超出配置容量明确拒绝。单/双体和三体已分别通过人工验收。
 - 当前平台：Windows x64，native 模块 ABI 1，Box2D 3.1.1。
-- 正式桌面宿主仍使用原 `dango_box2d.dll`，本模块不替换它。
+- 当前正式产品由 `ProductPhysicsComposition` 集中选择 `dango_belt_product.dll`（首页／编辑／门廊）和 `dango_belt_room.dll`（普通房／桌宠）；编辑worker与房间同world调度保持独立所有权。原 `dango_box2d.dll` 继续供显式旧宿主诊断与历史物理回归使用，不能将该旧链结果当作当前产品通过。
 
 构建、引用、API、坐标/显示契约、参数和完整示例见[物理模块说明](../../docs/phase-1-physics-module.md)。
 

@@ -3,9 +3,39 @@ using Dango.Physics;
 
 namespace Dango.Desktop.Physics.Presentation;
 
+internal readonly record struct BodySupportEnvelope(double Left, double Right, double Height);
+
 // Shared native continuous-curve attachment geometry for room gloves and desktop dragging.
 internal static class BeltRoomBodyGeometry
 {
+    // Bound every harmonic for all theta, including unsampled continuous extrema.
+    internal static BodySupportEnvelope? SupportEnvelope(DangoBeltRoomFrame? frame)
+    {
+        if (frame is not { Fault: 0 } || frame.BodySnapshot.Count != 200 ||
+            frame.BodySnapshot[0] != 1 || frame.BodySnapshot[1] != 200) return null;
+        var q = frame.BodySnapshot;
+        if (q.Skip(2).Take(36).Any(value => !double.IsFinite(value))) return null;
+        double rx = 0, ry = 0;
+        for (var harmonic = 1; harmonic <= 8; harmonic++)
+        {
+            var i = 2 + 4 * harmonic - 2;
+            rx += Math.Sqrt(q[i] * q[i] + q[i + 2] * q[i + 2]);
+            ry += Math.Sqrt(q[i + 1] * q[i + 1] + q[i + 3] * q[i + 3]);
+        }
+        const double margin = .001;
+        var offset = (q[2] - q[36]) * 72;
+        var result = new BodySupportEnvelope(offset - rx * 72 - margin, offset + rx * 72 + margin, 2 * ry * 72 + 2 * margin);
+        return double.IsFinite(result.Left) && double.IsFinite(result.Right) && double.IsFinite(result.Height) &&
+            result.Left < result.Right && result.Height > 0 ? result : null;
+    }
+
+    // Stats[12] is the continuous-extremum floor gap. Platform/ball support is excluded.
+    internal static bool HasFloorSupport(DangoBeltRoomFrame? frame) =>
+        frame is { Fault: 0, Tick: > 0 } && frame.BodySnapshot.Count == 200 && frame.Stats.Count >= 26 &&
+        frame.Diagnostics.Count >= 20 && frame.BodySnapshot[82] == 1 && frame.Stats[14] == 1 &&
+        frame.Stats[25] > 0 && frame.Diagnostics[18] == 0 && frame.Diagnostics[19] == 0 &&
+        double.IsFinite(frame.Stats[12]) && Math.Abs(frame.Stats[12]) <= .003;
+
     internal static LogicalPoint DragAttachment(DangoBeltRoomFrame frame)
     {
         // Native belt drag attaches to the continuous outer curve, with no legacy node-radius contraction.

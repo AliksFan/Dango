@@ -16,6 +16,7 @@ internal sealed partial class DangoApplicationHost : IDisposable
 {
     private readonly DesktopSceneSession sceneSession;
     private readonly StackedDangoSceneRuntime stackedRuntime;
+    private readonly ProductPhysicsComposition productPhysics;
     private readonly WorkerWWindow workerWWindow;
     private readonly DangoSceneWindow sceneWindow;
     private readonly DesktopHostCoordinator desktopHost;
@@ -48,10 +49,11 @@ internal sealed partial class DangoApplicationHost : IDisposable
         if (roomModulePath is not null && (uiMode != ApplicationUiMode.Product || !Path.IsPathFullyQualified(roomModulePath)))
             throw new ArgumentException("A room module override requires the product runtime and an absolute path.", nameof(roomModulePath));
         eyeHatReview = isolatedEyeHatReview;
+        productPhysics = ProductPhysicsComposition.FromModules(roomModulePath);
         sceneSession = new DesktopSceneSession();
         stackedRuntime = isolatedEyeHatReview ? StackedDangoSceneRuntime.CreateEyeHatReview(nativeLibraryPath, deferInitialization: true)
             : isolatedPhysicsReview ? new StackedDangoSceneRuntime(nativeLibraryPath)
-            : StackedDangoSceneRuntime.CreateBeltRoom(roomModulePath ?? Path.Combine(AppContext.BaseDirectory, "dango_belt_room.dll"));
+            : productPhysics.CreateRoom();
         workerWWindow = new WorkerWWindow(sceneSession, stackedRuntime);
         sceneWindow = new DangoSceneWindow(sceneSession, stackedRuntime);
         desktopHost = new DesktopHostCoordinator(workerWWindow, sceneWindow, stackedRuntime);
@@ -195,7 +197,7 @@ internal sealed partial class DangoApplicationHost : IDisposable
         {
             controlCenterWindow.ProductHome.BindAppearance(appearance);
             controlCenterWindow.ProductHome.BindAccessories(accessories);
-            controlCenterWindow.ProductHome.BindBeltBody(settingsPath);
+            controlCenterWindow.ProductHome.BindBeltBody(settingsPath, productPhysics);
             BindLocalRoom(controlCenterWindow);
             controlCenterWindow.BindSettingsScene(ReadProductSettingsScene, RestoreRoomDisplayFromSettings, ReinitializeSceneFromSettings);
         }

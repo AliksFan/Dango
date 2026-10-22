@@ -9,7 +9,7 @@ namespace Dango.Desktop.Physics.Belt;
 /// Native work never holds gate. Lifecycle invalidation happens immediately; the command barrier
 /// completes only after the finite in-flight native call has returned to this owner.
 /// </summary>
-public sealed class BeltBodyRuntime : IAsyncDisposable
+public sealed class BeltBodyRuntime : IBodyPreviewRuntime
 {
     private const int Capacity = 8;
     private const double BackpressureTimeoutSeconds = .5;

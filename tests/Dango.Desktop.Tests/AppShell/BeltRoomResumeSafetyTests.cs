@@ -31,7 +31,7 @@ public sealed class BeltRoomResumeSafetyTests
     public void AppliedLargeBodyCannotReuseTheOldNeutralCheckpointEnvelope()
     {
         var frame = Frame();
-        var envelope = RoomResumeSafety.BeltEnvelope(frame)!.Value;
+        var envelope = BeltRoomBodyGeometry.SupportEnvelope(frame)!.Value;
         Assert.IsTrue(RoomResumeSafety.CanRestore(new(120, 0), FurnitureLayout.Empty));
         Assert.IsFalse(RoomResumeSafety.CanRestore(new(120, 0), FurnitureLayout.Empty, envelope));
         var platform = new FurnitureItemInstance(Guid.NewGuid(), FurnitureItemKind.StaticPlatform, new(1080, 250));
@@ -46,7 +46,7 @@ public sealed class BeltRoomResumeSafetyTests
         var original = Frame(.8); var q = original.BodySnapshot.ToArray();
         q[2] = .25; q[36] = -.2; q[32] = .14; q[34] = -.11; q[33] = -.08; q[35] = .09;
         var frame = original with { BodySnapshot = Array.AsReadOnly(q) };
-        var envelope = RoomResumeSafety.BeltEnvelope(frame)!.Value;
+        var envelope = BeltRoomBodyGeometry.SupportEnvelope(frame)!.Value;
         double minY = double.PositiveInfinity, maxY = double.NegativeInfinity;
         for (var sample = 0; sample < 8193; sample++)
         {
@@ -64,21 +64,21 @@ public sealed class BeltRoomResumeSafetyTests
         Assert.IsTrue((maxY - minY) * 72 <= envelope.Height);
         Assert.IsTrue(envelope.Right > -envelope.Left);
         q[4] = double.NaN;
-        Assert.IsNull(RoomResumeSafety.BeltEnvelope(frame with { BodySnapshot = Array.AsReadOnly(q) }));
+        Assert.IsNull(BeltRoomBodyGeometry.SupportEnvelope(frame with { BodySnapshot = Array.AsReadOnly(q) }));
     }
 
     [TestMethod]
     public void PlatformSupportAndJumpingCannotBeSavedAsFloorSupport()
     {
-        var frame = Frame(); Assert.IsTrue(RoomResumeSafety.HasBeltFloorSupport(frame));
+        var frame = Frame(); Assert.IsTrue(BeltRoomBodyGeometry.HasFloorSupport(frame));
         var diag = frame.Diagnostics.ToArray(); diag[18] = 17;
-        Assert.IsFalse(RoomResumeSafety.HasBeltFloorSupport(frame with { Diagnostics = Array.AsReadOnly(diag) }));
+        Assert.IsFalse(BeltRoomBodyGeometry.HasFloorSupport(frame with { Diagnostics = Array.AsReadOnly(diag) }));
         var stats = frame.Stats.ToArray(); stats[12] = 2;
-        Assert.IsFalse(RoomResumeSafety.HasBeltFloorSupport(frame with { Stats = Array.AsReadOnly(stats) }));
+        Assert.IsFalse(BeltRoomBodyGeometry.HasFloorSupport(frame with { Stats = Array.AsReadOnly(stats) }));
         stats[12] = 0; stats[25] = 0;
-        Assert.IsFalse(RoomResumeSafety.HasBeltFloorSupport(frame with { Stats = Array.AsReadOnly(stats) }));
-        Assert.IsFalse(RoomResumeSafety.HasBeltFloorSupport(frame with { Tick = 0 }));
-        Assert.IsFalse(RoomResumeSafety.HasBeltFloorSupport(frame with { Fault = -1 }));
+        Assert.IsFalse(BeltRoomBodyGeometry.HasFloorSupport(frame with { Stats = Array.AsReadOnly(stats) }));
+        Assert.IsFalse(BeltRoomBodyGeometry.HasFloorSupport(frame with { Tick = 0 }));
+        Assert.IsFalse(BeltRoomBodyGeometry.HasFloorSupport(frame with { Fault = -1 }));
     }
 
     [TestMethod]
@@ -113,7 +113,7 @@ public sealed class BeltRoomResumeSafetyTests
         using var runtime = StackedDangoSceneRuntime.CreateBeltRoom(module);
         runtime.ConfigureBeltRoomAppearance(DangoAppearanceConfiguration.Default.WithBody(new DangoBodyControls(120, 100, 0)));
         Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
-        var envelope = RoomResumeSafety.BeltEnvelope(runtime.LastBeltRoomFrame)!.Value;
+        var envelope = BeltRoomBodyGeometry.SupportEnvelope(runtime.LastBeltRoomFrame)!.Value;
         using var driver = new LocalRoomSceneDriver(new DesktopSceneSession(), runtime);
         var safe = new RoomSafePosition(FurnitureLayoutContract.OrdinaryRoom.Left - envelope.Left + .5, 0);
         Assert.IsTrue(RoomResumeSafety.CanRestore(safe, FurnitureLayout.Empty, envelope));
@@ -166,7 +166,7 @@ public sealed class BeltRoomResumeSafetyTests
         Assert.AreEqual(appearance.SavedAppearance.Body, runtime.EffectiveAppearance.Body);
         // A DLL unload/reload may restart its native generation counter; the owner epoch scopes it.
         Assert.AreNotEqual((before.OwnerEpoch, before.Generation), (runtime.LastBeltRoomFrame!.OwnerEpoch, runtime.LastBeltRoomFrame.Generation));
-        Assert.IsTrue(RoomResumeSafety.BeltEnvelope(runtime.LastBeltRoomFrame)!.Value.Height < RoomResumeSafety.BeltEnvelope(before)!.Value.Height);
+        Assert.IsTrue(BeltRoomBodyGeometry.SupportEnvelope(runtime.LastBeltRoomFrame)!.Value.Height < BeltRoomBodyGeometry.SupportEnvelope(before)!.Value.Height);
     }
 
     [STATestMethod]

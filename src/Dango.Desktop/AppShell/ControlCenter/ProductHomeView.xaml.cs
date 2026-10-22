@@ -484,16 +484,9 @@ public partial class ProductHomeView : UserControl
     internal void ApplyTheme(bool contrast)
     {
         highContrast = contrast;
-        Background = contrast ? System.Windows.SystemColors.WindowBrush : Brush("#FDFCF9");
-        Foreground = contrast ? System.Windows.SystemColors.WindowTextBrush : Brush("#443D34");
-        Resources["HomeBackground"] = Background;
-        Resources["HomeInk"] = Foreground;
-        Resources["HomePrimaryInk"] = contrast ? System.Windows.SystemColors.HighlightTextBrush : Foreground;
-        Resources["HomeMuted"] = contrast ? Foreground : Brush("#807568");
-        Resources["HomeLine"] = contrast ? Foreground : Brush("#E9E4DA");
-        Resources["HomeSoft"] = contrast ? Background : Brush("#F3EFE8");
-        Resources["HomeAccent"] = contrast ? System.Windows.SystemColors.HighlightBrush : Brush("#885E3E");
-        Resources["HomeSelected"] = contrast ? System.Windows.SystemColors.HighlightBrush : Brush("#EFE3D4");
+        Dango.Desktop.Resources.DesktopTheme.ApplyPalette(Resources, contrast);
+        Background = (System.Windows.Media.Brush)Resources["HomeBackground"];
+        Foreground = (System.Windows.Media.Brush)Resources["HomeInk"];
         Resources["SettingsScrollGrip"] = contrast ? Foreground : Brush("#B7A28E");
         PorchScene.InvalidateVisual();
         UpdateLauncherSelection();
