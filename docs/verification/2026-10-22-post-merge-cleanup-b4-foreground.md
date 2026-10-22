@@ -1,6 +1,6 @@
 # B4首轮前台回归：未通过
 
-后续状态：本日家具入口修正后的完整用例已通过，按钮补充现有快捷键标注；竖屏两项按用户指示暂缓，首轮失败证据保留。详见文末续行，B4仍未标记人工验收。
+后续状态：本日家具入口修正后的完整用例已通过，按钮补充现有快捷键标注；随后真实鼠标尺寸菜单和快捷键定向检查6/6通过。竖屏两项按用户指示暂缓，首轮失败证据保留。详见文末续行，B4仍未标记人工验收。
 
 日期：2026-10-22。源快照`3ee855383cf17ef304eaf5f7a57ce1194a004782`，分支`codex/post-merge-cleanup-b3-b4`；[首批交付](2026-10-22-post-merge-cleanup-b4.md)的271项定向自动结果保留为其原覆盖范围。
 
@@ -55,3 +55,20 @@
 证据目录`artifacts/post-merge-cleanup-b4/furniture-and-shortcuts-20261022-01/`：`shortcut-labels-background.trx`、`furniture-entry-background.trx`、`ordinary-room-entry-fixed.trx`、`screen-session.json`及`screen-release.json`。运行时源码为`8ff3f54`加待提交的两份UI文件，文件内容随后原样提交为`b8148d5`。
 
 内部候选包已按干净源码`b8148d522a3ef2b6584f16cf59b635fcef457801`更新：`artifacts/desktop-entry/b4-furniture-shortcuts-20261022-v1/package/`，manifest为`sourceDirty=false`、482份文件，v4设置源码合同不变。发布预检10/10，同包`--smoke-test`无host启动、exit0并退出；证据为本节目录内`publish.log`、`preflight/summary.json`及`smoke.json`。不安装、不合main、不推送或部署。原main的AGENTS未提交修改和保护DLL哈希均保持；两个工作树及虚构测试产物保留。
+
+## 尺寸菜单与快捷键收尾检查
+
+用户明确授权1～2分钟。干净源码`33ffb64d2b30034e59b96e77e5c81bb9de9b3b2f`，Release既有程序集，无源码改动或重新构建。授权执行区间北京时间13:28:05.994至13:30:05.721，包含准备、后台检查与资源清点，共119.7秒；实际用例时间按TRX记录，不把准备或关闭后的时间计为有效窗口／物理运行。
+
+| 验证层次 | 用例与结果 | 实际含义 |
+| --- | --- | --- |
+| 真实全局鼠标 | `RealMouseSizeSelectionRestoresTheHomeStageFocus` 1/1通过，13:28:08至13:28:10 | 实际Win32鼠标按下／松开依次点击尺寸按钮与预设；菜单关闭后100／300／600ms窗口仍激活，Stage均拥有键盘焦点。既有用例选择Portrait仅检查菜单及焦点路径，未运行暂缓的Face／Wardrobe竖屏编辑布局用例，也未改变OS显示设置 |
+| 无窗口导航合同 | `NavigationKeysToggleEditorsPreserveDraftBoundaryAndUseFForPorch`、`NavigationDoesNotRunInSettingsDialogsAwayStateOrWindowMenu` 2/2通过 | 直接调用导航分派，验证Q／E／F、重复键、草稿切换和设置／对话框等阻止条件；不宣称真实OS键盘注入 |
+| WPF布局及控件状态 | `LauncherShortcutLettersFollowTheSelectedWardrobeForegroundInHighContrast` 1/1通过 | 960×540布局中的既有Q／E／F字母正确继承按钮及选中高对比前景；使用组件主题API，未切换OS高对比 |
+| 已加载WPF窗口／事件 | `RapidReverseEscAndReducedMotionLeaveOnlyTheLastRequestedState`、`WardrobeControlKeysDoNotNavigateAndEscapeCancelsWhileOtherHomeShortcutsRemain` 2/2通过，末项13:29:46.936结束 | 实际控件点击／WPF键盘事件验证收起、Esc取消草稿、焦点恢复和转场终态；测试窗口位于屏幕外，不作为前台观感或真实OS键盘验证 |
+
+本轮**6项通过、零失败、零跳过**，修复了首轮尺寸菜单因未取得前台而“未执行”的验证缺口。先前Inconclusive原件保留，不改写历史结果。真实鼠标用例finally恢复原鼠标坐标及原前台窗口；各窗口由finally关闭，资源清点无自有Desktop／testhost残留，无全局键鼠占用或服务端资源。
+
+证据目录`artifacts/post-merge-cleanup-b4/menu-shortcuts-20261022-01/`：`real-mouse-size-menu.trx`、`shortcut-navigation.trx`、`shortcut-render-and-escape.trx`、`results-summary.json`及`screen-release-final.json`。初版`screen-release.json`因PowerShell将JSON时间隐式转为DateTime后再次Parse而丢失起始小数秒，elapsedSeconds偏大；初版保留，以最终文件直接解析原始DateTimeOffset字符串所得119.7266714秒为准。
+
+本轮只增加验证记录，不修改产品或测试源码，内部候选包继续使用`b8148d5`版本。新增门廊F／E和收起／返回Esc标注的图像、裁切和人工观感尚未独立验收；用户简短体验、真实OS高对比、多DPI／多屏仍未验证。竖屏编辑两项继续暂缓，阶段不因此标记已验收，未合main、推送、安装或部署。
