@@ -6,6 +6,9 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Version>0.1.0-preview.1</Version>
+    <Product>Dango</Product>
+    <AssemblyTitle>Dango</AssemblyTitle>
   </PropertyGroup>
 
   <ItemGroup>

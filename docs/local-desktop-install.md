@@ -6,11 +6,13 @@
 
 ## 日常安装
 
-先用已验收的物理模块生成候选：
+当前默认正式链从源码构建连续身体模块并生成候选：
 
 ```powershell
-.\eng\publish-desktop-entry.ps1 -RunName <新的输出名称> -PhysicsModulePath <已验收模块DLL路径>
+.\eng\publish-desktop-entry.ps1 -RunName <新的输出名称>
 ```
+
+`-PhysicsModulePath`仅供需要历史模块的诊断包显式使用，普通发布不要求外部DLL覆盖。
 
 再把候选的 `package` 目录交给安装器：
 
@@ -81,4 +83,18 @@ sidecar 损坏或版本不支持时只降级档位并保护原文件；其余有
 
 ## 当前限制
 
-此流程没有联网更新、ZIP、开机自启、自动修复或管理工具自更新。原生发布预检只接受显式的已批准 SHA、x64、ABI 1 和必需导出；失败不创建发布输出，不下载、重编译或替换旧 DLL。旧物理 DLL 缺少导出是已知失败；长期稳定性仍未验证。同一实包在用户实际切换的同屏 150% 和 100% 条件下各完成 7/7 自动检查，用户分别确认两轮候选整体人工验收通过，Windows 恢复原 150% 缩放；跨屏、热插拔和第二分辨率未验证。后续已授权日常更新及真实 B→A→B 三轮各 5/5 窗口检查、三轮真实设置保留检查完成，最终 B 停止、A 保留供回退。流程历史验收不等于后续候选自动通过；自动差异、诊断原始失败和未验证项仍保留，详见[候选记录](verification/2026-10-03-windows-local-closeout.md)与[日常交付记录](verification/2026-10-03-windows-local-delivery.md)。未进入正式房间时桌面宿主保持隐藏，空门廊不是可用房间；本批不接联网样本。之后单独授权的共享基线与 main [本地整合](verification/2026-10-03-windows-local-main-integration.md)已完成，不改日常安装，推送仍未授权。
+内部安装流程没有联网更新、开机自启、自动修复或管理工具自更新；独立的预览ZIP准备入口见下节。原生发布预检只接受显式的已批准 SHA、x64、ABI 1 和必需导出；失败不创建发布输出，不下载、重编译或替换旧 DLL。旧物理 DLL 缺少导出是已知失败；长期稳定性仍未验证。同一实包在用户实际切换的同屏 150% 和 100% 条件下各完成 7/7 自动检查，用户分别确认两轮候选整体人工验收通过，Windows 恢复原 150% 缩放；跨屏、热插拔和第二分辨率未验证。后续已授权日常更新及真实 B→A→B 三轮各 5/5 窗口检查、三轮真实设置保留检查完成，最终 B 停止、A 保留供回退。流程历史验收不等于后续候选自动通过；自动差异、诊断原始失败和未验证项仍保留，详见[候选记录](verification/2026-10-03-windows-local-closeout.md)与[日常交付记录](verification/2026-10-03-windows-local-delivery.md)。未进入正式房间时桌面宿主保持隐藏，空门廊不是可用房间；本批不接联网样本。之后单独授权的共享基线与 main [本地整合](verification/2026-10-03-windows-local-main-integration.md)已完成，不改日常安装，推送仍未授权。
+
+## 本地预览ZIP准备
+
+2026-10-22新增的封装入口只生成本地待审预览包，不安装、启动应用、打标签或上传。发布范围与未完成门禁见[首发计划](planning/2026-10-22-first-local-preview-release.md)。
+
+提交干净源码后先使用上面的正式发布命令，再执行：
+
+```powershell
+.\eng\package-desktop-preview.ps1 -RunName <新的封装输出名称> -PackagePath <本次package目录> -Version 0.1.0-preview.1
+```
+
+封装要求包来源与当前HEAD一致、工作树干净、EXE版本匹配；复用现有包校验，并要求保留同次发布的`build/obj/Dango.Desktop/project.assets.json`及本机对应runtime包许可缓存。它只按包清单复制，`app/`中的内部候选保持不变；外围加入启动入口、中文说明、发行说明、对应运行时许可和发行来源清单，生成`artifacts/preview-releases/<RunName>/`下的ZIP与SHA256。所有ZIP文件逐项核对尺寸和哈希；新输出目录拒绝覆盖旧产物。
+
+用户运行整个ZIP解压后的`Start-Dango.cmd`或`app/Dango.Desktop.exe`，使用正常独立数据根。不能把验收目录或用户设置放进包内；压缩包不是单EXE，也不使用内部安装器的版本切换。该分发方式仅支持手动下载、退出后解压到新目录更新，不承诺任意历史版本都能读取新存档。
