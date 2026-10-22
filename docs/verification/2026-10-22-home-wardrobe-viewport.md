@@ -23,3 +23,9 @@
 - 源码差异与空白检查通过；未新增或运行自动测试，也未运行长时／全局键鼠验证。
 - 用户现有PID20300的旧候选窗口与隔离数据保留；源码修改不会热更新该窗口。本次布局仍待新候选的实际显示确认。
 - 未合main、推送、更新日常安装或部署。配饰清晰度与QQ人工通过按原候选保留；Schema1历史UNKNOWN、NU1903及实时未完成项不因此关闭。
+
+## 候选包与查看窗口
+
+实现已本地提交为`e2007fab5517adee86c0b72b7f3a8be912f122f1`。经正常`publish-desktop-entry.ps1`构建链生成`artifacts/desktop-entry/local-closeout-shared-viewport-20261022-v1/package/`，`sourceDirty=false`、481份清单文件，包完整性／来源校验通过，设置仍为v4合同。构建日志为`artifacts/local-mode-closeout/shared-viewport-publish.log`；没有运行自动UI测试、全局输入或持续运行检查。
+
+已打开该新候选EXE供用户查看（PID26224，观察到实际主窗口）。新独立数据目录为`artifacts/local-room-catalog/runs/shared-viewport-manual-20261022-01/`，只从上次虚构验收目录复制设置、窗口预设及配饰清单快照，原数据与旧窗口均保留；启动记录为该目录`manual-session.json`。窗口按用户查看需要保留，新布局人工结论仍待反馈，启动成功不代表布局验收通过。
