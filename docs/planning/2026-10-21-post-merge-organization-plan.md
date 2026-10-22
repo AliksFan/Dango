@@ -1,6 +1,6 @@
 # 合并后目录、历史入口与工作规则整理方案
 
-2026-10-22当前续行：B1～B4累计整理结果的正式候选包已由用户人工确认“验收通过合入main”，授权将`codex/post-merge-cleanup-b3-b4`本地合入main。B4规则及首批结构优化、家具入场测试修正和快捷键标注已有自动／实时／本次人工结果，见[B4验收续行](../verification/2026-10-22-post-merge-cleanup-b4-foreground.md#用户人工验收与本地合并授权)。竖屏编辑两项暂缓，真实OS高对比、多DPI／多屏及历史未验边界保留；网络／家具合同仍按B4.6／B4.7随功能迭代触发，未授权推送、安装或部署。下文保留各轮形成时的状态。
+2026-10-22当前续行：B1～B4累计整理结果的正式候选包已由用户人工确认“验收通过合入main”，`codex/post-merge-cleanup-b3-b4`已[本地快进合入main](../verification/2026-10-22-post-merge-cleanup-main-integration.md)。B4规则及首批结构优化、家具入场测试修正和快捷键标注已有自动／实时／本次人工结果，见[B4验收续行](../verification/2026-10-22-post-merge-cleanup-b4-foreground.md#用户人工验收与本地合并授权)。竖屏编辑两项暂缓，真实OS高对比、多DPI／多屏及历史未验边界保留；网络／家具合同仍按B4.6／B4.7随功能迭代触发，未授权推送、安装或部署。下文保留各轮形成时的状态。
 
 日期：2026-10-21。当前状态（2026-10-22）：**B1／B2／B3完成实现与受影响自动验证，人工状态分别保留；B4五条规则及首批结构优化完成实现与受影响自动验证**，见[B1／B2记录](../verification/2026-10-21-post-merge-cleanup-b1-b2.md)、[B3记录](../verification/2026-10-22-post-merge-cleanup-b3.md)及[B4记录](../verification/2026-10-22-post-merge-cleanup-b4.md)。方案形成时供审阅、未批准实施；依据[源快照盘点](2026-10-21-post-merge-organization-inventory.md)，起点为本地 `main@5ae2292`，原文保存在独立 `codex/post-merge-organization-plan` 分支。下文第10～11节保留草案快照，当前授权与执行清单见第12节。
 
