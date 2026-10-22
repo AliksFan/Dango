@@ -3,7 +3,7 @@ using System.Text;
 using Dango.Core.Furniture;
 using Dango.Desktop.Furniture;
 
-namespace Dango.Desktop.Tests.Furniture;
+namespace Dango.LocalRooms.Tests.Furniture;
 
 [TestClass]
 public sealed class FurnitureLayoutStoreTests

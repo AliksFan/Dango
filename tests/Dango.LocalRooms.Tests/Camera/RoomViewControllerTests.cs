@@ -1,7 +1,7 @@
 using Dango.Core.Coordinates;
 using Dango.Desktop.AppShell.Rooms;
 
-namespace Dango.Desktop.Tests.AppShell;
+namespace Dango.LocalRooms.Tests.Camera;
 
 [TestClass]
 public sealed class RoomViewControllerTests

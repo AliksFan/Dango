@@ -1,6 +1,6 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace Dango.Desktop.Tests;
+namespace Dango.Tests.Support;
 
 internal static class TestRepository
 {

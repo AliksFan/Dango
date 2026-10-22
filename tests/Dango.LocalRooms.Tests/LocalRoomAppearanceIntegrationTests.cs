@@ -1,3 +1,4 @@
+using Dango.Desktop;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
@@ -9,7 +10,7 @@ using Dango.Desktop.AppShell.Rooms;
 using Dango.Desktop.Rendering.Visuals;
 using Dango.Physics;
 
-namespace Dango.Desktop.Tests.AppShell;
+namespace Dango.LocalRooms.Tests;
 
 [TestClass]
 public sealed class LocalRoomAppearanceIntegrationTests

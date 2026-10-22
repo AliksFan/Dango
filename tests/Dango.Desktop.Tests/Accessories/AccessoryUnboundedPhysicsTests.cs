@@ -197,7 +197,7 @@ public sealed class AccessoryUnboundedPhysicsTests
         home.ShowEditor(HomeEditor.Wardrobe);
         Assert.IsNull(home.DisplayedBeltSnapshot, "Opening the hidden editor cannot manufacture a displayed frame.");
         host.ShowControlCenter();
-        Dango.Desktop.Tests.AppShell.ProductHostTestSupport.WaitForHome(host);
+        Dango.Tests.Support.ProductHostTestSupport.WaitForHome(host);
         Assert.IsTrue(home.IsEditing); Assert.AreEqual(HomeEditor.Wardrobe, home.SelectedEditor);
         Assert.AreSame(worker, home.BoundBeltBody);
         Assert.IsTrue(worker!.Metrics.Running);

@@ -10,7 +10,7 @@ using Dango.Desktop.AppShell.Rooms.Storage;
 using Dango.Desktop.Furniture;
 using Dango.Desktop.Rendering.Visuals;
 
-namespace Dango.Desktop.Tests.AppShell;
+namespace Dango.LocalRooms.Tests.Native;
 
 [TestClass]
 public sealed class OrdinaryRoomFurnitureRejectedEntryTests

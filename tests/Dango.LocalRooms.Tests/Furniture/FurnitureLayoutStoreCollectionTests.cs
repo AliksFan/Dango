@@ -5,7 +5,7 @@ using Dango.Core.Furniture;
 using Dango.Desktop.Furniture;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace Dango.Desktop.Tests.Furniture;
+namespace Dango.LocalRooms.Tests.Furniture;
 
 [TestClass]
 public sealed class FurnitureLayoutStoreCollectionTests

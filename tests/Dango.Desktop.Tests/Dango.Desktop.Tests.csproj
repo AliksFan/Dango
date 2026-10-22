@@ -13,6 +13,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Using Include="Dango.Tests.Support" />
+    <Compile Include="../Support/TestRepository.cs" Link="Support/TestRepository.cs" />
+    <Compile Include="../Support/ProductHostTestSupport.cs" Link="Support/ProductHostTestSupport.cs" />
     <ProjectReference Include="..\..\eng\tools\Dango.MultiplayerSample\Dango.MultiplayerSample.csproj" />
     <ProjectReference Include="..\..\eng\tools\Dango.GaitSample\Dango.GaitSample.csproj" />
     <ProjectReference Include="..\..\src\Dango.Physics\Dango.Physics.csproj" />

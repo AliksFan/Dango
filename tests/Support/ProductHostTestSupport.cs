@@ -1,10 +1,11 @@
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Diagnostics;
 using System.Reflection;
 using System.Windows.Threading;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
 
-namespace Dango.Desktop.Tests.AppShell;
+namespace Dango.Tests.Support;
 
 internal static class ProductHostTestSupport
 {

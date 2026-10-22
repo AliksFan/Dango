@@ -6,7 +6,7 @@ using Dango.Desktop.AppShell.Rooms.Storage;
 using Dango.Desktop.Furniture;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace Dango.Desktop.Tests.AppShell;
+namespace Dango.LocalRooms.Tests;
 
 [TestClass]
 public sealed class LocalRoomCatalogStoreTests

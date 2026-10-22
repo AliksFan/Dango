@@ -13,7 +13,7 @@ using Dango.Desktop.Physics.Presentation;
 using Dango.Desktop.Rendering.Visuals;
 using Dango.Physics;
 
-namespace Dango.Desktop.Tests.AppShell;
+namespace Dango.LocalRooms.Tests.Native;
 
 [TestClass]
 public sealed class OrdinaryRoomFurnitureHandoffTests

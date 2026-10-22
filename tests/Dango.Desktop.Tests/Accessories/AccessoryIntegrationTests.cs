@@ -450,7 +450,7 @@ public sealed class AccessoryIntegrationTests
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
         Assert.IsTrue(runtime.UsesBeltRoom);
         host.ShowControlCenter();
-        Dango.Desktop.Tests.AppShell.ProductHostTestSupport.WaitForHome(host);
+        Dango.Tests.Support.ProductHostTestSupport.WaitForHome(host);
         var home = Field<ControlCenterWindow>(host, "controlCenterWindow").ProductHome; home.ReduceMotion = true;
         var homeOwner = home.BoundBeltBody!;
         WaitUntil(() => home.BoundBeltPresenter!.Inspect().Accessories.Count == configuration.Items.Count);

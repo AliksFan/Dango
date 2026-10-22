@@ -13,7 +13,7 @@ using Dango.Desktop.Furniture;
 using Dango.Desktop.Rendering.Visuals;
 using Button = System.Windows.Controls.Button;
 
-namespace Dango.Desktop.Tests.AppShell;
+namespace Dango.LocalRooms.Tests.Native;
 
 [TestClass]
 public sealed class FurnitureEditingEscapeTests

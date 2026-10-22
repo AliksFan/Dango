@@ -7,7 +7,7 @@ using Dango.Desktop.Furniture;
 using Dango.Desktop.Physics.Presentation;
 using Dango.Physics;
 
-namespace Dango.Desktop.Tests.Furniture;
+namespace Dango.LocalRooms.Tests.Native;
 
 [TestClass]
 public sealed class OrdinaryRoomFurnitureCollectionSessionTests
