@@ -314,7 +314,7 @@
                       SizeChanged="OnHomeContentSizeChanged"
                       HorizontalContentAlignment="Stretch" VerticalContentAlignment="Top">
             <Grid x:Name="Stage" Margin="24,10,24,10" MinHeight="330" SizeChanged="OnStageSizeChanged"
-                  ClipToBounds="False" Background="Transparent" Focusable="True" MouseDown="OnStageMouseDown">
+                  ClipToBounds="False" Background="Transparent" Focusable="True" FocusVisualStyle="{x:Null}" MouseDown="OnStageMouseDown">
                 <Grid.RowDefinitions>
                     <RowDefinition x:Name="PresenceStageRow" Height="*" />
                     <RowDefinition x:Name="DetailStageRow" Height="0" />
