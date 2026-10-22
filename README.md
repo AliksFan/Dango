@@ -2,6 +2,8 @@
 
 `Dango` 是一个多人联机桌面宠物项目的开发代号。
 
+2026-10-22 B4规则与首批结构优化：五条规则已写入工作流；测试用例归属、公共主题、产品物理装配和首页预览会话已整理，网络测试进程夹具共用生命周期。范围、验证及后续网络／家具合同触发条件见[B4记录](docs/verification/2026-10-22-post-merge-cleanup-b4.md)与[实施计划第12节](docs/planning/2026-10-21-post-merge-organization-plan.md#12-b4批准与结构优化实施计划2026-10-22)。前台／人工状态独立保留；当前分支未合main、推送或安装。以下为各轮历史快照。
+
 2026-10-22 B3完成迁移与自动验证：四个独立预览入口迁入JointReview，正式Desktop不再编译两个历史物理窗口；新候选包10/10门禁与无窗口smoke通过，见[B3记录](docs/verification/2026-10-22-post-merge-cleanup-b3.md)。B4精简规则及统一接口方向仍待共同确认，尚未写入AGENTS／工作流；独立分支未合main、推送或安装。下方为各轮历史快照。
 
 2026-10-21 B1／B2整理：测试夹具已迁出生产，六个旧产品review入口已退役，相关脚本与断言改走默认连续身体链；受影响后台／前台回归及新候选包门禁通过，人工观感待验，见[实施与验证记录](docs/verification/2026-10-21-post-merge-cleanup-b1-b2.md)。当前保留在独立分支，未合main、推送或安装；B3／B4未实施。下方条目为各轮历史快照。
@@ -91,7 +93,7 @@ Windows x64 self-contained 发布和干净目录启动方式见 [本地验证](d
 
 ## 当前文档
 
-- [合并后整理方案与B4精简规则／接口草案](docs/planning/2026-10-21-post-merge-organization-plan.md)及[源快照盘点](docs/planning/2026-10-21-post-merge-organization-inventory.md)：[B1／B2](docs/verification/2026-10-21-post-merge-cleanup-b1-b2.md)与[B3](docs/verification/2026-10-22-post-merge-cleanup-b3.md)实现和受影响验证已完成，人工状态分别保留；B4待用户检查，AGENTS保持原样。
+- [合并后整理方案与B4实施计划](docs/planning/2026-10-21-post-merge-organization-plan.md)及[源快照盘点](docs/planning/2026-10-21-post-merge-organization-inventory.md)：[B1／B2](docs/verification/2026-10-21-post-merge-cleanup-b1-b2.md)、[B3](docs/verification/2026-10-22-post-merge-cleanup-b3.md)与[B4](docs/verification/2026-10-22-post-merge-cleanup-b4.md)各自记录实现、自动验证与人工边界；B4五条规则已生效。
 - [本地房间目录与每房存档设计](docs/planning/2026-10-15-local-room-catalog-save-design.md)、[实施计划](docs/planning/2026-10-15-local-room-catalog-save-plan.md)及[实施验证](docs/verification/2026-10-15-local-room-catalog-save.md)：已形成门廊场景入口与逐房存档候选，自动、跨进程、实际宿主和用户人工确认分别记录；完整Desktop既有阻断单列，已合本地main，未推送或交付日常安装。[门廊小样](docs/prototypes/dango-local-room-catalog.html)仅保留为设计来源。
 - [普通房单人家具整合记录](docs/verification/2026-10-11-single-player-furniture-main-integration.md)：Windows 本地单人普通房支持官方木平台、皮球、最多 30 件实例与逐操作本地保存；三段侧栏、两列实际家具图片、门廊 E／房内 Esc 编辑入口及四项反馈修正已实现，见[集合计划](docs/planning/2026-10-10-multiple-furniture-ball-room-plan.md)与[人工重验记录](docs/verification/2026-10-10-furniture-editor-feedback-fix.md)。600 秒多家具观察、OS DPI／辅助设置、前台捕获和既有性能专项仍开放。
 - [官方预设家具方向与物理小样方案](docs/planning/2026-10-09-official-furniture-design.md)：平台及刚性皮球已分批验证并接入本地单人普通房；自定义家具、参数调节、蹦床、窗帘和多人接入继续后置。历史设计与验证保留各批实际范围。
