@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Windows.Threading;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
+using Dango.Desktop.AppShell.Rooms.Storage;
 
 namespace Dango.Tests.Support;
 
@@ -31,6 +32,32 @@ internal static class ProductHostTestSupport
         Assert.IsFalse(home.BoundAppearance!.RequiresBodyPreview);
         Assert.IsNotNull(home.CatalogSnapshot, "The real catalog must finish before requesting a room.");
         Assert.IsTrue(home.CatalogSnapshot.ActiveCount > 0, "The real catalog must provide a saved active room before entry.");
+    }
+
+    // Position the real porch fixture at the catalog door and wait for its actual
+    // healthy presentation acknowledgement before invoking the normal door action.
+    internal static void ResumePorchAtCatalogRoomDoor(ProductHomeView home, Guid roomId)
+    {
+        var rooms = home.CatalogSnapshot?.Rooms.Where(room => room.Life == LocalRoomLife.Active).ToArray()
+            ?? throw new AssertFailedException("The real room catalog must be ready before selecting a door.");
+        var index = Array.FindIndex(rooms, room => room.RoomId == roomId);
+        Assert.IsTrue(index >= 0, $"Room {roomId:D} must be an active room in the real catalog.");
+
+        typeof(ProductHomeView).GetField("porchResumeX", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(home, 780 + index * 220d);
+        var ready = false;
+        void OnReady(long generation) { if (generation == 1) ready = true; }
+        home.HealthyPorchFrameReady += OnReady;
+        try
+        {
+            home.ResumePorch(generation: 1);
+            WaitFor(() => ready, "The real porch must present a healthy belt frame before furniture entry.");
+        }
+        finally { home.HealthyPorchFrameReady -= OnReady; }
+
+        Assert.IsTrue(home.PorchScene.HasBeltBody, "The real porch body must be presented before furniture entry.");
+        Assert.AreEqual(roomId.ToString("D"), home.PorchScene.NearbyDoorId,
+            "The presented body must be within the selected catalog room door's interaction range.");
     }
     internal static void WaitFor(Func<bool> condition, string reason)
     {

@@ -80,7 +80,9 @@ public sealed class OrdinaryRoomFurnitureProductTests
         Assert.IsTrue(runtime.UsesBeltRoom, "Product rooms must use the continuous body module.");
         host.ShowControlCenter(); ProductHostTestSupport.WaitForHome(host); Pump(250);
         var home = Field<ControlCenterWindow>(host, "controlCenterWindow").ProductHome;
-        home.ResumePorch(); Pump(300);
+        var catalog = new LocalRoomCatalogStore(root);
+        var roomId = catalog.ReadCurrent().Rooms.Single(room => room.Life == LocalRoomLife.Active).RoomId;
+        ProductHostTestSupport.ResumePorchAtCatalogRoomDoor(home, roomId);
         Assert.IsTrue(home.PorchScene.RequestNearbyFurniture());
         Until(() => !host.LocalHandoffPending, 4500);
         Assert.AreEqual(LocalRoomPresentation.Window, host.LocalPresentation, host.LocalRoomFailure);
@@ -115,8 +117,6 @@ public sealed class OrdinaryRoomFurnitureProductTests
         Assert.AreEqual(Dango.Physics.DangoFurnitureKind.StaticPlatform, furniture.NativeFrame.Items.Single().Definition.Kind);
         Assert.AreEqual(generation, furniture.WorldGeneration);
         Assert.IsTrue(furniture.SceneRevision > revision);
-        var catalog = new LocalRoomCatalogStore(root);
-        var roomId = catalog.ReadCurrent().Rooms.Single().RoomId;
         var path = catalog.LayoutPath(roomId);
         var bytes = File.ReadAllBytes(path);
         Assert.AreEqual(new FurnitureAnchor(1440, 120), catalog.CreateLayoutStore(roomId).Load(path).Layout!.Platform!.Anchor);
