@@ -16,7 +16,7 @@ using Dango.Desktop.Furniture;
 
 namespace Dango.LocalRoomProbe;
 
-internal static class Program
+internal static partial class Program
 {
     private const string Marker = ".dango-local-room-catalog-probe.json";
     [STAThread]
@@ -30,6 +30,9 @@ internal static class Program
             switch (args[0])
             {
                 case "init": break;
+                case "recovery-write": WriteBeltRecovery(root, args[2]); break;
+                case "recovery-read": ReadBeltRecovery(root, args[2], unsafeCheckpoint: false); break;
+                case "recovery-unsafe": ReadBeltRecovery(root, args[2], unsafeCheckpoint: true); break;
                 case "write": Write(store); break;
                 case "read": Read(store); break;
                 case "dissolve":
