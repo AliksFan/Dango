@@ -4,6 +4,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Dango.Desktop.Accessories.Editing;
 
 namespace Dango.Desktop.Accessories;
 
@@ -48,6 +49,56 @@ public sealed class AccessoryImageAsset
     public AccessoryImageImportInfo? ImportInfo { get; }
     internal byte[] CopyPngBytes() => (byte[])pngBytes.Clone();
 
+    /// <summary>Validates a native editor export at final-asset limits; never silently resizes it.</summary>
+    public static AccessoryImageAsset FromRenderedPng(byte[] png)
+    {
+        ArgumentNullException.ThrowIfNull(png);
+        if (png.LongLength is < 1 or > MaximumFileBytes) throw new InvalidDataException("成品 PNG 文件须大于 0 且不超过 32 MiB。");
+        var prepared = PreparePng((byte[])png.Clone(), source: false);
+        try
+        {
+            using var input = new MemoryStream(prepared.Bytes, writable: false);
+            var bitmap = CopyNormalizedPixels(DecodeFrame(input, prepared.Header), prepared.Header.Width, prepared.Header.Height);
+            var encoded = TryEncode(bitmap) ?? throw new InvalidDataException("成品 PNG 重编码超出 32 MiB 上限。");
+            return new(Convert.ToHexStringLower(SHA256.HashData(encoded)), bitmap, encoded);
+        }
+        catch (OutOfMemoryException) { throw new InvalidDataException("成品图片处理内存不足，草稿仍保留，可使用较小画布后重试。"); }
+        catch (Exception error) when (IsDecodeFault(error)) { throw new InvalidDataException("成品 PNG 解码失败。", error); }
+    }
+
+    internal static AccessoryEditorSourceAsset ReadEditorPng(byte[] png, bool importing)
+    {
+        ArgumentNullException.ThrowIfNull(png);
+        var maximum = importing ? MaximumSourceFileBytes : MaximumFileBytes;
+        if (png.LongLength < 1 || png.LongLength > maximum) throw new InvalidDataException("编辑源 PNG 文件大小超出上限。");
+        var prepared = PreparePng((byte[])png.Clone(), source: importing);
+        try
+        {
+            using var input = new MemoryStream(prepared.Bytes, writable: false);
+            var frame = AccessoryEditorSourceAsset.ApplyOrientation(DecodeFrame(input, prepared.Header), prepared.Header.Orientation);
+            return NormalizeEditorFrame(frame, png.LongLength, importing);
+        }
+        catch (Exception error) when (IsDecodeFault(error)) { throw new InvalidDataException("编辑源 PNG 解码失败。", error); }
+    }
+
+    internal static AccessoryEditorSourceAsset NormalizeEditorFrame(BitmapSource frame, long originalFileBytes, bool allowResize)
+    {
+        var originalWidth = frame.PixelWidth; var originalHeight = frame.PixelHeight;
+        var scale = allowResize ? Math.Min(1, Math.Min((double)MaximumEdge / Math.Max(originalWidth, originalHeight),
+            Math.Sqrt((double)MaximumPixels / ((long)originalWidth * originalHeight)))) : 1;
+        if (!allowResize) ValidateDimensions(originalWidth, originalHeight);
+        while (true)
+        {
+            var width = Math.Max(1, (int)Math.Floor(originalWidth * scale));
+            var height = Math.Max(1, (int)Math.Floor(originalHeight * scale));
+            var bitmap = CopyNormalizedPixels(frame, width, height, requireTransparency: false);
+            if (TryEncode(bitmap) is { } normalized)
+                return new(bitmap, normalized, new(originalWidth, originalHeight, width, height, originalFileBytes, normalized.LongLength));
+            if (!allowResize || width == 1 && height == 1) throw new InvalidDataException("编辑源无法编码到 32 MiB 工作图像上限内。");
+            scale *= .8;
+        }
+    }
+
     public static AccessoryImageAsset ImportPng(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -64,20 +115,21 @@ public sealed class AccessoryImageAsset
         catch (IOException) { throw new IOException("无法读取选定图片。"); }
         var prepared = PreparePng(bytes, source: true);
         var header = prepared.Header;
-        var scale = Math.Min(1, Math.Min((double)MaximumEdge / Math.Max(header.Width, header.Height),
-            Math.Sqrt((double)MaximumPixels / ((long)header.Width * header.Height))));
         try
         {
             using var input = new MemoryStream(prepared.Bytes, writable: false);
-            var frame = DecodeFrame(input, header);
+            var frame = AccessoryEditorSourceAsset.ApplyOrientation(DecodeFrame(input, header), header.Orientation);
+            var originalWidth = frame.PixelWidth; var originalHeight = frame.PixelHeight;
+            var scale = Math.Min(1, Math.Min((double)MaximumEdge / Math.Max(originalWidth, originalHeight),
+                Math.Sqrt((double)MaximumPixels / ((long)originalWidth * originalHeight))));
             while (true)
             {
-                var width = Math.Max(1, (int)Math.Floor(header.Width * scale));
-                var height = Math.Max(1, (int)Math.Floor(header.Height * scale));
+                var width = Math.Max(1, (int)Math.Floor(originalWidth * scale));
+                var height = Math.Max(1, (int)Math.Floor(originalHeight * scale));
                 var bitmap = CopyNormalizedPixels(frame, width, height);
                 if (TryEncode(bitmap) is { } normalized)
                 {
-                    var info = new AccessoryImageImportInfo(header.Width, header.Height, width, height, bytes.LongLength, normalized.LongLength);
+                    var info = new AccessoryImageImportInfo(originalWidth, originalHeight, width, height, bytes.LongLength, normalized.LongLength);
                     return new(Convert.ToHexStringLower(SHA256.HashData(normalized)), bitmap, normalized, info);
                 }
                 // Always resample the original decoded frame, never a previously reduced bitmap.
@@ -138,7 +190,7 @@ public sealed class AccessoryImageAsset
         return frame;
     }
 
-    private static BitmapSource CopyNormalizedPixels(BitmapFrame frame, int width, int height)
+    private static BitmapSource CopyNormalizedPixels(BitmapSource frame, int width, int height, bool requireTransparency = true)
     {
         ValidateDimensions(width, height);
         BitmapSource converted;
@@ -157,14 +209,17 @@ public sealed class AccessoryImageAsset
         var stride = checked(width * 4);
         var pixels = new byte[checked(stride * height)];
         converted.CopyPixels(pixels, stride, 0);
-        var visible = false; var transparent = false;
-        for (var index = 3; index < pixels.Length; index += 4)
+        if (requireTransparency)
         {
-            visible |= pixels[index] != 0;
-            transparent |= pixels[index] != 255;
+            var visible = false; var transparent = false;
+            for (var index = 3; index < pixels.Length; index += 4)
+            {
+                visible |= pixels[index] != 0;
+                transparent |= pixels[index] != 255;
+            }
+            if (!visible || !transparent)
+                throw new InvalidDataException("图片须包含透明或半透明像素，并至少包含一个可见像素；转换后也须保持此条件。");
         }
-        if (!visible || !transparent)
-            throw new InvalidDataException("图片须包含透明或半透明像素，并至少包含一个可见像素；转换后也须保持此条件。");
         // Pixel rebuilding detaches the source stream, metadata, palette and original DPI.
         var bitmap = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, stride);
         bitmap.Freeze();
@@ -215,7 +270,7 @@ public sealed class AccessoryImageAsset
         }
     }
 
-    private sealed record PngHeader(int Width, int Height, int BitDepth, int Channels, int ColorType, bool Interlaced);
+    private sealed record PngHeader(int Width, int Height, int BitDepth, int Channels, int ColorType, bool Interlaced, int Orientation = 1);
     private sealed record PreparedPng(PngHeader Header, byte[] Bytes);
     private readonly record struct PngChunk(int Offset, int Length);
 
@@ -227,7 +282,7 @@ public sealed class AccessoryImageAsset
         var offset = 8; PngHeader? header = null; var imageData = false; var end = false;
         var kept = new List<PngChunk>(); var idat = new List<PngChunk>(); var keptLength = 8;
         var chunkCount = 0; var imageDataEnded = false;
-        var paletteEntries = 0; var transparencySeen = false;
+        var paletteEntries = 0; var transparencySeen = false; var exifSeen = false;
         while (offset < png.Length)
         {
             if (++chunkCount > MaximumChunks) throw new InvalidDataException("PNG 区块数量超出安全上限。");
@@ -273,6 +328,14 @@ public sealed class AccessoryImageAsset
                 header = new((int)width, (int)height, depth, channels, color, png[offset + 20] == 1);
             }
             else if (type.SequenceEqual("IHDR"u8)) throw new InvalidDataException("PNG 存在重复尺寸头。");
+            if (type.SequenceEqual("eXIf"u8))
+            {
+                if (exifSeen || imageData) throw new InvalidDataException("PNG 方向元数据位置或数量无效。");
+                exifSeen = true;
+                var orientation = AccessoryJpegSource.ReadOrientation(png.Slice(offset + 8, payloadLength));
+                if (!source && orientation != 1) throw new InvalidDataException("工作／成品 PNG 必须已将方向应用到实际像素。");
+                header = header with { Orientation = orientation };
+            }
             if (type.SequenceEqual("PLTE"u8))
             {
                 if (imageData || transparencySeen || paletteEntries != 0 || header.ColorType is 0 or 4 ||

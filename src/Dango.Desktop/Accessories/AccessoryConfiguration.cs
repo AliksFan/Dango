@@ -1,12 +1,21 @@
 using System.IO;
+using System.Text.Json.Serialization;
+using Dango.Desktop.Accessories.Editing;
 
 namespace Dango.Desktop.Accessories;
 
 public enum AccessoryLayer { Behind, Front }
+public enum AccessoryDeformationMode { Rigid, SingleChain }
 
 /// <summary>An independent immutable library entry and its local wearing parameters.</summary>
 public sealed record AccessoryItem(string Id, string Name, string AssetId, int PixelWidth, int PixelHeight)
 {
+    public string? ProjectId { get; init; }
+    public int ProjectVersion { get; init; }
+    public long EditRevision { get; init; }
+    public AccessoryDeformationMode DeformationMode { get; init; }
+    public AccessoryRigConfiguration? Rig { get; init; }
+    [JsonIgnore] public bool IsPendingCompletion { get; init; }
     public bool IsEquipped { get; init; } = true;
     public AccessoryLayer Layer { get; init; } = AccessoryLayer.Front;
     public int Order { get; init; }
@@ -16,9 +25,9 @@ public sealed record AccessoryItem(string Id, string Name, string AssetId, int P
     public double ImagePivotY { get; init; } = .5;
     public double BodyAnchorX { get; init; } = .5;
     public double BodyAnchorY { get; init; }
-    public double Softness { get; init; }
-    public bool AllowFolding { get; init; }
-    public double MaxDeformationPercent { get; init; } = 100;
+    [JsonIgnore] public double Softness { get; init; }
+    [JsonIgnore] public bool AllowFolding { get; init; }
+    [JsonIgnore] public double MaxDeformationPercent { get; init; } = 100;
     public double ConnectionStrength { get; init; } = 100;
     public double MaxConnectionTravelPercent { get; init; } = 75;
     public double RotationDamping { get; init; } = 60;
@@ -36,6 +45,12 @@ public sealed record AccessoryItem(string Id, string Name, string AssetId, int P
         if (string.IsNullOrWhiteSpace(Name) || Name.Length > 128 || Name.Any(char.IsControl))
             throw new InvalidDataException("配饰名称无效。");
         if (!IsValidAssetId(AssetId)) throw new InvalidDataException("配饰图片 ID 无效。");
+        if (!Enum.IsDefined(DeformationMode) || EditRevision < 0 ||
+            (ProjectId is not null && (!AccessoryEditorProject.IsHash(ProjectId) || ProjectVersion != AccessoryEditorProject.CurrentVersion)) ||
+            (ProjectId is null && ProjectVersion != 0)) throw new InvalidDataException("配饰工程引用无效。");
+        if (DeformationMode == AccessoryDeformationMode.SingleChain && Rig is null)
+            throw new InvalidDataException("骨架柔性必须有有效单链。");
+        Rig?.Validate(PixelWidth, PixelHeight, ImagePivotX, ImagePivotY);
         AccessoryImageAsset.ValidateDimensions(PixelWidth, PixelHeight);
         if (IsBuiltInAsset(AssetId) && (PixelWidth != 64 || PixelHeight != 64))
             throw new InvalidDataException("内置图片画布必须为 64 × 64。");

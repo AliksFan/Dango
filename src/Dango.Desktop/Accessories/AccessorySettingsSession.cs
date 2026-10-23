@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows.Media.Imaging;
+using Dango.Desktop.Accessories.Editing;
 
 namespace Dango.Desktop.Accessories;
 
@@ -15,6 +16,12 @@ public sealed class AccessorySettingsSession
     private readonly long maximumPendingPixels;
     private readonly long maximumPendingPngBytes;
     private readonly Dictionary<string, AccessoryImageAsset> pendingAssets = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, AccessoryEditorProject> pendingProjects = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, AccessoryEditorSourceAsset> pendingSources = new(StringComparer.Ordinal);
+    private readonly string sessionId = Guid.NewGuid().ToString("N");
+    private long generation;
+    private AccessoryEditDraft? activeEdit;
+    private string manifestRevision;
     private readonly Dictionary<string, BitmapSource> images = new(StringComparer.Ordinal);
     private readonly LinkedList<string> imageRecency = new();
     private readonly Dictionary<string, string> imageWarnings = new(StringComparer.Ordinal);
@@ -37,12 +44,13 @@ public sealed class AccessorySettingsSession
         this.maximumPendingPixels = maximumPendingPixels;
         this.maximumPendingPngBytes = maximumPendingPngBytes;
         var loaded = this.store.Load(this.settingsRoot);
+        manifestRevision = loaded.ManifestRevision ?? "missing";
         IsCompatibilityMode = loaded.State == AccessorySettingsLoadState.Missing;
         IsWriteProtected = loaded.State == AccessorySettingsLoadState.Protected;
         SavedConfiguration = IsCompatibilityMode ? AccessoryConfiguration.FromLegacyHat(legacyHatPresetId) : loaded.Configuration;
         DraftConfiguration = SavedConfiguration;
         StatusMessage = loaded.Warning ?? (IsCompatibilityMode
-            ? "已读取旧配饰兼容外观；应用后才保存新清单。" : "配饰已从本机读取。");
+            ? "已准备内置配饰；应用后才保存新格式清单。" : "配饰已从本机读取。");
     }
 
     public AccessoryConfiguration SavedConfiguration { get; private set; }
@@ -74,8 +82,10 @@ public sealed class AccessorySettingsSession
         ArgumentNullException.ThrowIfNull(configuration);
         configuration.Validate();
         DraftConfiguration = configuration;
+        InvalidateEdit();
         var usedAssets = configuration.Items.Select(item => item.AssetId).ToHashSet(StringComparer.Ordinal);
         foreach (var id in pendingAssets.Keys.Where(id => !usedAssets.Contains(id)).ToArray()) pendingAssets.Remove(id);
+        PrunePending(configuration);
         foreach (var id in imageWarnings.Keys.Where(id => !usedAssets.Contains(id)).ToArray()) imageWarnings.Remove(id);
         StatusMessage = "配饰预览中；应用后才保存到本机。";
     }
@@ -84,7 +94,9 @@ public sealed class AccessorySettingsSession
     {
         VerifyAccess();
         DraftConfiguration = SavedConfiguration;
+        InvalidateEdit();
         pendingAssets.Clear();
+        pendingProjects.Clear(); pendingSources.Clear();
         var savedAssets = SavedConfiguration.Items.Select(item => item.AssetId).ToHashSet(StringComparer.Ordinal);
         foreach (var id in imageWarnings.Keys.Where(id => !savedAssets.Contains(id)).ToArray()) imageWarnings.Remove(id);
         StatusMessage = "已取消未保存的配饰预览。";
@@ -105,10 +117,22 @@ public sealed class AccessorySettingsSession
             StatusMessage = "配饰未保存：原清单暂时无法读取。草稿保留，可解除文件占用后重试或取消。";
             return false;
         }
+        if ((loaded.ManifestRevision ?? "missing") != manifestRevision)
+        {
+            StatusMessage = "配饰未保存：清单已在外部更改。草稿仍保留，请重新读取。";
+            return false;
+        }
+        var incomplete = DraftConfiguration.Items.Where(item => item.IsPendingCompletion).Select(item => item.Name).ToArray();
+        if (incomplete.Length > 0)
+        {
+            StatusMessage = "配饰待完成，整套草稿未保存：" + string.Join("、", incomplete) + "。请继续编辑。";
+            return false;
+        }
         if (!HasPendingSave) return true;
+        string committedRevision;
         try
         {
-            store.Save(settingsRoot, DraftConfiguration, pendingAssets);
+            committedRevision = store.Save(settingsRoot, DraftConfiguration, pendingAssets, pendingProjects, manifestRevision);
         }
         catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
         {
@@ -119,6 +143,8 @@ public sealed class AccessorySettingsSession
         }
         // The disk commit is complete. Cache/presentation failures cannot undo it or return a save failure.
         SavedConfiguration = DraftConfiguration;
+        manifestRevision = committedRevision;
+        InvalidateEdit();
         IsCompatibilityMode = false;
         StatusMessage = "配饰已保存到本机。";
         cacheWarning = null;
@@ -132,7 +158,7 @@ public sealed class AccessorySettingsSession
             imageRecency.Clear();
             cacheWarning = $"图片缓存未刷新（{error.GetType().Name}）；配置已写入，可重试画面。";
         }
-        finally { pendingAssets.Clear(); }
+        finally { pendingAssets.Clear(); pendingProjects.Clear(); pendingSources.Clear(); }
         return true;
     }
 
@@ -157,8 +183,7 @@ public sealed class AccessorySettingsSession
             StatusMessage = "配饰未删除：原清单暂时无法读取。草稿仍保留，可解除文件占用后重试。";
             return false;
         }
-        if (IsCompatibilityMode ? loaded.State != AccessorySettingsLoadState.Missing :
-            loaded.State != AccessorySettingsLoadState.Valid || !loaded.Configuration.Equals(SavedConfiguration))
+        if ((loaded.ManifestRevision ?? "missing") != manifestRevision)
         {
             StatusMessage = "配饰未删除：清单已在外部更改。草稿仍保留，请重新读取后再删除。";
             return false;
@@ -170,7 +195,7 @@ public sealed class AccessorySettingsSession
             try
             {
                 // Deletion commits only the saved snapshot minus this ID, never pending images or other draft edits.
-                store.Save(settingsRoot, nextSaved);
+                manifestRevision = store.Save(settingsRoot, nextSaved, expectedManifestRevision: manifestRevision);
             }
             catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
             {
@@ -183,6 +208,8 @@ public sealed class AccessorySettingsSession
         // Store.Save also confirms an atomic commit when a writer throws after replacing the manifest.
         SavedConfiguration = nextSaved;
         DraftConfiguration = nextDraft;
+        InvalidateEdit();
+        PrunePending(nextDraft);
         if (wasSaved) IsCompatibilityMode = false;
         var usedAssets = nextDraft.Items.Select(item => item.AssetId).ToHashSet(StringComparer.Ordinal);
         foreach (var assetId in pendingAssets.Keys.Where(assetId => !usedAssets.Contains(assetId)).ToArray()) pendingAssets.Remove(assetId);
@@ -212,8 +239,12 @@ public sealed class AccessorySettingsSession
             IsEquipped = equip,
             Order = NextOrder(AccessoryLayer.Front),
         };
+        var project = AccessoryEditorProject.FromImage(asset);
+        item = item with { ProjectId = project.ProjectId, ProjectVersion = project.Version };
+        CheckProjectBudget(project);
         var next = new AccessoryConfiguration(DraftConfiguration.Items.Append(item));
         pendingAssets.TryAdd(asset.AssetId, asset);
+        pendingProjects.TryAdd(project.ProjectId, project);
         images.Remove(asset.AssetId);
         imageRecency.Remove(asset.AssetId);
         Stage(next);
@@ -241,6 +272,113 @@ public sealed class AccessorySettingsSession
         return item;
     }
 
+    /// <summary>A successful picker creates an incomplete outer draft immediately; no filesystem writes occur.</summary>
+    public AccessoryItem ImportSource(string path)
+    {
+        VerifyAccess();
+        LastImportInfo = null;
+        var source = AccessoryEditorSourceAsset.Import(path);
+        if (!pendingSources.ContainsKey(source.AssetId) &&
+            (pendingSources.Values.Sum(a => (long)a.PixelWidth * a.PixelHeight) + (long)source.PixelWidth * source.PixelHeight > AccessoryEditorProject.MaximumPendingSourcePixels ||
+             pendingSources.Values.Sum(a => a.EncodedByteLength) + source.EncodedByteLength > AccessoryEditorProject.MaximumPendingSourceBytes))
+            throw new InvalidDataException("未应用源素材达到累计资源上限。请先应用或取消当前草稿。");
+        var name = Path.GetFileNameWithoutExtension(path);
+        if (string.IsNullOrWhiteSpace(name)) name = "新配饰";
+        if (name.Length > 128) name = name[..128];
+        var item = new AccessoryItem(Guid.NewGuid().ToString("N"), name, source.AssetId, source.PixelWidth, source.PixelHeight)
+        {
+            IsPendingCompletion = true,
+            IsEquipped = DraftConfiguration.Items.Count(i => i.IsEquipped) < AccessoryConfiguration.MaximumEquippedItems,
+            Order = NextOrder(AccessoryLayer.Front),
+        };
+        var next = new AccessoryConfiguration(DraftConfiguration.Items.Append(item));
+        pendingSources.TryAdd(source.AssetId, source);
+        Stage(next);
+        LastImportInfo = source.ImportInfo;
+        StatusMessage = "素材已加入待完成草稿；请继续编辑并导出有效成品后应用。";
+        return item;
+    }
+
+    public AccessoryEditorSourceAsset? GetPendingSource(string assetId)
+    { VerifyAccess(); return pendingSources.GetValueOrDefault(assetId); }
+
+    public AccessoryEditorProject? TryGetProject(string itemId)
+    {
+        VerifyAccess();
+        var item = DraftConfiguration.Items.SingleOrDefault(i => i.Id == itemId);
+        if (item?.ProjectId is not { } projectId) return null;
+        try
+        {
+            var project = pendingProjects.GetValueOrDefault(projectId) ?? store.LoadProject(settingsRoot, projectId);
+            if (project.Revision != item.EditRevision || project.FinalAssetId != item.AssetId ||
+                project.PixelWidth != item.PixelWidth || project.PixelHeight != item.PixelHeight)
+                throw new InvalidDataException("工程引用与配饰不一致。");
+            return project;
+        }
+        catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or InvalidOperationException or System.Text.Json.JsonException or FormatException)
+        {
+            StatusMessage = $"配饰工程已隔离（{error.GetType().Name}）；原条目保留，可重新选择素材或取消。";
+            return null;
+        }
+    }
+
+    public AccessoryEditDraft BeginEdit(string itemId)
+    {
+        VerifyAccess();
+        var item = DraftConfiguration.Items.SingleOrDefault(i => i.Id == itemId) ?? throw new InvalidDataException("要编辑的配饰不存在。");
+        InvalidateEdit();
+        return activeEdit = new(sessionId, generation, item.Id, checked(item.EditRevision + 1), item);
+    }
+
+    public void CancelEdit(AccessoryEditDraft draft)
+    {
+        VerifyAccess();
+        if (activeEdit == draft) InvalidateEdit();
+        // The outer draft was never changed, including a newly selected incomplete item.
+    }
+
+    public bool TryCompleteEdit(AccessoryEditDraft draft, AccessoryEditResult result)
+    {
+        VerifyAccess();
+        ArgumentNullException.ThrowIfNull(draft); ArgumentNullException.ThrowIfNull(result);
+        if (activeEdit != draft || draft.SessionId != sessionId || draft.Generation != generation ||
+            result.Item.Id != draft.ItemId || result.Item.EditRevision != draft.Revision ||
+            !DraftConfiguration.Items.Any(i => i.Id == draft.ItemId && i.Equals(draft.Original))) return false;
+        result.Project.ValidateResult(result.Item, result.Image);
+        CheckImageBudget(result.Image); CheckProjectBudget(result.Project);
+        var next = new AccessoryConfiguration(DraftConfiguration.Items.Select(i => i.Id == draft.ItemId ? result.Item : i));
+        pendingAssets.TryAdd(result.Image.AssetId, result.Image);
+        pendingProjects.TryAdd(result.Project.ProjectId, result.Project);
+        Stage(next);
+        StatusMessage = "完整编辑结果已加入配饰草稿；应用后才保存到本机。";
+        return true;
+    }
+
+    private void CheckImageBudget(AccessoryImageAsset asset)
+    {
+        if (!pendingAssets.ContainsKey(asset.AssetId) &&
+            (PendingPixelCount + (long)asset.PixelWidth * asset.PixelHeight > maximumPendingPixels || PendingPngBytes + asset.EncodedByteLength > maximumPendingPngBytes))
+            throw new InvalidDataException("未应用成品达到累计资源上限；当前草稿保留。");
+    }
+
+    private void CheckProjectBudget(AccessoryEditorProject project)
+    {
+        if (!pendingProjects.ContainsKey(project.ProjectId) &&
+            (pendingProjects.Values.Sum(p => p.EncodedByteLength) + project.EncodedByteLength > AccessoryEditorProject.MaximumPendingProjectBytes ||
+             pendingProjects.Values.Sum(p => p.DecodedLayerPixels) + project.DecodedLayerPixels > AccessoryEditorProject.MaximumPendingProjectPixels))
+            throw new InvalidDataException("未应用工程达到累计资源上限；当前草稿保留。");
+    }
+
+    private void InvalidateEdit() { generation = checked(generation + 1); activeEdit = null; }
+
+    private void PrunePending(AccessoryConfiguration configuration)
+    {
+        var projects = configuration.Items.Select(i => i.ProjectId).ToHashSet(StringComparer.Ordinal);
+        foreach (var id in pendingProjects.Keys.Where(id => !projects.Contains(id)).ToArray()) pendingProjects.Remove(id);
+        var sources = configuration.Items.Where(i => i.IsPendingCompletion).Select(i => i.AssetId).ToHashSet(StringComparer.Ordinal);
+        foreach (var id in pendingSources.Keys.Where(id => !sources.Contains(id)).ToArray()) pendingSources.Remove(id);
+    }
+
     public BitmapSource? TryGetImage(string assetId)
     {
         VerifyAccess();
@@ -248,7 +386,8 @@ public sealed class AccessorySettingsSession
         try
         {
             BitmapSource image;
-            if (pendingAssets.TryGetValue(assetId, out var pending)) image = pending.Bitmap;
+            if (pendingSources.TryGetValue(assetId, out var source)) image = source.Bitmap;
+            else if (pendingAssets.TryGetValue(assetId, out var pending)) image = pending.Bitmap;
             else if (images.TryGetValue(assetId, out var cached))
             {
                 image = cached;

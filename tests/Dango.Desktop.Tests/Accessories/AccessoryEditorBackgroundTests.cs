@@ -1,7 +1,11 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using Dango.Desktop.Accessories;
 using Dango.Desktop.Accessories.Editing;
 
 namespace Dango.Desktop.Tests.Accessories;
@@ -17,6 +21,80 @@ public sealed class AccessoryEditorBackgroundTests
         var oldContext = SynchronizationContext.Current;
         SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
         try { VerifyHiddenController(); }
+        finally { SynchronizationContext.SetSynchronizationContext(oldContext); }
+    }
+
+    [STATestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void HiddenBrowserRoundTripPreservesNativeImageBrushTextAndEmptyLayers(bool equalLayerOrders)
+    {
+        var oldContext = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+        try
+        {
+            using var window = new HwndSource(new HwndSourceParameters("Dango synthetic project interchange check")
+            { Width = 800, Height = 600, WindowStyle = unchecked((int)0x80000000) });
+            Assert.IsFalse(IsWindowVisible(window.Handle));
+            using var runtime = new AccessoryEditorRuntime();
+            var profile = Path.Combine(TestRepository.Root, "artifacts", "accessory-editor-e2-interchange", Guid.NewGuid().ToString("N"));
+            Assert.IsTrue(Pump(runtime.InitializeAsync(window.Handle, Path.Combine(AppContext.BaseDirectory, "AccessoryEditor"), profile)), runtime.ErrorMessage);
+            var pixels = new byte[64 * 48 * 4];
+            for (var y = 10; y < 38; y++) for (var x = 10; x < 54; x++)
+            {
+                var index = (y * 64 + x) * 4;
+                pixels[index] = 32; pixels[index + 1] = 90; pixels[index + 2] = 150; pixels[index + 3] = 255;
+            }
+            var source = AccessoryEditorSourceAsset.FromBitmap(BitmapSource.Create(64, 48, 96, 96, PixelFormats.Bgra32, null, pixels, 64 * 4));
+            var image = AccessoryImageAsset.FromRenderedPng(source.CopyPngBytes());
+            var brush = new AccessoryBrushContent(4, false, new IReadOnlyList<AccessoryBrushPoint>[]
+                { new AccessoryBrushPoint[] { new(0, 0, 4), new(12, 10, 4) } });
+            var text = new AccessoryTextContent(new IReadOnlyList<AccessoryTextSpan>[]
+                { new AccessoryTextSpan[] { new("Hi", new AccessoryTextStyle(Size: 12, FillColor: "#ffffff")) } });
+            var project = new AccessoryEditorProject(64, 48, 0, image.AssetId,
+                [new("native-image", "图片", source.AssetId, 0, 0, 64, 48),
+                 new("native-brush", "笔画", null, 5, 5, 12, 10, Type: "brush", Color: "#ab3412", Brush: brush),
+                 new("native-text", "文字", null, 18, 15, 20, 15, Type: "text", Text: text),
+                 new("native-empty", "空层", null, 0, 0, 0, 0, Type: null)], [source]);
+            var item = new AccessoryItem("fictional-interchange", "虚构编辑工程", image.AssetId, 64, 48);
+            var draft = new AccessoryEditDraft("fictional-session", 1, item.Id, 1, item);
+            var adapter = new AccessoryBrowserProjectAdapter();
+            var open = adapter.CreateOpenProject(project);
+            if (equalLayerOrders)
+            {
+                var tied = JsonNode.Parse(open.GetRawText())!;
+                foreach (var layer in tied["layers"]!.AsArray()) layer!["order"] = 1;
+                open = JsonSerializer.SerializeToElement(tied);
+            }
+            var first = Exchange(open);
+            var result = adapter.ReadResult(first.GetProperty("project"), first.GetProperty("png"), draft, item);
+            Assert.AreEqual(2, result.Project.Layers.Single(layer => layer.Type == "brush").Brush!.Strokes.Single().Count);
+            Assert.AreEqual("Hi", result.Project.Layers.Single(layer => layer.Type == "text").Text!.Lines.Single().Single().Text);
+            var second = Exchange(adapter.CreateOpenProject(result.Project));
+            Assert.AreEqual(first.GetProperty("png").GetProperty("pngBase64").GetString(), second.GetProperty("png").GetProperty("pngBase64").GetString(), "Native save/reopen must preserve composited browser pixels.");
+            var expectedIds = new[] { "native-image", "native-brush", "native-text", "native-empty" };
+            if (equalLayerOrders) Array.Reverse(expectedIds);
+            CollectionAssert.AreEqual(expectedIds, result.Project.Layers.Select(layer => layer.Id).ToArray());
+            Assert.IsFalse(IsWindowVisible(window.Handle));
+            TestContext.WriteLine("Hidden native/browser four-layer interchange passed; Runtime " + runtime.RuntimeVersion);
+
+            JsonElement Exchange(JsonElement open)
+            {
+                Pump(runtime.Core!.ExecuteScriptAsync("window.dangoInterop={done:false};(async()=>{try{await DangoMiniPaint.load(" + open.GetRawText() + ");window.dangoInterop={done:true,project:DangoMiniPaint.exportProject(),png:DangoMiniPaint.exportPng()};}catch(e){window.dangoInterop={done:true,error:e.name+': '+e.message};}})();"));
+                for (var i = 0; i < 100; i++)
+                {
+                    var raw = Pump(runtime.Core.ExecuteScriptAsync("JSON.stringify(window.dangoInterop)"));
+                    using var status = JsonDocument.Parse(JsonSerializer.Deserialize<string>(raw)!);
+                    if (status.RootElement.GetProperty("done").GetBoolean())
+                    {
+                        Assert.IsFalse(status.RootElement.TryGetProperty("error", out var error), error.ValueKind == JsonValueKind.Undefined ? "" : error.GetString());
+                        return status.RootElement.Clone();
+                    }
+                    Pump(Task.Delay(50));
+                }
+                throw new TimeoutException("Hidden editor interchange did not complete.");
+            }
+        }
         finally { SynchronizationContext.SetSynchronizationContext(oldContext); }
     }
 
