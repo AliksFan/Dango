@@ -15,13 +15,11 @@ namespace Dango.Desktop.Tests.Accessories;
 [DoNotParallelize]
 public sealed class AccessoryHomeUiTests
 {
-    private static readonly string[] SaveActions = ["复位当前配饰", "取消", "应用"];
+    private static readonly string[] SaveActions = ["取消", "应用"];
     private static readonly (AccessoryEditorSection Section, string Name)[] SectionActions =
     [
         (AccessoryEditorSection.Library, "配饰：配饰库"),
-        (AccessoryEditorSection.Placement, "配饰：图像与位置"),
-        (AccessoryEditorSection.Connection, "配饰：柔性与连接"),
-        (AccessoryEditorSection.Rotation, "配饰：旋转与重力"),
+        (AccessoryEditorSection.Placement, "配饰：配饰"),
     ];
 
     [STATestMethod]
@@ -79,16 +77,6 @@ public sealed class AccessoryHomeUiTests
         StringAssert.Contains(Element<TextBlock>(home, "AccessoryPreviewNotice").Text, "应用后保存");
         Capture(home, $"wardrobe-{width}x{height}");
 
-        var selectedId = Panel(home).SelectedItem!.Id;
-        var otherItems = fixture.Accessories.DraftConfiguration.Items.Where(item => item.Id != selectedId).ToArray();
-        SaveButton(home, "复位当前配饰").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Layout(home, size);
-        Assert.AreEqual(.5, Panel(home).SelectedItem!.BodyAnchorX, 1e-9, "The footer reset must execute the selected item's real reset action.");
-        Assert.AreEqual(0, Panel(home).SelectedItem!.BodyAnchorY, 1e-9);
-        CollectionAssert.AreEqual(otherItems, fixture.Accessories.DraftConfiguration.Items.Where(item => item.Id != selectedId).ToArray(),
-            "Resetting one accessory must preserve every other library entry.");
-        Assert.IsFalse(File.Exists(fixture.Manifest), "Reset must remain a preview until explicit application.");
-
         Click(home, "AccessoryCloseEditorButton");
         Layout(home, size);
         Assert.AreEqual(closed, Bounds(home, "PetPreview"), "Closing returns to exactly the home body geometry.");
@@ -97,24 +85,24 @@ public sealed class AccessoryHomeUiTests
     }
 
     [STATestMethod]
-    // These owned component-harness sizes exercise actual compact/portrait overflow.
+    // These owned component-harness sizes exercise actual compact/portrait library overflow.
     // The formal Window minimum is 820 x 560; 1024 x 560 naturally fits and is verified separately.
     [DataRow(640, 420)]
     [DataRow(480, 800)]
-    public void ScrollingParametersCannotMoveOrHideThePreviewFooter(int width, int height)
+    public void ScrollingLibraryCannotMoveOrHideThePreviewFooter(int width, int height)
     {
         using var fixture = CreateFixture();
+        PopulateOverflowLibrary(fixture);
         var home = fixture.Home;
         var size = new Size(width, height);
         Layout(home, size);
         home.ShowEditor(HomeEditor.Wardrobe);
-        Assert.IsTrue(Panel(home).SelectSection(AccessoryEditorSection.Placement));
         Panel(home).SetBodyAnchor(new Point(.31, .47));
         Layout(home, size);
-        var scroll = Element<ScrollViewer>(home, "OptionsBody");
-        Assert.IsTrue(scroll.ScrollableHeight > 0, "This regression must exercise actual parameter overflow.");
+        var scroll = Descendants<ScrollViewer>(Panel(home)).Single(viewport => AutomationProperties.GetName(viewport).StartsWith("配饰库", StringComparison.Ordinal));
+        Assert.IsTrue(scroll.ScrollableHeight > 0, "This regression must exercise actual library overflow.");
         Assert.AreEqual(Visibility.Visible, scroll.ComputedVerticalScrollBarVisibility);
-        Assert.AreEqual(0, scroll.ScrollableWidth, .01, "Parameters must fit horizontally.");
+        Assert.AreEqual(0, scroll.ScrollableWidth, .01, "Library must fit horizontally.");
         var fixedNames = new[] { "PetPreview", "AccessoryPreviewNotice", "AccessoryCloseEditorButton", "AccessorySaveActionsSlot", "AccessoryActionToolsSlot" };
         var fixedBounds = fixedNames.ToDictionary(name => name, name => Bounds(home, name));
         var draft = fixture.Accessories.DraftConfiguration;
@@ -123,17 +111,17 @@ public sealed class AccessoryHomeUiTests
         Layout(home, size);
         Capture(home, $"wardrobe-scrolled-{width}x{height}");
 
-        Assert.IsTrue(scroll.VerticalOffset > 0, "The test must have reached a later parameter section.");
+        Assert.IsTrue(scroll.VerticalOffset > 0, "The test must have reached a later library section.");
         foreach (var name in fixedNames)
-            Assert.AreEqual(fixedBounds[name], Bounds(home, name), name + " must not scroll with the parameter body.");
+            Assert.AreEqual(fixedBounds[name], Bounds(home, name), name + " must not scroll with the library body.");
         AssertFixedTools(home);
         AssertIconRow(home);
         AssertLeftSectionTabs(home);
-        foreach (var action in SaveActions) AssertReachable(home, SaveButton(home, action), action + " after parameter scrolling");
+        foreach (var action in SaveActions) AssertReachable(home, SaveButton(home, action), action + " after library scrolling");
         AssertReachable(home, Element<Button>(home, "AccessoryCloseEditorButton"), "wardrobe close after scrolling");
         Assert.AreEqual(draft, fixture.Accessories.DraftConfiguration);
         Assert.IsTrue(fixture.Accessories.IsDirty);
-        Assert.IsFalse(File.Exists(fixture.Manifest), "Parameter scrolling must not commit a draft.");
+        Assert.IsFalse(File.Exists(fixture.Manifest), "Library scrolling must not commit a draft.");
         Capture(home, $"wardrobe-scrolled-{width}x{height}");
     }
 
@@ -200,25 +188,26 @@ public sealed class AccessoryHomeUiTests
     // Keep real scrolling in this component harness; do not claim its compact size is a formal Window size.
     [DataRow(640, 420)]
     [DataRow(480, 800)]
-    public void TheReachableFooterActuallyAppliesAndReloadsAfterParameterScrolling(int width, int height)
+    public void TheReachableFooterActuallyAppliesAndReloadsAfterLibraryScrolling(int width, int height)
     {
         using var fixture = CreateFixture();
         Assert.IsTrue(fixture.Accessories.TrySave());
+        PopulateOverflowLibrary(fixture);
+        var expectedCount = fixture.Accessories.DraftConfiguration.Items.Count;
         var home = fixture.Home;
         var size = new Size(width, height);
         Layout(home, size);
         home.ShowEditor(HomeEditor.Wardrobe);
-        Assert.IsTrue(Panel(home).SelectSection(AccessoryEditorSection.Placement));
         Layout(home, size);
-        Assert.IsFalse(SaveButton(home, "应用").IsEnabled, "A clean current-format library must not advertise a pending save.");
+        Assert.IsTrue(SaveButton(home, "应用").IsEnabled, "The overflow fixture adds real unsaved library entries.");
         Panel(home).SetBodyAnchor(new Point(.73, .16));
         var editedId = Panel(home).SelectedItem!.Id;
         Layout(home, size);
-        var scroll = Element<ScrollViewer>(home, "OptionsBody");
-        Assert.IsTrue(scroll.ScrollableHeight > 0, "Applying after scrolling must exercise actual placement overflow.");
+        var scroll = Descendants<ScrollViewer>(Panel(home)).Single(viewport => AutomationProperties.GetName(viewport).StartsWith("配饰库", StringComparison.Ordinal));
+        Assert.IsTrue(scroll.ScrollableHeight > 0, "Applying after scrolling must exercise actual library overflow.");
         scroll.ScrollToBottom();
         Layout(home, size);
-        Assert.IsTrue(scroll.VerticalOffset > 0, "Apply must remain reachable after actual parameter scrolling.");
+        Assert.IsTrue(scroll.VerticalOffset > 0, "Apply must remain reachable after actual library scrolling.");
         AssertReachable(home, SaveButton(home, "应用"), "apply after scrolling");
         SaveButton(home, "应用").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Layout(home, size);
@@ -226,7 +215,7 @@ public sealed class AccessoryHomeUiTests
         Assert.IsFalse(fixture.Accessories.IsDirty);
         Assert.IsFalse(SaveButton(home, "应用").IsEnabled);
         var reloaded = new AccessorySettingsSession(fixture.Root).SavedConfiguration;
-        Assert.HasCount(3, reloaded.Items, "Applying must preserve all three existing built-in entries.");
+        Assert.HasCount(expectedCount, reloaded.Items, "Applying must preserve the entire existing library.");
         Assert.AreEqual(.73, reloaded.Items.Single(item => item.Id == editedId).BodyAnchorX, 1e-9);
         Assert.AreEqual(.16, reloaded.Items.Single(item => item.Id == editedId).BodyAnchorY, 1e-9);
         Assert.AreEqual(fixture.Accessories.SavedConfiguration, reloaded);
@@ -331,7 +320,7 @@ public sealed class AccessoryHomeUiTests
                 Assert.ThrowsExactly<AssertFailedException>(() => AssertLeftSectionTabs(home));
                 break;
             case "oversized-tab":
-                SectionButton(home, "配饰：图像与位置").Width = 56;
+                SectionButton(home, "配饰：配饰").Width = 56;
                 Layout(home, size);
                 Assert.ThrowsExactly<AssertFailedException>(() => AssertLeftSectionTabs(home));
                 break;
@@ -468,7 +457,7 @@ public sealed class AccessoryHomeUiTests
         }
         for (var index = 0; index < row.Length - 1; index++)
             Assert.AreEqual(8, Bounds(home, row[index + 1]).Left - Bounds(home, row[index]).Right, 1,
-                "Reset, cancel and apply must preserve the face editor's 8-DIP gaps and order.");
+                "Cancel and apply must preserve the face editor's 8-DIP gap and order.");
         Assert.AreEqual(Bounds(home, footer).Right, Bounds(home, row[^1]).Right, 1,
             "Apply must align to the right edge of the fixed footer.");
         Assert.AreEqual("Primary", row[^1].Tag);
@@ -497,6 +486,13 @@ public sealed class AccessoryHomeUiTests
             Assert.IsFalse(string.IsNullOrWhiteSpace(tools[index].ToolTip?.ToString()));
             AssertReachable(home, tools[index], name);
         }
+    }
+
+    private static void PopulateOverflowLibrary(HomeFixture fixture)
+    {
+        var original = fixture.Accessories.DraftConfiguration.Items[0].Id;
+        while (fixture.Accessories.DraftConfiguration.Items.Count < 48) fixture.Accessories.Duplicate(original);
+        Panel(fixture.Home).DiscardInputsAndRefresh();
     }
 
     private static void PopulateLibrary(HomeFixture fixture)
@@ -562,7 +558,7 @@ public sealed class AccessoryHomeUiTests
         Assert.AreSame(Panel(home).SectionTabs, slot.Content, "The preview must host the panel's real section controls.");
         Assert.IsFalse(Element<ScrollViewer>(home, "OptionsBody").IsAncestorOf(slot), "Section tabs must remain outside parameter scrolling.");
         var buttons = SectionActions.Select(action => SectionButton(home, action.Name)).ToArray();
-        Assert.HasCount(4, Descendants<Button>(slot).ToArray());
+        Assert.HasCount(2, Descendants<Button>(slot).ToArray());
         var preview = Bounds(home, "PetPreview");
         var first = Bounds(home, buttons[0]);
         for (var index = 0; index < buttons.Length; index++)
