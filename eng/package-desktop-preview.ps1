@@ -65,10 +65,40 @@ if ($frameworks.Count -ne 2 -or
     @($frameworks.name) -cnotcontains 'Microsoft.WindowsDesktop.App') {
     throw 'This preview wrapper supports only the current self-contained desktop runtime pair.'
 }
-if (@($assets.libraries.PSObject.Properties | Where-Object { $_.Value.type -ne 'project' }).Count -ne 0) {
-    throw 'Additional package dependencies require an explicit license inventory before distribution.'
-}
 $licenseInputs = @()
+foreach ($library in @($assets.libraries.PSObject.Properties | Where-Object { $_.Value.type -ne 'project' })) {
+    if ($library.Name -cne 'Microsoft.Web.WebView2/1.0.4258.31') {
+        throw 'Additional package dependencies require an explicit license inventory before distribution.'
+    }
+    $dependencyRoot = Join-Path $repo 'src/Dango.Desktop/Accessories/Editing/licenses'
+    $dependency = [IO.File]::ReadAllText((Join-Path $dependencyRoot 'dependency.json')) | ConvertFrom-Json
+    if ($dependency.package -cne 'Microsoft.Web.WebView2' -or $dependency.version -cne '1.0.4258.31') {
+        throw 'WebView2 package and license inventory disagree.'
+    }
+    $pack = $null
+    foreach ($folder in $assets.packageFolders.PSObject.Properties.Name) {
+        $candidate = Join-Path $folder 'microsoft.web.webview2/1.0.4258.31'
+        if (Test-Path -LiteralPath $candidate -PathType Container) { $pack = $candidate; break }
+    }
+    if (-not $pack) { throw 'Missing restored WebView2 SDK.' }
+    $archive = Join-Path $pack 'microsoft.web.webview2.1.0.4258.31.nupkg'
+    Assert-NoLinks $archive
+    if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne $dependency.packageSha256) {
+        throw 'Restored WebView2 SDK does not match the audited package.'
+    }
+    foreach ($name in @('LICENSE.txt', 'NOTICE.txt')) {
+        $file = Join-Path $pack $name
+        Assert-NoLinks $file
+        $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
+        if ($hash -cne (Get-FileHash -LiteralPath (Join-Path $dependencyRoot $name) -Algorithm SHA256).Hash) {
+            throw 'WebView2 SDK license material changed.'
+        }
+        $licenseInputs += [pscustomobject]@{
+            File = $file; Relative = "licenses/Microsoft.Web.WebView2/$name"; Package = 'Microsoft.Web.WebView2'
+            Version = '1.0.4258.31'; Sha256 = $hash
+        }
+    }
+}
 foreach ($framework in $frameworks) {
     $id = ($framework.name + '.Runtime.win-x64').ToLowerInvariant()
     $pack = $null

@@ -1,0 +1,36 @@
+{
+  "sourceCommit": "a79733eb803fc97084ef0ee4faa96b031e69e1c0",
+  "version": "4.14.3-dango-e0.1",
+  "files": [
+    {
+      "path": "bundle.js",
+      "sha256": "d891dffc7aae758fee44cae2e7728be2381eb760f1374bee7211b430cbb081e4",
+      "bytes": 308310
+    },
+    {
+      "path": "index.html",
+      "sha256": "1441e66ffeeb23217e5c289ad6e61ed448a4bc381c42976eb4d428e5993778a5",
+      "bytes": 2116
+    },
+    {
+      "path": "licenses/MIT-jquery.txt",
+      "sha256": "d4db9ebe6f29f5168eac45ad713f055623ac5d0dcd5ba92da23d650ae012020d",
+      "bytes": 1097
+    },
+    {
+      "path": "licenses/MIT-minipaint.txt",
+      "sha256": "67209670dd801be32bd392ecba2dadd32a5cff49481f6e702739ec77a9706749",
+      "bytes": 1095
+    },
+    {
+      "path": "NOTICE.txt",
+      "sha256": "41293948fca98eee10c9bf539229bda1274b038f12cf9538f539ae6a721b80ef",
+      "bytes": 1267
+    },
+    {
+      "path": "theme.css",
+      "sha256": "2310c912b6deab0e469dc076cf59f2a9161cb6bd5f69cb3be127c22ce5989022",
+      "bytes": 40012
+    }
+  ]
+}

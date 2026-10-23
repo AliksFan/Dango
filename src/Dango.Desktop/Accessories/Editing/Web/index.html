@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; font-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>配饰图像编辑</title>
+<link rel="stylesheet" href="theme.css"><script src="bundle.js" defer></script></head>
+<body><div class="wrapper"><nav id="main_menu" class="main_menu" aria-label="图像操作"><button id="flip_x">↔ 水平翻转</button><button id="flip_y">↕ 垂直翻转</button><button id="rotate">↶ 旋转</button><button id="undo_button">↶ 撤销</button><button id="redo_button">↷ 重做</button></nav>
+<div class="submenu"><div id="action_attributes" class="block attributes"></div></div><div class="sidebar_left" id="tools_container" aria-label="绘图工具"></div>
+<div class="middle_area" id="middle_area"><canvas id="ruler_left" class="ruler_left"></canvas><canvas id="ruler_top" class="ruler_top"></canvas><div class="main_wrapper" id="main_wrapper"><div class="canvas_wrapper" id="canvas_wrapper"><div id="mouse"></div><div class="transparent-grid" id="canvas_minipaint_background"></div><canvas id="canvas_minipaint" aria-label="图像画布"></canvas></div></div></div>
+<aside class="sidebar_right"><div class="preview block"><h2>缩放</h2><div id="toggle_preview"></div></div><div class="colors block"><h2>颜色</h2><div class="content" id="toggle_colors"></div></div><div class="block" id="info_base"><h2>图像</h2><div id="toggle_info"></div></div><div class="details block" id="details_base"><h2>图层参数</h2><div class="content details-content" id="toggle_details"></div></div><div class="layers block"><h2>图层</h2><div class="content" id="layers_base"></div></div></aside></div>
+<div hidden><button id="left_mobile_menu_button"></button><button id="mobile_menu_button"></button><div id="tmp"></div></div><div id="popups"></div></body></html>

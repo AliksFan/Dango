@@ -1,0 +1,17 @@
+/* Host maps these semantic variables from the shared Dango theme in E2. */
+:root{--home-background:#fdfcf9;--home-ink:#443d34;--home-muted:#807568;--home-line:#e9e4da;--home-soft:#f3efe8;--home-accent:#885e3e;--home-selected:#efe3d4}
+html,body{background:var(--home-background)!important;color:var(--home-ink)!important;font-family:'Segoe UI','Microsoft YaHei',sans-serif;font-size:14px}
+*{scrollbar-width:thin;scrollbar-color:var(--home-muted) var(--home-soft)}
+button,input,select{font:inherit;color:var(--home-ink);border:1px solid var(--home-line);background:var(--home-background);border-radius:7px}
+button{min-height:32px;padding:4px 8px}button:hover{background:var(--home-soft)}
+button:focus-visible,[role=button]:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--home-accent);outline-offset:2px}
+.wrapper{background:var(--home-background)}.main_menu{display:flex;gap:8px;align-items:center;background:var(--home-background)!important;min-height:40px}
+.submenu,.sidebar_left,.sidebar_right,.block{background:var(--home-background)!important;color:var(--home-ink)!important;border-color:var(--home-line)!important}
+.submenu{overflow:auto}.sidebar_right{overflow-y:scroll}.sidebar_left{width:130px!important;overflow-y:scroll}.middle_area{left:130px!important}
+#tools_container .item{width:auto!important;min-height:40px;margin:4px;padding:8px;border:1px solid var(--home-line);border-radius:7px;background-image:none!important;display:block;color:var(--home-ink);font-size:12px;cursor:pointer}
+#tools_container .item.active{background:var(--home-selected)!important;border-color:var(--home-accent)!important}
+#action_attributes{display:flex;align-items:center;gap:8px;flex-wrap:wrap}h2{font-size:14px;color:var(--home-ink)!important;padding:8px}
+.ui_icon_button{width:auto!important;min-width:32px}.ruler_left,.ruler_top{display:none}
+#main_wrapper{left:0!important;top:0!important}.transparent-grid{background-color:white!important;background-image:conic-gradient(#eee 25%,white 0 50%,#eee 0 75%,white 0)!important;background-size:20px 20px!important}
+#editor_status{position:fixed;bottom:0;left:130px;right:240px;padding:8px;background:var(--home-background);color:var(--home-ink);z-index:1000;pointer-events:none}
+@media (forced-colors:active){:root{--home-background:Canvas;--home-ink:CanvasText;--home-line:CanvasText;--home-accent:Highlight;--home-selected:Highlight;--home-soft:Canvas}button{border:1px solid ButtonText}}

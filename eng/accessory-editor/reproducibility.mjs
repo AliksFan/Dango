@@ -1,0 +1,11 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+const here=path.dirname(fileURLToPath(import.meta.url));
+const manifest=path.resolve(here,'../../src/Dango.Desktop/Accessories/Editing/Web/manifest.json');
+const run=script=>execFileSync(process.execPath,[script],{cwd:here,stdio:'pipe'});
+run('build.mjs');const before=fs.readFileSync(manifest,'utf8');
+run('build.mjs');assert.equal(fs.readFileSync(manifest,'utf8'),before);
+console.log('PASS: two independent esbuild runs produce identical resource hashes and manifest bytes.');

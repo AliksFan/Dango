@@ -12,12 +12,21 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Content Include="Accessories\Editing\Web\**\*"
+             Link="AccessoryEditor\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
     <ProjectReference Include="..\Dango.Core\Dango.Core.csproj" />
     <ProjectReference Include="..\Dango.Physics\Dango.Physics.csproj" />
     <ProjectReference Include="..\Dango.Protocol\Dango.Protocol.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="Accessories\Editing\licenses\*"
+             Link="licenses\WebView2\%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(DangoPhysicsModulePath)"
              Condition="'$(DangoPhysicsModulePath)' != ''"
              Link="dango_physics_module.dll"
