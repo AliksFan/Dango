@@ -1,5 +1,7 @@
 # Dango 分阶段开发计划 v0.1
 
+> 2026-10-23 配饰编辑与骨架设计确认：用户确认 miniPaint 本地统一编辑器、根部连接点、整图单链骨架、刚性／骨架柔性及重力参数，明确已有柔性无需继承。[新设计](planning/2026-10-23-accessory-editor-and-rig-design.md)、[实施计划](planning/2026-10-23-accessory-editor-and-rig-implementation-plan.md)与[ADR 0007](adr/0007-accessory-editor-and-rig.md)已准备；E0–E5 未开始，无生产改动或新验收。旧简单窗口与整图材质场在接线时退役，旧存档不自动删除／覆盖；不重开第一版本地验收，也不改变下列已验收、延期及发布边界。
+
 > 2026-10-23 本地单人预览整合：用户确认首个`v0.1.0-preview.1`候选“验收完了”，明确授权合并并将遗留项留后续完善；`codex/local-mode-closeout@c1438fc`已从`main@ca9a3ab`快进合入本地main，见[整合与延期记录](verification/2026-10-23-local-preview-main-integration.md)。本次涵盖设置QQ、三页布局与统一焦点、本地恢复补验工具及首发ZIP准备；持续观察／桌宠鼠标、历史UNKNOWN、依赖告警及平台矩阵保留原工程状态并延期。该本地单人预览人工通过不改判完整Windows／联机／Phase 1／Phase 5验收，不包含推送、标签、公开发布或日常安装。
 
 > 2026-10-22 B1～B4整理候选人工确认与本地整合：用户体验正式内部候选包后明确“验收通过合入main”，本次候选人工通过，累计整理分支已[本地快进合入main](verification/2026-10-22-post-merge-cleanup-main-integration.md)。B4测试归属／公共主题、物理装配与首页会话、网络进程夹具和五条工作规则已落地；家具完整宿主流程及真实鼠标菜单／快捷键回归通过，见[B4验收续行](verification/2026-10-22-post-merge-cleanup-b4-foreground.md#用户人工验收与本地合并授权)。竖屏编辑两项继续暂缓，真实OS高对比、多DPI／多屏及历史FAIL／UNKNOWN边界保留；网络与家具合同能力整理随功能迭代触发，不改判完整Windows／多人阶段，不推送、安装或部署。下文保留历史状态。
