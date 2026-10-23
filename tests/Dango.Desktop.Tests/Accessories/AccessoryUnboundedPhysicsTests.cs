@@ -89,7 +89,8 @@ public sealed class AccessoryUnboundedPhysicsTests
         Directory.CreateDirectory(root);
         var item = new AccessoryItem("fictional-elastic", "Fictional elastic ornament", "builtin-sprout", 64, 64)
         {
-            Softness = 65,
+            DeformationMode = AccessoryDeformationMode.SingleChain,
+            Rig = new([new(.5, .5), new(.8, .9)], .65),
             ConnectionStrength = 70,
             GravityInfluence = 0,
             LockRotation = false,

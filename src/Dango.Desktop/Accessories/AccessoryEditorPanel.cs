@@ -22,7 +22,7 @@ using TextBox = System.Windows.Controls.TextBox;
 
 namespace Dango.Desktop.Accessories;
 
-internal enum AccessoryEditorSection { Library, Placement, Connection, Rotation }
+internal enum AccessoryEditorSection { Library, Placement }
 
 /// <summary>Local wardrobe draft UI; host navigation owns the outer cancellation boundary.</summary>
 internal sealed class AccessoryEditorPanel : StackPanel
@@ -85,8 +85,6 @@ internal sealed class AccessoryEditorPanel : StackPanel
     internal event Action<AccessoryConfiguration>? Applied;
     internal event Action? CancelRequested;
     internal Action? BodyAnchorPickRequested { get; set; }
-    // Legacy test injection only: converted to a complete result; production always opens the unified editor.
-    internal Func<AccessoryItem, BitmapSource, AccessoryItem?>? ImageEditor { get; set; }
     internal Func<AccessoryEditDraft, AccessoryEditorSourceAsset?, AccessoryEditorProject?, Action<AccessoryEditResult>, AccessoryEditResult?>? UnifiedEditor { get; set; }
     internal AccessoryEditResult? ModalPreviewResult { get; private set; }
     internal BitmapSource? ModalPreviewImage => ModalPreviewResult?.Image.Bitmap;
@@ -392,7 +390,6 @@ internal sealed class AccessoryEditorPanel : StackPanel
     internal bool SelectSection(AccessoryEditorSection section)
     {
         if (!Enum.IsDefined(section)) throw new ArgumentOutOfRangeException(nameof(section));
-        if (section is AccessoryEditorSection.Connection or AccessoryEditorSection.Rotation) section = AccessoryEditorSection.Placement;
         if (section == SelectedSection) return true;
         if (!CommitPendingInputs()) return false;
         SelectedSection = section;
@@ -453,12 +450,6 @@ internal sealed class AccessoryEditorPanel : StackPanel
             {
                 AccessoryEditResult? result;
                 if (UnifiedEditor is not null) result = UnifiedEditor(draft, source, project, Preview);
-                else if (ImageEditor is not null)
-                {
-                    var bitmap = source?.Bitmap ?? currentSession.TryGetImage(item.AssetId) ?? BuiltinAccessoryImages.Get(item.AssetId);
-                    var injected = bitmap is null ? null : ImageEditor(item, bitmap);
-                    result = injected is null || bitmap is null ? null : CreateInjectedResult(draft, injected, bitmap, project);
-                }
                 else
                 {
                     var window = new AccessoryUnifiedEditorWindow(draft, source, project, Preview) { Owner = Window.GetWindow(this) };
@@ -481,16 +472,6 @@ internal sealed class AccessoryEditorPanel : StackPanel
         });
     }
 
-    private static AccessoryEditResult CreateInjectedResult(AccessoryEditDraft draft, AccessoryItem item,
-        BitmapSource bitmap, AccessoryEditorProject? previous)
-    {
-        var source = AccessoryEditorSourceAsset.FromBitmap(bitmap);
-        var image = AccessoryImageAsset.FromRenderedPng(source.CopyPngBytes());
-        var project = previous is null ? AccessoryEditorProject.FromImage(image, draft.Revision) :
-            new AccessoryEditorProject(previous.PixelWidth, previous.PixelHeight, draft.Revision, image.AssetId, previous.Layers, previous.Assets.Values);
-        return new(project, image, item with { AssetId = image.AssetId, PixelWidth = image.PixelWidth, PixelHeight = image.PixelHeight,
-            ProjectId = project.ProjectId, ProjectVersion = project.Version, EditRevision = draft.Revision, IsPendingCompletion = false });
-    }
 
     internal void Edit(Func<AccessoryItem, AccessoryItem> update, bool discardInput = false)
     {

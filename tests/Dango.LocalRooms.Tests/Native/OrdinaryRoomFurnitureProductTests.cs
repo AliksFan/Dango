@@ -69,9 +69,11 @@ public sealed class OrdinaryRoomFurnitureProductTests
         var accessories = new AccessorySettingsSession(root);
         var outfit = new AccessoryConfiguration([
             new("fictional-furniture-front", "Fictional front", "builtin-top-hat", 64, 64)
-            { Layer = AccessoryLayer.Front, Softness = 80, GravityInfluence = 60, ConnectionStrength = 35 },
+            { Layer = AccessoryLayer.Front, DeformationMode = AccessoryDeformationMode.SingleChain,
+                Rig = new([new(.5, .5), new(.8, .9)], .8), GravityInfluence = 60, ConnectionStrength = 35 },
             new("fictional-furniture-rear", "Fictional rear", "builtin-sprout", 64, 64)
-            { Layer = AccessoryLayer.Behind, BodyAnchorY = .3, Softness = 65, GravityInfluence = 40 },
+            { Layer = AccessoryLayer.Behind, BodyAnchorY = .3, DeformationMode = AccessoryDeformationMode.SingleChain,
+                Rig = new([new(.5, .5), new(.8, .9)], .65), GravityInfluence = 40 },
         ]);
         accessories.Stage(outfit);
         Assert.IsTrue(accessories.TrySave(), accessories.StatusMessage);

@@ -152,7 +152,9 @@ public partial class App : System.Windows.Application
         var presetPath = ControlCenterWindowSettingsStore.GetPresetPath(settingsPath);
         var appearancePath = Path.Combine(root, "appearance.json");
         var accessoryPath = Path.Combine(root, "accessories.json");
+        var accessoryV2Path = Path.Combine(root, "accessories-v2.json");
         var accessoryAssetsPath = Path.Combine(root, "accessory-assets");
+        var accessoryProjectsPath = Path.Combine(root, "accessory-projects");
         // Enumerate entries rather than testing File.Exists: dangling links and
         // directory links at every settings filename must also fail before load.
         foreach (var entry in Directory.EnumerateFileSystemEntries(root))
@@ -160,10 +162,12 @@ public partial class App : System.Windows.Application
             if (entry.Equals(settingsPath, StringComparison.OrdinalIgnoreCase) ||
                 entry.Equals(presetPath, StringComparison.OrdinalIgnoreCase) ||
                 entry.Equals(appearancePath, StringComparison.OrdinalIgnoreCase) ||
-                entry.Equals(accessoryPath, StringComparison.OrdinalIgnoreCase))
+                entry.Equals(accessoryPath, StringComparison.OrdinalIgnoreCase) ||
+                entry.Equals(accessoryV2Path, StringComparison.OrdinalIgnoreCase))
                 if ((File.GetAttributes(entry) & (FileAttributes.ReparsePoint | FileAttributes.Directory)) != 0)
                     throw new InvalidDataException("Acceptance settings files cannot be directories or reparse points.");
-            if (entry.Equals(accessoryAssetsPath, StringComparison.OrdinalIgnoreCase))
+            if (entry.Equals(accessoryAssetsPath, StringComparison.OrdinalIgnoreCase) ||
+                entry.Equals(accessoryProjectsPath, StringComparison.OrdinalIgnoreCase))
             {
                 var attributes = File.GetAttributes(entry);
                 if ((attributes & FileAttributes.ReparsePoint) != 0 || (attributes & FileAttributes.Directory) == 0)

@@ -385,9 +385,11 @@ public sealed class AccessoryPreviewPresentationTests
             var accessories = new AccessorySettingsSession(settingsRoot);
             accessories.Stage(new([
                 new("fictional-presentation-back", "Fictional rear presentation leaf", "builtin-sprout", 64, 64)
-                { Layer = AccessoryLayer.Behind, BodyAnchorX = .4, BodyAnchorY = .3, Softness = 50 },
+                { Layer = AccessoryLayer.Behind, BodyAnchorX = .4, BodyAnchorY = .3,
+                    DeformationMode = AccessoryDeformationMode.SingleChain, Rig = new([new(.5, .5), new(.8, .9)], .5) },
                 new("fictional-presentation-front", "Fictional front presentation hat", "builtin-top-hat", 64, 64)
-                { Layer = AccessoryLayer.Front, BodyAnchorX = .7, BodyAnchorY = .4, Order = 3, Softness = 70 },
+                { Layer = AccessoryLayer.Front, BodyAnchorX = .7, BodyAnchorY = .4, Order = 3,
+                    DeformationMode = AccessoryDeformationMode.SingleChain, Rig = new([new(.5, .5), new(.8, .9)], .7) },
             ]));
             Assert.IsTrue(accessories.TrySave());
             var native = Environment.GetEnvironmentVariable("DANGO_PHYSICS_MODULE_PATH")

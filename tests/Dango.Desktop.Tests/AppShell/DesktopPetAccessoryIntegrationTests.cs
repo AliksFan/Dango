@@ -115,7 +115,13 @@ public sealed class DesktopPetAccessoryIntegrationTests
         Assert.AreEqual(steps, rig.Frame.Bodies.Single().Diagnostics.SimulatedStepCount,
             "Consuming a raster in another host cannot tick the body or accessories.");
         var guard = rig.Window.CurrentPointerGuard ?? throw new AssertFailedException("The current frame must retain its body pointer guard.");
-        var bounds = DangoHostFrameBinding.Bounds(rig.Frame, 0).Translate(new(0, rig.Runtime.NeutralBodyGroundOffset));
+        var nativeBody = rig.Frame.BeltRoom!;
+        var core = rig.Scene.NativePetCenter!.Value;
+        var s = nativeBody.Stats;
+        var bodyBounds = new LogicalRect(core.X + (s[8] - s[0]) * 72, core.Y - (s[11] - s[1]) * 72,
+            (s[10] - s[8]) * 72, (s[11] - s[9]) * 72);
+        var bounds = bodyBounds.Translate(new(rig.Scene.PresentationOffset.X,
+            rig.Scene.PresentationOffset.Y + rig.Runtime.NeutralBodyGroundOffset));
         var first = rig.Scene.RoomToScene(new(bounds.X, bounds.Y));
         var last = rig.Scene.RoomToScene(new(bounds.Right, bounds.Bottom));
         var expected = new Rect(rig.Scene.PointToScreen(new(first.X, first.Y)), rig.Scene.PointToScreen(new(last.X, last.Y)));
@@ -140,7 +146,8 @@ public sealed class DesktopPetAccessoryIntegrationTests
 
     private sealed class Fixture : IDisposable
     {
-        internal readonly StackedDangoSceneRuntime Runtime = StackedDangoSceneRuntime.CreateProduct();
+        internal readonly StackedDangoSceneRuntime Runtime = StackedDangoSceneRuntime.CreateBeltRoom(
+            System.IO.Path.Combine(AppContext.BaseDirectory, "dango_belt_room.dll"));
         internal readonly LocalRoomSceneView Scene = new() { Width = 1024, Height = 640 };
         internal readonly LocalRoomSceneDriver Driver;
         internal readonly Window SceneWindow;
@@ -160,12 +167,14 @@ public sealed class DesktopPetAccessoryIntegrationTests
                 {
                     Layer = AccessoryLayer.Behind, BodyAnchorX = .5, BodyAnchorY = 0,
                     SizePercent = 350, ImagePivotX = .9, ImagePivotY = 1,
-                    LockRotation = true, Softness = 0, GravityInfluence = 0,
+                    LockRotation = true, GravityInfluence = 0,
                 },
                 new("front", "Fictional front raster", "builtin-bowler", 64, 64)
                 {
                     Layer = AccessoryLayer.Front, BodyAnchorX = .5, BodyAnchorY = .2,
-                    SizePercent = 70, LockRotation = true, Softness = 0, GravityInfluence = 0,
+                    SizePercent = 70, LockRotation = true, GravityInfluence = 0,
+                    DeformationMode = AccessoryDeformationMode.SingleChain,
+                    Rig = new([new(.5, .5), new(.8, .9)], .7),
                 },
             ]);
             settings.Stage(configuration);

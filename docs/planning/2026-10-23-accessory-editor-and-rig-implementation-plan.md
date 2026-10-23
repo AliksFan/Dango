@@ -1,6 +1,6 @@
 # 配饰统一编辑器与骨架柔性实施计划
 
-日期：2026-10-23。状态：设计方向已获用户确认；用户在后续实施对话授权执行。E0 有界合同、E1 工程保存合同已自动验证；E2 正式统一窗口和 E3 单链求解已接入并有选择性自动验证，已进行一次获准前台交互检查，尚未全面验收。E4 已有双消费者接线改动，旧路清理与完整宿主验证待完成；E5 尚未收尾。系统性能优化安排在模块接通后的 E4／E5；本轮 60Hz 对照目标不是已批准的硬验收线。实际证据与澄清见 [E0 记录](../verification/2026-10-23-accessory-editor-rig-e0.md)、[E1 记录](../verification/2026-10-23-accessory-editor-rig-e1.md)、[E2／E3 记录](../verification/2026-10-23-accessory-editor-rig-e2-e3.md)。
+日期：2026-10-23。状态：设计方向已获用户确认；用户在后续实施对话授权执行。E0 有界合同、E1 工程保存合同已自动验证；E2 正式统一窗口和 E3 单链求解已接入并有选择性自动验证及一次获准前台检查。用户随后明确进入 E4，旧生产编辑路径及旧形变字段已退役，双运行链回归、独立二进制轨迹对照及实际产品宿主交接通过。E5 的完整交互、发布与人工验收待完成；各阶段尚未标记已验收。系统性能优化继续放在真实场景的 E4／E5；本轮 60Hz 对照目标不是已批准的硬验收线。实际证据与澄清见 [E0 记录](../verification/2026-10-23-accessory-editor-rig-e0.md)、[E1 记录](../verification/2026-10-23-accessory-editor-rig-e1.md)、[E2／E3 记录](../verification/2026-10-23-accessory-editor-rig-e2-e3.md)、[E4 记录](../verification/2026-10-23-accessory-editor-rig-e4.md)。
 
 依据：[本轮设计](2026-10-23-accessory-editor-and-rig-design.md)、[桌面界面规范 v0.1](../desktop-ui-design-v0.1.md)第 2–6 节、[开发流程](../development-workflow-v0.1.md)第 13 节。
 实施须在后续明确授权的阶段内开展。本计划不把依赖可用性、性能预算、数值稳定性或人工效果写成已验证。
@@ -128,7 +128,7 @@ AI 自动抠图、主动摇尾、分叉骨架、布料和 3D 后置；不实现�
 依赖／风险：依赖 E0–E2；算法和预算未验证，若需改变单链范围或添加回作用，必须先回到设计审批。
 外部资源：本地虚构静态 PNG 样本；无训练、云端或第三方实时服务。
 
-### E4 — 双运行链正式接线与旧路退役（已有消费者接线，完整宿主验证及退役待完成）
+### E4 — 双运行链正式接线与旧路退役（实现、自动门禁及本轮实际宿主检查通过，未标记已验收）
 
 目标模块：`BeltBodyAppearancePresenter`、`AccessorySceneController`、`StackedDangoSceneRuntime.Accessories`、`AccessoryHostBinding`、`ProductHomeView.Accessories`。
 

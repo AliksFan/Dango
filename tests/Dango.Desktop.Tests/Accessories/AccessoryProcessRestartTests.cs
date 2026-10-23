@@ -22,6 +22,7 @@ public sealed class AccessoryProcessRestartTests
     [TestMethod]
     [TestCategory("NativeIntegration")]
     [TestCategory("ProcessIntegration")]
+    [TestCategory("ForegroundInteraction")]
     public void RealExecutableAppliesThroughUiAndSecondProcessRestoresAfterSourceMove()
     {
         var runRoot = NewRunRoot("restart");
@@ -67,6 +68,8 @@ public sealed class AccessoryProcessRestartTests
             Invoke(WaitForControl(first, firstWindow, "Q · 换装", ControlType.Button, log), log, "open-wardrobe-first");
             SelectLibraryItem(first, firstWindow, imported.Name, log);
             OpenPlacementSection(first, firstWindow, log, "open-placement-first");
+            Invoke(WaitForControl(first, firstWindow, "编辑配饰", ControlType.Button, log), log, "open-unified-first");
+            var firstEditor = WaitForEditor(first, log);
             var initialRange = GetRange(WaitForControl(first, firstWindow, "身体附着 X", ControlType.Slider, log));
             Assert.AreEqual(.27, initialRange.Current.Value, 1e-9);
             log.Write("first-process-restored-source-independent", new { first.Process.Id, bodyAnchorX = initialRange.Current.Value });
@@ -78,41 +81,37 @@ public sealed class AccessoryProcessRestartTests
             log.Write("duplicate-review-rejected", new { primaryPid = first.Process.Id, duplicatePid = duplicate.Process.Id, duplicate.Process.ExitCode });
 
             const double changedAnchor = .73;
-            var anchorInput = WaitForControl(first, firstWindow, "身体附着 X 数值", ControlType.Edit, log);
+            var anchorInput = WaitForControl(first, firstEditor, "身体附着 X 数值", ControlType.Edit, log);
+            WaitUntil(first, () => anchorInput.Current.IsEnabled, "unified editor ready", log);
             anchorInput.SetFocus();
             Assert.IsTrue(anchorInput.TryGetCurrentPattern(ValuePattern.Pattern, out var inputPattern), "The actual numeric input must expose ValuePattern.");
             ((ValuePattern)inputPattern).SetValue("0.73");
             WaitUntil(first, () => ((ValuePattern)anchorInput.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == "0.73",
                 "focused numeric input update", log);
             log.Write("first-process-focused-numeric-input", new { first.Process.Id, text = "0.73" });
-            Invoke(WaitForControl(first, firstWindow, "配饰：柔性与连接", ControlType.Button, log), log, "open-material-first");
-            foreach (var (name, text) in new[] { ("最高允许形变量 % 数值", "175"), ("连接最大行程 % 数值", "150") })
+            foreach (var (name, text) in new[] { ("重力影响 数值", "37"), ("连接最大行程 % 数值", "150") })
             {
-                var input = WaitForControl(first, firstWindow, name, ControlType.Edit, log);
+                var input = WaitForControl(first, firstEditor, name, ControlType.Edit, log);
                 input.SetFocus();
                 ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).SetValue(text);
             }
-            var folding = WaitForControl(first, firstWindow, "允许翻折", ControlType.CheckBox, log);
-            ((TogglePattern)folding.GetCurrentPattern(TogglePattern.Pattern)).Toggle();
-            WaitUntil(first, () => ((TogglePattern)folding.GetCurrentPattern(TogglePattern.Pattern)).Current.ToggleState == ToggleState.On,
-                "folding option checked", log);
+            Invoke(WaitForControl(first, firstEditor, "确认", ControlType.Button, log), log, "confirm-unified-first");
+            WaitUntil(first, () => FindEditor(first) is null, "unified result returned to outer draft", log);
             LogOwnedWardrobeState(first, firstWindow, log, "before-apply");
             Invoke(WaitForControl(first, firstWindow, "应用", ControlType.Button, log), log, "apply-first-process");
             LogOwnedWardrobeState(first, firstWindow, log, "after-apply-invocation");
             // Do not open the target while the asynchronous UIA click is replacing it:
             // a FileShare.Read poll can itself block the Windows atomic overwrite.
             WaitUntil(first, () => FindControl(firstWindow, "配饰已保存到本机。", ControlType.Text) is not null &&
-                FindControl(firstWindow, "应用", ControlType.Button) is { Current.IsEnabled: false } &&
-                FindControl(firstWindow, "连接最大行程 %", ControlType.Slider) is { } slider &&
-                Math.Abs(GetRange(slider).Current.Value - 150) < 1e-9,
+                FindControl(firstWindow, "应用", ControlType.Button) is { Current.IsEnabled: false },
                 "first process UI save completion", log);
             var committed = new AccessorySettingsStore().Load(reviewRoot);
             Assert.AreEqual(AccessorySettingsLoadState.Valid, committed.State);
             Assert.AreEqual(changedAnchor, committed.Configuration.Items.Single(item => item.Id == imported.Id).BodyAnchorX, 1e-9,
                 "The UI save result must be independently confirmed on disk.");
             var committedItem = committed.Configuration.Items.Single(item => item.Id == imported.Id);
-            Assert.IsTrue(committedItem.AllowFolding);
-            Assert.AreEqual(175d, committedItem.MaxDeformationPercent);
+            Assert.IsNotNull(committedItem.ProjectId);
+            Assert.AreEqual(37d, committedItem.GravityInfluence);
             Assert.AreEqual(150d, committedItem.MaxConnectionTravelPercent);
             Assert.AreEqual("sprout", new ControlCenterWindowSettingsStore().LoadOrDefault(Path.Combine(reviewRoot, "settings.json")).Settings.HatPresetId);
             log.Write("first-process-ui-commit-confirmed", new { first.Process.Id, bodyAnchorX = changedAnchor });
@@ -127,13 +126,16 @@ public sealed class AccessoryProcessRestartTests
             Invoke(WaitForControl(second, secondWindow, "Q · 换装", ControlType.Button, log), log, "open-wardrobe-second");
             SelectLibraryItem(second, secondWindow, imported.Name, log);
             OpenPlacementSection(second, secondWindow, log, "open-placement-second");
-            var restored = GetRange(WaitForControl(second, secondWindow, "身体附着 X", ControlType.Slider, log)).Current.Value;
+            Invoke(WaitForControl(second, secondWindow, "编辑配饰", ControlType.Button, log), log, "open-unified-second");
+            var secondEditor = WaitForEditor(second, log);
+            var restoredAnchor = WaitForControl(second, secondEditor, "身体附着 X", ControlType.Slider, log);
+            WaitUntil(second, () => restoredAnchor.Current.IsEnabled, "restored editor ready", log);
+            var restored = GetRange(restoredAnchor).Current.Value;
             Assert.AreEqual(changedAnchor, restored, 1e-9);
-            Invoke(WaitForControl(second, secondWindow, "配饰：柔性与连接", ControlType.Button, log), log, "open-material-second");
-            Assert.AreEqual(175d, GetRange(WaitForControl(second, secondWindow, "最高允许形变量 %", ControlType.Slider, log)).Current.Value);
-            Assert.AreEqual(150d, GetRange(WaitForControl(second, secondWindow, "连接最大行程 %", ControlType.Slider, log)).Current.Value);
-            Assert.AreEqual(ToggleState.On, ((TogglePattern)WaitForControl(second, secondWindow, "允许翻折", ControlType.CheckBox, log)
-                .GetCurrentPattern(TogglePattern.Pattern)).Current.ToggleState);
+            Assert.AreEqual(37d, GetRange(WaitForControl(second, secondEditor, "重力影响", ControlType.Slider, log)).Current.Value);
+            Assert.AreEqual(150d, GetRange(WaitForControl(second, secondEditor, "连接最大行程 %", ControlType.Slider, log)).Current.Value);
+            Invoke(WaitForControl(second, secondEditor, "取消", ControlType.Button, log), log, "cancel-unified-second");
+            WaitUntil(second, () => FindEditor(second) is null, "restored editor closed", log);
             Assert.IsFalse(File.Exists(source));
             Assert.IsTrue(File.Exists(AccessorySettingsStore.GetAssetPath(reviewRoot, imported.AssetId)));
             log.Write("second-process-ui-restored", new { second.Process.Id, bodyAnchorX = restored, imported.Name });
@@ -204,6 +206,7 @@ public sealed class AccessoryProcessRestartTests
     [DataRow("settings.window-preset.json")]
     [DataRow("appearance.json")]
     [DataRow("accessories.json")]
+    [DataRow("accessories-v2.json")]
     [DataRow(MarkerName)]
     public void ReviewRejectsDirectoryAtASettingsOrMarkerFile(string fileName)
     {
@@ -214,6 +217,19 @@ public sealed class AccessoryProcessRestartTests
     }
 
     private static string? Resolve(string root) => App.ResolveLocalInstallAcceptanceSettingsFile(["--local-install-acceptance-settings", root]);
+
+    [TestMethod]
+    [DataRow("accessory-assets")]
+    [DataRow("accessory-projects")]
+    public void ReviewRejectsFilesAtOwnedAssetDirectoriesWithoutChangingThem(string directoryName)
+    {
+        var root = NewRunRoot("asset-directory-rejection");
+        File.WriteAllText(Path.Combine(root, MarkerName), Marker);
+        var path = Path.Combine(root, directoryName);
+        File.WriteAllText(path, "fictional preserved bytes");
+        Assert.ThrowsExactly<InvalidDataException>(() => Resolve(root));
+        Assert.AreEqual("fictional preserved bytes", File.ReadAllText(path));
+    }
 
     private static string NewRunRoot(string label)
     {
@@ -325,9 +341,21 @@ public sealed class AccessoryProcessRestartTests
 
     private static void OpenPlacementSection(ReviewProcess child, AutomationElement window, VerificationLog log, string action)
     {
-        var button = WaitForControl(child, window, "配饰：图像与位置", ControlType.Button, log);
+        var button = WaitForControl(child, window, "配饰：配饰", ControlType.Button, log);
         Invoke(button, log, action);
         WaitUntil(child, () => button.Current.ItemStatus == "已选", "actual placement section selected", log);
+    }
+
+    private static AutomationElement? FindEditor(ReviewProcess child) => AutomationElement.RootElement.FindFirst(
+        TreeScope.Descendants, new AndCondition(
+            new PropertyCondition(AutomationElement.ProcessIdProperty, child.Process.Id),
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Window),
+            new PropertyCondition(AutomationElement.NameProperty, "编辑配饰")));
+
+    private static AutomationElement WaitForEditor(ReviewProcess child, VerificationLog log)
+    {
+        WaitUntil(child, () => FindEditor(child) is not null, "owned unified editor window", log);
+        return FindEditor(child)!;
     }
 
     private static RangeValuePattern GetRange(AutomationElement element)

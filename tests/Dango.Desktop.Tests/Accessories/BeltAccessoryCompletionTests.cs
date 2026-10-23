@@ -30,7 +30,8 @@ public sealed class BeltAccessoryCompletionTests
     public void DraftHotUpdatePreservesBodyEyesGaitAndStableInstanceMotion()
     {
         using var presenter = new BeltBodyAppearancePresenter(DangoAppearanceConfiguration.Default) { GaitEnabled = true };
-        var item = Item() with { Softness = 80, GravityInfluence = 100, ConnectionStrength = 40 };
+        var item = Item() with { DeformationMode = AccessoryDeformationMode.SingleChain,
+            Rig = new([new(.5, .5), new(.7, .8)], .8), GravityInfluence = 100, ConnectionStrength = 40 };
         presenter.SetAccessories(new([item]), _ => throw new AssertFailedException("Built-ins do not load from disk."));
         for (var tick = 0; tick < 150; tick++) presenter.Update(Frame(tick, tick < 60 ? 0 : (tick - 60) / 100d) with { Horizontal = tick < 60 ? 0 : 1 });
         Assert.IsTrue(presenter.SubmitAttachment(new SetEyes(EyeSelection.Both, 0, EyeShape.Sleeping, 1)));
@@ -47,7 +48,8 @@ public sealed class BeltAccessoryCompletionTests
         Assert.AreSame(visual, AccessoryVisuals(presenter).Single());
         Assert.AreEqual(before.Tick, after.Tick);
         Assert.AreEqual(motion.StepIndex, after.Accessories.Single().Frame.StepIndex);
-        Assert.AreEqual(motion.ConnectionOffset, after.Accessories.Single().Frame.ConnectionOffset);
+        Assert.AreEqual(default(Vector), after.Accessories.Single().Frame.ConnectionOffset,
+            "A changed configuration projects its rest state until the next owner step rebases it.");
         Assert.AreEqual(AccessoryLayer.Behind, after.Accessories.Single().Layer);
         Assert.AreNotEqual(motion.Vertices[0], after.Accessories.Single().Frame.Vertices[0]);
         presenter.Update(Frame(151, 1.51));
@@ -134,7 +136,7 @@ public sealed class BeltAccessoryCompletionTests
         home.SynchronizeBeltAccessories();
         Assert.AreEqual(2, presenter.RenderedAccessoryCount, "The uncommitted imported image must be visible.");
         Assert.AreEqual(1, session.PendingImageCount);
-        Assert.IsFalse(File.Exists(Path.Combine(root, "accessories.json")));
+        Assert.IsFalse(File.Exists(Path.Combine(root, "accessories-v2.json")));
         var apply = Descendants(panel.SaveActions).OfType<Button>().Single(button => AutomationProperties.GetName(button) == "应用");
         apply.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Assert.IsFalse(session.HasPendingSave);

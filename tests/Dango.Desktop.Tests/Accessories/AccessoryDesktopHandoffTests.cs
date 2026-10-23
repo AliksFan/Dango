@@ -29,6 +29,8 @@ public sealed class AccessoryDesktopHandoffTests
             new("fictional-bowler", "Fictional saved accessory", "builtin-bowler", 64, 64)
             {
                 BodyAnchorX = .23, BodyAnchorY = .31, BaseAngleDegrees = 17,
+                DeformationMode = AccessoryDeformationMode.SingleChain,
+                Rig = new([new(.5, .5), new(.7, .8)], .7), GravityInfluence = 31,
             },
         ]);
         session.Stage(configuration);
@@ -66,7 +68,7 @@ public sealed class AccessoryDesktopHandoffTests
         Assert.IsFalse(runtime.AccessoriesEnabled, "An uncommitted empty list cannot replace the legacy hat.");
         var controller = Field<AccessorySceneController>(runtime, "accessoryScene");
         Assert.AreEqual(session.SavedConfiguration, Field<AccessoryConfiguration>(controller, "configuration"));
-        Assert.IsFalse(File.Exists(Path.Combine(root, "accessories.json")));
+        Assert.IsFalse(File.Exists(Path.Combine(root, "accessories-v2.json")));
         Assert.AreEqual(0, runtime.EntityIds.Count);
     }
 

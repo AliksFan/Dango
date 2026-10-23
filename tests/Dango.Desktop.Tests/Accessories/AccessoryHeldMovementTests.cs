@@ -302,27 +302,20 @@ public sealed class AccessoryHeldMovementTests
             RunRoot = Path.Combine(TestRepository.Root, "artifacts", "accessory-held-movement-v4", Guid.NewGuid().ToString("N"));
             var settings = Path.Combine(RunRoot, "settings");
             Directory.CreateDirectory(settings);
-            var source = Environment.GetEnvironmentVariable("DANGO_ACCESSORY_MOVEMENT_FIXTURE_ROOT");
-            if (!string.IsNullOrWhiteSpace(source))
-            {
-                foreach (var name in new[] { "settings.json", "appearance.json", "accessories.json" })
-                    File.Copy(Path.Combine(source, name), Path.Combine(settings, name), overwrite: false);
-            }
-            else
-            {
-                new ControlCenterWindowSettingsStore().Save(Path.Combine(settings, "settings.json"),
-                    ControlCenterWindowSettings.CreateDefault() with { IntroSeen = true, DisplayMode = DesktopDisplayMode.Window });
-                var session = new AccessorySettingsSession(settings);
-                session.Stage(new([
-                    new("fictional-held-leaf", "虚构持续移动叶芽", "builtin-sprout", 64, 64)
-                    {
-                        BodyAnchorX = .228, BodyAnchorY = .756, Softness = 84.46,
-                        ConnectionStrength = 0, RotationDamping = 0, LockRotation = false,
-                        ReturnStrength = 60, MaxSwingDegrees = 178, LimitSwing = true, GravityInfluence = 20,
-                    },
-                ]));
-                Assert.IsTrue(session.TrySave());
-            }
+            new ControlCenterWindowSettingsStore().Save(Path.Combine(settings, "settings.json"),
+                ControlCenterWindowSettings.CreateDefault() with { IntroSeen = true, DisplayMode = DesktopDisplayMode.Window });
+            var session = new AccessorySettingsSession(settings);
+            session.Stage(new([
+                new("fictional-held-leaf", "虚构持续移动叶芽", "builtin-sprout", 64, 64)
+                {
+                    BodyAnchorX = .228, BodyAnchorY = .756,
+                    DeformationMode = AccessoryDeformationMode.SingleChain,
+                    Rig = new([new(.5, .5), new(.7, .7), new(.8, .9)], .8446),
+                    ConnectionStrength = 0, RotationDamping = 0, LockRotation = false,
+                    ReturnStrength = 60, MaxSwingDegrees = 178, LimitSwing = true, GravityInfluence = 20,
+                },
+            ]));
+            Assert.IsTrue(session.TrySave());
             var native = Environment.GetEnvironmentVariable("DANGO_PHYSICS_MODULE_PATH") ??
                 Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName);
             Assert.IsTrue(File.Exists(native), "The low-jump native candidate must be supplied to the actual Home fixture.");

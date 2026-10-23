@@ -32,7 +32,7 @@ public sealed class AccessoryDeletionTests
         var pending = session.ImportPng(WriteSource("pending.png"));
         var pendingCopy = session.Duplicate(pending.Id);
         session.Stage(new AccessoryConfiguration(session.DraftConfiguration.Items.Select(item =>
-            item.Id == "keep" ? item with { Name = "未应用名称", BodyAnchorX = .23, Softness = 72 } : item)));
+            item.Id == "keep" ? item with { Name = "未应用名称", BodyAnchorX = .23, GravityInfluence = 72 } : item)));
         var expectedDraft = Without(session.DraftConfiguration, "remove");
         var expectedSaved = Without(saved, "remove");
         var pendingBytes = session.PendingPngBytes;
