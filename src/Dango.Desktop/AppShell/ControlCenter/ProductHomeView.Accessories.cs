@@ -91,15 +91,15 @@ public partial class ProductHomeView
     {
         if (accessorySession is null || beltPresenter is null) return;
         beltPresenter.SetAccessories(IsAccessoryPreview ? accessorySession.DraftConfiguration : accessorySession.SavedConfiguration,
-            accessorySession.TryGetImage);
+            accessoryPanel.ResolvePreviewImage);
         RefreshAccessoryFrame();
     }
 
     private void SetAccessoryPresentation(AccessoryConfiguration configuration, bool useNewConfiguration = true)
     {
-        BoundRuntime?.SetAccessories(configuration, useNewConfiguration);
+        BoundRuntime?.SetAccessories(configuration, useNewConfiguration, accessoryPanel.ResolvePreviewImage);
         if (beltPresenter is not null && accessorySession is not null)
-            beltPresenter.SetAccessories(configuration, accessorySession.TryGetImage);
+            beltPresenter.SetAccessories(configuration, accessoryPanel.ResolvePreviewImage);
     }
 
     internal void CancelAccessoryPreview()

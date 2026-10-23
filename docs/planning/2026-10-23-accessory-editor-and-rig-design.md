@@ -1,6 +1,6 @@
 # 配饰统一编辑器与骨架形变设计
 
-日期：2026-10-23。状态：**用户已确认设计方向，并在后续实施对话授权执行；E0 有界合同、E1 原生工程与保存合同已实施并作选择性自动验证，E2 工程适配开始，E3–E5 尚未开始。实际光栅存在性能风险，系统性优化留待模块接通后的正式场景；整体功能与人工验收尚未完成。** 实际结果及目标来源澄清见 [E0 记录](../verification/2026-10-23-accessory-editor-rig-e0.md)、[E1 记录](../verification/2026-10-23-accessory-editor-rig-e1.md)。
+日期：2026-10-23。状态：**用户已确认设计方向，并在后续实施对话授权执行；E0、E1 已实施并作选择性自动验证，E2 正式统一窗口、E3 单链与双消费者接线已有实现及自动验证，并完成一次获准前台交互检查。完整工具、视觉效果、E4 旧路退役和 E5 产品验收尚未完成。实际光栅存在性能风险，系统性优化留待模块接通后的正式场景。** 实际结果及目标来源澄清见 [E0 记录](../verification/2026-10-23-accessory-editor-rig-e0.md)、[E1 记录](../verification/2026-10-23-accessory-editor-rig-e1.md)、[E2／E3 记录](../verification/2026-10-23-accessory-editor-rig-e2-e3.md)。
 
 基线：`main@d929a8ee85d050c45edc7bfb7c93b043aed35729`。文档分支：`codex/accessory-editor-rig-plan`。配套：[实施计划](2026-10-23-accessory-editor-and-rig-implementation-plan.md)、[ADR 0007](../adr/0007-accessory-editor-and-rig.md)。
 

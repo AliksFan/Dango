@@ -7,6 +7,8 @@ function keys(value,allowed){return record(value)&&Object.keys(value).every(k=>a
 function requireValue(condition){if(!condition)throw Error('Unsupported layer shape');}
 export function validateLayer(layer) {
   requireValue(record(layer));
+  for(const key of ["flipX","flipY"])requireValue(layer[key]===undefined||typeof layer[key]==="boolean");
+  if(layer.restoreAssetId!==undefined)requireValue(layer.type==="image"&&typeof layer.restoreAssetId==="string"&&/^asset-[0-9]+$/.test(layer.restoreAssetId));
   requireValue([null,'image','brush','text'].includes(layer.type));
   requireValue(Number.isInteger(layer.id)&&layer.id>0&&layer.id<=1000000);
   requireValue(typeof layer.name==='string'&&layer.name.length<=128&&!/[<>]/.test(layer.name));

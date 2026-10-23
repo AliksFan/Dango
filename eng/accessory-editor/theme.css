@@ -15,3 +15,41 @@ button:focus-visible,[role=button]:focus-visible,input:focus-visible,select:focu
 #main_wrapper{left:0!important;top:0!important}.transparent-grid{background-color:white!important;background-image:conic-gradient(#eee 25%,white 0 50%,#eee 0 75%,white 0)!important;background-size:20px 20px!important}
 #editor_status{position:fixed;bottom:0;left:130px;right:240px;padding:8px;background:var(--home-background);color:var(--home-ink);z-index:1000;pointer-events:none}
 @media (forced-colors:active){:root{--home-background:Canvas;--home-ink:CanvasText;--home-line:CanvasText;--home-accent:Highlight;--home-selected:Highlight;--home-soft:Canvas}button{border:1px solid ButtonText}}
+
+#geometry_toolbar{position:absolute;top:44px;left:0;right:0;display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:4px 8px;border-bottom:1px solid var(--home-line);z-index:10;background:var(--home-background)}
+#geometry_toolbar button{min-height:40px}#geometry_toolbar input{width:58px}#geometry_status{font-size:12px;color:var(--home-muted);flex:1;min-width:180px}button[aria-pressed=true]{background:var(--home-selected);border-color:var(--home-accent)}
+.submenu{top:144px!important}.sidebar_left,.sidebar_right,.middle_area{top:190px!important}#geometry_overlay{position:absolute;left:0;top:0;z-index:5;touch-action:none}.sidebar_right{bottom:32px!important}#main_menu{height:44px;overflow-x:auto;white-space:nowrap}#editor_status{left:0;right:0;min-height:20px;pointer-events:none;border-top:1px solid var(--home-line)}
+#geometry_toolbar button:focus-visible{outline:2px solid var(--home-accent)}
+@media(min-width:1100px){.submenu{top:100px!important}.sidebar_left,.sidebar_right,.middle_area{top:146px!important}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+/* Four explicit rows keep editing tools and feedback reachable at every viewport. */
+.wrapper{top:0!important;bottom:34px!important;grid-template-rows:auto auto auto minmax(0,1fr)!important;grid-template-columns:130px minmax(100px,1fr) 240px!important;grid-template-areas:"menu menu menu" "geometry geometry geometry" "submenu submenu submenu" "sidebar_left main sidebar_right"!important}
+#main_menu{grid-area:menu;position:static!important;min-width:0;width:auto!important;margin:0!important;padding:2px 8px!important}
+#geometry_toolbar{grid-area:geometry;position:static!important;min-width:0}#geometry_toolbar button{flex-shrink:0}
+.submenu{position:relative!important;top:0!important;min-width:0;max-height:110px;overflow:auto!important}
+.sidebar_left,.sidebar_right,.middle_area{top:0!important;left:0!important;min-height:0;min-width:0;height:auto!important}
+.sidebar_right{position:relative!important;right:auto!important;width:240px!important;margin:0!important;bottom:0!important}
+#tools_container{width:130px!important}.middle_area{position:relative!important}.block h2{background:var(--home-soft)!important;box-shadow:none!important}.block{box-shadow:none!important}
+.layers_list .delete{min-width:32px!important;width:32px!important;min-height:32px!important;height:32px!important}.layers_list .delete::after{content:'×';font-size:18px}.layers_list .visibility{min-width:32px!important;width:32px!important;min-height:32px!important;height:32px!important}.layers_list .visibility::after{content:'◉';font-size:16px;background:none!important}
+#layers_base>button{min-width:32px;min-height:40px;height:auto!important;width:auto!important;margin:2px;float:none!important;position:static!important;font-size:12px}#layers_base{display:flex;flex-wrap:wrap;gap:4px}.layers_list{width:100%;clear:both}
+@media(max-width:760px){.wrapper{grid-template-columns:100px minmax(80px,1fr) 200px!important}.sidebar_right{width:200px!important}#tools_container{width:100px!important}#geometry_status{flex-basis:100%}#geometry_toolbar{gap:4px}#geometry_toolbar button{padding:4px 6px}}
+/* miniPaint controls consume the same semantic palette as the native editor. */
+/* Keep upstream accessibility text in the accessibility tree, outside visual layout. */
+.sr_only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip-path:inset(50%)!important;white-space:nowrap!important;border:0!important}
+/* Half-height spinner targets must not inherit the ordinary button minimum. */
+.ui_number_input>.increase_number,.ui_number_input>.decrease_number{min-height:0;height:50%;padding:0;box-shadow:none}
+.attributes .ui_number_input>input[type=number],.block.details .ui_number_input>input[type=number]{width:100%;margin:0;padding-right:calc(var(--number-input-arrow-width) + 5px)}
+.attributes .ui_number_input{min-width:76px}
+button,input,select,textarea,.block,.attributes{font-family:'Segoe UI','Microsoft YaHei',sans-serif}
+input[type=text],input[type=number],select,textarea{font-size:14px}
+.ui_toggle_button{padding-left:30px!important}
+.ui_toggle_button:before{width:12px;height:12px;top:50%;bottom:auto;left:9px;transform:translateY(-50%);border:1px solid var(--home-muted);border-radius:50%;background:var(--home-background)}
+.ui_toggle_button[aria-pressed=true]:before{background:var(--home-accent);border-color:var(--home-accent)}
+.ui_toggle_button[aria-pressed=true]:hover{background:var(--home-selected)}
+#toggle_colors>.ui_flex_group{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+#toggle_colors .ui_button_group{display:flex;gap:4px;flex-wrap:wrap}
+#toggle_colors .ui_icon_button{height:auto;min-height:32px;padding:4px 8px;white-space:nowrap}
+#toggle_preview .layer_add{margin-right:4px;min-width:32px;min-height:32px}
+input[type=range]{accent-color:var(--home-accent)}
+button:disabled,input[type=button]:disabled{visibility:visible;opacity:.45;cursor:default}
+:root,html[data-theme],body[data-theme],body.theme-light,body.theme-green{--background:var(--home-background);--text-color:var(--home-ink);--text-color-muted:var(--home-muted);--section-background-color:var(--home-background);--area-background-color:var(--home-soft);--block-background-color:var(--home-background);--header-background-color:var(--home-soft);--button-background-color:var(--home-background);--button-background-color-hover:var(--home-soft);--button-background-color-active:var(--home-selected);--button-text-color-active:var(--home-accent);--button-shadow-color:transparent;--input-background-color:var(--home-background);--input-background-color-hover:var(--home-soft);--input-text-color:var(--home-ink);--input-border-color:var(--home-line);--input-border-color-active:var(--home-accent);--background-color-active:var(--home-selected);--background-color-hover:var(--home-soft);--text-color-active:var(--home-ink);--border-color:var(--home-line);--scrollbar-track-color:var(--home-soft);--scrollbar-thumb-color:var(--home-muted);--button-toggle-background-color:var(--home-soft);--button-toggle-background-color-hover:var(--home-selected)}

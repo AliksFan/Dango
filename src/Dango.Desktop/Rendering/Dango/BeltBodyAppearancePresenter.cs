@@ -196,7 +196,7 @@ public sealed class BeltBodyAppearancePresenter : IDisposable
                 var anchor = AccessoryBodyMapper.Map(bodyFrame, null, entry.Item.BodyAnchorX, entry.Item.BodyAnchorY);
                 var (width, height) = Size(entry.Item);
                 var travel = Math.Sqrt(width * width + height * height) * entry.Item.MaxConnectionTravelPercent / 100;
-                return new BeltBodyAccessoryInspection(entry.Item.Layer, mesh, anchor, width, height, travel, entry.Item.AllowFolding);
+                return new BeltBodyAccessoryInspection(entry.Item.Layer, mesh, anchor, width, height, travel, mesh.AllowFolding);
             }).Where(item => item is not null).Select(item => item!).ToArray();
         return new(lastTick, bodyFrame, currentShape, Array.AsReadOnly(accessories), runtimeError);
     }

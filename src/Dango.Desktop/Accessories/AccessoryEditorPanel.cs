@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using Dango.Desktop.Accessories.Editing;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -8,7 +8,6 @@ using System.Windows.Media.Imaging;
 using System.Windows.Controls.Primitives;
 using System.Windows.Threading;
 using Button = System.Windows.Controls.Button;
-using CheckBox = System.Windows.Controls.CheckBox;
 using Control = System.Windows.Controls.Control;
 using ContextMenu = System.Windows.Controls.ContextMenu;
 using DataObject = System.Windows.DataObject;
@@ -36,8 +35,6 @@ internal sealed class AccessoryEditorPanel : StackPanel
     private readonly TextBox name = new() { MinWidth = 0, Padding = new Thickness(4, 3, 4, 3), Margin = new Thickness(0, 4, 0, 8) };
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11, Margin = new Thickness(0, 0, 0, 8) };
     private readonly StackPanel editor = new();
-    private readonly Dictionary<string, Slider> sliders = [];
-    private readonly Dictionary<string, TextBox> valueTexts = [];
     private readonly Dictionary<AccessoryEditorSection, StackPanel> sections = [];
     private readonly Dictionary<AccessoryEditorSection, Button> sectionButtons = [];
     private readonly Dictionary<string, LibraryCard> libraryCards = [];
@@ -48,18 +45,9 @@ internal sealed class AccessoryEditorPanel : StackPanel
     private ScrollViewer? outerScroll;
     private bool thumbnailUpdateQueued;
     private int thumbnailPixelEdge = ThumbnailEdge;
-    private readonly CheckBox lockRotation = new() { Content = "锁定朝向", Margin = new Thickness(0, 4, 0, 4) };
-    private readonly CheckBox limitSwing = new() { Content = "限制摆角", Margin = new Thickness(0, 4, 0, 4) };
-    private readonly CheckBox allowFolding = new()
-    {
-        Content = "允许翻折",
-        Margin = new Thickness(0, 4, 0, 4),
-        ToolTip = "允许图片在强形变时折过去；关闭时防止翻折。只影响配饰图片，不参与碰撞。",
-    };
     private readonly Button frontLayer;
     private readonly Button behindLayer;
     private readonly Button apply;
-    private readonly Button reset;
     private readonly Button createTool;
     private readonly Button duplicateTool;
     private readonly Button deleteTool;
@@ -97,7 +85,14 @@ internal sealed class AccessoryEditorPanel : StackPanel
     internal event Action<AccessoryConfiguration>? Applied;
     internal event Action? CancelRequested;
     internal Action? BodyAnchorPickRequested { get; set; }
+    // Legacy test injection only: converted to a complete result; production always opens the unified editor.
     internal Func<AccessoryItem, BitmapSource, AccessoryItem?>? ImageEditor { get; set; }
+    internal Func<AccessoryEditDraft, AccessoryEditorSourceAsset?, AccessoryEditorProject?, Action<AccessoryEditResult>, AccessoryEditResult?>? UnifiedEditor { get; set; }
+    internal AccessoryEditResult? ModalPreviewResult { get; private set; }
+    internal BitmapSource? ModalPreviewImage => ModalPreviewResult?.Image.Bitmap;
+    internal event Action? ModalPreviewChanged;
+    internal BitmapSource? ResolvePreviewImage(string assetId) => ModalPreviewResult is { } modal && modal.Image.AssetId == assetId
+        ? modal.Image.Bitmap : session?.TryGetImage(assetId) ?? BuiltinAccessoryImages.Get(assetId);
 
     internal AccessoryEditorPanel()
     {
@@ -120,9 +115,7 @@ internal sealed class AccessoryEditorPanel : StackPanel
         tabs.Loaded += (_, _) => AccessoryEditorTheme.AdoptParent(tabs);
         SectionTabs = tabs;
         AddSectionTab(tabs, AccessoryEditorSection.Library, "配饰库", "M3,3 L10,3 L10,10 L3,10 Z M14,3 L21,3 L21,10 L14,10 Z M3,14 L10,14 L10,21 L3,21 Z M14,14 L21,14 L21,21 L14,21 Z");
-        AddSectionTab(tabs, AccessoryEditorSection.Placement, "图像与位置", "M4,4 L20,4 L20,20 L4,20 Z M4,16 L10,10 L15,15 L18,12 L20,14 M8,7 L8,8");
-        AddSectionTab(tabs, AccessoryEditorSection.Connection, "柔性与连接", "M4,5 C17,3 5,21 20,19 M5,8 L3,5 L6,3 M18,16 L21,19 L18,21");
-        AddSectionTab(tabs, AccessoryEditorSection.Rotation, "旋转与重力", "M5,8 A8,8 0 1 1 4,15 M5,3 L5,8 L10,8 M12,8 L12,16 M9,13 L12,16 L15,13");
+        AddSectionTab(tabs, AccessoryEditorSection.Placement, "配饰", "M4,4 L20,4 L20,20 L4,20 Z M4,16 L10,10 L15,15 L18,12 L20,14 M8,7 L8,8");
         ConfigureLibraryList(list, "已佩戴配饰"); ConfigureLibraryList(unequippedList, "未佩戴配饰");
         var libraryGroups = new StackPanel();
         libraryGroups.Children.Add(new TextBlock { Text = "已佩戴", Margin = new Thickness(4, 4, 4, 4) });
@@ -137,7 +130,7 @@ internal sealed class AccessoryEditorPanel : StackPanel
         var tools = new StackPanel();
         AccessoryEditorTheme.Install(tools); tools.Loaded += (_, _) => AccessoryEditorTheme.AdoptParent(tools);
         ActionTools = tools;
-        createTool = AccessoryEditorTheme.IconButton("创建新配饰", "M12,4 L12,20 M4,12 L20,12", "创建新配饰 · 选择透明 PNG，应用后保存", Import);
+        createTool = AccessoryEditorTheme.IconButton("创建新配饰", "M12,4 L12,20 M4,12 L20,12", "创建新配饰 · 选择 PNG／JPEG，应用后保存", Import);
         duplicateTool = AccessoryEditorTheme.IconButton("复制配饰", "M8,3 L20,3 L20,16 L8,16 Z M4,8 L4,21 L16,21", "复制配饰 · 复制当前配饰到草稿", DuplicateSelected);
         deleteTool = AccessoryEditorTheme.IconButton("删除配饰", "M5,6 L19,6 M9,3 L15,3 M7,6 L8,21 L16,21 L17,6 M10,10 L10,17 M14,10 L14,17", "删除配饰 · 两次确认后删除当前条目", DeleteSelected);
         foreach (var tool in new[] { createTool, duplicateTool, deleteTool }) { tool.Margin = new Thickness(0, 0, 0, 8); tools.Children.Add(tool); }
@@ -145,8 +138,6 @@ internal sealed class AccessoryEditorPanel : StackPanel
         deleteTool.LostMouseCapture += (_, _) => { if (!deleteTool.IsPressed) confirmingDeletion = false; };
         sections[AccessoryEditorSection.Library] = library;
         var placement = AddGroup(AccessoryEditorSection.Placement, "图像与位置");
-        var connection = AddGroup(AccessoryEditorSection.Connection, "柔性与连接");
-        var rotation = AddGroup(AccessoryEditorSection.Rotation, "旋转与重力");
         placement.Children.Add(new TextBlock { Text = "名称" });
         name.SetResourceReference(Control.BackgroundProperty, "HomeSoft");
         name.SetResourceReference(Control.BorderBrushProperty, "HomeLine");
@@ -164,55 +155,13 @@ internal sealed class AccessoryEditorPanel : StackPanel
         ordering.Children.Add(moveUp);
         ordering.Children.Add(AccessoryEditorTheme.IconButton("下移", "M6,10 L12,16 L18,10", "下移 · 放在同层配饰后面", () => MoveSelected(-1)));
         placement.Children.Add(ordering);
-        placement.Children.Add(ActionButton("图片／支点", EditSelectedImage, "编辑原图尺寸、旋转与连接支点；确认只返回草稿。"));
-        AddNumber(placement, "配饰尺寸 %", "尺寸 %", "size", 10, 400, value => Edit(item => item with { SizePercent = value }));
-        AddNumber(placement, "基础角度 °", "角度 °", "angle", -180, 180, value => Edit(item => item with { BaseAngleDegrees = value }));
-        placement.Children.Add(ActionButton("团子上选支点", () => BodyAnchorPickRequested?.Invoke()));
-        AddNumber(placement, "身体附着 X", "附着 X", "bodyX", 0, 1, value => Edit(item => item with { BodyAnchorX = value }));
-        AddNumber(placement, "身体附着 Y", "附着 Y", "bodyY", 0, 1, value => Edit(item => item with { BodyAnchorY = value }));
-        AddNumber(connection, "柔软度", "柔软度", "softness", 0, 100, value => Edit(item => item with { Softness = value }));
-        AddNumber(connection, "最高允许形变量 %", "形变上限 %", "deformation", 0, 200,
-            value => Edit(item => item with { MaxDeformationPercent = value }));
-        sliders["deformation"].ToolTip = valueTexts["deformation"].ToolTip =
-            "图片各点相对原造型的最大移动距离，以配饰尺寸的对角线为 100%；0 保持刚性，不限制连接弹性或整体旋转。";
-        AutomationProperties.SetName(allowFolding, "允许翻折");
-        connection.Children.Add(allowFolding);
-        RoutedEventHandler foldingChanged = (_, _) =>
-        {
-            if (refreshing) return;
-            var selected = allowFolding.IsChecked == true;
-            Edit(item => item with { AllowFolding = selected });
-        };
-        allowFolding.Checked += foldingChanged;
-        allowFolding.Unchecked += foldingChanged;
-        AddNumber(connection, "连接强度", "连接强度", "connection", 0, 100, value => Edit(item => item with { ConnectionStrength = value }));
-        AddNumber(connection, "连接最大行程 %", "连接行程上限 %", "travel", 0, 200,
-            value => Edit(item => item with { MaxConnectionTravelPercent = value }));
-        sliders["travel"].ToolTip = valueTexts["travel"].ToolTip =
-            "图片支点与团子附着点之间的最大距离，以配饰尺寸的对角线为 100%；0 保持支点重合，不限制图片自身形变。";
-        AddNumber(rotation, "旋转阻尼", "旋转阻尼", "damping", 0, 100, value => Edit(item => item with { RotationDamping = value }));
-        rotation.Children.Add(lockRotation);
-        lockRotation.Click += (_, _) =>
-        {
-            var selected = lockRotation.IsChecked == true;
-            Edit(item => item with { LockRotation = selected });
-        };
-        AddNumber(rotation, "回正强度", "回正强度", "return", 0, 100, value => Edit(item => item with { ReturnStrength = value }));
-        rotation.Children.Add(limitSwing);
-        limitSwing.Click += (_, _) =>
-        {
-            var selected = limitSwing.IsChecked == true;
-            Edit(item => item with { LimitSwing = selected });
-        };
-        AddNumber(rotation, "最大摆角 °", "摆角 °", "swing", 0, 180, value => Edit(item => item with { MaxSwingDegrees = value }));
-        AddNumber(rotation, "重力影响", "重力影响", "gravity", 0, 100, value => Edit(item => item with { GravityInfluence = value }));
+        placement.Children.Add(ActionButton("编辑配饰", EditSelectedImage, "统一编辑图片、连接点、骨架与全部参数；确认只返回草稿。"));
+        placement.Children.Add(ActionButton("团子上选支点", () => BodyAnchorPickRequested?.Invoke(), path: "M12,3 L12,7 M12,17 L12,21 M3,12 L7,12 M17,12 L21,12 M17,12 A5,5 0 1 1 7,12 A5,5 0 1 1 17,12"));
         status.SetResourceReference(TextBlock.ForegroundProperty, "HomeMuted");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         var footer = new StackPanel { Margin = new Thickness(0, 12, 0, 0) };
         footer.Children.Add(status);
         var actions = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-        reset = AccessoryEditorTheme.IconButton("复位当前配饰", AccessoryEditorTheme.ResetIcon, "复位当前配饰 · 先预览，应用后保存；不影响其他配饰。", ResetSelected);
-        reset.Margin = new Thickness(0, 0, 8, 0); actions.Children.Add(reset);
         var cancel = AccessoryEditorTheme.IconButton("取消", AccessoryEditorTheme.CancelIcon, "取消 · 放弃本次未保存修改，恢复上次已保存的整套配饰。", CancelDraft);
         cancel.Margin = new Thickness(0, 0, 8, 0); actions.Children.Add(cancel);
         apply = AccessoryEditorTheme.IconButton("应用", AccessoryEditorTheme.ApplyIcon, "应用 · 将整套配饰与导入图片保存到本机。", ApplyDraft, primary: true);
@@ -229,6 +178,7 @@ internal sealed class AccessoryEditorPanel : StackPanel
         thumbnails.Clear(); thumbnailRecency.Clear();
         importNotices.Clear();
         foreach (var card in libraryCards.Values) card.ImageUnavailable = false;
+        ModalPreviewResult = null; ModalPreviewChanged?.Invoke();
         session = value; previewError = null; selectedId = value.DraftConfiguration.Items.FirstOrDefault()?.Id;
         SelectedSection = AccessoryEditorSection.Library; UpdateSections();
         Refresh(discardInput: true);
@@ -242,8 +192,6 @@ internal sealed class AccessoryEditorPanel : StackPanel
     {
         var inputOwner = selectedId;
         var pendingName = !discardInput && SelectedItem is { } previous && name.Text != previous.Name ? name.Text : null;
-        var pendingNumbers = discardInput ? [] : valueTexts.Where(pair => pair.Value.Text != Format(sliders[pair.Key].Value))
-            .ToDictionary(pair => pair.Key, pair => pair.Value.Text);
         generation++;
         refreshing = true;
         var items = session?.DraftConfiguration.Items ?? [];
@@ -289,7 +237,6 @@ internal sealed class AccessoryEditorPanel : StackPanel
         {
             refreshing = true;
             if (pendingName is not null) name.Text = pendingName;
-            foreach (var (key, text) in pendingNumbers) valueTexts[key].Text = text;
             refreshing = false;
         }
         operationError = null;
@@ -308,10 +255,10 @@ internal sealed class AccessoryEditorPanel : StackPanel
 
     private void UpdateStatus()
     {
-        var savedStatus = session?.StatusMessage ?? "导入透明 PNG，编辑后应用到本机。";
+        var savedStatus = session?.StatusMessage ?? "导入 PNG／JPEG，编辑后应用到本机。";
         reportedSessionStatus = savedStatus;
         var importNotice = SelectedItem is { } selected ? importNotices.GetValueOrDefault(selected.Id) : null;
-        var text = string.Join("\n", new[] { operationError, previewError, importNotice, savedStatus }.Where(message => !string.IsNullOrWhiteSpace(message)));
+        var text = string.Join("\n", new[] { operationError, previewError, importNotice, SelectedItem?.IsPendingCompletion == true ? "待完成 · 继续编辑并导出有效成品后应用。" : null, savedStatus }.Where(message => !string.IsNullOrWhiteSpace(message)));
         var buffered = HasBufferedInput;
         apply.IsEnabled = session is not null && !session.IsWriteProtected && (session.HasPendingSave || buffered);
         var notice = session?.IsWriteProtected == true ? "清单受保护 · 只读预览" : buffered ? "输入待确认 · 应用后保存" :
@@ -328,7 +275,6 @@ internal sealed class AccessoryEditorPanel : StackPanel
         var item = SelectedItem;
         var editable = item is not null && session?.IsWriteProtected != true;
         editor.IsEnabled = editable;
-        reset.IsEnabled = editable;
         createTool.IsEnabled = session is not null && !session.IsWriteProtected;
         duplicateTool.IsEnabled = deleteTool.IsEnabled = editable;
         if (item is not null)
@@ -336,29 +282,6 @@ internal sealed class AccessoryEditorPanel : StackPanel
             name.Text = item.Name;
             SetLayerSelected(frontLayer, item.Layer == AccessoryLayer.Front);
             SetLayerSelected(behindLayer, item.Layer == AccessoryLayer.Behind);
-            lockRotation.IsChecked = item.LockRotation; limitSwing.IsChecked = item.LimitSwing;
-            allowFolding.IsChecked = item.AllowFolding;
-            sliders["size"].Value = item.SizePercent; sliders["angle"].Value = item.BaseAngleDegrees;
-            sliders["bodyX"].Value = item.BodyAnchorX; sliders["bodyY"].Value = item.BodyAnchorY;
-            sliders["softness"].Value = item.Softness; sliders["connection"].Value = item.ConnectionStrength;
-            sliders["deformation"].Value = item.MaxDeformationPercent;
-            sliders["travel"].Value = item.MaxConnectionTravelPercent;
-            sliders["damping"].Value = item.RotationDamping; sliders["return"].Value = item.ReturnStrength;
-            sliders["swing"].Value = item.MaxSwingDegrees; sliders["gravity"].Value = item.GravityInfluence;
-            limitSwing.IsEnabled = editable && !item.LockRotation;
-            foreach (var (key, slider) in sliders)
-            {
-                // IsEnabled getters include ancestor coercion; store only this control's own rule.
-                var numberEditable = editable && (key switch
-                {
-                    "return" or "damping" => !item.LockRotation,
-                    "swing" => !item.LockRotation && item.LimitSwing,
-                    _ => true,
-                });
-                slider.IsEnabled = numberEditable;
-                valueTexts[key].Text = slider.Value.ToString("0.###", CultureInfo.CurrentCulture);
-                valueTexts[key].IsEnabled = numberEditable;
-            }
         }
         refreshing = false;
     }
@@ -469,6 +392,7 @@ internal sealed class AccessoryEditorPanel : StackPanel
     internal bool SelectSection(AccessoryEditorSection section)
     {
         if (!Enum.IsDefined(section)) throw new ArgumentOutOfRangeException(nameof(section));
+        if (section is AccessoryEditorSection.Connection or AccessoryEditorSection.Rotation) section = AccessoryEditorSection.Placement;
         if (section == SelectedSection) return true;
         if (!CommitPendingInputs()) return false;
         SelectedSection = section;
@@ -501,19 +425,71 @@ internal sealed class AccessoryEditorPanel : StackPanel
     internal void EditSelectedImage()
     {
         if (session is null || session.IsWriteProtected || !CommitPendingInputs() || SelectedItem is not { } item) return;
-        var image = session.TryGetImage(item.AssetId) ?? BuiltinAccessoryImages.Get(item.AssetId);
-        if (image is null) { SetOperationError("这件配饰的图片不可用，请恢复原图片后重试。"); return; }
-        var currentSession = session; var editGeneration = generation;
-        var result = ImageEditor is not null ? ImageEditor(item, image) : OpenImageEditor(item, image);
-        if (result is null || editGeneration != generation || !ReferenceEquals(session, currentSession) || !IsEnabled) return;
-        Edit(_ => result);
+        Execute(() =>
+        {
+            var currentSession = session; var editGeneration = generation;
+            var project = currentSession.TryGetProject(item.Id);
+            // A missing or quarantined saved project must never be flattened into a new one.
+            if (item.ProjectId is not null && project is null)
+            { SetOperationError(currentSession.StatusMessage); return; }
+            var source = project is null ? currentSession.GetPendingSource(item.AssetId) : null;
+            if (project is null && source is null)
+            {
+                var bitmap = currentSession.TryGetImage(item.AssetId) ?? BuiltinAccessoryImages.Get(item.AssetId);
+                if (bitmap is null) { SetOperationError("这件配饰的图片不可用，请恢复原图片后重试。"); return; }
+                source = AccessoryEditorSourceAsset.FromBitmap(bitmap);
+            }
+            var draft = currentSession.BeginEdit(item.Id);
+            var editing = true;
+            bool IsCurrent() => editing && generation == editGeneration && ReferenceEquals(session, currentSession) && IsEnabled;
+            void Preview(AccessoryEditResult result)
+            {
+                if (!IsCurrent() || result.Item.Id != draft.ItemId || result.Item.EditRevision != draft.Revision) return;
+                ModalPreviewResult = result;
+                ModalPreviewChanged?.Invoke();
+                PreviewChanged?.Invoke(new(currentSession.DraftConfiguration.Items.Select(candidate => candidate.Id == item.Id ? result.Item : candidate)));
+            }
+            try
+            {
+                AccessoryEditResult? result;
+                if (UnifiedEditor is not null) result = UnifiedEditor(draft, source, project, Preview);
+                else if (ImageEditor is not null)
+                {
+                    var bitmap = source?.Bitmap ?? currentSession.TryGetImage(item.AssetId) ?? BuiltinAccessoryImages.Get(item.AssetId);
+                    var injected = bitmap is null ? null : ImageEditor(item, bitmap);
+                    result = injected is null || bitmap is null ? null : CreateInjectedResult(draft, injected, bitmap, project);
+                }
+                else
+                {
+                    var window = new AccessoryUnifiedEditorWindow(draft, source, project, Preview) { Owner = Window.GetWindow(this) };
+                    AccessoryEditorTheme.CopyFrom(this, window);
+                    result = window.ShowDialog() == true ? window.Result : null;
+                }
+                if (result is not null && IsCurrent())
+                {
+                    if (currentSession.TryCompleteEdit(draft, result)) Changed(discardInput: true);
+                    else SetOperationError("编辑结果已过期，当前草稿保留；请重新打开编辑器。");
+                }
+            }
+            finally
+            {
+                editing = false;
+                currentSession.CancelEdit(draft);
+                ModalPreviewResult = null; ModalPreviewChanged?.Invoke();
+                if (session is not null) PreviewChanged?.Invoke(session.DraftConfiguration);
+            }
+        });
     }
 
-    private AccessoryItem? OpenImageEditor(AccessoryItem item, BitmapSource image)
+    private static AccessoryEditResult CreateInjectedResult(AccessoryEditDraft draft, AccessoryItem item,
+        BitmapSource bitmap, AccessoryEditorProject? previous)
     {
-        var window = new AccessoryImageEditorWindow(item, image, importNotices.GetValueOrDefault(item.Id)) { Owner = Window.GetWindow(this) };
-        AccessoryEditorTheme.CopyFrom(this, window);
-        return window.ShowDialog() == true ? window.Result : null;
+        var source = AccessoryEditorSourceAsset.FromBitmap(bitmap);
+        var image = AccessoryImageAsset.FromRenderedPng(source.CopyPngBytes());
+        var project = previous is null ? AccessoryEditorProject.FromImage(image, draft.Revision) :
+            new AccessoryEditorProject(previous.PixelWidth, previous.PixelHeight, draft.Revision, image.AssetId, previous.Layers, previous.Assets.Values);
+        return new(project, image, item with { AssetId = image.AssetId, PixelWidth = image.PixelWidth, PixelHeight = image.PixelHeight,
+            ProjectId = project.ProjectId, ProjectVersion = project.Version, EditRevision = draft.Revision, IsPendingCompletion = false });
     }
 
     internal void Edit(Func<AccessoryItem, AccessoryItem> update, bool discardInput = false)
@@ -542,9 +518,7 @@ internal sealed class AccessoryEditorPanel : StackPanel
     }
 
     private bool HasBufferedInput => SelectedItem is { } item &&
-        (name.Text != item.Name || valueTexts.Any(pair => pair.Value.Text != Format(sliders[pair.Key].Value)));
-
-    private static string Format(double value) => value.ToString("0.###", CultureInfo.CurrentCulture);
+        name.Text != item.Name;
 
     private bool CommitPendingInputs()
     {
@@ -554,32 +528,7 @@ internal sealed class AccessoryEditorPanel : StackPanel
         var value = name.Text.Trim();
         if (value.Length == 0 || value.Length > 128 || value.Any(char.IsControl))
         { SetOperationError("配饰名称需为 1–128 个字符，不含控制字符。"); return false; }
-        var numbers = new Dictionary<string, double>();
-        foreach (var (key, text) in valueTexts)
-        {
-            if (!AccessoryEditorTheme.TryReadNumber(text, sliders[key], out var number))
-            {
-                SetOperationError($"{AutomationProperties.GetName(sliders[key])}需为 {Format(sliders[key].Minimum)}–{Format(sliders[key].Maximum)} 的有限数值；输入已保留，修正后再应用。");
-                return false;
-            }
-            numbers[key] = number;
-        }
-        var changed = item with
-        {
-            Name = value,
-            SizePercent = numbers["size"],
-            BaseAngleDegrees = numbers["angle"],
-            BodyAnchorX = numbers["bodyX"],
-            BodyAnchorY = numbers["bodyY"],
-            Softness = numbers["softness"],
-            MaxDeformationPercent = numbers["deformation"],
-            ConnectionStrength = numbers["connection"],
-            MaxConnectionTravelPercent = numbers["travel"],
-            RotationDamping = numbers["damping"],
-            ReturnStrength = numbers["return"],
-            MaxSwingDegrees = numbers["swing"],
-            GravityInfluence = numbers["gravity"],
-        };
+        var changed = item with { Name = value };
         if (changed != item)
         {
             session.Stage(new AccessoryConfiguration(session.DraftConfiguration.Items.Select(candidate => candidate.Id == item.Id ? changed : candidate)));
@@ -599,8 +548,8 @@ internal sealed class AccessoryEditorPanel : StackPanel
         {
             var picker = new Microsoft.Win32.OpenFileDialog
             {
-                Title = "创建新配饰 · 选择透明 PNG",
-                Filter = "透明 PNG (*.png)|*.png|所有文件 (*.*)|*.*",
+                Title = "创建新配饰 · 选择 PNG／JPEG",
+                Filter = "图片 (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg",
                 DefaultExt = ".png",
                 CheckFileExists = true,
             };
@@ -609,7 +558,7 @@ internal sealed class AccessoryEditorPanel : StackPanel
         if (path is null || generation != importGeneration || !IsEnabled) return;
         Execute(() =>
         {
-            var imported = session.ImportPng(path);
+            var imported = session.ImportSource(path);
             selectedId = imported.Id;
             if (session.LastImportInfo?.Notice is { } notice) importNotices[imported.Id] = notice;
             Changed(discardInput: true);
@@ -629,27 +578,6 @@ internal sealed class AccessoryEditorPanel : StackPanel
         ReorderItem(item.Id, ordered[other].Id);
     }
 
-    private void ResetSelected() => Edit(item => item with
-    {
-        ImagePivotX = .5,
-        ImagePivotY = .5,
-        BodyAnchorX = .5,
-        BodyAnchorY = 0,
-        SizePercent = 100,
-        BaseAngleDegrees = 0,
-        Softness = 0,
-        AllowFolding = false,
-        MaxDeformationPercent = 100,
-        ConnectionStrength = 100,
-        MaxConnectionTravelPercent = 75,
-        RotationDamping = 60,
-        ReturnStrength = 60,
-        GravityInfluence = 0,
-        LockRotation = true,
-        LimitSwing = true,
-        MaxSwingDegrees = 45,
-    }, discardInput: true);
-
     internal void ApplyDraft()
     {
         if (session is null) return;
@@ -661,6 +589,7 @@ internal sealed class AccessoryEditorPanel : StackPanel
     internal void CancelDraft()
     {
         generation++;
+        ModalPreviewResult = null; ModalPreviewChanged?.Invoke();
         session?.CancelPreview(); Refresh(discardInput: true);
         if (session is not null) PreviewChanged?.Invoke(session.DraftConfiguration);
         CancelRequested?.Invoke();
@@ -678,12 +607,18 @@ internal sealed class AccessoryEditorPanel : StackPanel
         operationError = message; UpdateStatus();
     }
 
-    private static Button ActionButton(string text, Action action, string? tooltip = null)
+    private static Button ActionButton(string text, Action action, string? tooltip = null,
+        string path = "M4,17 L4,21 L8,21 L20,9 L16,5 Z M14,7 L18,11")
     {
-        var button = new Button { Content = text, ToolTip = tooltip ?? text, Margin = new Thickness(0, 3, 5, 3), Padding = new Thickness(7, 4, 7, 4), MinWidth = 0, MinHeight = 32 };
+        var button = AccessoryEditorTheme.IconButton(text, path, tooltip ?? text, action);
+        var icon = (FrameworkElement)button.Content;
+        button.Content = null;
+        var content = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
+        content.Children.Add(icon);
+        content.Children.Add(new TextBlock { Text = text, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center });
+        button.Content = content;
+        button.Margin = new Thickness(0, 3, 5, 3); button.Padding = new Thickness(14, 8, 14, 8); button.MinHeight = 40;
         button.SetResourceReference(FrameworkElement.StyleProperty, typeof(Button));
-        AutomationProperties.SetName(button, text);
-        button.Click += (_, _) => action();
         return button;
     }
 
@@ -915,7 +850,7 @@ internal sealed class AccessoryEditorPanel : StackPanel
             }
             if (!thumbnails.TryGetValue(item.AssetId, out var thumbnail))
             {
-                var source = session.TryGetImage(item.AssetId) ?? BuiltinAccessoryImages.Get(item.AssetId);
+                var source = session.GetPendingSource(item.AssetId)?.Bitmap ?? session.TryGetImage(item.AssetId) ?? BuiltinAccessoryImages.Get(item.AssetId);
                 thumbnail = source is null ? null : CreateThumbnail(source, thumbnailPixelEdge);
                 thumbnails[item.AssetId] = thumbnail;
                 ThumbnailDecodeCount++;
@@ -966,12 +901,4 @@ internal sealed class AccessoryEditorPanel : StackPanel
         return bitmap;
     }
 
-    private void AddNumber(StackPanel parent, string label, string visibleLabel, string key, double min, double max, Action<double> update)
-    {
-        var number = AccessoryEditorTheme.Number(label, visibleLabel, min, max, Math.Clamp(0, min, max),
-            value => { if (!refreshing) update(value); }, () => { if (!confirmingDeletion) CommitPendingInputs(); });
-        sliders[key] = number.Slider; valueTexts[key] = number.Value;
-        number.Value.TextChanged += (_, _) => { if (!refreshing) UpdateStatus(); };
-        parent.Children.Add(number.Row);
-    }
 }

@@ -10,13 +10,15 @@ namespace Dango.Desktop.Accessories.Editing;
 public sealed record AccessoryProjectLayer(string Id, string Name, string? AssetId, double X, double Y,
     double Width, double Height, double Opacity = 1, bool Visible = true, string? Type = "image",
     double Rotation = 0, string Color = "#000000", double? OriginalWidth = null, double? OriginalHeight = null,
-    AccessoryBrushContent? Brush = null, AccessoryTextContent? Text = null);
+    AccessoryBrushContent? Brush = null, AccessoryTextContent? Text = null,
+    bool FlipX = false, bool FlipY = false, string? RestoreAssetId = null);
 
 public sealed class AccessoryEditorProject
 {
     public const int CurrentVersion = 1;
     public const long MaximumEncodedBytes = 64L * 1024 * 1024;
     public const int MaximumLayers = 16;
+    public const int MaximumAssets = MaximumLayers * 2;
     public const long MaximumLayerPixels = 64_000_000;
     public const long MaximumPendingSourcePixels = 128_000_000;
     public const long MaximumPendingSourceBytes = 256L * 1024 * 1024;
@@ -47,8 +49,8 @@ public sealed class AccessoryEditorProject
         AccessoryImageAsset.ValidateDimensions(pixelWidth, pixelHeight);
         if (revision < 0 || !IsHash(finalAssetId)) throw new InvalidDataException("工程输出引用无效。");
         var layerArray = layers.Take(MaximumLayers + 1).ToArray();
-        var assetArray = assets.Take(MaximumLayers + 1).ToArray();
-        if (layerArray.Length is < 1 or > MaximumLayers || assetArray.Length > MaximumLayers ||
+        var assetArray = assets.Take(MaximumAssets + 1).ToArray();
+        if (layerArray.Length is < 1 or > MaximumLayers || assetArray.Length > MaximumAssets ||
             assetArray.Any(a => a is null) || assetArray.Select(a => a.AssetId).Distinct().Count() != assetArray.Length)
             throw new InvalidDataException("工程图层或资产数量无效。");
         var lookup = assetArray.ToDictionary(a => a.AssetId, StringComparer.Ordinal);
@@ -75,8 +77,11 @@ public sealed class AccessoryEditorProject
                 layer.Type == "text" && (layer.Text is null || layer.Brush is not null || layer.AssetId is not null))
                 throw new InvalidDataException("工程图层内容无效。");
             renderedPixels += (long)Math.Ceiling(layer.Width) * (long)Math.Ceiling(layer.Height);
+            if (layer.RestoreAssetId is { } restore && (layer.Type != "image" || !lookup.TryGetValue(restore, out var original) ||
+                !lookup.TryGetValue(layer.AssetId!, out var current) || original.PixelWidth != current.PixelWidth || original.PixelHeight != current.PixelHeight))
+                throw new InvalidDataException("图层恢复素材与图片尺寸不一致。");
         }
-        if (lookup.Keys.Any(id => !layerArray.Any(layer => layer.AssetId == id)))
+        if (lookup.Keys.Any(id => !layerArray.Any(layer => layer.AssetId == id || layer.RestoreAssetId == id)))
             throw new InvalidDataException("工程含未使用资产。");
         DecodedLayerPixels = assetArray.Sum(a => (long)a.PixelWidth * a.PixelHeight);
         if (DecodedLayerPixels > MaximumLayerPixels || renderedPixels > MaximumLayerPixels)
@@ -126,12 +131,11 @@ public sealed class AccessoryEditorProject
         RejectDuplicates(json.RootElement);
         var root = AccessoryEditorBridge.ExactObject(json.RootElement,
             ["version", "engine", "pixelWidth", "pixelHeight", "revision", "finalAssetId", "layers", "assets"]);
-        foreach (var layer in root["layers"].EnumerateArray()) _ = AccessoryEditorBridge.ExactObject(layer,
-            ["id", "name", "assetId", "x", "y", "width", "height", "opacity", "visible", "type", "rotation", "color", "originalWidth", "originalHeight", "brush", "text"]);
+        foreach (var layer in root["layers"].EnumerateArray()) ValidateLayerFields(layer);
         foreach (var asset in root["assets"].EnumerateArray()) _ = AccessoryEditorBridge.ExactObject(asset, ["id", "png"]);
         var data = JsonSerializer.Deserialize<ProjectDocument>(bytes, Options) ?? throw new InvalidDataException("工程为空。");
         if (data.Version != CurrentVersion || data.Engine != "minipaint-v1" || data.Layers is null || data.Assets is null ||
-            data.Assets.Length > MaximumLayers || data.Layers.Length > MaximumLayers)
+            data.Assets.Length > MaximumAssets || data.Layers.Length > MaximumLayers)
             throw new InvalidDataException("工程版本或引擎不受支持。");
         // Inspect every bounded header before allocating any decoded pixel surface.
         long decodedPixels = 0;
@@ -181,6 +185,17 @@ public sealed class AccessoryEditorProject
             [AccessoryEditorSourceAsset.FromPng(image.CopyPngBytes())]);
 
     internal static bool IsHash(string? id) => id is { Length: 64 } && id.All(c => c is >= '0' and <= '9' or >= 'a' and <= 'f');
+    private static void ValidateLayerFields(JsonElement layer)
+    {
+        string[] required = ["id", "name", "assetId", "x", "y", "width", "height", "opacity", "visible", "type", "rotation", "color", "originalWidth", "originalHeight", "brush", "text"];
+        string[] optional = ["flipX", "flipY", "restoreAssetId"];
+        if (layer.ValueKind != JsonValueKind.Object) throw new InvalidDataException("工程图层不是对象。");
+        var fields = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var field in layer.EnumerateObject())
+            if (!fields.Add(field.Name) || !required.Contains(field.Name) && !optional.Contains(field.Name))
+                throw new InvalidDataException("工程图层字段无效。");
+        if (required.Any(name => !fields.Contains(name))) throw new InvalidDataException("工程图层字段缺失。");
+    }
     private static bool IsLocalId(string? id) => id is { Length: > 0 and <= 64 } && id.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_');
     private static bool FiniteBound(double value, double min, double max) => double.IsFinite(value) && value >= min && value <= max;
     private static string Hash(byte[] value) => Convert.ToHexStringLower(SHA256.HashData(value));

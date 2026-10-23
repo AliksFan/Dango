@@ -164,6 +164,73 @@ public sealed class AccessoryEditorBackgroundTests
         Assert.AreEqual(AccessoryEditorRuntimeState.Closed, runtime.State);
     }
 
+    [STATestMethod]
+    public void HiddenUnifiedProtocolReturnsOneCompleteRigDraftAndOnlyOuterApplyPersistsIt()
+    {
+        var oldContext = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
+        try
+        {
+            var root = Path.Combine(TestRepository.Root, "artifacts", "accessory-editor-e2-protocol", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            var pixels = new byte[320 * 240 * 4]; new Random(42).NextBytes(pixels);
+            for (var i = 3; i < pixels.Length; i += 4) pixels[i] = i < 320 * 4 ? (byte)0 : (byte)255;
+            var source = AccessoryEditorSourceAsset.FromBitmap(BitmapSource.Create(320, 240, 96, 96, PixelFormats.Bgra32, null, pixels, 320 * 4));
+            var sourcePath = Path.Combine(root, "fictional-source.png"); File.WriteAllBytes(sourcePath, source.CopyPngBytes());
+            var settings = Path.Combine(root, "settings");
+            var outer = new AccessorySettingsSession(settings);
+            var item = outer.ImportSource(sourcePath); var ticket = outer.BeginEdit(item.Id);
+            using var modal = new AccessoryUnifiedEditorSession(ticket, outer.GetPendingSource(item.AssetId), null);
+            using var window = new HwndSource(new HwndSourceParameters("Dango synthetic complete editor protocol")
+            { Width = 800, Height = 600, WindowStyle = unchecked((int)0x80000000) });
+            using var runtime = new AccessoryEditorRuntime();
+            Assert.IsTrue(Pump(runtime.InitializeAsync(window.Handle, Path.Combine(AppContext.BaseDirectory, "AccessoryEditor"), Path.Combine(root, "profile"))), runtime.ErrorMessage);
+            var trace = new List<string>();
+            runtime.MessageReceived += (origin, json) =>
+            {
+                using var received = JsonDocument.Parse(json);
+                var message = received.RootElement;
+                trace.Add(message.GetProperty("type").GetString() + ":" + string.Join(",", message.GetProperty("payload").EnumerateObject().Select(p => p.Name)));
+                modal.Receive(origin, json);
+            };
+            var outgoingChunks = 0; var previews = 0;
+            modal.Outgoing += json =>
+            {
+                using var message = JsonDocument.Parse(json);
+                if (message.RootElement.GetProperty("type").GetString() == "Chunk") outgoingChunks++;
+                Assert.IsTrue(runtime.Post(json));
+            };
+            modal.PreviewReady += _ => previews++;
+            modal.Open(); Wait(() => modal.State != AccessoryUnifiedEditorState.Loading);
+            Assert.AreEqual(AccessoryUnifiedEditorState.Ready, modal.State, "Open: " + modal.ErrorMessage + " [" + string.Join(";", trace) + "]");
+            Assert.IsTrue(outgoingChunks > 1, "The fixture must exercise multi-chunk Open.");
+            modal.SetGeometry(new(.5, .25, Array.AsReadOnly(new AccessoryRigNode[] { new(.5, .25), new(.5, .85) }), false));
+            modal.UpdateParameters(modal.Parameters with { DeformationMode = AccessoryDeformationMode.SingleChain, GravityInfluence = 42 });
+            Assert.IsTrue(modal.RequestSnapshot(confirm: false)); Wait(() => modal.State != AccessoryUnifiedEditorState.Busy);
+            Assert.AreEqual(AccessoryUnifiedEditorState.Ready, modal.State, "Preview: " + modal.ErrorMessage + " [" + string.Join(";", trace) + "]"); Assert.AreEqual(1, previews);
+            Assert.IsTrue(outer.DraftConfiguration.Items.Single(i => i.Id == item.Id).IsPendingCompletion);
+            Assert.IsFalse(Directory.Exists(settings), "A modal preview cannot create persistent assets.");
+            Assert.IsTrue(modal.RequestSnapshot(confirm: true)); Wait(() => modal.State != AccessoryUnifiedEditorState.Busy);
+            Assert.AreEqual(AccessoryUnifiedEditorState.Closed, modal.State, modal.ErrorMessage);
+            var result = modal.Result; Assert.IsNotNull(result);
+            Assert.AreEqual(42d, result.Item.GravityInfluence); Assert.AreEqual(2, result.Item.Rig!.Nodes.Count);
+            Assert.IsTrue(outer.TryCompleteEdit(ticket, result)); Assert.IsFalse(Directory.Exists(settings));
+            Assert.IsTrue(outer.TrySave(), outer.StatusMessage);
+            var reopened = new AccessorySettingsSession(settings);
+            Assert.AreEqual(result.Item, reopened.SavedConfiguration.Items.Single(i => i.Id == item.Id));
+            Assert.AreEqual(result.Project.ProjectId, reopened.TryGetProject(item.Id)!.ProjectId);
+            Assert.IsFalse(IsWindowVisible(window.Handle));
+            TestContext.WriteLine("Hidden packaged editor: chunked Open/Preview/Confirm, native rig validation, outer Apply/reopen passed.");
+            void Wait(Func<bool> condition)
+            {
+                var until = DateTime.UtcNow.AddSeconds(15);
+                while (!condition() && DateTime.UtcNow < until) Pump(Task.Delay(10));
+                Assert.IsTrue(condition(), modal.ErrorMessage ?? "Hidden modal protocol timed out.");
+            }
+        }
+        finally { SynchronizationContext.SetSynchronizationContext(oldContext); }
+    }
+
     private static T Pump<T>(Task<T> task)
     {
         Pump((Task)task); return task.GetAwaiter().GetResult();

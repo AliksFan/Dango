@@ -19,6 +19,7 @@ internal sealed class AccessorySceneController(Func<string, BitmapSource?> image
     private GaitPresentationFrame? sourceGait;
     private LogicalRect sourceBounds;
     private long stepIndex;
+    private bool paused, unavailable;
     public IReadOnlyList<AccessoryVisualFrame> Frames { get; private set; } = [];
     public string? Error { get; private set; }
     public bool Enabled { get; private set; }
@@ -32,12 +33,14 @@ internal sealed class AccessorySceneController(Func<string, BitmapSource?> image
 
     public void Pause()
     {
+        paused = true;
         foreach (var solver in solvers.Values) solver.Paused = true;
     }
 
     public void Resume()
     {
-        foreach (var solver in solvers.Values) solver.Paused = false;
+        paused = false;
+        foreach (var solver in solvers.Values) solver.Paused = unavailable;
     }
 
     public void Reset()
@@ -58,7 +61,16 @@ internal sealed class AccessorySceneController(Func<string, BitmapSource?> image
     {
         if (!Enabled || frame is null || frame.Bodies.Count == 0 || frame.EntityIds.Count == 0 ||
             !frame.Bodies[0].IsVisible || frame.ConstraintsReleased)
-        { Frames = []; return; }
+        {
+            unavailable = true;
+            foreach (var solver in solvers.Values) solver.Paused = true;
+            Frames = []; return;
+        }
+        if (unavailable)
+        {
+            unavailable = false;
+            foreach (var solver in solvers.Values) solver.Paused = paused;
+        }
         if (entity != frame.EntityIds[0]) { Reset(); entity = frame.EntityIds[0]; }
         try
         {
@@ -70,7 +82,7 @@ internal sealed class AccessorySceneController(Func<string, BitmapSource?> image
             {
                 var texture = images(item.AssetId) ?? BuiltinAccessoryImages.Get(item.AssetId);
                 if (texture is null) continue; // The session retains the unavailable asset's configuration.
-                if (!solvers.TryGetValue(item.Id, out var solver)) solvers[item.Id] = solver = new();
+                if (!solvers.TryGetValue(item.Id, out var solver)) solvers[item.Id] = solver = new() { Paused = paused };
                 var local = AccessoryBodyMapper.Map(body, gait, item.BodyAnchorX, item.BodyAnchorY);
                 var anchor = new Point(local.X + bounds.X, local.Y + bounds.Y);
                 var longest = 64 * item.SizePercent / 100;
@@ -85,6 +97,9 @@ internal sealed class AccessorySceneController(Func<string, BitmapSource?> image
         }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException or ArithmeticException)
         {
+            Frames = [];
+            unavailable = true;
+            foreach (var solver in solvers.Values) solver.Paused = true;
             Error = $"配饰预览暂不可用（{error.GetType().Name}）；可重试或取消。";
         }
     }

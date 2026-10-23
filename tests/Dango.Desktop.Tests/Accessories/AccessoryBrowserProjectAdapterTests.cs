@@ -112,6 +112,26 @@ public sealed class AccessoryBrowserProjectAdapterTests
     }
 
     [TestMethod]
+    public void RestorePixelsAndEditableTextReflectionSurviveNativeProjectStorage()
+    {
+        var fixture = Fixture(); var project = fixture["project"]!;
+        var restore = AccessoryEditorSourceAsset.FromBitmap(BitmapSource.Create(2, 2, 96, 96, PixelFormats.Bgra32, null,
+            new byte[] { 0, 90, 20, 255, 0, 90, 20, 0, 0, 90, 20, 128, 0, 90, 20, 255 }, 8));
+        project["assets"]!.AsArray().Add(new JsonObject { ["id"] = "asset-2", ["pngBase64"] = Convert.ToBase64String(restore.CopyPngBytes()) });
+        project["layers"]![0]!["restoreAssetId"] = "asset-2";
+        project["layers"]![2]!["flipX"] = true;
+        var result = Read(new(), fixture);
+        var persisted = AccessoryEditorProject.Read(result.Project.CopyBytes(), result.Project.ProjectId);
+        Assert.AreEqual(restore.AssetId, persisted.Layers.Single(l => l.Type == "image").RestoreAssetId);
+        CollectionAssert.AreEqual(restore.CopyPngBytes(), persisted.Assets[restore.AssetId].CopyPngBytes());
+        Assert.IsTrue(persisted.Layers.Single(l => l.Type == "text").FlipX);
+        var browser = new AccessoryBrowserProjectAdapter().CreateOpenProject(persisted);
+        Assert.IsTrue(browser.GetProperty("layers")[1].GetProperty("flipX").GetBoolean());
+        fixture["project"]!["layers"]![0]!["restoreAssetId"] = "asset-999";
+        Assert.ThrowsExactly<InvalidDataException>(() => Read(new(), fixture));
+    }
+
+    [TestMethod]
     public void InvalidBrowserFieldsReferencesDimensionsAndParametersAreRejected()
     {
         Action<JsonObject>[] mutations =

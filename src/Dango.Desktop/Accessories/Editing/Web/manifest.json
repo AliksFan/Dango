@@ -4,13 +4,13 @@
   "files": [
     {
       "path": "bundle.js",
-      "sha256": "d891dffc7aae758fee44cae2e7728be2381eb760f1374bee7211b430cbb081e4",
-      "bytes": 308310
+      "sha256": "ccdba31207ab5afcd6e6760d7a4b11874384a810fe879fa22f30c7ac1353d630",
+      "bytes": 329239
     },
     {
       "path": "index.html",
-      "sha256": "1441e66ffeeb23217e5c289ad6e61ed448a4bc381c42976eb4d428e5993778a5",
-      "bytes": 2116
+      "sha256": "a0eb23ef7e85cafc429207cc3fd990f4fcef2bf75cc06a9269dd2d15882d3eef",
+      "bytes": 2670
     },
     {
       "path": "licenses/MIT-jquery.txt",
@@ -29,8 +29,8 @@
     },
     {
       "path": "theme.css",
-      "sha256": "2310c912b6deab0e469dc076cf59f2a9161cb6bd5f69cb3be127c22ce5989022",
-      "bytes": 40012
+      "sha256": "489757f44d6dee3523d56338c0129c80270ed4345fe49e4fa273edb39fee57eb",
+      "bytes": 45881
     }
   ]
 }

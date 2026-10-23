@@ -67,7 +67,7 @@ public sealed class AccessoryBrowserProjectAdapter
         if (Integer(root["schemaVersion"], 1, 1) != 1 || Integer(root["width"], 1, 4096) != image.PixelWidth ||
             Integer(root["height"], 1, 4096) != image.PixelHeight) throw Invalid();
         var layers = Array(root["layers"], 1, AccessoryEditorProject.MaximumLayers);
-        var assetElements = Array(root["assets"], 0, AccessoryEditorProject.MaximumLayers);
+        var assetElements = Array(root["assets"], 0, AccessoryEditorProject.MaximumAssets);
         var encoded = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         long pixels = 0;
         // Inspect every header and the aggregate before decoding any project asset.
@@ -94,7 +94,7 @@ public sealed class AccessoryBrowserProjectAdapter
         {
             var fields = Object(element,
                 ["id", "name", "type", "x", "y", "width", "height", "visible", "is_vector", "opacity", "order", "composition", "rotate", "data", "params", "status", "color", "render_function"],
-                ["parent_id", "hide_selection_if_active", "width_original", "height_original", "assetId"]);
+                ["parent_id", "hide_selection_if_active", "width_original", "height_original", "assetId", "flipX", "flipY", "restoreAssetId"]);
             var id = Integer(fields["id"], 1, 1_000_000);
             if (!ids.Add(id)) throw Invalid();
             if (!layerIds.TryGetValue(id, out var nativeId))
@@ -115,13 +115,18 @@ public sealed class AccessoryBrowserProjectAdapter
                 if (Text(parts[0]) != type || Text(parts[1]) != "render") throw Invalid();
             }
             else if (renderer.ValueKind != JsonValueKind.Null) throw Invalid();
-            string? assetId = null; AccessoryBrushContent? brush = null; AccessoryTextContent? text = null;
+            string? assetId = null; string? restoreAssetId = null; AccessoryBrushContent? brush = null; AccessoryTextContent? text = null;
             if (type == "image")
             {
                 if (!fields.TryGetValue("assetId", out var assetRef) || !assets.TryGetValue(Text(assetRef), out var asset)) throw Invalid();
                 used.Add(Text(assetRef)); assetId = asset.AssetId;
+                if (fields.TryGetValue("restoreAssetId", out var restoreRef))
+                {
+                    if (!assets.TryGetValue(Text(restoreRef), out var original) || original.PixelWidth != asset.PixelWidth || original.PixelHeight != asset.PixelHeight) throw Invalid();
+                    used.Add(Text(restoreRef)); restoreAssetId = original.AssetId;
+                }
             }
-            else if (fields.ContainsKey("assetId")) throw Invalid();
+            else if (fields.ContainsKey("assetId") || fields.ContainsKey("restoreAssetId")) throw Invalid();
             if (type == "brush") brush = ReadBrush(fields["data"], fields["params"]);
             else if (type == "text") text = ReadText(fields["data"], fields["params"]);
             else if (fields["data"].ValueKind != JsonValueKind.Null || Object(fields["params"], []).Count != 0) throw Invalid();
@@ -131,7 +136,8 @@ public sealed class AccessoryBrowserProjectAdapter
             result.Add((Number(fields["order"], 0, 1_000_000), new(nativeId, Text(fields["name"]), assetId,
                 Number(fields["x"], -8192, 8192), Number(fields["y"], -8192, 8192), width, height,
                 Number(fields["opacity"], 0, 100) / 100, Boolean(fields["visible"]), type, rotation, Text(fields["color"]),
-                OptionalDimension(fields, "width_original"), OptionalDimension(fields, "height_original"), brush, text)));
+                OptionalDimension(fields, "width_original"), OptionalDimension(fields, "height_original"), brush, text,
+                fields.TryGetValue("flipX", out var flipX) && Boolean(flipX), fields.TryGetValue("flipY", out var flipY) && Boolean(flipY), restoreAssetId)));
         }
         if (used.Count != assets.Count) throw Invalid();
         // miniPaint stable-sorts descending, then renders backwards. Reverse equal-order ties too,
@@ -152,6 +158,8 @@ public sealed class AccessoryBrowserProjectAdapter
             ["status"] = null, ["color"] = layer.Color, ["data"] = null, ["params"] = new { }, ["render_function"] = null,
         };
         if (layer.Type == "image") result["assetId"] = aliases[layer.AssetId!];
+        if (layer.Type == "image" && layer.RestoreAssetId is { } restore) result["restoreAssetId"] = aliases[restore];
+        result["flipX"] = layer.FlipX; result["flipY"] = layer.FlipY;
         if (layer.Brush is { } brush)
         {
             result["data"] = brush.Strokes.Select(s => s.Select(p => new[] { p.X, p.Y, p.Pressure }));

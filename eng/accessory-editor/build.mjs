@@ -3,10 +3,11 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {build} from 'esbuild';
+import {controlledOverrides} from './controlled-overrides.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const output=path.resolve(here,'../../src/Dango.Desktop/Accessories/Editing/Web');
 fs.mkdirSync(path.join(output,'licenses'),{recursive:true});
-const result=await build({absWorkingDir:here,entryPoints:['entry.js'],bundle:true,minify:true,legalComments:'inline',target:'chrome126',outfile:path.join(output,'bundle.js'),inject:['./jquery-inject.js'],alias:{'dango-notify':path.join(here,'notify.js')},metafile:true,write:false});
+const result=await build({plugins:[controlledOverrides],absWorkingDir:here,entryPoints:['entry.js'],bundle:true,minify:true,legalComments:'inline',target:'chrome126',outfile:path.join(output,'bundle.js'),inject:['./jquery-inject.js'],alias:{'dango-notify':path.join(here,'notify.js')},metafile:true,write:false});
 for(const file of result.outputFiles){
   const name=file.path.endsWith('.css')?'theme.css':'bundle.js';
   const bytes=name==='theme.css'?Buffer.from(file.text.replace(/url\([^)]*\)/g,'none')):file.contents;
