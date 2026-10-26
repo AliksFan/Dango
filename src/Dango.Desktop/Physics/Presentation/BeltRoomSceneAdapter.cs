@@ -17,6 +17,7 @@ internal sealed class BeltRoomSceneAdapter : IDisposable
     private double left = -256, right = 256;
     private readonly BeltSleepPolicy sleep = new();
     private double? presentationScale;
+    private double actionJumpSpeedScale = 1;
     public bool SleepEnabled { get; set; } = true;
     public bool IsSleeping { get; private set; }
     public long NativeStepCalls { get; private set; }
@@ -51,6 +52,7 @@ internal sealed class BeltRoomSceneAdapter : IDisposable
             if (!candidate.SupportsHorizontalBounds || !candidate.SupportsSolidWalls)
                 throw new NotSupportedException("Desktop belt rooms require horizontal bounds and solid wall capabilities.");
             candidate.SetSolidWalls(true, candidate.Read().SceneRevision);
+            if (actionJumpSpeedScale != 1) candidate.SetPreviewJumpSpeedScale(actionJumpSpeedScale);
             if (candidate.SupportsFurnitureCollection)
                 candidate.EnableFurnitureCollection(candidate.Read().SceneRevision);
             return candidate;
@@ -63,6 +65,12 @@ internal sealed class BeltRoomSceneAdapter : IDisposable
     }
     public LogicalPoint ToWorld(LogicalPoint point) => new((point.X-origin.X)/Scale, (origin.Y-point.Y)/Scale);
     public LogicalPoint ToHost(LogicalPoint point) => new(origin.X+point.X*Scale, origin.Y-point.Y*Scale);
+    internal void SetActionJumpSpeedScale(double scale)
+    {
+        world.SetPreviewJumpSpeedScale(scale);
+        actionJumpSpeedScale = scale;
+        Wake();
+    }
     public void ConfigureSleepPresentationScale(double? roomToDip)
     {
         if (roomToDip is { } value && (!double.IsFinite(value) || value <= 0))

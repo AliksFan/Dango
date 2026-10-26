@@ -373,5 +373,10 @@ int dango_belt_room_remove_platform(void* handle,uint64_t id,uint64_t revision){
  room_world* w=room_lookup(handle);if(!w)return DANGO_BELT_ROOM_HANDLE;if(w->fault)return DANGO_BELT_ROOM_FAULT;if(!w->platform_enabled||id!=w->platform.id||revision!=w->revision||w->revision==UINT64_MAX)return DANGO_BELT_ROOM_REVISION;
  w->platform_enabled=0;memset(&w->platform,0,sizeof w->platform);w->revision++;belt_body* b=room_body(w);double bounds[4],foot;belt_bounds(b->q,bounds,&foot);b->grounded=bounds[1]<=b->cfg.ground_height+ROOM_ACTIVATION;w->diag[18]=w->diag[19]=0;b->stats[25]=0;belt_read_stats(b);return 0;
 }
+int dango_belt_room_set_preview_jump_speed_scale(void* handle,float scale){
+ room_world* w=room_lookup(handle);if(!w)return DANGO_BELT_ROOM_HANDLE;if(w->fault)return DANGO_BELT_ROOM_FAULT;
+ if(!isfinite(scale)||scale<.1f||scale>1.f)return DANGO_BELT_ROOM_ARGUMENT;
+ room_body(w)->jump_speed_scale=scale;return 0;
+}
 int dango_belt_room_destroy(void* handle){room_world* w=room_lookup(handle);if(!w)return DANGO_BELT_ROOM_HANDLE;for(int i=0;i<16;++i)if(room_handles[i].world==w){dango_belt_destroy(w->body_handle);free(w);room_handles[i].world=NULL;room_handles[i].token=0;return 0;}return DANGO_BELT_ROOM_HANDLE;}
 #include "dango_belt_room_collection_impl.h"

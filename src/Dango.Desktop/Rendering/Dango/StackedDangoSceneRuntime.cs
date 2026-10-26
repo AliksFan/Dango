@@ -25,6 +25,7 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
     private readonly Dictionary<DangoEntityId, LogicalRect> pendingSpawns = [];
     private DesktopPhysicsScene? scene;
     private bool beltRoom;
+    private bool actionPreview;
     internal bool UsesBeltRoom => beltRoom;
     internal DangoBeltRoomFrame? LastBeltRoomFrame => scene?.BeltRoomFrame;
     internal bool HasBodySnapshot => !beltRoom || scene is not null;
@@ -281,6 +282,10 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
 
     internal static StackedDangoSceneRuntime CreateBeltRoom(string nativeLibraryPath) =>
         new(nativeLibraryPath) { beltRoom = true, requiresAttachments = true, RequiresInitialization = true, LightInteractionsEnabled = true };
+
+    // A distinct isolated consumer: one body, no idle/emotion scheduling, no saves.
+    internal static StackedDangoSceneRuntime CreateActionPreview(string nativeLibraryPath) =>
+        new(nativeLibraryPath) { beltRoom = true, actionPreview = true, requiresAttachments = true, RequiresInitialization = true };
 
     // This is an explicit stopped lifecycle handoff, never a live parameter edit.
     internal void ConfigureBeltRoomAppearance(DangoAppearanceConfiguration saved, bool beginRoom = false)
@@ -685,7 +690,16 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
         EnsureOrdinaryFurniture();
     }
 
-    public StackedPhysicsPresentationFrame Tick(PhysicsPresentationInput primary, TimeSpan fixedStep)
+    public StackedPhysicsPresentationFrame Tick(PhysicsPresentationInput primary, TimeSpan fixedStep) =>
+        TickCore(primary, fixedStep, null);
+
+    internal StackedPhysicsPresentationFrame TickActionPreview(PhysicsPresentationInput primary, TimeSpan fixedStep, DangoBeltInput motor)
+    {
+        if (!actionPreview) throw new InvalidOperationException("只有隔离动作运行时可以接收实验驱动。");
+        return TickCore(primary, fixedStep, motor);
+    }
+
+    private StackedPhysicsPresentationFrame TickCore(PhysicsPresentationInput primary, TimeSpan fixedStep, DangoBeltInput? actionInput)
     {
         VerifyAccess();
         ArgumentNullException.ThrowIfNull(primary);
@@ -712,7 +726,8 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
             if (!WanderEligible()) Wander.Cancel();
             var autonomousHorizontal = Wander.Input(fixedStep.TotalSeconds);
             if (!ProcessOrdinaryFurnitureBoundary(fixedStep)) return LastFrame ?? CreateUnavailable(primary);
-            var frame = scene.Step(fixedStep, autonomousHorizontal);
+            var frame = actionInput is { } motor
+                ? scene.StepActionPreview(fixedStep, motor) : scene.Step(fixedStep, autonomousHorizontal);
             if (scene.LastErrorCode != 0)
             {
                 LastError = $"物理故障已锁存：{scene.LastErrorCode}；请显式重置或退出。";
@@ -911,6 +926,7 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
         if (scene is not null) return;
         scene = beltRoom ? new DesktopPhysicsScene(nativeLibraryPath, bounds, EffectiveAppearance.Body)
             : new DesktopPhysicsScene(nativeLibraryPath, bounds);
+        if (actionPreview) scene.SetActionJumpSpeedScale(.4);
         if (previewJumpSpeedScale != 1) scene.SetPreviewJumpSpeedScale(previewJumpSpeedScale);
         if (unboundedHorizontalPreview) scene.SetUnboundedHorizontalPreview(true);
         colorSlots.Add(scene.SelectedEntity, 0);

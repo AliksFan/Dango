@@ -1,5 +1,7 @@
 # Dango
 
+隔离动作按钮实验入口见 [Dango.ActionLab](eng/tools/Dango.ActionLab/README.md)：本轮仅实现选定的 14 个动作供人工审核，不接入自动行为或正式产品场景。
+
 `Dango` 是一个多人联机桌面宠物项目的开发代号。
 
 2026-10-23 用户确认`v0.1.0-preview.1`本地单人预览版验收完成，并要求遗留项之后完善；本轮候选已[快进合入本地main](docs/verification/2026-10-23-local-preview-main-integration.md)，原AGENTS未提交修改及保护DLL保持。遗留工程项按用户决定延期，原失败／未验证证据不改判；未推送、打标签、上传发布或更新日常安装。下方条目保留各轮历史状态。

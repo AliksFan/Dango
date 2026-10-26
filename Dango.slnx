@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/eng/">
+    <Project Path="eng/tools/Dango.ActionLab/Dango.ActionLab.csproj" />
     <Project Path="eng/tools/Dango.LocalRoomProbe/Dango.LocalRoomProbe.csproj" />
     <Project Path="eng/tools/Dango.MultiplayerSample/Dango.MultiplayerSample.csproj" />
     <Project Path="eng/tools/Dango.GaitSample/Dango.GaitSample.csproj" />

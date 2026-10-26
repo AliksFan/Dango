@@ -12,6 +12,8 @@ typedef struct belt_residual {double value,k,c,scalar_curvature,j[BELT_D];} belt
 typedef struct belt_body {
  dango_belt_config cfg;double q[BELT_D],v[BELT_D],mass[BELT_D];
  double radius,scale,left,right,ramp,cooldown,drag_theta;
+ /* Per-instance experiment input; default preserves the accepted jump exactly. */
+ double jump_speed_scale;
  int short_bones,grounded,dragging,original_ground_jump,has_stepped;double stats[64],cal[11],diag[48];
  int shape_guard,speed_saturation,whale_drive,radial_drive;double radial_diag[16],rear_diag[16];double whale_gain,whale_diag[16],force_ledger[1024];double guard[24],solver_diag[24],speed_limit[12];
 } belt_body;
@@ -456,7 +458,7 @@ int dango_belt_create(const dango_belt_config* cfg,float x,float y,int short_bon
  int slot=-1;for(int i=0;i<64;++i)if(!belt_handles[i].body){slot=i;break;}if(slot<0)return -604;belt_body* b=calloc(1,sizeof *b);if(!b)return -604;
  b->cfg=*cfg;b->rear_diag[0]=1;b->whale_diag[0]=1;b->radial_diag[0]=3;belt_force_ledger_begin(b,0,-1);for(int j=0;j<8;++j)b->cal[j]=1;b->short_bones=short_bones;b->radius=((double)cfg->radial_rest_length+cfg->node_radius)*.5*(cos(BELT_PI/16)+.75+.25*cos(BELT_PI/8));b->scale=cfg->radial_rest_length/b->radius;
  if(!isfinite(b->radius)||b->radius<=1e-8||b->radius>FLT_MAX/4||!isfinite(b->scale)||16.0*cfg->node_mass+cfg->core_mass>FLT_MAX){free(b);return -602;}
- b->q[0]=b->q[34]=x;b->q[1]=b->q[35]=(double)y+cfg->drop_height;b->q[2]=b->q[5]=b->radius;b->cooldown=cfg->jump_cooldown_seconds;b->left=-1e6;b->right=1e6;b->guard[0]=1;b->guard[19]=.04*b->radius;b->guard[20]=1e-4*b->radius*b->radius;b->guard[21]=BELT_GUARD_FRAME_BUDGET;b->speed_limit[0]=1;b->speed_limit[4]=1;
+ b->q[0]=b->q[34]=x;b->q[1]=b->q[35]=(double)y+cfg->drop_height;b->q[2]=b->q[5]=b->radius;b->cooldown=cfg->jump_cooldown_seconds;b->left=-1e6;b->right=1e6;b->guard[0]=1;b->guard[19]=.04*b->radius;b->guard[20]=1e-4*b->radius*b->radius;b->guard[21]=BELT_GUARD_FRAME_BUDGET;b->speed_limit[0]=1;b->speed_limit[4]=1;b->jump_speed_scale=1;
  for(int j=0;j<34;++j)b->mass[j]=16.0*cfg->node_mass*(j<2?1:.5);b->mass[34]=b->mass[35]=cfg->core_mass;belt_read_stats(b);for(int i=0;i<64;++i)if(!isfinite(b->stats[i])||fabs(b->stats[i])>FLT_MAX){free(b);return -602;}
  uintptr_t token=belt_next_token++;if(!token)token=belt_next_token++;belt_handles[slot].token=token;belt_handles[slot].body=b;*output=(void*)token;return 0;
 }
@@ -514,10 +516,11 @@ static void belt_apply_calibration_damping(belt_body* b,double h,const float* c,
 static bool belt_try_jump(belt_body* b,bool requested,double h){
  bool eligible=b->grounded;double cooldown=b->cooldown;
  if(b->original_ground_jump){double bounds[4],foot;belt_bounds(b->q,bounds,&foot);eligible=eligible||bounds[1]-b->cfg.ground_height<=.035;cooldown+=h;}
- double request=b->original_ground_jump?(b->mass[1]+b->mass[35])*(double)7.7f:b->cfg.jump_impulse;b->diag[26]=requested?request:0;
+ double jump_speed=(double)7.7f*b->jump_speed_scale;
+ double request=b->original_ground_jump?(b->mass[1]+b->mass[35])*jump_speed:b->cfg.jump_impulse;b->diag[26]=requested?request:0;
  bool accepted=requested&&eligible&&cooldown>=b->cfg.jump_cooldown_seconds;if(!accepted)return false;
  double before=belt_kinetic(b),core_vy=b->v[35],p0[3],p1[3];belt_momentum(b,p0);
- if(b->original_ground_jump){b->v[1]+=(double)7.7f;b->v[35]+=(double)7.7f;}else b->v[35]+=b->cfg.jump_impulse/b->cfg.core_mass;
+ if(b->original_ground_jump){b->v[1]+=jump_speed;b->v[35]+=jump_speed;}else b->v[35]+=b->cfg.jump_impulse/b->cfg.core_mass;
  belt_momentum(b,p1);b->diag[20]=1;b->diag[21]=b->original_ground_jump?p1[1]-p0[1]:b->cfg.core_mass*(b->v[35]-core_vy);b->diag[22]=p1[1]-p0[1];b->diag[23]=p0[1];b->diag[24]=p1[1];b->diag[25]=belt_kinetic(b)-before;b->cooldown=0;b->grounded=0;b->stats[15]=1;return true;
 }
 int dango_belt_set_bounds(void* handle,float left,float right){belt_body* b=belt_lookup(handle);if(!b)return -601;if(!isfinite(left)||!isfinite(right)||right-left<4*b->radius)return -600;b->left=left;b->right=right;return 0;}

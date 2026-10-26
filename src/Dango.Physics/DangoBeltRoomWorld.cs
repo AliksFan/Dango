@@ -43,6 +43,7 @@ public sealed unsafe partial class DangoBeltRoomWorld : IDisposable
     private readonly DestroyDelegate destroy;
     private readonly SetBoundsDelegate? setBounds;
     private readonly SetSolidWallsDelegate? setSolidWalls;
+    private readonly SetPreviewJumpSpeedScaleDelegate? setPreviewJumpSpeedScale;
     public bool SupportsHorizontalBounds { get; private set; }
     public bool SupportsSolidWalls { get; private set; }
 
@@ -71,6 +72,8 @@ public sealed unsafe partial class DangoBeltRoomWorld : IDisposable
                 if (SupportsHorizontalBounds) setBounds = Export<SetBoundsDelegate>("dango_belt_room_set_bounds");
                 SupportsSolidWalls = (Export<VersionDelegate>("dango_belt_room_capabilities")() & 32) != 0;
                 if (SupportsSolidWalls) setSolidWalls = Export<SetSolidWallsDelegate>("dango_belt_room_set_solid_walls");
+                if (NativeLibrary.TryGetExport(library, "dango_belt_room_set_preview_jump_speed_scale", out var previewJump))
+                    setPreviewJumpSpeedScale = Marshal.GetDelegateForFunctionPointer<SetPreviewJumpSpeedScaleDelegate>(previewJump);
                 LoadFurnitureCollection();
                 step = Export<StepDelegate>("dango_belt_room_step");
                 read = Export<ReadDelegate>("dango_belt_room_read_frame");
@@ -121,6 +124,16 @@ public sealed unsafe partial class DangoBeltRoomWorld : IDisposable
         VerifyAccess();
         if (!SupportsSolidWalls) throw new NotSupportedException("This belt room module does not support solid walls.");
         lock (NativeGate) Check(setSolidWalls!(handle, enabled ? 1 : 0, expectedRevision), "set solid walls");
+    }
+
+    /// <summary>Isolated preview actuation. Existing modules keep their default jump behavior.</summary>
+    public void SetPreviewJumpSpeedScale(double scale)
+    {
+        VerifyAccess();
+        if (!Finite(scale) || scale is < .1 or > 1) throw new ArgumentOutOfRangeException(nameof(scale));
+        if (setPreviewJumpSpeedScale is null)
+            throw new NotSupportedException("This belt room module does not support preview jump speed scaling.");
+        lock (NativeGate) Check(setPreviewJumpSpeedScale(handle, (float)scale), "set preview jump speed scale");
     }
 
     public void SetPlatform(DangoBeltRoomPlatform platform, ulong expectedRevision)
@@ -206,6 +219,7 @@ public sealed unsafe partial class DangoBeltRoomWorld : IDisposable
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int RemovePlatformDelegate(nint handle, ulong id, ulong expectedRevision);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int SetBoundsDelegate(nint handle, float left, float right, ulong expectedRevision);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int SetSolidWallsDelegate(nint handle, int enabled, ulong expectedRevision);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int SetPreviewJumpSpeedScaleDelegate(nint handle, float scale);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int DestroyDelegate(nint handle);
     [StructLayout(LayoutKind.Sequential)] private struct NativeInput { public ulong BodyId; public fixed float Controls[9]; public int Reserved; }
     [StructLayout(LayoutKind.Sequential)] private struct NativePlatform { public ulong Id; public double X, Y, Width, Height, Friction; }

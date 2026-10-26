@@ -88,6 +88,13 @@ public sealed partial class DesktopPhysicsScene : IDisposable
     internal double PreviewJumpSpeedScale => beltRoom is null ? world.PreviewJumpSpeedScale : 1;
     internal double ContinuousCoreX(DangoBodyState body) => body.CoreX + horizontalCoreOffset;
 
+    internal void SetActionJumpSpeedScale(double scale)
+    {
+        VerifyAccess(); EnsureHealthy();
+        if (beltRoom is null) throw new NotSupportedException("轻跳实验需要连续带房间物理。");
+        beltRoom.SetActionJumpSpeedScale(scale);
+    }
+
     internal void SetPreviewJumpSpeedScale(double scale)
     {
         VerifyAccess();
@@ -358,7 +365,15 @@ public sealed partial class DesktopPhysicsScene : IDisposable
         return new(origin.X + worldPoint.X * width / 2, origin.Y - worldPoint.Y * height / 2);
     }
 
-    public DesktopPhysicsSceneFrame Step(TimeSpan fixedStep, double autonomousHorizontal = 0)
+    public DesktopPhysicsSceneFrame Step(TimeSpan fixedStep, double autonomousHorizontal = 0) =>
+        StepCore(fixedStep, autonomousHorizontal, null);
+
+    // Explicit, single-step actuation for the isolated action consumer. Never stored
+    // as held keyboard input, so cancellation cannot leave a force behind.
+    internal DesktopPhysicsSceneFrame StepActionPreview(TimeSpan fixedStep, DangoBeltInput input) =>
+        StepCore(fixedStep, 0, input);
+
+    private DesktopPhysicsSceneFrame StepCore(TimeSpan fixedStep, double autonomousHorizontal, DangoBeltInput? actionInput)
     {
         VerifyAccess();
         if (paused) throw new InvalidOperationException("场景已暂停；恢复后不得补算隐藏时间。");
@@ -371,6 +386,11 @@ public sealed partial class DesktopPhysicsScene : IDisposable
         }
         if (!double.IsFinite(autonomousHorizontal) || Math.Abs(autonomousHorizontal) > .35)
             throw new ArgumentOutOfRangeException(nameof(autonomousHorizontal));
+        if (actionInput is { } motor)
+        {
+            if (beltRoom is null) throw new NotSupportedException("动作实验需要连续带物理场景。");
+            return LastFrame = beltRoom.Step(motor);
+        }
         if (beltRoom is not null)
         {
             var axis = intent.Left == intent.Right ? 0d : intent.Left ? -1d : 1d;

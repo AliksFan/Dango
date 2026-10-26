@@ -47,6 +47,9 @@ DANGO_BELT_ROOM_API int dango_belt_room_read_frame(void*,dango_belt_room_frame*,
 DANGO_BELT_ROOM_API int dango_belt_room_set_bounds(void*,float,float,uint64_t);
 /* Optional solid half-space contact at current bounds; default is guard-only. */
 DANGO_BELT_ROOM_API int dango_belt_room_set_solid_walls(void*,int,uint64_t);
+/* Optional isolated-preview actuation: per world, finite [0.1,1], default 1.
+   Does not change layout revisions or frame/step ABI. */
+DANGO_BELT_ROOM_API int dango_belt_room_set_preview_jump_speed_scale(void*,float);
 DANGO_BELT_ROOM_API int dango_belt_room_set_platform(void*,const dango_belt_room_platform*,uint64_t);
 DANGO_BELT_ROOM_API int dango_belt_room_remove_platform(void*,uint64_t,uint64_t);
 DANGO_BELT_ROOM_API int dango_belt_room_destroy(void*);
