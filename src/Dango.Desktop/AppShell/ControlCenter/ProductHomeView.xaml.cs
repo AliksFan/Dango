@@ -90,6 +90,7 @@ public partial class ProductHomeView : UserControl
     public void ShowEditor(HomeEditor editor)
     {
         if (IsCreatingDango && IsEditing) { CloseEditor(); return; }
+        if (dangoSlots is not null && (slotsBlocked || slotPreviewPending) && !IsCreatingDango) return;
         if (IsInPorch || IsDangoAway || dangoSlots is not null && !selectedDangoId.HasValue && !IsCreatingDango) return;
         ClearLiveDirectionalInput();
         if (IsEditing && SelectedEditor == HomeEditor.Face) CancelAppearancePreview();
@@ -434,6 +435,7 @@ public partial class ProductHomeView : UserControl
 
     private void EnterPorch()
     {
+        if (dangoSlots is not null && (!selectedDangoId.HasValue || slotsBlocked || slotPreviewPending || IsCreatingDango)) return;
         if (IsInPorch || IsDangoAway) return;
         ClearLiveDirectionalInput();
         if (IsEditing) CloseEditor(focusStage: false);

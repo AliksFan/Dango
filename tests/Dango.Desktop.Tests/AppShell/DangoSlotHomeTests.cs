@@ -96,6 +96,10 @@ public sealed class DangoSlotHomeTests
         view.ConfigureDangoSlots([new(1, null, null, false), new(2, null, null, false), new(3, null, null, false)], null, null, false);
         Assert.AreEqual(Visibility.Hidden, Get<FrameworkElement>(view, "LiveEntityLayer").Visibility);
         Assert.AreEqual(Visibility.Visible, Get<StackPanel>(view, "DangoSlotPanel").Visibility);
+        view.TryHandleNavigationKey(System.Windows.Input.Key.F, false);
+        Assert.IsFalse(view.IsInPorch, "F must not enter a scene with a fabricated default Dango.");
+        view.ShowEditor(HomeEditor.Face);
+        Assert.IsFalse(view.IsEditing);
     }
     [STATestMethod]
     public void CreateRequiresNameAndExactBodyConfirmationThenCancelRestoresSessionWithoutOccupancy()
