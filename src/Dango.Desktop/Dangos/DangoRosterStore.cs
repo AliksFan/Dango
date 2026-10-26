@@ -44,7 +44,7 @@ public sealed class DangoRosterStore
                 if (snapshot.InitializationId != intent.InitializationId || snapshot.LegacyDangoId != intent.LegacyDangoId)
                     throw new InvalidDataException("目录与初始化保护记录不匹配。");
                 uncertain = false;
-                return new(snapshot, false);
+                return new(snapshot, false, CheckLegacySourceChanges(intent));
             }
             if (intentBytes is not null || uncertain)
                 return Protected("已有初始化意图但团子目录缺失；已保护现场，不能重新导入。");
@@ -52,6 +52,29 @@ public sealed class DangoRosterStore
         }
         catch (Exception error) when (IsStorageError(error))
         { return Protected("团子资料不可读或无法识别；原件已保护（" + error.GetType().Name + "）。"); }
+    }
+
+    private string? CheckLegacySourceChanges(DangoInitialization intent)
+    {
+        var changed = new List<string>();
+        var unreadable = new List<string>();
+        // settings.json still contains actively saved device preferences. Comparing that whole file would
+        // report normal product saves as legacy conflicts; compatibility hats in it are not checked here.
+        foreach (var source in new[] { (Path: "appearance.json", Label: "外观", Hash: intent.AppearanceSha256),
+                     (Path: "accessories.json", Label: "配饰", Hash: intent.AccessoriesSha256) })
+        {
+            try
+            {
+                if (Hash(Read(source.Path)) != source.Hash) changed.Add(source.Label);
+            }
+            catch (Exception error) when (IsStorageError(error)) { unreadable.Add(source.Label); }
+        }
+        var warnings = new List<string>();
+        if (changed.Count > 0)
+            warnings.Add("旧版本的" + string.Join("／", changed) + "存档在承接后发生变化，修改尚未合并；当前团子资料保持不变。");
+        if (unreadable.Count > 0)
+            warnings.Add("旧" + string.Join("／", unreadable) + "来源暂不可读，无法核对旧版本修改；当前团子资料已正常载入，未合并旧来源。");
+        return warnings.Count == 0 ? null : string.Join(" ", warnings);
     }
 
     private DangoRosterReadResult Initialize()

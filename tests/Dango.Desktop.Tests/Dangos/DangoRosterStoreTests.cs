@@ -167,6 +167,59 @@ public sealed class DangoRosterStoreTests
     }
 
     [TestMethod]
+    public void LegacyAppearanceChangesWarnWithoutOverwritingNewIndividualsEvenWhenSourceDidNotExistInitially()
+    {
+        foreach (var hasLegacySource in new[] { false, true })
+        {
+            var caseRoot = Path.Combine(root, hasLegacySource ? "migrated" : "fresh");
+            Directory.CreateDirectory(caseRoot);
+            var legacyPath = Path.Combine(caseRoot, "appearance.json");
+            if (hasLegacySource) new AppearanceSettingsStore().Save(legacyPath, DangoAppearanceConfiguration.Default);
+            var store = new DangoRosterStore(caseRoot); var s = Read(store);
+            s = hasLegacySource ? Committed(store.Rename(s, s.SelectedId!.Value, "甲", Guid.NewGuid())) : Create(store, s, 0, "甲");
+            var a = s.SelectedId!.Value;
+            var aAppearance = DangoAppearanceConfiguration.Default.WithBodyColor(OpaqueSrgbColor.Parse("#AA8877"));
+            s = Committed(store.SaveAppearance(s, a, aAppearance, Guid.NewGuid()));
+            s = Create(store, s, 1, "乙"); var b = s.SelectedId!.Value;
+            var before = File.ReadAllBytes(Path.Combine(caseRoot, DangoRosterStore.RosterRelativePath));
+            new AppearanceSettingsStore().Save(legacyPath,
+                DangoAppearanceConfiguration.Default.WithBodyColor(OpaqueSrgbColor.Parse("#112233")));
+            new AccessorySettingsStore().Save(caseRoot, AccessoryConfiguration.FromLegacyHat("bowler"));
+            var read = new DangoRosterStore(caseRoot).LoadOrInitialize();
+            Assert.IsFalse(read.IsProtected); Assert.IsNotNull(read.Snapshot);
+            StringAssert.Contains(read.Warning!, "外观／配饰"); StringAssert.Contains(read.Warning!, "尚未合并");
+            Assert.AreEqual(aAppearance, read.Snapshot.Find(a)!.Appearance);
+            Assert.AreEqual(DangoAppearanceConfiguration.Default, read.Snapshot.Find(b)!.Appearance);
+            Assert.AreEqual(2, read.Snapshot.Profiles.Count);
+            CollectionAssert.AreEqual(before, File.ReadAllBytes(Path.Combine(caseRoot, DangoRosterStore.RosterRelativePath)));
+            using var lockedSource = new FileStream(legacyPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            var whileUnreadable = new DangoRosterStore(caseRoot).LoadOrInitialize();
+            Assert.IsFalse(whileUnreadable.IsProtected); Assert.IsNotNull(whileUnreadable.Snapshot);
+            StringAssert.Contains(whileUnreadable.Warning!, "来源暂不可读");
+            Assert.AreEqual(aAppearance, whileUnreadable.Snapshot.Find(a)!.Appearance);
+        }
+    }
+
+    [TestMethod]
+    public void UnchangedLegacySourcesHaveNoWarningAndNormalDeviceSettingsSavesDoNotReportConflicts()
+    {
+        Directory.CreateDirectory(root);
+        new AppearanceSettingsStore().Save(Path.Combine(root, "appearance.json"), DangoAppearanceConfiguration.Default);
+        new AccessorySettingsStore().Save(root, AccessoryConfiguration.FromLegacyHat("top-hat"));
+        var settingsPath = Path.Combine(root, "settings.json");
+        var settingsStore = new ControlCenterWindowSettingsStore();
+        settingsStore.Save(settingsPath, ControlCenterWindowSettings.CreateDefault());
+        var store = new DangoRosterStore(root); var s = Read(store);
+        Assert.IsNull(store.LoadOrInitialize().Warning);
+        var rosterBefore = File.ReadAllBytes(RosterPath);
+        settingsStore.Save(settingsPath, ControlCenterWindowSettings.CreateDefault() with { Width = 1234, Height = 789 });
+        var read = new DangoRosterStore(root).LoadOrInitialize();
+        Assert.IsFalse(read.IsProtected); Assert.IsNull(read.Warning); Assert.IsNotNull(read.Snapshot);
+        Assert.AreEqual(s.SelectedId, read.Snapshot.SelectedId);
+        CollectionAssert.AreEqual(rosterBefore, File.ReadAllBytes(RosterPath));
+    }
+
+    [TestMethod]
     public void CompleteSupportedSettingsMigrateAndDeletingLastLegacyDangoNeverReimports()
     {
         Directory.CreateDirectory(root); var path = Path.Combine(root, "settings.json");
