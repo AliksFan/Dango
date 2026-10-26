@@ -26,6 +26,40 @@ internal sealed partial class LocalRoomSceneView : Grid
     private readonly Canvas entityLayer = new() { IsHitTestVisible = false };
     private readonly DeformableDangoVisual body = new() { ShowHat = false, IsHitTestVisible = false };
     private readonly DangoHatVisual hat = new() { IsHitTestVisible = false };
+    private readonly System.Windows.Controls.Border nameBadge = new()
+    {
+        IsHitTestVisible = false, Visibility = Visibility.Collapsed,
+        CornerRadius = new CornerRadius(5), Padding = new Thickness(7, 3, 7, 3), BorderThickness = new Thickness(1),
+    };
+    private readonly System.Windows.Controls.TextBlock nameLabel = new()
+    {
+        FontFamily = new System.Windows.Media.FontFamily("Segoe UI, Microsoft YaHei"), FontSize = 14,
+        IsHitTestVisible = false, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 240,
+    };
+    private string? dangoName;
+    internal string? RenderedDangoName => nameBadge.Visibility == Visibility.Visible ? nameLabel.Text : null;
+    internal void SetDangoName(string? name)
+    {
+        dangoName = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+        UpdateDangoName();
+    }
+    private void UpdateDangoName()
+    {
+        nameBadge.Visibility = Visibility.Collapsed;
+        if (DesktopPetPresentationEnabled || !HasHealthyFrame || PetScreenBounds is not { } bounds || dangoName is null) return;
+        nameLabel.Text = dangoName;
+        nameBadge.Background = SystemParameters.HighContrast ? System.Windows.SystemColors.WindowBrush :
+            TryFindResource("HomeBackground") as Brush ?? new SolidColorBrush(Color.FromRgb(253, 252, 249));
+        nameLabel.Foreground = SystemParameters.HighContrast ? System.Windows.SystemColors.WindowTextBrush :
+            TryFindResource("HomeInk") as Brush ?? new SolidColorBrush(Color.FromRgb(68, 61, 52));
+        nameBadge.BorderBrush = SystemParameters.HighContrast ? System.Windows.SystemColors.WindowTextBrush :
+            TryFindResource("HomeAccent") as Brush ?? new SolidColorBrush(Color.FromRgb(136, 94, 62));
+        nameBadge.Visibility = Visibility.Visible;
+        nameBadge.Measure(new System.Windows.Size(Math.Max(1, ActualWidth), double.PositiveInfinity));
+        var size = nameBadge.DesiredSize;
+        Canvas.SetLeft(nameBadge, Math.Clamp(bounds.X + (bounds.Width - size.Width) / 2, 0, Math.Max(0, ActualWidth - size.Width)));
+        Canvas.SetTop(nameBadge, Math.Max(0, bounds.Y - size.Height - 8));
+    }
     private readonly RoomWheelAccumulator wheel = new();
     private double groundY = WorldHeight;
     private double petX = WorldWidth / 2;
@@ -108,6 +142,10 @@ internal sealed partial class LocalRoomSceneView : Grid
         entityLayer.Children.Add(body);
         entityLayer.Children.Add(hat);
         Children.Add(entityLayer);
+        nameBadge.Child = nameLabel;
+        var names = new Canvas { IsHitTestVisible = false };
+        names.Children.Add(nameBadge);
+        Children.Add(names);
         SizeChanged += (_, _) => { InputInvalidated?.Invoke(); ClearWheel(); UpdateProjection(0); };
         MouseLeave += (_, _) => ClearWheel();
         MouseLeftButtonDown += (_, _) => Focus();
@@ -133,6 +171,7 @@ internal sealed partial class LocalRoomSceneView : Grid
     internal void EnableDesktopPetPresentation()
     {
         DesktopPetPresentationEnabled = true;
+        UpdateDangoName();
         Focusable = false;
         // Keep the validation visual, but never paint a second body into the wallpaper.
         entityLayer.Visibility = Visibility.Collapsed;
@@ -216,6 +255,7 @@ internal sealed partial class LocalRoomSceneView : Grid
         wheel.Expire(now);
         InvalidateVisual();
         HasHealthyFrame = true;
+        UpdateDangoName();
         LastAppliedFrame = frame;
         LastAppliedRuntime = runtime;
         FrameApplied?.Invoke();
@@ -300,6 +340,7 @@ internal sealed partial class LocalRoomSceneView : Grid
         Dango.Desktop.Accessories.AccessoryHostBinding.Hide(body);
         InputInvalidated?.Invoke();
         HasHealthyFrame = false;
+        UpdateDangoName();
         LastAppliedFrame = null;
         LastAppliedRuntime = null;
         bodyWorldBounds = null;
@@ -354,10 +395,11 @@ internal sealed partial class LocalRoomSceneView : Grid
     private void UpdatePetScreenBounds()
     {
         LastAppliedRuntime?.ConfigureBeltSleepPresentationScale(Projection.Scale);
-        if (visibleWorldBounds is not { } visible) { PetScreenBounds = null; return; }
+        if (visibleWorldBounds is not { } visible) { PetScreenBounds = null; UpdateDangoName(); return; }
         visible = visible.Translate(presentationOffset);
         var topLeft = Projection.WorldToScreen(new(visible.X, visible.Y));
         PetScreenBounds = new(topLeft.X, topLeft.Y, visible.Width * Projection.Scale, visible.Height * Projection.Scale);
+        UpdateDangoName();
     }
 
     protected override void OnRender(DrawingContext dc)
