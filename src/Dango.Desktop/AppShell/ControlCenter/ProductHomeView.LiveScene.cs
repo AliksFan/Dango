@@ -333,7 +333,7 @@ public partial class ProductHomeView
     private bool SetLiveDirectionalKey(Key key, bool down, bool repeat)
     {
         if (beltRuntime is not null) return SetBeltDirectionalKey(key, down, repeat);
-        if (IsRoomDialogOpen) { ClearLiveDirectionalInput(); return false; }
+        if (IsRoomDialogOpen || IsDangoInputBlocked) { ClearLiveDirectionalInput(); return false; }
         if (liveScheduler?.OwnsRuntime != true) return false;
         if (!IsInPorch && !IsAccessoryPreview && key is (Key.A or Key.D)) return false;
         // W is reserved inside the accessory preview; it must not navigate or

@@ -60,6 +60,7 @@ public partial class ProductHomeView : UserControl
     {
         AppearanceColorPicker = ShowAppearanceColorPicker;
         InitializeComponent();
+        originalApplyContent = ApplyButton.Content;
         InitializeAccessories();
         InitializePorchNavigation();
         RefreshAppearanceControls();
@@ -88,7 +89,8 @@ public partial class ProductHomeView : UserControl
 
     public void ShowEditor(HomeEditor editor)
     {
-        if (IsInPorch || IsDangoAway) return;
+        if (IsCreatingDango && IsEditing) { CloseEditor(); return; }
+        if (IsInPorch || IsDangoAway || dangoSlots is not null && !selectedDangoId.HasValue && !IsCreatingDango) return;
         ClearLiveDirectionalInput();
         if (IsEditing && SelectedEditor == HomeEditor.Face) CancelAppearancePreview();
         if (IsEditing && SelectedEditor == HomeEditor.Wardrobe) CancelAccessoryPreview();
@@ -119,6 +121,7 @@ public partial class ProductHomeView : UserControl
     private void CloseEditor(bool focusStage)
     {
         if (!IsEditing) return;
+        if (IsCreatingDango && slotsBlocked) return;
         CancelAppearancePreview();
         if (focusStage) Stage.Focus();
         IsEditing = false;
@@ -169,6 +172,7 @@ public partial class ProductHomeView : UserControl
         Stage.Focus();
         RefreshLiveSceneOwnership();
         UpdateRoomAwayPresentation();
+        RefreshDangoSlots();
     }
 
     public void RestoreKeyboardFocus() => TryRestoreControlFocus();
@@ -335,6 +339,7 @@ public partial class ProductHomeView : UserControl
     }
     private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        if (IsDangoInputBlocked) { ClearLiveDirectionalInput(); return; }
         if (HandleBeltKey(e, true)) return;
         var key = NavigationKey(e);
         if (IsRoomDialogOpen)
@@ -390,7 +395,7 @@ public partial class ProductHomeView : UserControl
 
     internal bool TryHandleNavigationKey(Key key, bool repeat)
     {
-        if (IsSettingsOpen || IsDangoAway || IsRoomDialogOpen || beltWindowMenuOpen ||
+        if (IsSettingsOpen || IsDangoAway || IsRoomDialogOpen || IsDangoInputBlocked || beltWindowMenuOpen ||
             Keyboard.Modifiers != ModifierKeys.None || IsAppearanceInputFocused()) return false;
         if (IsInPorch)
         {
@@ -629,9 +634,10 @@ public partial class ProductHomeView : UserControl
     {
         if (Stage is null || HomeContent is null) return;
         var available = Math.Max(0, HomeContent.ActualHeight - Stage.Margin.Top - Stage.Margin.Bottom);
-        var previewFits = available >= BasePreviewWidth * .75 + PreviewBottomSpace + 8;
+        var previewFits = dangoSlots is null ? available >= BasePreviewWidth * .75 + PreviewBottomSpace + 8
+            : available >= CommonPreviewTop + BasePreviewWidth * .75 + ShadowHeight + 92 + (IsEditing ? EditorSaveActionsHeight + 24 : 0);
         if (!IsPortraitLayout && !IsInPorch &&
-            (previewFits || IsEditing && SelectedEditor == HomeEditor.Face))
+            (previewFits || dangoSlots is null && IsEditing && SelectedEditor == HomeEditor.Face))
         {
             // Home and landscape editors share the visible stage. Parameters scroll
             // inside their own viewport; preview actions stay inside this fixed height.
@@ -640,11 +646,11 @@ public partial class ProductHomeView : UserControl
             if (double.IsNaN(Stage.Height) || Math.Abs(Stage.Height - available) > .5) Stage.Height = available;
             return;
         }
-        var commonHeight = CommonPreviewTop + BasePreviewWidth * .75 + HomeLauncherSpace;
+        var commonHeight = CommonPreviewTop + BasePreviewWidth * .75 + HomeLauncherSpace + (dangoSlots is null ? 0 : 92);
         Stage.MinHeight = Math.Max(minimumStageHeight, IsPortraitLayout ? PortraitPreviewHeight : commonHeight);
         if (IsEditing && !IsPortraitLayout)
             Stage.MinHeight = Math.Max(Stage.MinHeight, CommonPreviewTop + BasePreviewWidth * .75 + ShadowHeight +
-                EditorSaveActionsHeight + 16);
+                EditorSaveActionsHeight + 16 + (dangoSlots is null ? 0 : 92));
         var height = Math.Max(Stage.MinHeight, available);
         if (double.IsNaN(Stage.Height) || Math.Abs(Stage.Height - height) > .5) Stage.Height = height;
     }
@@ -672,7 +678,7 @@ public partial class ProductHomeView : UserControl
         ShadowHeight + Math.Max(FaceEditorSaveActions.DesiredSize.Height,
             AccessorySaveActionsSlot.DesiredSize.Height) + 16);
     private double PortraitPreviewHeight => CommonPreviewTop + BasePreviewWidth * .75 + ShadowHeight +
-        (IsEditing ? Math.Max(64, EditorSaveActionsHeight + 20) : 64);
+        (IsEditing ? Math.Max(64, EditorSaveActionsHeight + 20) : 64) + (dangoSlots is null ? 0 : 92);
     // Use the visible home area, not the editor's variable content height. The
     // projected native jump can rise 42 canvas units. Keep a further 20 DIP
     // above that arc; the native jump gate also measures the rendered hats.
@@ -705,6 +711,13 @@ public partial class ProductHomeView : UserControl
         var state = (IsEditing, SelectedEditor, IsInPorch, IsDangoAway);
         var sameState = transitionState == state;
         if (!sameState) { transitionState = state; transitionVersion++; }
+        if (!sameState && IsLoaded && !ReduceMotion && SystemParameters.ClientAreaAnimation)
+        {
+            slotsTransitionUntil = DateTime.UtcNow.AddMilliseconds(450);
+            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(460) };
+            timer.Tick += (_, _) => { timer.Stop(); RefreshDangoSlots(); };
+            timer.Start();
+        }
         var version = transitionVersion;
         var motionEnabled = IsLoaded && !ReduceMotion && SystemParameters.ClientAreaAnimation;
         var preserveAnimation = sameState && motionEnabled;
@@ -837,6 +850,7 @@ public partial class ProductHomeView : UserControl
             if (version == transitionVersion && !IsInPorch && !IsDangoAway) PorchContent.Visibility = Visibility.Hidden;
         }, preserveAnimation);
         UpdateRoomAwayPresentation();
+        RefreshDangoSlots();
     }
 
     private void UpdateHomeEntryPositions(double width, double previewWidth)
