@@ -11,7 +11,7 @@ public sealed record AccessorySettingsLoadResult(AccessoryConfiguration Configur
     AccessorySettingsLoadState State, string? Warning = null, bool IsTransientReadFailure = false);
 
 /// <summary>Images are immutable; the manifest is the sole commit point.</summary>
-public sealed class AccessorySettingsStore
+public sealed class AccessorySettingsStore : IAccessorySettingsPersistence
 {
     public const int CurrentSchemaVersion = 1;
     public const long MaximumManifestBytes = 8L * 1024 * 1024;

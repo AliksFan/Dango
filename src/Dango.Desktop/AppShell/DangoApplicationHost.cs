@@ -24,8 +24,8 @@ internal sealed partial class DangoApplicationHost : IDisposable
     private readonly VerificationDefinition verificationDefinition;
     private readonly ApplicationSettingsSession settings;
     private readonly string settingsPath;
-    private readonly AppearanceSettingsSession appearance;
-    private readonly AccessorySettingsSession accessories;
+    private AppearanceSettingsSession appearance;
+    private AccessorySettingsSession accessories;
     private readonly bool eyeHatReview;
     private readonly ApplicationUiMode uiMode;
     private readonly DispatcherTimer geometrySaveTimer = new() { Interval = TimeSpan.FromMilliseconds(300) };
@@ -78,6 +78,7 @@ internal sealed partial class DangoApplicationHost : IDisposable
         desktopHost.SetInteractionEnabled(initial.InteractionEnabled);
         stackedRuntime.TryApplyHatPreset(firstReviewRun && eyeHatReview ? "top-hat" : initial.HatPresetId);
         accessories = new AccessorySettingsSession(Path.GetDirectoryName(Path.GetFullPath(settingsPath))!, initial.HatPresetId);
+        if (uiMode == ApplicationUiMode.Product) InitializeDangos();
         if (uiMode == ApplicationUiMode.Product) stackedRuntime.BindAccessories(accessories);
         if (firstReviewRun || initial.DisplayMode == DesktopDisplayMode.Window) desktopHost.SetMode(DesktopDisplayMode.Window);
         geometrySaveTimer.Tick += (_, _) => { geometrySaveTimer.Stop(); SaveSettings(); };
@@ -199,6 +200,7 @@ internal sealed partial class DangoApplicationHost : IDisposable
             controlCenterWindow.ProductHome.BindAccessories(accessories);
             controlCenterWindow.ProductHome.BindBeltBody(settingsPath, productPhysics);
             BindLocalRoom(controlCenterWindow);
+            BindDangoHome(controlCenterWindow);
             controlCenterWindow.BindSettingsScene(ReadProductSettingsScene, RestoreRoomDisplayFromSettings, ReinitializeSceneFromSettings);
         }
         controlCenterWindow.OverviewPresented += () =>

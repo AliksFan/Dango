@@ -138,6 +138,7 @@ internal sealed partial class DangoApplicationHost
     {
         if (disposed || roomHandoff.Pending || localRoomSelected) return;
         GetOrCreateControlCenter();
+        if (!TryLockDangoForEntry(out _)) return;
         if (roomCatalogStore is not null)
         {
             if (controlCenterWindow!.ProductHome.CatalogSnapshot?.Rooms.FirstOrDefault(room => room.Life == LocalRoomLife.Active) is { } room)
@@ -145,6 +146,7 @@ internal sealed partial class DangoApplicationHost
             return;
         }
         roomControlCenterRequested = false;
+        PrepareBeltRoomEntry();
         localRoomDriver!.ResetEntryPosition();
         BeginLocalHandoff(LocalRoomPresentation.Window, enterWorld: true);
     }
@@ -152,6 +154,8 @@ internal sealed partial class DangoApplicationHost
     internal void EnterLocalRoomFurniture()
     {
         if (disposed || roomHandoff.Pending || localRoomSelected) return;
+        GetOrCreateControlCenter();
+        if (!TryLockDangoForEntry(out _)) return;
         if (controlCenterWindow?.ProductHome.CatalogSnapshot?.Rooms.FirstOrDefault(room => room.Life == LocalRoomLife.Active) is { } room)
         { EnterCatalogRoom(room.RoomId, true); return; }
         openFurnitureAfterHandoff = true;
@@ -164,6 +168,7 @@ internal sealed partial class DangoApplicationHost
         GetOrCreateControlCenter();
         var home = controlCenterWindow!.ProductHome;
         if (home.IsRoomDialogOpen) return;
+        if (!TryLockDangoForEntry(out var enteringDango)) return;
         catalogEntryLoading = true;
         home.RoomEntryPending = true;
         home.PorchScene.CatalogInputBlocked = true;
@@ -173,7 +178,8 @@ internal sealed partial class DangoApplicationHost
             await home.PauseBeltForRoomAsync();
             await home.Dispatcher.InvokeAsync(() =>
             {
-                if (disposed || request != catalogEntryGeneration || roomHandoff.Pending || localRoomSelected || !home.IsVisible) return;
+                if (disposed || request != catalogEntryGeneration || roomHandoff.Pending || localRoomSelected || !home.IsVisible ||
+                    activeDangoId != enteringDango || dangoRoster?.SelectedId != enteringDango) return;
                 PrepareBeltRoomEntry();
                 if (!stackedRuntime.TryInitialize())
                     throw new InvalidOperationException("新身体房间模块初始化失败。");
@@ -337,6 +343,7 @@ internal sealed partial class DangoApplicationHost
             localRoomWindow?.EndFurnitureEditing();
         }
         var attempt = roomHandoff.Begin(target);
+        RefreshDangoHome();
         localRoomFailure = null;
         controlCenterWindow!.ProductHome.SuspendForRoom();
         localRoomDriver!.Stop();
@@ -435,6 +442,7 @@ internal sealed partial class DangoApplicationHost
             else
             { localRoomWindow!.Hide(); desktopPetRoom!.Hide(); localRoomWallpaper!.ConfirmReady(attempt); }
         }
+        RefreshDangoHome();
     }
 
     private void FailLocalHandoff(long attempt, string message)
@@ -609,6 +617,8 @@ internal sealed partial class DangoApplicationHost
         GetOrCreateControlCenter();
         var home = controlCenterWindow!.ProductHome;
         if (home.IsRoomDialogOpen) return;
+        if (!TryLockDangoForEntry(out var enteringDango)) return;
+        var legacyDangoId = dangoRoster?.LegacyDangoId;
         catalogEntryLoading = true; home.RoomEntryPending = true; home.PorchScene.CatalogInputBlocked = true;
         var request = ++catalogEntryGeneration;
         try
@@ -627,7 +637,7 @@ internal sealed partial class DangoApplicationHost
                     room = roomCatalogStore.ReadCurrent().Find(id)!;
                     if (furniture && !room.CanEditOffline) throw new InvalidOperationException("离线缓存布局只读，可单人游玩。");
                     ValidateBeltRoomAdmission(roomCatalogStore.ReadLayout(id));
-                    resume = roomResumeStore!.Load(id);
+                    resume = roomResumeStore!.LoadForDango(id, enteringDango, legacyDangoId);
                 }
                 // Admission must finish module/configuration checks before writing selection.
                 return (Room: room, Resume: resume);
@@ -636,7 +646,8 @@ internal sealed partial class DangoApplicationHost
             var prepared = await preparation.ConfigureAwait(false);
             await home.Dispatcher.InvokeAsync(() =>
             {
-                if (disposed || request != catalogEntryGeneration || roomHandoff.Pending || localRoomSelected || !home.IsVisible) return;
+                if (disposed || request != catalogEntryGeneration || roomHandoff.Pending || localRoomSelected || !home.IsVisible ||
+                    activeDangoId != enteringDango || dangoRoster?.SelectedId != enteringDango) return;
                 PrepareBeltRoomEntry();
                 if (!stackedRuntime.TryInitialize())
                     throw new InvalidOperationException("新身体房间模块初始化失败；原房间布局保留。");
@@ -696,17 +707,22 @@ internal sealed partial class DangoApplicationHost
 
     private void PrepareBeltRoomEntry()
     {
-        stackedRuntime.ConfigureBeltRoomAppearance(appearance.SavedAppearance, beginRoom: true);
+        var profile = activeDangoId is { } id ? dangoRoster?.Find(id) : null;
+        if (profile is null || dangoWriteUnknown)
+            throw new InvalidOperationException("无法确认入场团子，请返回首页核对资料。");
+        stackedRuntime.ConfigureBeltRoomAppearance(profile.Appearance, beginRoom: true);
         // The homepage owns a separate continuous-body presenter. Transfer only
         // committed accessories when either room takes ownership of this runtime.
-        stackedRuntime.SetAccessories(accessories.SavedConfiguration, !accessories.IsCompatibilityMode);
+        stackedRuntime.SetAccessories(dangoRoster!.EffectiveAccessories(profile.Id), enabled: true);
+        UpdateDangoRoomNames();
     }
 
     internal static void ValidateBeltRoomAdmission(Dango.Core.Furniture.FurnitureLayout layout) =>
         layout.Validate(Dango.Core.Furniture.FurnitureLayoutContract.OrdinaryRoom);
     private void SaveRoomCheckpoint(bool flush = false)
     {
-        if (selectedCatalogRoomId is not { } id || roomResumeStore is null || localRoomDriver?.CaptureCheckpoint() is not { } checkpoint) return;
+        if (selectedCatalogRoomId is not { } id || activeDangoId is not { } dangoId || roomResumeStore is null ||
+            localRoomDriver?.CaptureCheckpoint() is not { } checkpoint) return;
         if (!flush && !roomCheckpointTask.IsCompleted) return;
         var previous = roomCheckpointTask;
         var camera = localRoomWindow!.ResumeCameraOverride ?? checkpoint.Camera;
@@ -715,10 +731,16 @@ internal sealed partial class DangoApplicationHost
         roomCheckpointTask = Task.Run(async () =>
         {
             await previous.ConfigureAwait(false);
-            var result = roomResumeStore.Save(id, checkpoint.LayoutVersion, checkpoint.Position, camera);
+            var result = roomResumeStore.SaveForDango(id, dangoId, checkpoint.LayoutVersion, checkpoint.Position, camera);
             if (!flush && !ownerDispatcher.HasShutdownStarted) _ = ownerDispatcher.BeginInvoke(() =>
             {
                 if (disposed) return;
+                if (result.State == FurnitureCommitState.Unknown)
+                {
+                    uncertainCheckpoint = (id, dangoId);
+                    dangoWarning = "位置／相机保存结果待核对，请在首页重新读取后切换团子。";
+                    RefreshDangoHome();
+                }
                 controlCenterWindow?.ProductHome.SetRoomCheckpointSaveStatus(id,
                     result.State == FurnitureCommitState.Committed ? null : "「" + roomName + "」" + result.Warning);
                 if (selectedCatalogRoomId == id)

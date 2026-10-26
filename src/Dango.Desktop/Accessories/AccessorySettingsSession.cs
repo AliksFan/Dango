@@ -11,7 +11,7 @@ public sealed class AccessorySettingsSession
     public const long MaximumPendingPngBytes = AccessoryConfiguration.MaximumEquippedItems * AccessoryImageAsset.MaximumFileBytes;
     private readonly int ownerThreadId = Environment.CurrentManagedThreadId;
     private readonly string settingsRoot;
-    private readonly AccessorySettingsStore store;
+    private readonly IAccessorySettingsPersistence store;
     private readonly long maximumPendingPixels;
     private readonly long maximumPendingPngBytes;
     private readonly Dictionary<string, AccessoryImageAsset> pendingAssets = new(StringComparer.Ordinal);
@@ -21,12 +21,12 @@ public sealed class AccessorySettingsSession
     private string statusMessage = string.Empty;
     private string? cacheWarning;
 
-    public AccessorySettingsSession(string settingsRoot, string legacyHatPresetId = "sprout", AccessorySettingsStore? store = null)
+    public AccessorySettingsSession(string settingsRoot, string legacyHatPresetId = "sprout", IAccessorySettingsPersistence? store = null)
         : this(settingsRoot, legacyHatPresetId, store, MaximumPendingPixels, MaximumPendingPngBytes)
     { }
 
     // Lower budgets allow real cumulative behavior tests without allocating hundreds of MiB.
-    internal AccessorySettingsSession(string settingsRoot, string legacyHatPresetId, AccessorySettingsStore? store,
+    internal AccessorySettingsSession(string settingsRoot, string legacyHatPresetId, IAccessorySettingsPersistence? store,
         long maximumPendingPixels, long maximumPendingPngBytes)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(settingsRoot);

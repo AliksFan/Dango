@@ -61,7 +61,8 @@ public partial class ProductHomeView
         selectedDangoId = selectedId;
         slotsBlocked = blocked;
         DangoCreationNote.Text = IsCreatingDango && blocked && !string.IsNullOrEmpty(warning) ? "创建结果待核对，请重新读取。" : "创建后才会占用栏位。";
-        DangoNameButton.Content = selectedName ?? "尚未创建团子";
+        DangoNameButton.Content = IsCreatingDango ? CreationPreviewName :
+            selectedName ?? (selectedId.HasValue ? "请为团子起名" : "尚未创建团子");
         DangoSlotWarning.Text = warning ?? string.Empty;
         DangoSlotWarning.Visibility = string.IsNullOrEmpty(warning) ? Visibility.Collapsed : Visibility.Visible;
         DangoReloadButton.Visibility = string.IsNullOrEmpty(warning) ? Visibility.Collapsed : Visibility.Visible;
@@ -82,7 +83,7 @@ public partial class ProductHomeView
             var slot = dangoSlots[i];
             var button = buttons[i];
             button.Content = slot.Id.HasValue ? slot.Number.ToString() : "+";
-            var caption = slot.Id.HasValue ? $"选择第 {slot.Number} 栏：{slot.Name}" : $"在第 {slot.Number} 栏创建团子";
+            var caption = slot.Id.HasValue ? $"选择第 {slot.Number} 栏：{slot.Name ?? "待起名"}" : $"在第 {slot.Number} 栏创建团子";
             button.ToolTip = caption;
             AutomationProperties.SetName(button, caption);
             button.IsEnabled = CanUseDangoSlots;
@@ -236,10 +237,15 @@ public partial class ProductHomeView
         }
         return StringInfo.ParseCombiningCharacters(name).Length <= 24;
     }
+
+    private string CreationPreviewName => TryNormalizeDangoName(DangoCreationName.Text, out var name)
+        ? name + " · 创建预览" : "新团子草稿";
+
     private void OnDangoCreationNameChanged(object sender, TextChangedEventArgs e)
     {
         if (DangoCreationValidation is not null)
             DangoCreationValidation.Text = TryNormalizeDangoName(DangoCreationName.Text, out _) ? string.Empty : "请输入 1–24 个字的名字，不含控制字符或换行。";
+        if (IsCreatingDango) DangoNameButton.Content = CreationPreviewName;
         RefreshAppearanceControls();
     }
 
