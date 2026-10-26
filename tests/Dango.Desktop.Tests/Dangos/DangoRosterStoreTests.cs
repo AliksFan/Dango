@@ -289,6 +289,20 @@ public sealed class DangoRosterStoreTests
     }
 
     [TestMethod]
+    public void FailedWritePreservesErrorTypeAndHResultWithoutExposingExceptionMessage()
+    {
+        var initial = new DangoRosterStore(root); var s = Read(initial);
+        var before = File.ReadAllBytes(RosterPath);
+        var store = new DangoRosterStore(root, new BeforeWriteFailureWriter());
+        var result = store.Create(s, 0, "甲", DangoAppearanceConfiguration.Default, Guid.NewGuid());
+        Assert.AreEqual(FurnitureCommitState.NotCommitted, result.State);
+        StringAssert.Contains(result.Warning!, "IOException");
+        StringAssert.Contains(result.Warning!, "HRESULT 0x80070020");
+        Assert.IsFalse(result.Warning!.Contains("synthetic private location", StringComparison.Ordinal));
+        CollectionAssert.AreEqual(before, File.ReadAllBytes(RosterPath));
+    }
+
+    [TestMethod]
     public void UnknownOutcomeBlocksWritesUntilExplicitReload()
     {
         var s = Read(new DangoRosterStore(root)); var writer = new FaultWriter { CorruptInstead = true };
@@ -368,5 +382,10 @@ public sealed class DangoRosterStoreTests
             new AtomicTextFileWriter().Write(path, CorruptInstead ? "injected unreadable outcome" : content);
             if (ThrowAfterWrite) throw new IOException("Injected after replacement");
         }
+    }
+    private sealed class BeforeWriteFailureWriter : IAtomicTextWriter
+    {
+        public void Write(string path, string content) =>
+            throw new IOException("Injected failure at synthetic private location", unchecked((int)0x80070020));
     }
 }

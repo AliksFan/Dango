@@ -256,13 +256,16 @@ public sealed class DangoRosterStore
     {
         if (candidate.LongLength > MaximumManifestBytes) throw new InvalidDataException("目录超过资源预算。");
         if (!Same(Read(relative), baseline)) return new(FurnitureCommitState.Unknown, Warning: "存档已被外部修改，保存结果待核对。");
+        string? writeFailure = null;
         try { writer.Write(PathFor(relative), Encoding.UTF8.GetString(candidate)); }
-        catch (Exception error) when (IsStorageError(error)) { }
+        catch (Exception error) when (IsStorageError(error))
+        { writeFailure = $"{error.GetType().Name}, HRESULT 0x{error.HResult:X8}"; }
         try
         {
             var observed = Read(relative);
             if (Same(observed, candidate)) return new(FurnitureCommitState.Committed);
-            return Same(observed, baseline) ? new(FurnitureCommitState.NotCommitted, Warning: "保存未完成；原件保留。") :
+            return Same(observed, baseline) ? new(FurnitureCommitState.NotCommitted, Warning: "保存未完成；原件保留" +
+                    (writeFailure is null ? "。" : "（" + writeFailure + "）。")) :
                 new(FurnitureCommitState.Unknown, Warning: "保存结果待核对，禁止继续覆盖。");
         }
         catch (Exception error) when (IsStorageError(error))
