@@ -37,7 +37,7 @@ public sealed record AppearanceSettingsLoadResult(
     bool PreserveOriginal = false,
     bool RequiresMigration = false, string? SourceBodyPhysicsModel = null);
 
-public sealed class AppearanceSettingsStore
+public sealed class AppearanceSettingsStore : IAppearanceSettingsPersistence
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {

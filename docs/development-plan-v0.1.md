@@ -1,5 +1,7 @@
 # Dango 分阶段开发计划 v0.1
 
+> 2026-10-27 三栏位本地整合：用户确认三处界面与桌宠返回通过后，授权普通房补验／必要修复通过即合 main。已补检查点写入与恢复确认的串行等待，60＋11 项后台、9＋1 项实窗及正式 Release 零警告构建通过；main 已从 `d929a8e` 快进纳入生产提交 `ca6bcf0`，见[普通房与整合记录](verification/2026-10-27-three-dango-slots-ordinary-room-main.md)。原 AGENTS 修改和保护 DLL 保持；未推送、安装、部署或操作日常存档，账号／多人、平台矩阵和保留的历史风险不改判。
+
 > 2026-10-23 本地单人预览整合：用户确认首个`v0.1.0-preview.1`候选“验收完了”，明确授权合并并将遗留项留后续完善；`codex/local-mode-closeout@c1438fc`已从`main@ca9a3ab`快进合入本地main，见[整合与延期记录](verification/2026-10-23-local-preview-main-integration.md)。本次涵盖设置QQ、三页布局与统一焦点、本地恢复补验工具及首发ZIP准备；持续观察／桌宠鼠标、历史UNKNOWN、依赖告警及平台矩阵保留原工程状态并延期。该本地单人预览人工通过不改判完整Windows／联机／Phase 1／Phase 5验收，不包含推送、标签、公开发布或日常安装。
 
 > 2026-10-22 B1～B4整理候选人工确认与本地整合：用户体验正式内部候选包后明确“验收通过合入main”，本次候选人工通过，累计整理分支已[本地快进合入main](verification/2026-10-22-post-merge-cleanup-main-integration.md)。B4测试归属／公共主题、物理装配与首页会话、网络进程夹具和五条工作规则已落地；家具完整宿主流程及真实鼠标菜单／快捷键回归通过，见[B4验收续行](verification/2026-10-22-post-merge-cleanup-b4-foreground.md#用户人工验收与本地合并授权)。竖屏编辑两项继续暂缓，真实OS高对比、多DPI／多屏及历史FAIL／UNKNOWN边界保留；网络与家具合同能力整理随功能迭代触发，不改判完整Windows／多人阶段，不推送、安装或部署。下文保留历史状态。

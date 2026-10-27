@@ -310,6 +310,16 @@
                 </Border>
             </StackPanel>
         </Border>
+        <Border x:Name="DangoFeedbackBar" Grid.Row="1" Visibility="Collapsed" Margin="22,0,22,0" Padding="12,8"
+                Background="{DynamicResource HomeSoft}" BorderBrush="{DynamicResource HomeLine}" BorderThickness="1" CornerRadius="7">
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <TextBlock x:Name="DangoSlotWarning" TextWrapping="Wrap" FontSize="12" VerticalAlignment="Center"
+                           AutomationProperties.LiveSetting="Polite" />
+                <Button x:Name="DangoReloadButton" Grid.Column="1" Content="重新读取" Margin="12,0,0,0"
+                        Click="OnDangoReloadClick" AutomationProperties.Name="重新读取团子资料" />
+            </Grid>
+        </Border>
         <ScrollViewer x:Name="HomeContent" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False"
                       SizeChanged="OnHomeContentSizeChanged"
                       HorizontalContentAlignment="Stretch" VerticalContentAlignment="Top">
@@ -354,6 +364,14 @@
                     <TextBlock x:Name="LiveSceneStatusText" Text="界面预览 · 无实时场景" FontSize="12" TextAlignment="Center"
                                Foreground="{DynamicResource HomeMuted}" VerticalAlignment="Center" IsHitTestVisible="False" />
                     </Grid>
+                    <StackPanel x:Name="DangoSlotPanel" Visibility="Collapsed" HorizontalAlignment="Center" Margin="0,10,0,0">
+                        <Button x:Name="DangoNameButton" Content="尚未创建团子" BorderBrush="Transparent" Padding="8,2" MinHeight="28" Click="OnDangoNameClick" ToolTip="团子名字 · 改名或删除" AutomationProperties.Name="团子名字与管理菜单" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,0">
+                            <Button x:Name="DangoSlot1" Content="+" Tag="0" Width="32" Height="32" MinHeight="32" Padding="0" Margin="0,0,8,0" Click="OnDangoSlotClick" />
+                            <Button x:Name="DangoSlot2" Content="+" Tag="1" Width="32" Height="32" MinHeight="32" Padding="0" Margin="0,0,8,0" Click="OnDangoSlotClick" />
+                            <Button x:Name="DangoSlot3" Content="+" Tag="2" Width="32" Height="32" MinHeight="32" Padding="0" Click="OnDangoSlotClick" />
+                        </StackPanel>
+                    </StackPanel>
                 </StackPanel>
                 <Canvas x:Name="Launchers" Grid.RowSpan="2" Grid.ColumnSpan="3" VerticalAlignment="Top">
                         <Button x:Name="EnterRoomButton" Style="{StaticResource Launcher}"
@@ -652,6 +670,12 @@
                                 </StackPanel>
                             </Border>
                             <TextBlock Text="操作帮助" FontSize="15" Margin="0,22,0,8" />
+                            <StackPanel x:Name="OrdinaryRoomNameOptions" Visibility="Collapsed" Margin="0,8,0,16">
+                                <TextBlock Text="普通房名字显示" Margin="0,0,0,8" />
+                                <RadioButton x:Name="OrdinaryRoomDangoName" Content="团子名" GroupName="OrdinaryRoomName" Click="OnOrdinaryRoomDangoNameClick" Margin="0,0,0,8" />
+                                <RadioButton x:Name="OrdinaryRoomAccountName" Content="账号显示名" GroupName="OrdinaryRoomName" Click="OnOrdinaryRoomAccountNameClick" />
+                                <TextBlock x:Name="OrdinaryRoomNameWarning" TextWrapping="Wrap" Foreground="{DynamicResource HomeMuted}" FontSize="12" Margin="0,6,0,0" />
+                            </StackPanel>
                             <Expander x:Name="HomeOperationHelp" Header="首页与门廊" Padding="0,8" IsExpanded="False" Foreground="{DynamicResource HomeInk}">
                                 <TextBlock Text="首页：Q 换装 · E 捏脸 · F 进入门廊&#10;门廊：F 进入／新建 · E 布置普通房&#10;A / D 移动 · W 上看／拉伸 · S 下看／轻压 · 空格跳跃&#10;Esc 返回／收起当前页面" Margin="20,8,0,8" LineHeight="23"
                                            TextWrapping="Wrap" Foreground="{DynamicResource HomeMuted}" />

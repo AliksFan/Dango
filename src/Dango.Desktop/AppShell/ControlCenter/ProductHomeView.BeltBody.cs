@@ -30,6 +30,7 @@ public partial class ProductHomeView
     private string? beltError;
     private string? beltDiagnosticError;
     private string? beltSettingsPath;
+    private ProductPhysicsComposition? beltComposition;
     private bool beltRoomSuspended;
     private double beltPorchOriginX;
     private double BeltFloor => 120 + (PetShadow.Height / 2 - 1) / Math.Max(.1, PetPreview.Width / 160);
@@ -47,6 +48,7 @@ public partial class ProductHomeView
     {
         if (beltRuntime is not null || BoundRuntime is not null) throw new InvalidOperationException("主页已绑定实时场景。");
         beltSettingsPath = settingsPath;
+        beltComposition = composition;
         bodyPreview.Bind(composition);
         InputMethod.SetIsInputMethodEnabled(Stage, false);
         OptionsBody.Resources[typeof(System.Windows.Controls.Primitives.ScrollBar)] = Resources["SettingsScrollBar"];
@@ -125,7 +127,7 @@ public partial class ProductHomeView
         porchReturnGeneration = generation;
         SetDangoAway(false);
         ShowHomePage();
-        EnterPorch();
+        EnterPorch(returningFromRoom: true);
         liveSceneSuspended = false;
         RestoreBeltAfterRoomPreparation();
     }
@@ -205,7 +207,7 @@ public partial class ProductHomeView
     private void RefreshBeltVisibility()
     {
         if (beltRuntime is null) return;
-        var visible = IsLoaded && IsVisible && !IsSettingsOpen && !IsDangoAway && !liveSceneSuspended && !beltRoomSuspended;
+        var visible = (dangoSlots is null || selectedDangoId.HasValue || IsCreatingDango || slotPreviewPending) && IsLoaded && IsVisible && !IsSettingsOpen && !IsDangoAway && !liveSceneSuspended && !beltRoomSuspended;
         if (visible == beltVisible) return;
         beltVisible = visible;
         beltRenderStamp = Stopwatch.GetTimestamp();
@@ -366,7 +368,7 @@ public partial class ProductHomeView
         if (!down) SetBeltDirectionalKey(key, false, false);
         // Body keys stay separate from Q/E/F navigation on every surface.
         // Text/menu controls still receive unhandled events when gameplay is unavailable.
-        if (ownerWindow?.IsActive != true || !beltVisible || IsSettingsOpen || IsDangoAway || IsRoomDialogOpen || beltFatalError || beltWindowMenuOpen ||
+        if (ownerWindow?.IsActive != true || !beltVisible || IsSettingsOpen || IsDangoAway || IsRoomDialogOpen || IsDangoInputBlocked || beltFatalError || beltWindowMenuOpen ||
             IsBeltTextEntry(Keyboard.FocusedElement) || Keyboard.Modifiers != ModifierKeys.None)
         { ClearBeltInput(); return true; }
         SetBeltDirectionalKey(key, down, e.IsRepeat);

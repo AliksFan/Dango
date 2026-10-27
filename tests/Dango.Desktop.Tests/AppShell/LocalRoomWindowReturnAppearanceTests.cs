@@ -6,6 +6,9 @@ using System.Windows.Threading;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.AppShell.Rooms;
+using Dango.Desktop.Dangos;
+using Dango.Desktop.Furniture;
+using Dango.Desktop.Physics.Belt;
 using Dango.Desktop.Rendering.Visuals;
 using Dango.Physics;
 
@@ -28,6 +31,12 @@ public sealed class LocalRoomWindowReturnAppearanceTests
         var seed = new AppearanceSettingsSession(appearancePath);
         seed.StagePreview(InitialAppearance);
         Assert.IsTrue(seed.TrySave());
+        var legacyAppearanceBytes = File.ReadAllBytes(appearancePath);
+        var rosterStore = new DangoRosterStore(root);
+        var roster = rosterStore.LoadOrInitialize().Snapshot!;
+        var dangoId = roster.SelectedId!.Value;
+        var named = rosterStore.Rename(roster, dangoId, "虚构返程团子", Guid.NewGuid());
+        Assert.AreEqual(FurnitureCommitState.Committed, named.State, named.Warning);
         using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"));
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
         Assert.IsTrue(runtime.UsesBeltRoom);
@@ -58,14 +67,19 @@ public sealed class LocalRoomWindowReturnAppearanceTests
         ClickRoomMenu(window, "RoomControlCenterButton");
         AssertAway(home);
         AssertWindowOwner(runtime, driver, home, roomOwner!);
+        var returnHistory = new List<string> { "before-settings " + DescribePresentation(host) };
         home.ShowSettingsPage();
+        returnHistory.Add("settings-open " + DescribePresentation(host));
         Click(home, "BackFromSettingsButton");
+        WaitUntil(() => home.IsVisible && !home.IsSettingsOpen && E<FrameworkElement>(home, "HomeContent").IsVisible &&
+            E<UIElement>(home, "SettingsShell").Visibility == Visibility.Collapsed && E<FrameworkElement>(home, "RoomAwayNotice").IsVisible);
+        returnHistory.Add("back-from-settings " + DescribePresentation(host));
         Assert.IsFalse(home.IsSettingsOpen);
         AssertAway(home);
         AssertWindowOwner(runtime, driver, home, roomOwner!);
 
         ClickRoomMenu(window, "RoomReturnButton");
-        WaitForPresentation(host, LocalRoomPresentation.Porch);
+        WaitForPresentation(host, LocalRoomPresentation.Porch, returnHistory);
         Assert.IsFalse(home.IsDangoAway);
         Assert.IsTrue(home.IsInPorch);
         Assert.IsTrue((home.BoundBeltBody?.Metrics.Running == true));
@@ -91,12 +105,14 @@ public sealed class LocalRoomWindowReturnAppearanceTests
         E<Slider>(home, "EyeSpacingSlider").Value = EditedAppearance.EyeLayout.SpacingControlPercent;
         Assert.AreEqual(EditedAppearance, home.DraftAppearance);
         Assert.IsTrue(appearance.IsDirty);
-        Assert.AreEqual(InitialAppearance, new AppearanceSettingsSession(appearancePath).SavedAppearance,
+        Assert.AreEqual(InitialAppearance, rosterStore.LoadOrInitialize().Snapshot!.Find(dangoId)!.Appearance,
             "A real post-return preview must not save before Apply.");
+        CollectionAssert.AreEqual(legacyAppearanceBytes, File.ReadAllBytes(appearancePath));
         Assert.IsTrue(E<Button>(home, "ApplyButton").IsEnabled);
         Click(home, "ApplyButton");
         Assert.AreEqual(EditedAppearance, appearance.SavedAppearance);
-        Assert.AreEqual(EditedAppearance, new AppearanceSettingsSession(appearancePath).SavedAppearance);
+        Assert.AreEqual(EditedAppearance, rosterStore.LoadOrInitialize().Snapshot!.Find(dangoId)!.Appearance);
+        CollectionAssert.AreEqual(legacyAppearanceBytes, File.ReadAllBytes(appearancePath), "Roster edits must preserve the legacy appearance source.");
         Assert.IsFalse(appearance.IsDirty);
         WaitUntil(() => home.BoundBeltPresenter!.Appearance == EditedAppearance);
         Assert.AreEqual(EditedAppearance, home.BoundBeltPresenter!.Appearance);
@@ -116,7 +132,8 @@ public sealed class LocalRoomWindowReturnAppearanceTests
             "Fresh entry must create a room owner from the newly saved appearance, never reuse the old physical world.");
         Assert.AreEqual(1, runtime.EntityIds.Count);
         AssertRenderedAppearance(runtime, Field<DeformableDangoVisual>(window.Scene, "body"), runtime.EntityIds.Single(), EditedAppearance);
-        Assert.AreEqual(EditedAppearance, new AppearanceSettingsSession(appearancePath).SavedAppearance);
+        Assert.AreEqual(EditedAppearance, rosterStore.LoadOrInitialize().Snapshot!.Find(dangoId)!.Appearance);
+        CollectionAssert.AreEqual(legacyAppearanceBytes, File.ReadAllBytes(appearancePath), "Roster edits must preserve the legacy appearance source.");
     }
 
     [STATestMethod]
@@ -263,11 +280,54 @@ public sealed class LocalRoomWindowReturnAppearanceTests
         Assert.IsFalse(window.IsMenuOpen);
     }
 
-    private static void WaitForPresentation(DangoApplicationHost host, LocalRoomPresentation expected)
+    private static void WaitForPresentation(DangoApplicationHost host, LocalRoomPresentation expected,
+        IReadOnlyList<string>? prior = null)
     {
-        WaitUntil(() => !host.LocalHandoffPending, 4500);
-        Assert.AreEqual(expected, host.LocalPresentation, host.LocalRoomFailure);
-        Assert.IsNull(host.LocalRoomFailure);
+        // Keep the existing observation bound and the product's actual timeout. Capture
+        // the porch before failure recovery restores its room source and hides the cause.
+        var history = new List<string>(prior ?? []);
+        var start = Environment.TickCount64;
+        var nextSample = start;
+        do
+        {
+            if (Environment.TickCount64 >= nextSample)
+            {
+                history.Add($"+{Environment.TickCount64 - start}ms " + DescribePresentation(host));
+                nextSample = Environment.TickCount64 + 100;
+            }
+            if (!host.LocalHandoffPending) break;
+            Pump(20);
+        } while (Environment.TickCount64 - start < 4500);
+        history.Add($"final +{Environment.TickCount64 - start}ms " + DescribePresentation(host));
+        var diagnostics = string.Join(Environment.NewLine, history.TakeLast(48));
+        Assert.IsFalse(host.LocalHandoffPending, diagnostics);
+        Assert.AreEqual(expected, host.LocalPresentation, diagnostics);
+        Assert.IsNull(host.LocalRoomFailure, diagnostics);
+    }
+
+    private static string DescribePresentation(DangoApplicationHost host)
+    {
+        var homeWindow = Field<ControlCenterWindow>(host, "controlCenterWindow");
+        var home = homeWindow.ProductHome;
+        var gate = Field<LocalRoomHandoffGate>(host, "roomHandoff");
+        var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
+        var displayed = home.DisplayedBeltSnapshot;
+        var pending = Field<BeltBodySnapshot?>(home, "beltPendingDisplay");
+        var body = home.BoundBeltBody;
+        var presenter = home.BoundBeltPresenter;
+        var porch = home.PorchScene;
+        var appearance = home.BoundAppearance;
+        return $"Presentation={host.LocalPresentation}; Target={gate.Target}; HandoffGen={gate.Generation}; Pending={host.LocalHandoffPending}; Failure={host.LocalRoomFailure}; " +
+            $"HomeWindowVisible={homeWindow.IsVisible}; Active={homeWindow.IsActive}; State={homeWindow.WindowState}; HomeVisible={home.IsVisible}; Settings={home.IsSettingsOpen}; Away={home.IsDangoAway}; Porch={home.IsInPorch}; " +
+            $"HomeContent={E<UIElement>(home, "HomeContent").Visibility}; SettingsShell={E<UIElement>(home, "SettingsShell").Visibility}; PorchContent={E<UIElement>(home, "PorchContent").Visibility}; " +
+            $"PorchVisibility={porch.Visibility}/{porch.IsVisible}; PorchSize={porch.ActualWidth}x{porch.ActualHeight}; PorchOpacity={porch.Opacity}; PorchBody={porch.HasBeltBody}; PorchReturnGen={Field<long>(home, "porchReturnGeneration")}; " +
+            $"BeltVisible={Field<bool>(home, "beltVisible")}; RoomSuspended={Field<bool>(home, "beltRoomSuspended")}; LiveSuspended={Field<bool>(home, "liveSceneSuspended")}; Primed={Field<bool>(home, "beltPrimed")}; Fatal={Field<bool>(home, "beltFatalError")}; " +
+            $"AppearanceEpoch={appearance?.BodyEpoch}; Revision={appearance?.BodyConfigurationRevision}; RequiresPreview={appearance?.RequiresBodyPreview}; RequestedEpoch={Field<long>(home, "beltRequestedBodyEpoch")}; RequestedRevision={Field<long>(home, "beltRequestedRevision")}; " +
+            $"Displayed=(epoch={displayed?.Epoch},bodyEpoch={displayed?.BodyEpoch},revision={displayed?.ConfigurationRevision},sequence={displayed?.Sequence},tick={displayed?.Tick}); " +
+            $"PendingDisplay=(epoch={pending?.Epoch},bodyEpoch={pending?.BodyEpoch},revision={pending?.ConfigurationRevision},sequence={pending?.Sequence}); LastPresentedSequence={Field<long>(home, "beltLastPresentedSequence")}; " +
+            $"PresenterVisible={presenter?.View.IsVisible}; PresenterInPorch={presenter is not null && porch.IsAncestorOf(presenter.View)}; PresenterParent={(presenter is null ? null : VisualTreeHelper.GetParent(presenter.View)?.GetType().Name)}; HomeSource={PresentationSource.FromVisual(home) is not null}; Metrics={body?.Metrics}; " +
+            $"HomeBodyBound={body is not null}; LegacyHomeRuntimeBound={home.BoundRuntime is not null}; LiveOwner={home.OwnsLiveFrameDriver}; RoomOwner={runtime.FrameDriver?.GetType().Name}; RoomRunning={runtime.IsRunning}; RoomHealthy={host.LocalWindow?.Scene.HasHealthyFrame}; RuntimeError={runtime.LastError}; " +
+            $"BeltScene={home.ReadBeltBodySettingsScene().Diagnostics}";
     }
 
     private static void WaitUntil(Func<bool> condition, int milliseconds = 2500)

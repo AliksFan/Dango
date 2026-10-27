@@ -7,6 +7,8 @@ using System.Windows.Threading;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.AppShell.Rooms;
+using Dango.Desktop.Dangos;
+using Dango.Desktop.Furniture;
 using Dango.Desktop.Rendering.Visuals;
 using Dango.Physics;
 
@@ -28,7 +30,9 @@ public sealed class LocalRoomAppearanceIntegrationTests
     [STATestMethod]
     public void DefaultProductPublishesTheLocalCatalogWithoutFabricatingFormalAdmission()
     {
-        using var host = new DangoApplicationHost(settingsFile: Path.Combine(NewRoot(), "settings.json"));
+        var root = NewRoot();
+        SeedNamedIdentity(root);
+        using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"));
         host.ShowControlCenter();
         ProductHostTestSupport.WaitForHome(host);
         var home = Field<ControlCenterWindow>(host, "controlCenterWindow").ProductHome;
@@ -81,6 +85,8 @@ public sealed class LocalRoomAppearanceIntegrationTests
         var root = NewRoot();
         var appearance = new AppearanceSettingsSession(Path.Combine(root, "appearance.json"));
         appearance.StagePreview(Choice); Assert.IsTrue(appearance.TrySave());
+        var legacyAppearanceBytes = File.ReadAllBytes(Path.Combine(root, "appearance.json"));
+        var dangoId = SeedNamedIdentity(root);
         using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"));
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
         Assert.IsTrue(runtime.UsesBeltRoom);
@@ -127,7 +133,19 @@ public sealed class LocalRoomAppearanceIntegrationTests
         host.ShowControlCenter();
         WaitUntil(() => !home.IsInPorch && home.BoundBeltPresenter.View.IsVisible);
         Assert.AreEqual(Choice, home.BoundBeltPresenter.Appearance);
-        Assert.AreEqual(Choice, new AppearanceSettingsSession(Path.Combine(root, "appearance.json")).SavedAppearance);
+        Assert.AreEqual(Choice, new DangoRosterStore(root).LoadOrInitialize().Snapshot!.Find(dangoId)!.Appearance);
+        CollectionAssert.AreEqual(legacyAppearanceBytes, File.ReadAllBytes(Path.Combine(root, "appearance.json")));
+    }
+
+    private static Guid SeedNamedIdentity(string root)
+    {
+        var store = new DangoRosterStore(root);
+        var snapshot = store.LoadOrInitialize().Snapshot!;
+        var result = snapshot.SelectedId is { } existing
+            ? store.Rename(snapshot, existing, "虚构普通房团子", Guid.NewGuid())
+            : store.Create(snapshot, 0, "虚构普通房团子", DangoAppearanceConfiguration.Default, Guid.NewGuid());
+        Assert.AreEqual(FurnitureCommitState.Committed, result.State, result.Warning);
+        return result.Snapshot!.SelectedId!.Value;
     }
 
     private static void AssertAway(ProductHomeView home)

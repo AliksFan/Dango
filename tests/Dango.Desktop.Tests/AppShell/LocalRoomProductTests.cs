@@ -6,6 +6,8 @@ using System.Windows.Threading;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.AppShell.Rooms;
+using Dango.Desktop.Dangos;
+using Dango.Desktop.Furniture;
 using Dango.Desktop.Rendering.Visuals;
 
 namespace Dango.Desktop.Tests.AppShell;
@@ -23,7 +25,8 @@ public sealed class LocalRoomProductTests
         host.ShowControlCenter(); ProductHostTestSupport.WaitForHome(host); Pump(450);
         var homeWindow = Field<ControlCenterWindow>(host, "controlCenterWindow");
         var home = homeWindow.ProductHome;
-        home.ResumePorch(); Pump(400);
+        home.ResumePorch();
+        WaitForRoom(host, LocalRoomPresentation.Porch);
         Assert.IsTrue((home.BoundBeltBody?.Metrics.Running == true));
         Assert.AreEqual(0, runtime.EntityIds.Count, "Home startup cannot create the room world.");
         host.EnterLocalRoom();
@@ -32,10 +35,10 @@ public sealed class LocalRoomProductTests
         Assert.IsFalse((home.BoundBeltBody?.Metrics.Running == true));
         homeWindow.Width += 10; homeWindow.UpdateLayout();
         Assert.IsFalse((home.BoundBeltBody?.Metrics.Running == true), "The visible suspended source cannot reclaim ownership.");
-        Pump(450);
+        WaitForRoom(host, LocalRoomPresentation.Window);
         Assert.IsFalse(host.LocalHandoffPending, host.LocalRoomFailure);
         Assert.AreEqual(LocalRoomPresentation.Window, host.LocalPresentation);
-        Assert.IsFalse(homeWindow.IsVisible);
+        Assert.IsFalse(homeWindow.IsVisible, Describe(host));
         Assert.IsTrue(host.LocalWindow!.Scene.HasHealthyFrame);
         var id = runtime.EntityIds.Single();
         var roomEpoch = runtime.LastBeltRoomFrame!.OwnerEpoch;
@@ -60,18 +63,26 @@ public sealed class LocalRoomProductTests
         Assert.AreEqual(Dango.Core.Animation.DirectionalControlIntent.None, Field<Dango.Core.Animation.DirectionalControlIntent>(driver, "intent"));
         host.RestoreLocalRoom();
         Assert.IsTrue(host.LocalHandoffPending, "Restore must wait for a fresh frame, never reuse cached readiness.");
-        Pump(350);
+        WaitForRoom(host, LocalRoomPresentation.Window);
         Assert.AreEqual(id, runtime.EntityIds.Single());
         Assert.AreEqual(roomEpoch, runtime.LastBeltRoomFrame!.OwnerEpoch, "Hide and restore must retain the actual physical owner.");
+        // Keep the target unrenderable so this exercises cancellation of a pending return.
+        home.PorchScene.Visibility = Visibility.Hidden;
         host.ReturnToPorch();
+        Assert.IsTrue(host.LocalHandoffPending, Describe(host));
+        Assert.AreEqual(LocalRoomPresentation.Porch, Field<LocalRoomHandoffGate>(host, "roomHandoff").Target);
         host.HideLocalRoom();
         Assert.IsNull(runtime.FrameDriver, "Cancelling return must also release the pending porch owner.");
         Assert.IsFalse(runtime.IsRunning);
-        Assert.IsFalse(homeWindow.IsVisible);
-        host.RestoreLocalRoom(); Pump(350);
+        Assert.IsFalse(homeWindow.IsVisible, Describe(host));
+        home.PorchScene.Visibility = Visibility.Visible;
+        host.RestoreLocalRoom();
+        WaitForRoom(host, LocalRoomPresentation.Window);
+        home.PorchScene.Visibility = Visibility.Hidden;
         host.ReturnToPorch();
         Assert.IsTrue(host.LocalWindow.IsVisible, "Return also keeps its source until the porch is ready.");
-        Pump(400);
+        home.PorchScene.Visibility = Visibility.Visible;
+        WaitForRoom(host, LocalRoomPresentation.Porch);
         Assert.AreEqual(LocalRoomPresentation.Porch, host.LocalPresentation, host.LocalRoomFailure);
         Assert.IsTrue(home.IsInPorch, "The room door returns to porch, not home.");
         Assert.IsTrue((home.BoundBeltBody?.Metrics.Running == true));
@@ -86,19 +97,24 @@ public sealed class LocalRoomProductTests
         using var host = CreateHost();
         host.ShowControlCenter(); ProductHostTestSupport.WaitForHome(host); Pump(350);
         var window = Field<ControlCenterWindow>(host, "controlCenterWindow");
-        window.ProductHome.ResumePorch(); Pump(350);
+        window.ProductHome.ResumePorch();
+        WaitForRoom(host, LocalRoomPresentation.Porch);
         host.LocalWindow!.Scene.Visibility = Visibility.Hidden;
-        host.EnterLocalRoom(); Pump(100);
+        host.EnterLocalRoom();
+        WaitFor(host, () => Field<LocalRoomHandoffGate>(host, "roomHandoff") is { Pending: true, Target: LocalRoomPresentation.Window },
+            "The hidden target must reach its real first-frame handshake before timing out.");
         Assert.IsTrue(window.IsVisible);
         Assert.IsTrue(host.LocalHandoffPending);
-        Pump(3200);
+        WaitFor(host, () => !host.LocalHandoffPending, "The hidden target must fail its first-frame timeout.");
         Assert.IsFalse(host.LocalHandoffPending);
         Assert.IsNotNull(host.LocalRoomFailure);
         Assert.IsTrue(window.IsVisible);
         Assert.IsTrue(window.ProductHome.IsInPorch);
         Assert.IsTrue((window.ProductHome.BoundBeltBody?.Metrics.Running == true));
         host.LocalWindow.Scene.Visibility = Visibility.Visible;
-        host.EnterLocalRoom(); Pump(450);
+        ProductHostTestSupport.WaitForHome(host);
+        host.EnterLocalRoom();
+        WaitForRoom(host, LocalRoomPresentation.Window);
         Assert.AreEqual(LocalRoomPresentation.Window, host.LocalPresentation, host.LocalRoomFailure);
         Assert.IsTrue(host.LocalWindow.Scene.HasHealthyFrame);
     }
@@ -111,16 +127,19 @@ public sealed class LocalRoomProductTests
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
         Assert.IsTrue(runtime.UsesBeltRoom, "Product rooms must use the continuous body module.");
         host.ShowControlCenter(); ProductHostTestSupport.WaitForHome(host); Pump(350);
-        host.EnterLocalRoom(); Pump(400);
+        host.EnterLocalRoom();
+        WaitForRoom(host, LocalRoomPresentation.Window);
         var id = runtime.EntityIds.Single();
         typeof(StackedDangoSceneRuntime).GetProperty(nameof(StackedDangoSceneRuntime.LastError))!.SetValue(runtime, "fictional local-room fault");
-        Pump(150);
+        WaitFor(host, () => host.LocalRoomFailure is not null && runtime.FrameDriver is null,
+            "The injected runtime fault must be observed by the room driver.");
         Assert.IsNotNull(host.LocalRoomFailure);
         Assert.IsNull(runtime.FrameDriver);
         Assert.IsFalse(runtime.IsRunning);
         Assert.IsFalse(host.LocalWindow!.Scene.HasHealthyFrame);
-        host.RecoverLocalRoom(); Pump(450);
-        Assert.IsNull(runtime.LastError);
+        host.RecoverLocalRoom();
+        WaitForRoom(host, LocalRoomPresentation.Window);
+        Assert.IsNull(runtime.LastError, Describe(host));
         Assert.AreEqual(id, runtime.EntityIds.Single());
         Assert.IsTrue(host.LocalWindow.Scene.HasHealthyFrame, host.LocalRoomFailure);
         Assert.IsFalse(host.LocalHandoffPending);
@@ -149,7 +168,8 @@ public sealed class LocalRoomProductTests
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
         Assert.IsTrue(runtime.UsesBeltRoom, "Product rooms must use the continuous body module.");
         host.ShowControlCenter(); ProductHostTestSupport.WaitForHome(host); Pump(350);
-        host.EnterLocalRoom(); Pump(450);
+        host.EnterLocalRoom();
+        WaitForRoom(host, LocalRoomPresentation.Window);
         Assert.AreEqual(LocalRoomPresentation.Window, host.LocalPresentation, host.LocalRoomFailure);
         var owner = runtime.FrameDriver;
         var entity = runtime.EntityIds.Single();
@@ -180,20 +200,22 @@ public sealed class LocalRoomProductTests
         Assert.IsNull(runtime.FrameDriver);
         host.ShowControlCenter(); Pump(100);
         Assert.IsNull(runtime.FrameDriver, "Opening Home must not resume a hidden room through another owner.");
-        host.RestoreLocalRoom(); Pump(450);
+        host.RestoreLocalRoom();
+        WaitForRoom(host, LocalRoomPresentation.Window);
         Assert.AreEqual(entity, runtime.EntityIds.Single());
         var porch = (PorchSceneView)home.FindName("PorchScene");
         porch.Visibility = Visibility.Hidden;
         host.ReturnToPorch(); Pump(150);
         Assert.IsTrue(host.LocalHandoffPending, "A hidden target body cannot acknowledge its first frame.");
-        Pump(3750);
+        WaitForRoom(host, LocalRoomPresentation.Window);
         Assert.AreEqual(LocalRoomPresentation.Window, host.LocalPresentation, "A failed return must recover its room source.");
         Assert.IsTrue(home.IsDangoAway, "A failed porch first frame cannot restore appearance editing while the dango is still in its room.");
         Assert.IsFalse((home.BoundBeltBody?.Metrics.Running == true));
         home.ShowEditor(HomeEditor.Wardrobe);
         Assert.IsFalse(home.IsEditing);
         porch.Visibility = Visibility.Visible;
-        host.ReturnToPorch(); Pump(450);
+        host.ReturnToPorch();
+        WaitForRoom(host, LocalRoomPresentation.Porch);
         Assert.IsFalse(home.IsDangoAway);
         Assert.IsTrue(home.IsInPorch);
         Assert.IsTrue((home.BoundBeltBody?.Metrics.Running == true));
@@ -223,7 +245,39 @@ public sealed class LocalRoomProductTests
     {
         var root = Path.Combine(TestRepository.Root, "artifacts", "local-room", "tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
+        var store = new DangoRosterStore(root);
+        var snapshot = store.LoadOrInitialize().Snapshot!;
+        var created = store.Create(snapshot, 0, "虚构普通房团子", DangoAppearanceConfiguration.Default, Guid.NewGuid());
+        Assert.AreEqual(FurnitureCommitState.Committed, created.State, created.Warning);
         return new(settingsFile: Path.Combine(root, "settings.json"));
+    }
+    private static void WaitForRoom(DangoApplicationHost host, LocalRoomPresentation expected)
+    {
+        WaitFor(host, () => !host.LocalHandoffPending && host.LocalPresentation == expected &&
+            (expected == LocalRoomPresentation.Window
+                ? host.LocalWindow?.Scene.HasHealthyFrame == true && Field<LocalRoomSceneDriver>(host, "localRoomDriver").OwnsRuntime
+                : Field<ControlCenterWindow>(host, "controlCenterWindow").ProductHome.PorchScene.HasBeltBody),
+            $"The actual {expected} presentation must complete its healthy-frame handshake.");
+    }
+    private static void WaitFor(DangoApplicationHost host, Func<bool> condition, string reason)
+    {
+        var deadline = Environment.TickCount64 + 6000;
+        while (!condition() && Environment.TickCount64 < deadline) Pump(20);
+        Assert.IsTrue(condition(), reason + " " + Describe(host));
+    }
+    private static string Describe(DangoApplicationHost host)
+    {
+        var homeWindow = Field<ControlCenterWindow>(host, "controlCenterWindow");
+        var home = homeWindow.ProductHome;
+        var handoff = Field<LocalRoomHandoffGate>(host, "roomHandoff");
+        var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
+        var driver = Field<LocalRoomSceneDriver>(host, "localRoomDriver");
+        return $"Presentation={host.LocalPresentation}; Target={handoff.Target}; Pending={host.LocalHandoffPending}; " +
+            $"SelectedRoom={Field<bool>(host, "localRoomSelected")}; RoomControlCenterRequested={Field<bool>(host, "roomControlCenterRequested")}; " +
+            $"ActiveDango={host.ActiveDangoId}; SelectedDango={host.DangoRoster?.SelectedId}; CheckpointTask={Field<Task>(host, "roomCheckpointTask").Status}; DangoWarning={Field<string?>(host, "dangoWarning")}; " +
+            $"HomeVisible={homeWindow.IsVisible}; Porch={home.IsInPorch}; Away={home.IsDangoAway}; RequiresBodyPreview={home.BoundAppearance?.RequiresBodyPreview}; " +
+            $"PorchHealthy={home.PorchScene.HasBeltBody}; RoomVisible={host.LocalWindow?.IsVisible}; RoomHealthy={host.LocalWindow?.Scene.HasHealthyFrame}; " +
+            $"DriverReady={driver.IsReady}; OwnsRuntime={driver.OwnsRuntime}; FurnitureState={runtime.Furniture?.State}; FurnitureBusy={runtime.Furniture?.Busy}; RuntimeError={runtime.LastError}; Failure={host.LocalRoomFailure}";
     }
     private static T Field<T>(object instance, string name) =>
         (T)instance.GetType().GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(instance)!;

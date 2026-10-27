@@ -34,6 +34,7 @@ public partial class ProductHomeView
 
     internal void CancelAppearancePreview()
     {
+        if (IsCreatingDango) { CancelDangoCreation(); return; }
         CancelAccessoryPreview();
         appearanceGeneration++;
         ClearAppearanceComparison();
@@ -90,11 +91,14 @@ public partial class ProductHomeView
             DefaultAppearanceButton.IsEnabled = IsEditing && SelectedEditor == HomeEditor.Face;
             var canApply = IsEditing && SelectedEditor == HomeEditor.Face && appearanceSession?.HasPendingSave == true &&
                 !appearanceSession.IsWriteProtected && !appearanceSession.RequiresBodyPreview && beltError is null;
+            if (IsCreatingDango) canApply = CanApplyDangoCreation;
             ApplyButton.IsEnabled = canApply;
             ApplyButton.Foreground = highContrast && canApply ? System.Windows.SystemColors.HighlightTextBrush
                 : (System.Windows.Media.Brush)Resources["HomeInk"];
             AppearanceStatus.Text = beltError ?? (appearanceSession?.RequiresBodyPreview == true ? "身体更新中…" : appearanceSession?.StatusMessage) ?? "应用后保存到本机。";
-            RecoverAppearanceButton.Visibility = appearanceSession?.IsWriteProtected == true ? Visibility.Visible : Visibility.Collapsed;
+            if (IsCreatingDango && beltError is null && appearanceSession?.RequiresBodyPreview == false)
+                AppearanceStatus.Text = "应用后起名，确认后创建。";
+            RecoverAppearanceButton.Visibility = !IsCreatingDango && appearanceSession?.IsWriteProtected == true ? Visibility.Visible : Visibility.Collapsed;
             AppearancePreviewNotice.Text = appearanceSession?.IsDirty == true ? "预览中 · 应用后保存" : "拖动即时预览 · 应用后保存";
             var compare = IsEditing && SelectedEditor == HomeEditor.Face && (beltPresenter is not null && beltError is null || BoundRuntime?.InitializationState == SceneInitializationState.Ready);
             PreviewBlinkButton.IsEnabled = PreviewSleepButton.IsEnabled = compare;
@@ -207,11 +211,17 @@ public partial class ProductHomeView
 
     private void OnApplyAppearanceClick(object sender, RoutedEventArgs e)
     {
+        if (IsCreatingDango)
+        {
+            ApplyDangoCreation();
+            return;
+        }
         appearanceSession?.TrySave();
         RefreshAppearanceControls();
     }
     private void OnRecoverAppearanceClick(object sender, RoutedEventArgs e)
     {
+        if (IsCreatingDango) return;
         appearanceSession?.TryRecoverAndSave();
         RefreshAppearanceControls();
     }

@@ -9,7 +9,7 @@ namespace Dango.Desktop.AppShell.ControlCenter;
 public sealed class AppearanceSettingsSession
 {
     private readonly string path;
-    private readonly AppearanceSettingsStore store;
+    private readonly IAppearanceSettingsPersistence store;
     private readonly Action<string, string> backup;
     private bool pendingSave;
     private bool bodyPreviewRequired;
@@ -17,7 +17,7 @@ public sealed class AppearanceSettingsSession
     public long BodyEpoch { get; private set; }
     public string? SourceBodyPhysicsModel { get; }
 
-    public AppearanceSettingsSession(string path, AppearanceSettingsStore? store = null,
+    public AppearanceSettingsSession(string path, IAppearanceSettingsPersistence? store = null,
         Action<string, string>? backup = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
