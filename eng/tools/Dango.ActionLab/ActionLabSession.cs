@@ -19,6 +19,7 @@ internal sealed class ActionLabSession : IDisposable
     internal string Phase { get; private set; } = "等待接地";
     internal string? Error { get; private set; }
     internal DangoActionKind? LastAction { get; private set; }
+    internal string? LastCandidateId { get; private set; }
     internal long Steps { get; private set; }
     internal bool Paused { get; private set; }
     private bool disposed;
@@ -52,14 +53,17 @@ internal sealed class ActionLabSession : IDisposable
             (Right - Reference.Center.X) / 72);
     }
 
-    internal bool Trigger(DangoActionKind kind, int direction)
+    internal bool Trigger(DangoActionKind kind, int direction, string candidateId = "current")
     {
         if (Paused || Error is not null) return false;
         if (kind == DangoActionKind.Shake && !Runtime.SupportsMuscleActuation)
         { Phase = "当前物理模块不支持内部肌肉抖身"; return false; }
-        var started = Controller.TryStart(kind, direction, Observe());
+        if (!Enum.IsDefined(kind)) { Phase = "不支持此动作类型"; return false; }
+        var candidate = ActionLabCandidates.For(kind).FirstOrDefault(c => c.Id == candidateId);
+        if (candidate is null) { Phase = "不支持此动作候选"; return false; }
+        var started = Controller.TryStart(kind, direction, Observe(), candidate.ShakeStrength);
         if (!started) Phase = Controller.RejectionReason ?? "请等待当前动作结束";
-        else { LastAction = kind; Phase = "准备动作"; }
+        else { LastAction = kind; LastCandidateId = candidate.Id; Phase = "准备动作"; }
         return started;
     }
 

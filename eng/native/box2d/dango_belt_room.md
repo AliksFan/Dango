@@ -4,7 +4,8 @@
 
 The existing frame layout, 9-control step ABI and default behavior are unchanged.
 `dango_belt_room_step_muscles` adds single-step shake time `[0,2]` and strength
-`[0,1]`. Zero strength follows the ordinary path. Active shake rejects concurrent
+`[0,2]` (extended from `[0,1]` for isolated amplitude candidates). Existing input
+values retain exactly the same force. Zero strength follows the ordinary path. Active shake rejects concurrent
 horizontal, vertical, jump, drag and cancel controls. Inputs are validated before
 writes and are never retained after a successful or refused step. The existing
 fault rollback and prepared-scene barrier apply.

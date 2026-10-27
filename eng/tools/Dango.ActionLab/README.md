@@ -6,6 +6,8 @@
 
 2026-10-27：用户确定主动动作由身体内部肌肉收缩产生、力作用在身体部位之间，并授权先单独尝试抖身。当前增量只替换抖身；其它 13 动作保留原实验实现，尚未迁移到这条肌肉原则。
 
+用户随后批准多候选界面：每动作一行，候选按钮并排，点击即播放并高亮实际播放项。抖身仅保留“当前／增强／更强”三档，百分比只作参考，不为精确位移比例反复调参。其余动作各保留一个当前版本；候选目录允许后续按动作增补。
+
 抖身采用随材料移动的左右斜向肌束，每束两端施加等大反向、沿当前连线的收缩拉力；多束分布覆盖身体，激活相位稍错开，靠近地面接触的束平滑减力。收缩在约 0.75 秒内缓入、交替并衰减，随后留约 0.3 秒被动回弹。肌束可做功，但自身合力和合力矩应为零；不设置脚底坐标、不改摩擦、不牵引顶部、不直接修改轮廓或速度。地面接触、重力、被动弹性和现有安全门禁保持原职责。波浪外观是待观察结果，不直接绘制或保证。
 
 实施顺序：原生单步肌肉输入与成对力／工作量检查 → 托管单步接线及抖身控制器替换 → 实际按钮／原生形变、接触与取消验证。新能力通过可选导出接入，不改变现有输入／帧 ABI；不支持时明确失败。后台数值检查与用户审美审核分别报告，达到有辨识度的形变后再交付候选。
@@ -101,7 +103,7 @@ dotnet build eng/tools/Dango.ActionLab/Dango.ActionLab.csproj -c Release -p:NuGe
 & ./artifacts/action-lab/muscle-candidate/Dango.ActionLab.exe --verify-shake ./artifacts/action-lab/muscle-check-new
 ```
 
-验证命令的可选第三参数为基线 room DLL，用于 360 步普通输入等价和旧模块不支持能力的检查。若基线支持肌肉能力，分区对照固定按首轮强度 0.35 回放，并非自动识别任意版本的动作参数；当前对照使用首轮肌束模块。首轮可见入口为 `artifacts/action-lab/muscle-candidate/Dango.ActionLab.exe`，未覆盖旧实验输出或日常安装。
+该历史版本验证命令的可选第三参数为基线 room DLL，用于 360 步普通输入等价和旧模块不支持能力的检查。若基线支持肌肉能力，历史分区对照固定按首轮强度 0.35 回放，并非自动识别任意版本的动作参数。当前命令的基线合同见文末三档候选节。首轮可见入口为 `artifacts/action-lab/muscle-candidate/Dango.ActionLab.exe`，未覆盖旧实验输出或日常安装。
 
 实际结果：Release 构建 0 警告／0 错误；控制器 14/14；Room 场景 8 通过、2 个旧模块负控夹具未提供。原生肌束、原轻跳和产品合同回归通过。肌束检查覆盖不对称／旋转形状的真实成对力、零输入等价、自由体线动量、实际做功、松手清场、非法输入无写入及连续 10 次抖身；连续试验核心累计最大漂移约 0.45 DIP，接地和安全门禁保持。
 
@@ -111,7 +113,7 @@ dotnet build eng/tools/Dango.ActionLab/Dango.ActionLab.csproj -c Release -p:NuGe
 
 `muscle-check-01/shake-simulated-time.gif` 是同一真实物理与渲染链的模拟时间回放；带截图编码的后台单步耗时不证明前台墙钟节奏。前台手感、波纹自然度、DPI 与用户审美待审核。本轮仅覆盖单只、默认身体、平地实验，不接入家具或正式场景。用户已授权启动新候选；进程已保留，电脑控制接口报告窗口最小化且无法恢复，前台呈现未据此判为通过。后台验证进程均已退出；无新端口、服务、业务持久数据或真实数据重置。
 
-## 2026-10-27 中段抖身候选（当前）
+## 2026-10-27 中段抖身候选（上一版，基线 5cb0515）
 
 依据用户“增大身体中段活动，减少顶部活动”的反馈，只调整抖身的肌束协同与强度。8 条肌束仍在身体材料点之间成对施加中央拉力；左右镜像肌束同相协同，邻束相位差改为 1.4 rad，强度 0.72，频率仍为 3.2 Hz。每侧第 i 条（i=0..3）的两个材料角为 `(0.55+0.04*i)*π` 与 `(1.85+0.04*i)*π`，另一侧按 `π-angle` 镜像。约 0.75 s 驱动、0.3 s 被动收稳。中段增强来自肌束协同和错相，并非将所有发力点下移；顶部仍参与受力，没有固定顶部或锁脚。
 
@@ -131,3 +133,27 @@ dotnet build eng/tools/Dango.ActionLab/Dango.ActionLab.csproj -c Release -p:NuGe
 最终验证：Release 构建 0 警告／0 错误；控制器与 Room 针对性测试 22 通过、2 个旧模块负控夹具未提供而跳过。原生肌束、原轻跳、产品合同回归均通过；故障时回滚且不保留肌肉输入，零输入等价及新旧模块 360 步普通输入逐值一致。专项证据为 [`muscle-mid-check-03/result.json`](../../../artifacts/action-lab/muscle-mid-check-03/result.json)，完整按钮回归为 [`muscle-mid-regression-01/result.json`](../../../artifacts/action-lab/muscle-mid-regression-01/result.json)，28 个动作方向组合通过。`muscle-mid-check-01` 失败，`muscle-mid-check-02` 尚未验证顶部 RMS 改善，两者均不作为最终改善证据。
 
 仅使用现有实验界面，沿用桌面规范 v0.1 第 2–6 节，无页面布局或主题变更。`muscle-mid-check-03/shake-simulated-time.gif` 是模拟时间回放；后台活动步约 17–18 ms、偶有 26 ms，不证明前台帧率或墙钟节奏。用户已授权打开新版窗口，前台手感、真实输入、波纹自然度、多 DPI 与用户审美仍待审核。本候选仅覆盖单只默认身体的平地实验，其余 13 个动作及正式场景接入不在本轮范围。
+
+## 2026-10-27 三档抖身与多候选界面（当前）
+
+保持上一版肌束位置、左右协同、相位、频率、包络和时长，只给本次动作传入冻结的驱动力参数，不改变其它 13 个动作。三档稳定 ID 为 `current`、`strong`、`max`，显示“当前／增强／更强”，驱动力分别为 0.72、1.08、1.44（参考 1×／1.5×／2×）。这些是驱动力比例，不保证位移线性；不将“更强”称为全参数空间内的最大稳定幅度。单步可选输入上限从 1 扩至 2，原有输入值的实际力保持不变；旧版模块不会被静默降档。当前档须与上一版中段候选的实际区域位移一致。
+
+界面通过 `ActionLabCandidates` 目录为每动作定义候选数组，UI 与验证共用 `ActionLabSession` 唯一步进路径。14 行共 16 个候选按钮；忙中、暂停或故障时禁用候选，不排队，取消释放驱动力，恢复不重播。候选列表可以纵向滚动，预览及停止／重新开始固定可见。窗口为 1160×760 DIP，最小 1060×700 DIP；主题、字体、图标、40 DIP 按钮和状态沿用桌面规范 v0.1 第 2–4 节，第 5–6 节用于细滚动与布局验收。现有细滚动条模板没有共享公开入口，实验局部沿用家具编辑器的模板结构、共用动态调色资源，并复用 `SettingsScrollViewer`；未扩展为生产控件迁移。
+
+可见入口为 `artifacts/action-lab/three-candidates/Dango.ActionLab.exe`，标题“Dango · 动作实验 · 三档抖身候选”。不会覆盖仍在运行的上一版实验目录或日常安装。
+
+```powershell
+dotnet build eng/tools/Dango.ActionLab/Dango.ActionLab.csproj -c Release -p:NuGetAudit=false -o artifacts/action-lab/three-candidates
+& ./artifacts/action-lab/three-candidates/Dango.ActionLab.exe --verify ./artifacts/action-lab/three-candidates-check-new
+& ./artifacts/action-lab/three-candidates/Dango.ActionLab.exe --verify-shake ./artifacts/action-lab/three-candidates-shake-new ./artifacts/action-lab/muscle-mid-candidate/dango_belt_room.dll
+```
+
+当前 `--verify-shake` 的可选第三参数若支持肌肉能力，应是上一版中段模块（0.72 强度、SHA-256 `4F26A1741DEFF22535A7CD4DE2B898A1F64306753E237F2DD7226391AD4CAD6B`），验证当前档区域位移保持一致；不自动推断历史动作参数。该命令同时检查三档的实际中段活动递增、接地、取消、暂停恢复、真实力／力矩／做功及 360 步普通输入等价。动图是模拟时间回放，不代表前台节奏或审美验收。
+
+三档原生单次及连续 10 次检查已通过，最终证据为 `artifacts/action-lab/three-candidates-native-final.txt`（含最强档故障回滚）：中段单点峰值约 0.04173／0.07162／0.10157 m，离地间隙约 0，最大核心漂移均小于 0.003 m；只改变驱动力，没有为达到比例修改材料、摩擦、安全门限或积分预算。
+
+最终工程验证：Release 构建 0 警告／0 错误；控制器与 Room 测试 23 通过、2 个旧模块负控因夹具缺失而跳过，记录于 `tests/Dango.Desktop.Tests/TestResults/three-candidates-final.trx`。[`three-candidates-shake-01/result.json`](../../../artifacts/action-lab/three-candidates-shake-01/result.json) 的三档×两方向专项、当前档与上一版分区位移一致及 360 步普通输入等价均通过。[`three-candidates-check-03/result.json`](../../../artifacts/action-lab/three-candidates-check-03/result.json) 的 32 个候选方向组合通过，覆盖实际按钮接线、唯一播放高亮、停止、暂停恢复不重播、控制器无效时间故障禁用／重建与缺模块启动重试。原生 DLL SHA-256 为 `AE506184F9819DE6C3A25FA1721831F7E4B7C41FBDEF975F5127B6FBA0C2216D`。
+
+隐藏 WPF 对最小 1044×660、常用 1144×720 与纵向 1044×900 客户区逐候选检查祖先裁切、40 DIP 命中尺寸、真实滚动到尾部及固定停止／重建；最小尺寸预览保持至少 520×340 DIP。静态截图已检查。`three-candidates-check-01/02` 因把“末按钮可见”错误等同于“必须发生滚动”而失败；已改为显式滚到底部后验证真实滚动位置，裁切与命中门限不变，以 `check-03` 为最终证据。
+
+仍未验证：新版真实鼠标／键盘／滚轮与拖动手感、前台连续节奏、DPI／高对比矩阵及三档用户审美。后台验证进程均已退出；仅保留构建、截图、模拟时间动图与证据，无新端口、服务或业务持久数据。当前为本地实验候选，未合入 main、推送、部署或替换日常安装及受保护 DLL；此前留给用户审核的窗口不自动关闭。

@@ -74,6 +74,28 @@ public sealed class DangoActionControllerTests
         Assert.AreEqual(default, shake.Advance(.02, Sample()).Motor);
     }
     [TestMethod]
+    public void ShakeCandidatesSnapshotTheirStrengthAndReleaseWithoutChangingTheDefault()
+    {
+        var controller = new DangoActionController();
+        foreach (var strength in new[] { .72, 1.08, 1.44 })
+        {
+            Assert.IsTrue(controller.TryStart(DangoActionKind.Shake, 1, Sample(), strength));
+            Assert.AreEqual(strength, controller.Advance(.1, Sample()).Motor.MuscleShakeStrength);
+            Assert.IsFalse(controller.TryStart(DangoActionKind.Shake, -1, Sample(), .8));
+            Assert.AreEqual(strength, controller.Advance(.1, Sample()).Motor.MuscleShakeStrength);
+            Assert.AreEqual(default, controller.Cancel().Motor);
+        }
+        foreach (var invalid in new[] { 0, -1, 2.01, double.NaN, double.PositiveInfinity })
+        {
+            Assert.IsFalse(controller.TryStart(DangoActionKind.Shake, 1, Sample(), invalid));
+            Assert.IsFalse(controller.Active);
+        }
+        Assert.IsFalse(controller.TryStart(DangoActionKind.Sway, 1, Sample(), 1.44));
+        Assert.IsTrue(controller.TryStart(DangoActionKind.Shake, 1, Sample()));
+        Assert.AreEqual(.72, controller.Advance(.1, Sample()).Motor.MuscleShakeStrength);
+    }
+
+    [TestMethod]
     public void SlowBlinkEmitsOneEventAndReleasesOnlyEyeChannels()
     {
         var c = new DangoActionController();

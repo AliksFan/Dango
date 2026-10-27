@@ -34,7 +34,7 @@ static int force_contract(void){
  CHECK(!dango_belt_room_destroy(handle));return 0;
 }
 
-static int shake_and_release(void){
+static int shake_and_release(float strength){
  void* handles[2]={0};dango_belt_room_frame frames[2],baseline;
  for(int j=0;j<2;++j)CHECK(!dango_belt_room_create(&preview_config,preview_calibration,11,0,0,-5,5,&handles[j]));
  double upper=0,middle=0,top=0,foot=0,drift=0,gap=0,work=0,after=0;int active=0;double last_diag[32];
@@ -42,7 +42,7 @@ static int shake_and_release(void){
  for(int i=0;i<360;++i){
   int shaking=i>=120&&i<165;float time=(float)((i-120)/60.0);
   CHECK(!dango_belt_room_step(handles[0],.0166666f,&input,1));
-  CHECK(!dango_belt_room_step_muscles(handles[1],.0166666f,&input,1,shaking?time:0.f,shaking?.72f:0.f));
+  CHECK(!dango_belt_room_step_muscles(handles[1],.0166666f,&input,1,shaking?time:0.f,shaking?strength:0.f));
   for(int j=0;j<2;++j)CHECK(!dango_belt_room_read_frame(handles[j],&frames[j],sizeof frames[j]));
   if(i==119)baseline=frames[1];
   if(i<120){CHECK(!memcmp(frames[0].curve,frames[1].curve,sizeof frames[0].curve));CHECK(!memcmp(frames[0].body_snapshot,frames[1].body_snapshot,sizeof frames[0].body_snapshot));}
@@ -65,12 +65,12 @@ static int shake_and_release(void){
    if(!shaking)CHECK(last_diag[5]==0&&last_diag[4]==0);
   }
  }
- printf("muscle shake: edge=%.9g middle=%.9g top=%.9g foot=%.9g coreDrift=%.9g peakGap=%.9g after=%.9g work=%.9g activeFrames=%d\n",upper,middle,top,foot,drift,gap,after,work,active);
+ printf("muscle shake strength=%.2f: edge=%.9g middle=%.9g top=%.9g foot=%.9g coreDrift=%.9g peakGap=%.9g after=%.9g work=%.9g activeFrames=%d\n",(double)strength,upper,middle,top,foot,drift,gap,after,work,active);
  CHECK(active>30&&upper>.004&&upper<.15&&foot<upper*.7&&drift<.02&&gap<.003&&after<.004&&work>0);
  /* Invalid calls must not modify either physics or held/diagnostic state. */
  belt_body* b=room_body(room_lookup(handles[1]));belt_body before=*b;room_world world_before=*room_lookup(handles[1]);
  CHECK(dango_belt_room_step_muscles(handles[1],.0166666f,&input,1,NAN,1)==DANGO_BELT_ROOM_ARGUMENT);
- CHECK(dango_belt_room_step_muscles(handles[1],.0166666f,&input,1,.2f,1.01f)==DANGO_BELT_ROOM_ARGUMENT);
+ CHECK(dango_belt_room_step_muscles(handles[1],.0166666f,&input,1,.2f,2.01f)==DANGO_BELT_ROOM_ARGUMENT);
  input.controls[3]=1;CHECK(dango_belt_room_step_muscles(handles[1],.0166666f,&input,1,.2f,1)==DANGO_BELT_ROOM_ARGUMENT);
  CHECK(!memcmp(b,&before,sizeof before)&&!memcmp(room_lookup(handles[1]),&world_before,sizeof world_before));
  for(int j=0;j<2;++j)CHECK(!dango_belt_room_destroy(handles[j]));return 0;
@@ -93,17 +93,17 @@ static int free_body_work(void){
  CHECK(!dango_belt_room_destroy(handle));return 0;
 }
 
-static int repeated_shakes(void){
+static int repeated_shakes(float strength){
  void* handle=0;CHECK(!dango_belt_room_create(&preview_config,preview_calibration,11,0,0,-5,5,&handle));
  dango_belt_room_input input={0};input.body_id=1;dango_belt_room_frame frame;
  for(int i=0;i<120;++i)CHECK(!dango_belt_room_step(handle,.0166666f,&input,1));
  CHECK(!dango_belt_room_read_frame(handle,&frame,sizeof frame));double x=frame.stats[0],maximum=0;
  for(int cycle=0;cycle<10;++cycle)for(int i=0;i<63;++i){
-  CHECK(!dango_belt_room_step_muscles(handle,.0166666f,&input,1,i<45?(float)(i/60.0):0.f,i<45?.72f:0.f));
+  CHECK(!dango_belt_room_step_muscles(handle,.0166666f,&input,1,i<45?(float)(i/60.0):0.f,i<45?strength:0.f));
   CHECK(!dango_belt_room_read_frame(handle,&frame,sizeof frame));CHECK(frame.stats[12]<.003);
   maximum=fmax(maximum,fabs(frame.stats[0]-x));
  }
- printf("ten consecutive shakes: maximum core drift=%.9g m; real contact and safety gates held\n",maximum);
+ printf("ten consecutive shakes strength=%.2f: maximum core drift=%.9g m; real contact and safety gates held\n",(double)strength,maximum);
  CHECK(maximum<.05);CHECK(!dango_belt_room_destroy(handle));return 0;
 }
 
@@ -113,7 +113,7 @@ static int fault_rollback(void){
  for(int i=0;i<120;++i)CHECK(!dango_belt_room_step(handle,.0166666f,&input,1));
  room_world* world=room_lookup(handle);belt_body* body=room_body(world);
  body->speed_saturation=0;body->cfg.maximum_speed=1e-8f;belt_body before=*body;uint64_t tick=world->tick;
- CHECK(dango_belt_room_step_muscles(handle,.0166666f,&input,1,.2f,.72f)<0);
+ CHECK(dango_belt_room_step_muscles(handle,.0166666f,&input,1,.2f,1.44f)<0);
  CHECK(world->fault!=0&&world->tick==tick);
  CHECK(!memcmp(body->q,before.q,sizeof before.q)&&!memcmp(body->v,before.v,sizeof before.v));
  CHECK(!memcmp(body->force_ledger,before.force_ledger,sizeof before.force_ledger));
@@ -122,4 +122,9 @@ static int fault_rollback(void){
  CHECK(!dango_belt_room_destroy(handle));return 0;
 }
 
-int main(void){CHECK(!force_contract());CHECK(!shake_and_release());CHECK(!free_body_work());CHECK(!repeated_shakes());CHECK(!fault_rollback());puts("internal muscle force pairs, real deformation/contact, zero-input equality and release PASS");return 0;}
+int main(void){
+ CHECK(!force_contract());CHECK(!free_body_work());CHECK(!fault_rollback());
+ const float candidates[]={.72f,1.08f,1.44f};
+ for(int i=0;i<3;++i){CHECK(!shake_and_release(candidates[i]));CHECK(!repeated_shakes(candidates[i]));}
+ puts("internal muscle force pairs, real deformation/contact, zero-input equality and release PASS");return 0;
+}

@@ -28,11 +28,24 @@ internal static class ShakeVerification
             _ = new Application();
             using var panel = new ActionLabPanel(module);
             using var source = new HwndSource(new HwndSourceParameters("Dango hidden internal shake verification")
-            { Width = 1040, Height = 720, WindowStyle = unchecked((int)0x80000000) }) { RootVisual = panel };
-            ActionLabVerification.Layout(panel, 1040, 720);
+            { Width = 1144, Height = 720, WindowStyle = unchecked((int)0x80000000) }) { RootVisual = panel };
+            ActionLabVerification.Layout(panel, 1144, 720);
             Require(!IsWindowVisible(source.Handle), "Verification surface became visible.");
+            var regionMotions = new List<RegionMotion>();
+            foreach (var candidate in ActionLabCandidates.For(DangoActionKind.Shake))
+            {
+                var motion = MeasureRegions(module, candidate.ShakeStrength);
+                if (regionMotions.Count > 0)
+                    Require(motion.MiddleRms > regionMotions[^1].MiddleRms * 1.05,
+                        "A stronger candidate did not visibly increase middle-body motion.");
+                regionMotions.Add(motion);
+                cases.Add(new { candidateId = candidate.Id, candidate.ShakeStrength, regions = motion });
+            }
+            foreach (var candidate in ActionLabCandidates.For(DangoActionKind.Shake))
             foreach (var direction in new[] { -1, 1 })
             {
+                var candidateDirectory = Path.Combine(directory, candidate.Id);
+                Directory.CreateDirectory(candidateDirectory);
                 panel.Restart();
                 var session = panel.Session;
                 var initial = session.Runtime.LastBeltRoomFrame!;
@@ -40,8 +53,8 @@ internal static class ShakeVerification
                 var work = 0d; var torque = 0d; var forces = 0d; var active = 0;
                 var maximumStepMilliseconds = 0d; var activeStepMilliseconds = 0d;
                 var gif = new GifBitmapEncoder();
-                ActionLabVerification.Save(panel, directory, "neutral.png", 1040, 720);
-                panel.TriggerForVerification(DangoActionKind.Shake, direction);
+                ActionLabVerification.Save(panel, candidateDirectory, "neutral.png", 1144, 720);
+                panel.TriggerForVerification(DangoActionKind.Shake, direction, candidate.Id);
                 Require(session.Controller.Active, "Actual shake button failed to start.");
                 for (var i = 0; i < 240; i++)
                 {
@@ -57,6 +70,7 @@ internal static class ShakeVerification
                         activeStepMilliseconds += watch.Elapsed.TotalMilliseconds;
                         maximumStepMilliseconds = Math.Max(maximumStepMilliseconds, watch.Elapsed.TotalMilliseconds);
                         Require(muscles.PairCount == 8, "The muscle field did not contain eight real force pairs.");
+                        Require(Math.Abs(muscles.Strength - candidate.ShakeStrength) < 1e-6, "The selected candidate used a different muscle strength.");
                     }
                     Require(frame.BodySnapshot[83] == 0, "Shake used the old top-drag actuator.");
                     peakGap = Math.Max(peakGap, frame.Stats[12]); drift = Math.Max(drift, Math.Abs(frame.Stats[0] - initial.Stats[0]));
@@ -71,7 +85,7 @@ internal static class ShakeVerification
                     if (upperThisFrame > peakUpper)
                     {
                         peakUpper = upperThisFrame;
-                        if (direction == 1) ActionLabVerification.Save(panel, directory, "peak.png", 1040, 720);
+                        if (direction == 1) ActionLabVerification.Save(panel, candidateDirectory, "peak.png", 1144, 720);
                     }
                     if (direction == 1 && i < 90 && i % 3 == 0) AddGifFrame(gif, panel);
                 }
@@ -79,10 +93,10 @@ internal static class ShakeVerification
                 Require(peakUpper > .008 && peakFoot < peakUpper * .7 && drift < .02 && peakGap < .003 && settled < .004,
                     $"Body/contact response failed: upper={peakUpper}, foot={peakFoot}, drift={drift}, gap={peakGap}, settled={settled}");
                 Require(forces < 1e-10 && torque < 1e-10 && work > 0, "Internal force/work accounting failed.");
-                if (direction == 1) { using var stream = File.Create(Path.Combine(directory, "shake-simulated-time.gif")); gif.Save(stream); }
-                cases.Add(new { direction, activeFrames = active, peakUpper, peakFoot, drift, peakGap, settled, work, forces, torque,
+                if (direction == 1) { using var stream = File.Create(Path.Combine(candidateDirectory, "shake-simulated-time.gif")); gif.Save(stream); }
+                cases.Add(new { candidateId = candidate.Id, candidate.ShakeStrength, direction, activeFrames = active, peakUpper, peakFoot, drift, peakGap, settled, work, forces, torque,
                     averageActiveStepMilliseconds = activeStepMilliseconds / active, maximumStepMilliseconds });
-                panel.TriggerForVerification(DangoActionKind.Shake, direction);
+                panel.TriggerForVerification(DangoActionKind.Shake, direction, candidate.Id);
                 for (var i = 0; i < 15; i++) panel.Step();
                 session.Cancel(); panel.Step();
                 Require(session.Runtime.ReadActionMuscles().ActiveSubsteps == 0 && !session.Controller.Active, "Cancel retained muscle activation.");
@@ -97,11 +111,13 @@ internal static class ShakeVerification
                 using var reference = new DangoBeltRoomWorld(baselineModule, DangoBodyMaterial.Configure(DangoBodyControls.Default));
                 if (reference.SupportsMuscleActuation)
                 {
-                    var previousRegions = MeasureRegions(baselineModule, .35); var currentRegions = MeasureRegions(module, DangoActionController.ShakeStrength);
+                    var previousRegions = MeasureRegions(baselineModule, DangoActionController.ShakeStrength); var currentRegions = regionMotions[0];
                     cases.Add(new { previousRegions, currentRegions });
-                    Require(currentRegions.Middle > previousRegions.Middle && currentRegions.Top < previousRegions.Top &&
-                        currentRegions.MiddleRms > previousRegions.MiddleRms && currentRegions.TopRms < previousRegions.TopRms,
-                        "Mid-body activity did not increase while top activity decreased.");
+                    Require(Math.Abs(currentRegions.Middle - previousRegions.Middle) < 1e-7 &&
+                        Math.Abs(currentRegions.Top - previousRegions.Top) < 1e-7 &&
+                        Math.Abs(currentRegions.MiddleRms - previousRegions.MiddleRms) < 1e-7 &&
+                        Math.Abs(currentRegions.TopRms - previousRegions.TopRms) < 1e-7,
+                        "The current candidate diverged from the previous middle-body version.");
                 }
             }
             Require(!IsWindowVisible(source.Handle), "Hidden verification became visible.");
@@ -167,9 +183,9 @@ internal static class ShakeVerification
 
     private static void AddGifFrame(GifBitmapEncoder gif, ActionLabPanel panel)
     {
-        var bitmap = new RenderTargetBitmap(1040, 720, 96, 96, PixelFormats.Pbgra32);
+        var bitmap = new RenderTargetBitmap(1144, 720, 96, 96, PixelFormats.Pbgra32);
         var backdrop = new DrawingVisual();
-        using (var dc = backdrop.RenderOpen()) dc.DrawRectangle((Brush)panel.FindResource("HomeBackground"), null, new Rect(0,0,1040,720));
+        using (var dc = backdrop.RenderOpen()) dc.DrawRectangle((Brush)panel.FindResource("HomeBackground"), null, new Rect(0,0,1144,720));
         bitmap.Render(backdrop); bitmap.Render(panel);
         var metadata = new BitmapMetadata("gif"); metadata.SetQuery("/grctlext/Delay", (ushort)5); metadata.SetQuery("/grctlext/Disposal", (byte)2);
         gif.Frames.Add(BitmapFrame.Create(bitmap, null, metadata, null));

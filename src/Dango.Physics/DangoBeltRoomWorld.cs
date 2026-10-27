@@ -112,7 +112,7 @@ public sealed unsafe partial class DangoBeltRoomWorld : IDisposable
         VerifyAccess();
         if (!Finite(input.Horizontal) || Math.Abs(input.Horizontal) > 1 ||
             !Finite(input.MuscleShakeTime) || input.MuscleShakeTime is < 0 or > 2 ||
-            !Finite(input.MuscleShakeStrength) || input.MuscleShakeStrength is < 0 or > 1 ||
+            !Finite(input.MuscleShakeStrength) || input.MuscleShakeStrength is < 0 or > 2 ||
             !Finite(input.Stretch) || input.Stretch is < 0 or > 1 ||
             !Finite(input.Downward) || input.Downward is < 0 or > 1 ||
             !Finite(input.DragTargetX) || !Finite(input.DragTargetY)) throw new ArgumentOutOfRangeException(nameof(input));

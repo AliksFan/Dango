@@ -310,7 +310,7 @@ static int room_step_muscles(void* handle,float dt,const dango_belt_room_input* 
  if(w->prepared)return DANGO_BELT_ROOM_BUSY;
  if(!input||count!=1||input->body_id!=1||input->reserved||dt!=.0166666f)return DANGO_BELT_ROOM_ARGUMENT;for(int i=0;i<9;++i)if(!isfinite(input->controls[i]))return DANGO_BELT_ROOM_ARGUMENT;
  const float* c=input->controls;if(fabsf(c[0])>1||c[1]<0||c[1]>1||c[6]<0||c[6]>1)return DANGO_BELT_ROOM_ARGUMENT;const int flags[4]={2,3,7,8};for(int i=0;i<4;++i)if(c[flags[i]]!=0&&c[flags[i]]!=1)return DANGO_BELT_ROOM_ARGUMENT;if(w->tick==UINT64_MAX)return DANGO_BELT_ROOM_REVISION;
- if(!isfinite(time)||time<0||time>2||!isfinite(strength)||strength<0||strength>1)return DANGO_BELT_ROOM_ARGUMENT;
+ if(!isfinite(time)||time<0||time>2||!isfinite(strength)||strength<0||strength>2)return DANGO_BELT_ROOM_ARGUMENT;
  if(strength>0&&(c[0]!=0||c[1]!=0||c[2]!=0||c[3]!=0||c[6]!=0||c[8]!=0))return DANGO_BELT_ROOM_ARGUMENT;
  belt_body* b=room_body(w);belt_body backup=*b;room_world world_backup=*w;
  b->muscle_time=time;b->muscle_strength=strength;

@@ -4,6 +4,8 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Dango.Desktop.Rendering.Actions;
@@ -21,6 +23,7 @@ internal static class ActionLabVerification
     {
         string? directory = null;
         var reports = new List<object>();
+        var layoutReports = new List<object>();
         var failures = new List<string>();
         try
         {
@@ -29,17 +32,27 @@ internal static class ActionLabVerification
             _ = new Application();
             using var panel = new ActionLabPanel(module);
             using var source = new HwndSource(new HwndSourceParameters("Dango hidden action verification")
-            { Width = 1040, Height = 720, WindowStyle = unchecked((int)0x80000000) }) { RootVisual = panel };
-            Layout(panel, 1040, 720);
+            { Width = 1144, Height = 720, WindowStyle = unchecked((int)0x80000000) }) { RootVisual = panel };
+            Layout(panel, 1144, 720);
             Require(!IsWindowVisible(source.Handle), "Verification window became visible.");
             Require(panel.ActionButtons.Count == 14, "The experiment must expose exactly 14 actions.");
-            Save(panel, directory, "overview.png", 1040, 720);
-            Layout(panel, 924, 660); CheckButtons(panel, 924, 660);
-            Save(panel, directory, "minimum-layout.png", 924, 660);
-            Layout(panel, 1040, 720);
+            Save(panel, directory, "overview.png", 1144, 720);
+            Require(panel.CandidateButtons.Count == 16, "Expected three shake choices and thirteen existing actions.");
+            foreach (var (width, height, label) in new[] { (1044, 660, "minimum"), (1144, 720, "common"), (1044, 900, "portrait") })
+            {
+                Layout(panel, width, height);
+                CheckButtons(panel, width, height, requireScrolling: label == "minimum");
+                layoutReports.Add(new { label, width, height, extentHeight = panel.CandidateScroll.ExtentHeight,
+                    viewportHeight = panel.CandidateScroll.ViewportHeight, bottomOffset = panel.CandidateScroll.VerticalOffset });
+                Save(panel, directory, label + "-bottom.png", width, height);
+                panel.CandidateScroll.ScrollToTop(); panel.UpdateLayout();
+                Save(panel, directory, label + "-top.png", width, height);
+            }
+            Layout(panel, 1144, 720);
 
             foreach (var direction in new[] { -1, 1 })
             foreach (var (kind, name, _) in ActionLabPanel.Actions)
+            foreach (var candidate in ActionLabCandidates.For(kind))
             {
                 panel.Restart();
                 var session = panel.Session;
@@ -52,8 +65,14 @@ internal static class ActionLabVerification
                 var initialEye = session.Runtime.LastFrame!.Bodies[0].Attachments!.Face.Left;
                 var minEyeOpenness = 1d; var maxEyeShift = 0d;
                 var airborne = false; var jumpAccepted = false; var steps = 0;
-                panel.TriggerForVerification(kind, direction);
-                Require(session.Controller.Active, $"Button failed to start {name}: {session.Phase}");
+                panel.CandidateButtons[(kind, candidate.Id)].BringIntoView(); panel.UpdateLayout();
+                CheckReachable(panel.CandidateButtons[(kind, candidate.Id)], panel, 1144, 720);
+                panel.TriggerForVerification(kind, direction, candidate.Id);
+                Require(session.Controller.Active, $"Button failed to start {name}/{candidate.Id}: {session.Phase}");
+                Require(session.LastCandidateId == candidate.Id, "Button selected a different candidate.");
+                Require(panel.CandidateButtons.Values.All(b => !b.IsEnabled), "Busy scene left candidate buttons enabled.");
+                Require(panel.CandidateButtons.Count(b => Equals(b.Value.Tag, "Selected")) == 1 &&
+                    Equals(panel.CandidateButtons[(kind, candidate.Id)].Tag, "Selected"), "Playing highlight does not identify exactly this candidate.");
                 for (; steps < 370 && session.Controller.Active && session.Error is null; steps++)
                 {
                     panel.Step();
@@ -76,15 +95,17 @@ internal static class ActionLabVerification
                     maxEyeShift = Math.Max(maxEyeShift, Math.Abs(eye.Center.X - initialEye.Center.X));
                     airborne |= !observation.Grounded && frame.Stats[12] > .003;
                     jumpAccepted |= frame.Stats[15] != 0;
-                    if (direction == 1 && steps == 24) Save(panel, directory, kind + ".png", 1040, 720);
+                    if (direction == 1 && steps == 24) Save(panel, directory, kind + "-" + candidate.Id + "-right.png", 1144, 720);
                 }
                 var last = session.Runtime.LastBeltRoomFrame!;
                 var moved = session.Observe().CoreX - start.CoreX;
-                reports.Add(new { action = kind.ToString(), name, direction, steps, nativeSteps = last.Tick - nativeStart,
+                reports.Add(new { action = kind.ToString(), name, candidateId = candidate.Id, strength = kind == DangoActionKind.Shake ? candidate.ShakeStrength : (double?)null, direction, steps, nativeSteps = last.Tick - nativeStart,
                     error = session.Error, controllerError = session.Controller.Error, moved, minimumHeight, maximumHeight,
                     startHeight, peakGap, maxPenetration, maxTopShift, peakMiddle, minEyeOpenness, maxEyeShift, airborne, jumpAccepted });
-                void Check(bool condition, string message) { if (!condition) failures.Add($"{kind}/{direction}: {message}"); }
+                void Check(bool condition, string message) { if (!condition) failures.Add($"{kind}/{candidate.Id}/{direction}: {message}"); }
                 Check(session.Error is null && !session.Controller.Active, $"Action failed: {session.Error ?? "timeout"}");
+                Check(panel.CandidateButtons.Values.All(b => b.IsEnabled), "Completed scene did not re-enable all candidates.");
+                Check(panel.CandidateButtons.Values.All(b => b.Tag is null), "Completed action retained a playing highlight.");
                 Check(last.Tick - nativeStart == (ulong)steps, "Native step ownership diverged.");
                 Check(maxPenetration < .003, $"Ground penetration: {maxPenetration}");
                 if (kind == DangoActionKind.ChargedHop)
@@ -114,36 +135,63 @@ internal static class ActionLabVerification
             // Same button path, then cancellation and minimize-style pause: no held
             // force, no queued replay, and no native advancement during the pause.
             panel.Restart(); panel.TriggerForVerification(DangoActionKind.Sway, 1); panel.Step();
-            panel.Session.Cancel(); Require(!panel.Session.Controller.Active, "Cancel retained an action.");
+            Require(panel.StopButton.IsEnabled, "Stop was disabled while playing.");
+            panel.StopButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Require(!panel.Session.Controller.Active, "Cancel retained an action.");
             panel.Step();
             Require(panel.Session.Runtime.LastBeltRoomFrame!.BodySnapshot[83] == 0, "Cancel retained the native drag force.");
             var pausedAt = panel.Session.Runtime.LastBeltRoomFrame!.Tick;
-            panel.Session.SetPaused(true);
+            // Pause an active candidate to prove it is cancelled rather than resumed.
+            panel.TriggerForVerification(DangoActionKind.Shake, -1, "strong"); panel.Step();
+            pausedAt = panel.Session.Runtime.LastBeltRoomFrame!.Tick;
+            panel.Session.SetPaused(true); panel.Render();
+            Require(panel.CandidateButtons.Values.All(b => !b.IsEnabled), "Paused scene left actions enabled.");
+            Require(panel.RestartButton.IsEnabled, "Paused scene hid recovery.");
             for (var i = 0; i < 20; i++) panel.Step();
             Require(panel.Session.Runtime.LastBeltRoomFrame!.Tick == pausedAt, "Paused scene advanced.");
             panel.Session.SetPaused(false); panel.Step();
             Require(!panel.Session.Controller.Active && panel.Session.Runtime.LastBeltRoomFrame!.Tick == pausedAt + 1, "Resume replayed an action or skipped a step.");
+            Require(panel.CandidateButtons.Values.All(b => b.IsEnabled), "Resume did not re-enable candidates.");
             panel.TriggerForVerification(DangoActionKind.Squint, 1);
             for (var i = 0; i < 40; i++) panel.Step();
             panel.Session.Cancel();
             for (var i = 0; i < 60; i++) panel.Step();
             Require(panel.Session.Runtime.LastFrame!.Bodies[0].Attachments!.Face.Left.Openness > .95, "Cancel retained an eye pose.");
+            // Exercise the controller's actual invalid-time fault gate, then the
+            // session's error propagation. This is not a native-fault simulation.
+            panel.TriggerForVerification(DangoActionKind.Shake, 1, "max");
+            panel.Session.Controller.Advance(double.NaN, panel.Session.Observe()); panel.Step();
+            Require(panel.Session.Error is not null && !panel.Session.Controller.Active, "Controller fault did not stop the session.");
+            Require(panel.CandidateButtons.Values.All(b => !b.IsEnabled), "Fault left actions enabled.");
+            var faultAt = panel.Session.Runtime.LastBeltRoomFrame!.Tick;
+            for (var i = 0; i < 20; i++) panel.Step();
+            Require(panel.Session.Runtime.LastBeltRoomFrame!.Tick == faultAt, "Faulted scene kept advancing.");
+            CheckReachable(panel.RestartButton, panel, 1144, 720);
+            Require(panel.RestartButton.IsEnabled, "Fault disabled recovery.");
+            panel.RestartButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Require(panel.Session.Error is null && panel.CandidateButtons.Values.All(b => b.IsEnabled), "Rebuild did not recover the session.");
             // Exercise real startup failure/retry, using only a new experiment-owned
             // module path. No missing-file error is allowed to close the review UI.
             var recoveryModule = Path.Combine(directory, "recovery-module.dll");
             using var recovery = new ActionLabHost(recoveryModule);
             Require(recovery.Panel is null && recovery.Error is not null && recovery.RetryButton is not null, "Startup failure did not expose retry.");
             File.Copy(module, recoveryModule);
+            Require(recovery.RetryButton!.IsEnabled, "Startup retry is disabled.");
             recovery.RetryButton!.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Require(recovery.Panel is not null && recovery.Error is null, "Retry did not recover the real native scene.");
-            Write(directory, new { passed = failures.Count == 0, failures, hidden = true, buttonCount = 14, cases = reports,
+            Require(reports.Count == 32, "Candidate/direction matrix did not cover exactly 32 cases.");
+            Write(directory, new { passed = failures.Count == 0, failures, hidden = true, actionCount = 14, buttonCount = 16, expectedCases = 32, cases = reports,
+                layoutSizes = new[] { "1044x660 minimum client", "1144x720 common client", "1044x900 portrait client" },
+                layouts = layoutReports,
+                scrolling = "Every candidate brought into view at all three sizes; ancestor clips and fixed tools checked at every position.",
+                faultRecovery = "Controller invalid-time fault stops the session; all candidates disable; rebuild recovers. Missing native module startup/retry also covered.",
                 moduleSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(module))),
                 scope = "deterministic real native steps + hidden WPF buttons/rendering; visible input, wall-clock cadence and aesthetics remain unverified" });
             return failures.Count == 0 ? 0 : 1;
         }
         catch (Exception error)
         {
-            if (directory is not null) Write(directory, new { passed = false, failure = error.Message, cases = reports });
+            if (directory is not null) Write(directory, new { passed = false, failure = error.Message, cases = reports, layouts = layoutReports });
             return 1;
         }
     }
@@ -151,14 +199,54 @@ internal static class ActionLabVerification
     internal static void Layout(ActionLabPanel panel, double width, double height)
     { panel.Measure(new(width, height)); panel.Arrange(new(0, 0, width, height)); panel.UpdateLayout(); }
 
-    private static void CheckButtons(ActionLabPanel panel, double width, double height)
+    private static void CheckButtons(ActionLabPanel panel, double width, double height, bool requireScrolling)
     {
-        foreach (var button in panel.AllButtons)
+        panel.CandidateScroll.ScrollToTop(); panel.UpdateLayout();
+        Require(panel.CandidateScroll.ScrollableWidth == 0, "Candidate list requires horizontal scrolling.");
+        var preview = panel.PreviewWorld.TransformToAncestor(panel).TransformBounds(new Rect(panel.PreviewWorld.RenderSize));
+        Require(preview.Width >= 520 - .5 && preview.Height >= 340 - .5, "Layout shrank the experiment preview below its natural size.");
+        foreach (var button in panel.CandidateButtons.Values)
         {
-            var bounds = button.TransformToAncestor(panel).TransformBounds(new Rect(button.RenderSize));
-            Require(bounds.Right <= width && bounds.Bottom <= height && bounds.X >= 0 && bounds.Y >= 0, "Action button was clipped.");
-            Require(button.ActualHeight >= 40, "Button hit area is too short.");
+            button.BringIntoView(); panel.UpdateLayout();
+            CheckReachable(button, panel, width, height);
+            CheckReachable(panel.StopButton, panel, width, height);
+            CheckReachable(panel.RestartButton, panel, width, height);
         }
+        // Read settled extent/viewport after BringIntoView has completed layout;
+        // a taller layout can fit all rows and correctly remain at offset zero.
+        var needsScrolling = panel.CandidateScroll.ExtentHeight > panel.CandidateScroll.ViewportHeight + .5;
+        if (requireScrolling) Require(needsScrolling, "Minimum layout did not exercise vertical scrolling.");
+        if (needsScrolling)
+        {
+            // BringIntoView need not move the viewport when only trailing margin
+            // overflows. Exercise the actual scroll extent explicitly as well.
+            panel.CandidateScroll.ScrollToBottom(); panel.UpdateLayout();
+            Require(panel.CandidateScroll.VerticalOffset > 0 &&
+                Math.Abs(panel.CandidateScroll.VerticalOffset - panel.CandidateScroll.ScrollableHeight) <= .5,
+                "Candidate list did not reach its actual bottom scroll position.");
+            CheckReachable(panel.CandidateButtons.Values.Last(), panel, width, height);
+            CheckReachable(panel.StopButton, panel, width, height);
+            CheckReachable(panel.RestartButton, panel, width, height);
+        }
+    }
+
+    private static void CheckReachable(Button button, ActionLabPanel panel, double width, double height)
+    {
+        var bounds = button.TransformToAncestor(panel).TransformBounds(new Rect(button.RenderSize));
+        Require(bounds.Right <= width + .5 && bounds.Bottom <= height + .5 && bounds.X >= -.5 && bounds.Y >= -.5,
+            "Button leaves the experiment bounds: " + System.Windows.Automation.AutomationProperties.GetName(button));
+        Require(button.ActualHeight >= 40 && button.ActualWidth >= 40, "Button hit area is too small.");
+        for (var ancestor = VisualTreeHelper.GetParent(button); ancestor is Visual visual; ancestor = VisualTreeHelper.GetParent(ancestor))
+        {
+            var local = button.TransformToAncestor(visual).TransformBounds(new Rect(button.RenderSize));
+            if (ancestor is FrameworkElement element && (element.ClipToBounds || element is ScrollContentPresenter))
+                Require(Contains(new Rect(element.RenderSize), local), "Button is clipped by a scrolling/layout ancestor.");
+            if (VisualTreeHelper.GetClip(visual) is { } clip)
+                Require(Contains(clip.Bounds, local), "Button is clipped by an ancestor geometry.");
+            if (ReferenceEquals(ancestor, panel)) break;
+        }
+        static bool Contains(Rect outer, Rect inner) => inner.X >= outer.X - .5 && inner.Y >= outer.Y - .5 &&
+            inner.Right <= outer.Right + .5 && inner.Bottom <= outer.Bottom + .5;
     }
 
     internal static void Save(ActionLabPanel panel, string directory, string name, int width, int height)

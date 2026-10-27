@@ -18,7 +18,7 @@ internal static class Program
         using var host = new ActionLabHost(module);
         var window = new Window
         {
-            Title = "Dango · 动作实验 · 中段抖身候选", Width = 1080, Height = 760, MinWidth = 940, MinHeight = 700,
+            Title = "Dango · 动作实验 · 三档抖身候选", Width = 1160, Height = 760, MinWidth = 1060, MinHeight = 700,
             Content = host, WindowStartupLocation = WindowStartupLocation.CenterScreen,
         };
         var watch = Stopwatch.StartNew();

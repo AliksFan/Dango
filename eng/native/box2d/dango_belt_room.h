@@ -42,7 +42,7 @@ DANGO_BELT_ROOM_API const char* dango_belt_room_contact_model(void);
 DANGO_BELT_ROOM_API int dango_belt_room_create(const dango_belt_config*,const float*,int,
  float,float,float,float,void**);
 DANGO_BELT_ROOM_API int dango_belt_room_step(void*,float,const dango_belt_room_input*,int);
-/* Optional single-step internal shake input: time [0,2], strength [0,1].
+/* Optional single-step internal shake input: time [0,2], strength [0,2].
    No held input; zero strength is exactly the ordinary path. */
 DANGO_BELT_ROOM_API int dango_belt_room_step_muscles(void*,float,const dango_belt_room_input*,int,float,float);
 /* v1, 32 doubles: 0 version,1 count,2 attempt,3 time,4 strength,5 active substeps,
