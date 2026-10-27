@@ -60,7 +60,6 @@ public partial class ProductHomeView : UserControl
     {
         AppearanceColorPicker = ShowAppearanceColorPicker;
         InitializeComponent();
-        originalApplyContent = ApplyButton.Content;
         InitializeAccessories();
         InitializePorchNavigation();
         RefreshAppearanceControls();
@@ -137,6 +136,7 @@ public partial class ProductHomeView : UserControl
         if (IsEditing) CloseEditor(focusStage: false);
         if (!IsSettingsOpen) SettingsPage.ScrollToTop();
         IsSettingsOpen = true;
+        RefreshDangoSlots();
         HomeContent.Visibility = Visibility.Collapsed;
         HomeFooter.Visibility = Visibility.Collapsed;
         SettingsPage.Visibility = Visibility.Visible;
@@ -637,7 +637,7 @@ public partial class ProductHomeView : UserControl
         if (Stage is null || HomeContent is null) return;
         var available = Math.Max(0, HomeContent.ActualHeight - Stage.Margin.Top - Stage.Margin.Bottom);
         var previewFits = dangoSlots is null ? available >= BasePreviewWidth * .75 + PreviewBottomSpace + 8
-            : available >= CommonPreviewTop + BasePreviewWidth * .75 + ShadowHeight + 92 + (IsEditing ? EditorSaveActionsHeight + 24 : 0);
+            : available >= CommonPreviewTop + BasePreviewWidth * .75 + PreviewBottomSpace;
         if (!IsPortraitLayout && !IsInPorch &&
             (previewFits || dangoSlots is null && IsEditing && SelectedEditor == HomeEditor.Face))
         {
@@ -648,11 +648,11 @@ public partial class ProductHomeView : UserControl
             if (double.IsNaN(Stage.Height) || Math.Abs(Stage.Height - available) > .5) Stage.Height = available;
             return;
         }
-        var commonHeight = CommonPreviewTop + BasePreviewWidth * .75 + HomeLauncherSpace + (dangoSlots is null ? 0 : 92);
+        var commonHeight = CommonPreviewTop + BasePreviewWidth * .75 + (dangoSlots is null ? HomeLauncherSpace : PreviewBottomSpace);
         Stage.MinHeight = Math.Max(minimumStageHeight, IsPortraitLayout ? PortraitPreviewHeight : commonHeight);
         if (IsEditing && !IsPortraitLayout)
             Stage.MinHeight = Math.Max(Stage.MinHeight, CommonPreviewTop + BasePreviewWidth * .75 + ShadowHeight +
-                EditorSaveActionsHeight + 16 + (dangoSlots is null ? 0 : 92));
+                EditorSaveActionsHeight + 16);
         var height = Math.Max(Stage.MinHeight, available);
         if (double.IsNaN(Stage.Height) || Math.Abs(Stage.Height - height) > .5) Stage.Height = height;
     }
@@ -676,11 +676,13 @@ public partial class ProductHomeView : UserControl
         ? FaceEditorSaveActions.DesiredSize.Height : AccessorySaveActionsSlot.DesiredSize.Height;
     // Reserve the same space in all three pages so switching the selected editor
     // cannot change the preview baseline when its footer has a different height.
-    private double PreviewBottomSpace => Math.Max(HomeLauncherSpace,
+    // The 74-DIP identity row replaces the home's lower free space; it is not
+    // an additional launcher row. Feedback has its own fixed row above the stage.
+    private double PreviewBottomSpace => Math.Max(Math.Max(HomeLauncherSpace, dangoSlots is null ? 0 : ShadowHeight + 74),
         ShadowHeight + Math.Max(FaceEditorSaveActions.DesiredSize.Height,
             AccessorySaveActionsSlot.DesiredSize.Height) + 16);
     private double PortraitPreviewHeight => CommonPreviewTop + BasePreviewWidth * .75 + ShadowHeight +
-        (IsEditing ? Math.Max(64, EditorSaveActionsHeight + 20) : 64) + (dangoSlots is null ? 0 : 92);
+        (dangoSlots is null ? IsEditing ? Math.Max(64, EditorSaveActionsHeight + 20) : 64 : PreviewBottomSpace - ShadowHeight);
     // Use the visible home area, not the editor's variable content height. The
     // projected native jump can rise 42 canvas units. Keep a further 20 DIP
     // above that arc; the native jump gate also measures the rendered hats.

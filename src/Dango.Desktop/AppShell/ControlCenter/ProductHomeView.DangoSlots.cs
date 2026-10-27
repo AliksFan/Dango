@@ -36,10 +36,12 @@ public partial class ProductHomeView
     internal Func<string, string, bool> DangoDeleteConfirmation { get; set; } = (title, text) =>
         System.Windows.MessageBox.Show(text, title, MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
     internal Func<string, string?>? DangoRenamePrompt { get; set; }
+    internal Func<string, string?>? DangoCreationNamePrompt { get; set; }
     internal bool IsCreatingDango => creationSlot.HasValue;
     internal bool IsDangoCreating => IsCreatingDango;
     private DateTime slotsTransitionUntil;
     private bool slotDialogOpen;
+    private string creationNameDraft = string.Empty;
     private bool IsDangoInputBlocked => slotDialogOpen || DangoNameButton.ContextMenu?.IsOpen == true;
     private bool ConfirmDangoDeletion(string title, string text)
     {
@@ -60,12 +62,9 @@ public partial class ProductHomeView
         dangoSlots = slots.OrderBy(x => x.Number).ToArray();
         selectedDangoId = selectedId;
         slotsBlocked = blocked;
-        DangoCreationNote.Text = IsCreatingDango && blocked && !string.IsNullOrEmpty(warning) ? "创建结果待核对，请重新读取。" : "创建后才会占用栏位。";
-        DangoNameButton.Content = IsCreatingDango ? CreationPreviewName :
+        DangoNameButton.Content = IsCreatingDango ? "新团子草稿" :
             selectedName ?? (selectedId.HasValue ? "请为团子起名" : "尚未创建团子");
         DangoSlotWarning.Text = warning ?? string.Empty;
-        DangoSlotWarning.Visibility = string.IsNullOrEmpty(warning) ? Visibility.Collapsed : Visibility.Visible;
-        DangoReloadButton.Visibility = string.IsNullOrEmpty(warning) ? Visibility.Collapsed : Visibility.Visible;
         RefreshAppearanceControls();
         RefreshDangoSlots();
         RefreshBeltVisibility();
@@ -75,7 +74,8 @@ public partial class ProductHomeView
     private void RefreshDangoSlots()
     {
         if (DangoSlotPanel is null) return;
-        DangoSlotPanel.Visibility = dangoSlots is null ? Visibility.Collapsed : Visibility.Visible;
+        DangoFeedbackBar.Visibility = dangoSlots is not null && !IsSettingsOpen && !string.IsNullOrEmpty(DangoSlotWarning.Text) ? Visibility.Visible : Visibility.Collapsed;
+        DangoSlotPanel.Visibility = dangoSlots is not null && !IsEditing && !IsInPorch && !IsSettingsOpen ? Visibility.Visible : Visibility.Collapsed;
         if (dangoSlots is null) return;
         var buttons = new[] { DangoSlot1, DangoSlot2, DangoSlot3 };
         for (var i = 0; i < 3; i++)
@@ -182,12 +182,9 @@ public partial class ProductHomeView
         creationSlot = slotIndex;
         ReplaceDangoSessions(draft, draftAcc);
         RestartSlotBody();
-        DangoCreationName.Text = string.Empty;
-        DangoCreationFields.Visibility = Visibility.Visible;
-        ApplyButton.Content = "创建";
-        ApplyButton.Width = 64;
-        ApplyButton.ToolTip = "创建 · 保存新团子";
-        AutomationProperties.SetName(ApplyButton, "创建团子");
+        creationNameDraft = string.Empty;
+        ApplyButton.ToolTip = "应用 · 下一步起名";
+        AutomationProperties.SetName(ApplyButton, "应用外观并为新团子起名");
         ShowEditor(HomeEditor.Face);
         RefreshAppearanceControls();
         RefreshDangoSlots();
@@ -199,9 +196,7 @@ public partial class ProductHomeView
         creationSlot = null;
         originalAppearance = null;
         originalAccessories = null;
-        DangoCreationFields.Visibility = Visibility.Collapsed;
-        ApplyButton.Content = originalApplyContent;
-        ApplyButton.Width = 32;
+        creationNameDraft = string.Empty;
         ApplyButton.ToolTip = "应用 · 保存整套外观";
         AutomationProperties.SetName(ApplyButton, "应用并保存外观");
         CloseEditor();
@@ -210,7 +205,6 @@ public partial class ProductHomeView
         RefreshDangoSlots();
     }
 
-    private object? originalApplyContent;
     private void CancelDangoCreation()
     {
         if (!IsCreatingDango || endingCreation || slotsBlocked) return;
@@ -238,15 +232,28 @@ public partial class ProductHomeView
         return StringInfo.ParseCombiningCharacters(name).Length <= 24;
     }
 
-    private string CreationPreviewName => TryNormalizeDangoName(DangoCreationName.Text, out var name)
-        ? name + " · 创建预览" : "新团子草稿";
+    private bool CanApplyDangoCreation => IsCreatingDango && IsEditing && SelectedEditor == HomeEditor.Face &&
+        !slotsBlocked && !slotDialogOpen && appearanceSession is { IsWriteProtected: false, RequiresBodyPreview: false } && beltError is null;
 
-    private void OnDangoCreationNameChanged(object sender, TextChangedEventArgs e)
+    private void ApplyDangoCreation()
     {
-        if (DangoCreationValidation is not null)
-            DangoCreationValidation.Text = TryNormalizeDangoName(DangoCreationName.Text, out _) ? string.Empty : "请输入 1–24 个字的名字，不含控制字符或换行。";
-        if (IsCreatingDango) DangoNameButton.Content = CreationPreviewName;
+        if (!CanApplyDangoCreation || creationSlot is not { } index) return;
+        var session = appearanceSession;
+        var generation = appearanceGeneration;
+        var configuration = DraftAppearance;
+        string? name;
+        ClearLiveDirectionalInput();
+        slotDialogOpen = true;
         RefreshAppearanceControls();
+        try { name = DangoCreationNamePrompt is not null ? DangoCreationNamePrompt(creationNameDraft) : ShowDangoNameDialog("给团子起名", "创建", creationNameDraft); }
+        finally { slotDialogOpen = false; RefreshAppearanceControls(); }
+        // A modal runs a nested dispatcher. Never submit a stale draft or a
+        // different slot if the host changed while the name window was open.
+        if (!CanApplyDangoCreation || creationSlot != index || generation != appearanceGeneration ||
+            !ReferenceEquals(session, appearanceSession) || configuration != DraftAppearance ||
+            !TryNormalizeDangoName(name, out var normalized)) return;
+        creationNameDraft = normalized;
+        DangoCreateRequested?.Invoke(index, normalized, configuration);
     }
 
     private void OnDangoNameClick(object sender, RoutedEventArgs e)
@@ -270,28 +277,40 @@ public partial class ProductHomeView
         if (slot is null || !CanUseDangoSlots) return;
         string? name;
         slotDialogOpen = true;
-        try { name = DangoRenamePrompt is not null ? DangoRenamePrompt(slot.Name ?? string.Empty) : ShowDangoRenameDialog(slot.Name ?? string.Empty); }
+        try { name = DangoRenamePrompt is not null ? DangoRenamePrompt(slot.Name ?? string.Empty) : ShowDangoNameDialog("改名", "改名", slot.Name ?? string.Empty); }
         finally { slotDialogOpen = false; }
         if (TryNormalizeDangoName(name, out var normalized) && CanUseDangoSlots && dangoSlots?.Any(x => x.Id == id) == true)
             DangoRenameRequested?.Invoke(id, normalized);
     }
 
-    private string? ShowDangoRenameDialog(string current)
+    private string? ShowDangoNameDialog(string title, string action, string current)
     {
-        var input = new TextBox { Text = current, Margin = new Thickness(0, 0, 0, 16), MinWidth = 240 };
-        var save = new Button { Content = "改名", IsDefault = true, MinHeight = 40 };
-        var cancel = new Button { Content = "取消", IsCancel = true, MinHeight = 40, Margin = new Thickness(8, 0, 0, 0) };
+        var input = new TextBox { Text = current, MinHeight = 32, VerticalContentAlignment = VerticalAlignment.Center };
+        AutomationProperties.SetName(input, "团子名字，必填");
+        var validation = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(0, 6, 0, 16), MaxWidth = 280 };
+        AutomationProperties.SetLiveSetting(validation, AutomationLiveSetting.Polite);
+        var save = new Button { Content = action, IsDefault = true, Style = (Style)Resources["DesktopButton"] };
+        var cancel = new Button { Content = "取消", IsCancel = true, Style = (Style)Resources["DesktopButton"], Margin = new Thickness(8, 0, 0, 0) };
         var actions = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = System.Windows.HorizontalAlignment.Right };
         actions.Children.Add(save); actions.Children.Add(cancel);
         var panel = new StackPanel { Margin = new Thickness(24) };
         panel.Children.Add(new TextBlock { Text = "团子名字", Margin = new Thickness(0, 0, 0, 8) });
-        panel.Children.Add(input); panel.Children.Add(actions);
-        var dialog = new Window { Title = "改名", Content = panel, Owner = Window.GetWindow(this), SizeToContent = SizeToContent.WidthAndHeight,
+        panel.Children.Add(input); panel.Children.Add(validation); panel.Children.Add(actions);
+        var dialog = new Window { Title = title, Content = panel, Owner = Window.GetWindow(this), Width = 336, SizeToContent = SizeToContent.Height,
             ResizeMode = ResizeMode.NoResize, WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Background = (Brush)Resources["HomeBackground"], Foreground = (Brush)Resources["HomeInk"], FontSize = 14 };
+            FontFamily = FontFamily, FontSize = 14 };
         save.Click += (_, _) => { if (TryNormalizeDangoName(input.Text, out _)) dialog.DialogResult = true; };
-        input.TextChanged += (_, _) => save.IsEnabled = TryNormalizeDangoName(input.Text, out _);
-        save.IsEnabled = TryNormalizeDangoName(input.Text, out _);
+        // Share palette resources with the owned dialog, including dynamic button states.
+        dialog.Resources = Resources;
+        dialog.SetResourceReference(BackgroundProperty, "HomeBackground");
+        dialog.SetResourceReference(ForegroundProperty, "HomeInk");
+        void Validate()
+        {
+            save.IsEnabled = TryNormalizeDangoName(input.Text, out _);
+            validation.Text = save.IsEnabled ? string.Empty : "请输入 1–24 个字的名字，不含控制字符或换行。";
+        }
+        input.TextChanged += (_, _) => Validate();
+        Validate();
         input.ToolTip = "1–24 个字，不含控制字符或换行";
         dialog.Loaded += (_, _) => { input.Focus(); input.SelectAll(); };
         return dialog.ShowDialog() == true ? input.Text : null;

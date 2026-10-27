@@ -32,6 +32,25 @@ public sealed class DangoSlotHomeTests
     }
     [STATestMethod]
     [DataRow(960, 540)]
+    [DataRow(1280, 720)]
+    [DataRow(640, 360)]
+    [DataRow(480, 800)]
+    public void HomeFitsViewportWithoutOuterScrolling(int width, int height)
+    {
+        var view = Home(); Layout(view, width, height);
+        var scroll = Get<ScrollViewer>(view, "HomeContent");
+        Assert.AreEqual(0d, scroll.ScrollableHeight, 1d,
+            $"Home at {width}x{height}: viewport={scroll.ViewportHeight}, extent={scroll.ExtentHeight}, stage={Bounds(view, "Stage")}");
+        var viewport = Bounds(view, "HomeContent");
+        foreach (var name in new[] { "PetPreview", "DangoNameButton", "DangoSlot1", "DangoSlot2", "DangoSlot3", "EnterRoomButton", "FaceButton", "WardrobeButton" })
+        {
+            var bounds = Bounds(view, name);
+            Assert.IsTrue(bounds.Top >= viewport.Top - 1 && bounds.Bottom <= viewport.Bottom + 1,
+                $"{name} must fit without shrinking the Dango: {bounds}, viewport={viewport}.");
+        }
+    }
+    [STATestMethod]
+    [DataRow(960, 540)]
     [DataRow(480, 800)]
     [DataRow(640, 360)]
     public void FixedSlotsKeepHoleAndAccessibleNamesBelowNormalPreview(int width, int height)
@@ -52,20 +71,24 @@ public sealed class DangoSlotHomeTests
     [DataRow(960, 540)]
     [DataRow(480, 800)]
     [DataRow(640, 360)]
-    public void EditingBlocksAllSlotActionsAndPreservesTheirPositions(int width, int height)
+    public void EditingHidesIdentityControlsAndPreservesPreviewGeometry(int width, int height)
     {
         var view = Home(); Layout(view, width, height);
         var original = Bounds(view, "PetPreview");
-        view.ShowEditor(HomeEditor.Face); Layout(view, width, height);
-        Assert.AreEqual(original.Top, Bounds(view, "PetPreview").Top, 1d);
-        Assert.AreEqual(original.Height, Bounds(view, "PetPreview").Height, 1d);
-        Assert.AreEqual(Visibility.Visible, Get<StackPanel>(view, "DangoSlotPanel").Visibility);
-        Assert.IsFalse(Get<Button>(view, "DangoSlot1").IsEnabled);
-        var overlap = Rect.Intersect(Bounds(view, "DangoSlotPanel"), Bounds(view, "FaceEditorSaveActions"));
-        Assert.IsTrue(overlap.IsEmpty || overlap.Height <= 1 || overlap.Width <= 1, $"Slot controls overlap save actions: {overlap}, stage={Bounds(view, "Stage")}, pet={Bounds(view, "PetVisualArea")}, slots={Bounds(view, "DangoSlotPanel")}, saves={Bounds(view, "FaceEditorSaveActions")}");
         var requests = 0; view.DangoSlotRequested += _ => requests++;
-        Get<Button>(view, "DangoSlot2").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Assert.AreEqual(0, requests);
+        foreach (var editor in new[] { HomeEditor.Face, HomeEditor.Wardrobe })
+        {
+            view.ShowEditor(editor); Layout(view, width, height);
+            Assert.AreEqual(original.Top, Bounds(view, "PetPreview").Top, 1d);
+            Assert.AreEqual(original.Size, Bounds(view, "PetPreview").Size);
+            Assert.AreEqual(Visibility.Collapsed, Get<StackPanel>(view, "DangoSlotPanel").Visibility);
+            Assert.IsFalse(Get<Button>(view, "DangoSlot1").IsEnabled);
+            Get<Button>(view, "DangoSlot2").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.AreEqual(0, requests);
+        }
+        view.CloseEditor(); Layout(view, width, height);
+        Assert.AreEqual(Visibility.Visible, Get<StackPanel>(view, "DangoSlotPanel").Visibility);
+        Assert.AreEqual(original, Bounds(view, "PetPreview"));
     }
     [STATestMethod]
     [DataRow(false, false, 1, 0)]
@@ -102,7 +125,7 @@ public sealed class DangoSlotHomeTests
         Assert.IsFalse(view.IsEditing);
     }
     [STATestMethod]
-    public void CreateRequiresNameAndExactBodyConfirmationThenCancelRestoresSessionWithoutOccupancy()
+    public void CreatePromptsForNameOnlyAfterApplyAndExactBodyConfirmation()
     {
         var view = Home();
         var path = Path.Combine(Path.GetTempPath(), "dango-slot-test-" + Guid.NewGuid().ToString("N"));
@@ -111,20 +134,83 @@ public sealed class DangoSlotHomeTests
         view.ReplaceDangoSessions(saved, accessories);
         var draft = new AppearanceSettingsSession(Path.Combine(path, "draft.json"));
         view.BeginDangoCreation(1, draft, accessories);
+        var prompts = 0;
+        view.DangoCreationNamePrompt = _ => { prompts++; return "新团子"; };
         Assert.IsFalse(Get<Button>(view, "ApplyButton").IsEnabled);
-        Get<TextBox>(view, "DangoCreationName").Text = "新团子";
-        Assert.IsFalse(Get<Button>(view, "ApplyButton").IsEnabled, "A name alone must not bypass actual body display.");
+        Get<Button>(view, "ApplyButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.AreEqual(0, prompts, "A forced click must not bypass actual body display.");
         draft.MarkBodyApplied(draft.DraftAppearance.Body, draft.DraftAppearance.BodyPhysicsModel, draft.BodyConfigurationRevision, draft.BodyEpoch);
-        Get<TextBox>(view, "DangoCreationName").Text = "";
-        Assert.IsFalse(Get<Button>(view, "ApplyButton").IsEnabled);
-        Get<TextBox>(view, "DangoCreationName").Text = "新团子";
+        view.ConfigureDangoSlots(Slots(), First, "米团", false);
         Assert.IsTrue(Get<Button>(view, "ApplyButton").IsEnabled);
+        Assert.AreEqual(0, prompts, "Rendering the body alone must not open the name dialog.");
+        Assert.IsNull(view.FindName("DangoCreationFields"), "Face parameters must not contain inline naming fields.");
+        Assert.AreEqual(Visibility.Collapsed, Get<StackPanel>(view, "DangoSlotPanel").Visibility);
+        var creates = 0;
+        view.DangoCreateRequested += (slot, name, configuration) =>
+        {
+            Assert.AreEqual(1, slot); Assert.AreEqual("新团子", name); Assert.AreEqual(draft.DraftAppearance, configuration); creates++;
+        };
+        Get<Button>(view, "ApplyButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.AreEqual(1, prompts); Assert.AreEqual(1, creates);
         var cancelled = 0; view.DangoCreationCancelled += () => cancelled++;
         view.CloseEditor();
         Assert.AreEqual(1, cancelled); Assert.AreSame(saved, view.BoundAppearance);
         Assert.AreEqual("+", Get<Button>(view, "DangoSlot2").Content);
         Assert.IsFalse(view.IsDangoCreating);
         Assert.IsFalse(Directory.Exists(path), "Canceled creation must not persist anything.");
+    }
+    [STATestMethod]
+    [DataRow(null)]
+    [DataRow("")]
+    [DataRow("  ")]
+    [DataRow("团\n子")]
+    public void CancellingOrInvalidNamingLeavesDraftAndSlotUntouched(string? response)
+    {
+        var view = Home();
+        var path = Path.Combine(Path.GetTempPath(), "dango-name-cancel-" + Guid.NewGuid().ToString("N"));
+        var draft = new AppearanceSettingsSession(Path.Combine(path, "draft.json"));
+        view.BeginDangoCreation(1, draft, new AccessorySettingsSession(path, "none"));
+        draft.MarkBodyApplied(draft.DraftAppearance.Body, draft.DraftAppearance.BodyPhysicsModel, draft.BodyConfigurationRevision, draft.BodyEpoch);
+        view.ConfigureDangoSlots(Slots(), First, "米团", false);
+        var creates = 0; view.DangoCreateRequested += (_, _, _) => creates++;
+        view.DangoCreationNamePrompt = _ =>
+        {
+            Assert.IsFalse(Get<Button>(view, "ApplyButton").IsEnabled, "No nested apply while the dialog is open.");
+            Assert.IsFalse(view.TryHandleNavigationKey(System.Windows.Input.Key.F, false));
+            return response;
+        };
+        Get<Button>(view, "ApplyButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.AreEqual(0, creates); Assert.IsTrue(view.IsCreatingDango && view.IsEditing);
+        Assert.AreSame(draft, view.BoundAppearance);
+        Assert.AreEqual("+", Get<Button>(view, "DangoSlot2").Content);
+        Assert.IsTrue(Get<Button>(view, "ApplyButton").IsEnabled);
+        Assert.IsFalse(Directory.Exists(path));
+        view.DangoCreationNamePrompt = _ => "  糯团  ";
+        view.DangoCreateRequested += (slot, name, _) => { Assert.AreEqual(1, slot); Assert.AreEqual("糯团", name); };
+        Get<Button>(view, "ApplyButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.AreEqual(1, creates, "The same draft may be retried after cancelling the name window.");
+    }
+    [STATestMethod]
+    public void NamingResultCannotCreateAReplacedDraft()
+    {
+        var view = Home();
+        var path = Path.Combine(Path.GetTempPath(), "dango-name-stale-" + Guid.NewGuid().ToString("N"));
+        var draft = new AppearanceSettingsSession(Path.Combine(path, "draft.json"));
+        var accessories = new AccessorySettingsSession(path, "none");
+        view.BeginDangoCreation(1, draft, accessories);
+        draft.MarkBodyApplied(draft.DraftAppearance.Body, draft.DraftAppearance.BodyPhysicsModel, draft.BodyConfigurationRevision, draft.BodyEpoch);
+        view.ConfigureDangoSlots(Slots(), First, "米团", false);
+        var creates = 0; view.DangoCreateRequested += (_, _, _) => creates++;
+        view.DangoCreationNamePrompt = _ =>
+        {
+            view.EndDangoCreation();
+            var replacement = new AppearanceSettingsSession(Path.Combine(path, "replacement.json"));
+            view.BeginDangoCreation(2, replacement, accessories);
+            replacement.MarkBodyApplied(replacement.DraftAppearance.Body, replacement.DraftAppearance.BodyPhysicsModel, replacement.BodyConfigurationRevision, replacement.BodyEpoch);
+            return "过期名字";
+        };
+        Get<Button>(view, "ApplyButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.AreEqual(0, creates);
     }
     [TestMethod]
     public void NamesCountUnicodeTextElementsAndRejectInvalidInput()
@@ -145,7 +231,30 @@ public sealed class DangoSlotHomeTests
         view.ConfigureDangoSlots(Slots(), First, "米团", true, "创建结果待核对");
         view.CloseEditor();
         Assert.IsTrue(view.IsDangoCreating); Assert.IsTrue(view.IsEditing);
-        Assert.AreEqual(Visibility.Visible, Get<Button>(view, "DangoReloadButton").Visibility);
+        Assert.AreEqual(Visibility.Visible, Get<Border>(view, "DangoFeedbackBar").Visibility);
+        Assert.IsFalse(Get<StackPanel>(view, "DangoSlotPanel").IsAncestorOf(Get<Button>(view, "DangoReloadButton")));
+        Assert.AreEqual("创建结果待核对", Get<TextBlock>(view, "DangoSlotWarning").Text);
         Assert.IsFalse(Get<Button>(view, "ApplyButton").IsEnabled);
+    }
+    [STATestMethod]
+    public void IdentityWarningAndReloadRemainReachableInBothEditors()
+    {
+        var view = Home();
+        view.ConfigureDangoSlots(Slots(), First, "米团", false, "改名尚未保存，请重试。");
+        var reloads = 0; view.DangoReloadRequested += () => reloads++;
+        foreach (var editor in new[] { HomeEditor.Face, HomeEditor.Wardrobe })
+        {
+            view.ShowEditor(editor); Layout(view, 640, 360);
+            Assert.AreEqual(Visibility.Collapsed, Get<StackPanel>(view, "DangoSlotPanel").Visibility);
+            Assert.AreEqual(Visibility.Visible, Get<Border>(view, "DangoFeedbackBar").Visibility);
+            var reload = Bounds(view, "DangoReloadButton");
+            Assert.IsTrue(reload.Top >= 0 && reload.Bottom <= Bounds(view, "HomeContent").Top + 1);
+            Get<Button>(view, "DangoReloadButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        }
+        Assert.AreEqual(2, reloads);
+        view.ShowSettingsPage();
+        Assert.AreEqual(Visibility.Collapsed, Get<Border>(view, "DangoFeedbackBar").Visibility);
+        view.ShowHomePage();
+        Assert.AreEqual(Visibility.Visible, Get<Border>(view, "DangoFeedbackBar").Visibility);
     }
 }

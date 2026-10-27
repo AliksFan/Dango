@@ -310,6 +310,16 @@
                 </Border>
             </StackPanel>
         </Border>
+        <Border x:Name="DangoFeedbackBar" Grid.Row="1" Visibility="Collapsed" Margin="22,0,22,0" Padding="12,8"
+                Background="{DynamicResource HomeSoft}" BorderBrush="{DynamicResource HomeLine}" BorderThickness="1" CornerRadius="7">
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                <TextBlock x:Name="DangoSlotWarning" TextWrapping="Wrap" FontSize="12" VerticalAlignment="Center"
+                           AutomationProperties.LiveSetting="Polite" />
+                <Button x:Name="DangoReloadButton" Grid.Column="1" Content="重新读取" Margin="12,0,0,0"
+                        Click="OnDangoReloadClick" AutomationProperties.Name="重新读取团子资料" />
+            </Grid>
+        </Border>
         <ScrollViewer x:Name="HomeContent" Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="False"
                       SizeChanged="OnHomeContentSizeChanged"
                       HorizontalContentAlignment="Stretch" VerticalContentAlignment="Top">
@@ -361,8 +371,6 @@
                             <Button x:Name="DangoSlot2" Content="+" Tag="1" Width="32" Height="32" MinHeight="32" Padding="0" Margin="0,0,8,0" Click="OnDangoSlotClick" />
                             <Button x:Name="DangoSlot3" Content="+" Tag="2" Width="32" Height="32" MinHeight="32" Padding="0" Click="OnDangoSlotClick" />
                         </StackPanel>
-                        <TextBlock x:Name="DangoSlotWarning" TextWrapping="Wrap" FontSize="12" MaxWidth="280" Margin="0,6,0,0" AutomationProperties.LiveSetting="Polite" Visibility="Collapsed" />
-                        <Button x:Name="DangoReloadButton" Content="重新读取" Visibility="Collapsed" Margin="0,6,0,0" Click="OnDangoReloadClick" AutomationProperties.Name="重新读取团子资料" />
                     </StackPanel>
                 </StackPanel>
                 <Canvas x:Name="Launchers" Grid.RowSpan="2" Grid.ColumnSpan="3" VerticalAlignment="Top">
@@ -419,12 +427,6 @@
                       <Grid>
                         <StackPanel x:Name="FaceOptions">
                             <StackPanel.Resources><Style TargetType="Slider" BasedOn="{StaticResource BodyParameterSlider}" /></StackPanel.Resources>
-                            <StackPanel x:Name="DangoCreationFields" Visibility="Collapsed" Margin="0,0,0,16">
-                                <TextBlock Text="团子名字" Margin="0,0,0,6" />
-                                <TextBox x:Name="DangoCreationName" MinHeight="32" TextChanged="OnDangoCreationNameChanged" AutomationProperties.Name="新团子名字，必填" />
-                                <TextBlock x:Name="DangoCreationValidation" TextWrapping="Wrap" FontSize="12" Margin="0,6,0,0" AutomationProperties.LiveSetting="Polite" />
-                                <TextBlock x:Name="DangoCreationNote" Text="创建后才会占用栏位。" Foreground="{DynamicResource HomeMuted}" FontSize="12" Margin="0,6,0,0" />
-                            </StackPanel>
                             <StackPanel x:Name="AppearanceColorsPanel">
                                 <TextBlock Text="身体" Margin="0,0,0,8" />
                                 <Button x:Name="BodyColorPickerButton" Click="OnBodyColorPickerClick" HorizontalContentAlignment="Stretch" Margin="0,0,0,12">
