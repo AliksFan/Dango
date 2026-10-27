@@ -67,7 +67,7 @@ public partial class ProductHomeView
         SetDangoAway(false);
         porchReturnGeneration = generation;
         ShowHomePage();
-        EnterPorch();
+        EnterPorch(returningFromRoom: true);
         ChangeLiveSurface();
         liveSceneSuspended = false;
         RefreshLiveSceneOwnership();

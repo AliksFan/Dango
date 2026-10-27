@@ -127,7 +127,7 @@ public partial class ProductHomeView
         porchReturnGeneration = generation;
         SetDangoAway(false);
         ShowHomePage();
-        EnterPorch();
+        EnterPorch(returningFromRoom: true);
         liveSceneSuspended = false;
         RestoreBeltAfterRoomPreparation();
     }

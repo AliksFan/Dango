@@ -31,6 +31,51 @@ public sealed class DangoSlotHomeTests
         return item.TransformToAncestor(view).TransformBounds(new Rect(item.RenderSize));
     }
     [STATestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public void HostPorchReturnAllowsLockedSelectedDangoWithoutUnlockingSlotActions(bool bindBody)
+    {
+        var view = Home();
+        var path = Path.Combine(Path.GetTempPath(), "dango-porch-return-" + Guid.NewGuid().ToString("N"), "settings.json");
+        try
+        {
+            if (bindBody)
+            {
+                view.BindAppearance(new AppearanceSettingsSession(path));
+                view.BindBeltBody(path);
+            }
+            view.ConfigureDangoSlots(Slots(), First, "米团", true);
+            view.SetDangoAway(true);
+            var confirmations = new List<long>(); view.HealthyPorchFrameReady += confirmations.Add;
+            var requests = 0; view.DangoSlotRequested += _ => requests++;
+            view.ResumePorch(73);
+            Assert.IsTrue(view.IsInPorch, "The host must restore the porch while its room handoff still locks identity changes.");
+            Assert.IsFalse(view.IsDangoAway);
+            if (bindBody)
+            {
+                Assert.IsTrue(view.PorchScene.IsAncestorOf(view.BoundBeltPresenter!.View), "The existing body view must be attached to the restored porch.");
+                Assert.IsFalse(view.PorchScene.HasBeltBody, "This unshown fixture has not rendered a healthy porch frame.");
+            }
+            Assert.AreEqual(0, confirmations.Count, "A route change without a rendered frame must not acknowledge the handoff.");
+            Assert.IsFalse(Get<Button>(view, "DangoSlot1").IsEnabled);
+            Get<Button>(view, "DangoSlot2").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.AreEqual(0, requests);
+            view.ShowHomePage();
+            Get<Button>(view, "EnterRoomButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.IsFalse(view.IsInPorch, "A user-initiated entry must still respect the handoff lock.");
+        }
+        finally { view.UnbindBeltBody(); }
+    }
+    [STATestMethod]
+    public void HostPorchReturnCannotInventAnIdentityWhenNoDangoIsSelected()
+    {
+        var view = Home();
+        view.ConfigureDangoSlots([new(1, null, null, false), new(2, null, null, false), new(3, null, null, false)], null, null, true);
+        view.SetDangoAway(true);
+        view.ResumePorch(73);
+        Assert.IsFalse(view.IsInPorch);
+    }
+    [STATestMethod]
     [DataRow(960, 540)]
     [DataRow(1280, 720)]
     [DataRow(640, 360)]

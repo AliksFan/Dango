@@ -433,9 +433,11 @@ public partial class ProductHomeView : UserControl
 
     private void OnBackFromPorchClick(object sender, RoutedEventArgs e) => LeavePorch();
 
-    private void EnterPorch()
+    private void EnterPorch(bool returningFromRoom = false)
     {
-        if (dangoSlots is not null && (!selectedDangoId.HasValue || slotsBlocked || slotPreviewPending || IsCreatingDango)) return;
+        // A room return must keep identity changes locked until the porch's
+        // healthy frame completes the handoff. That lock cannot block its own return.
+        if (dangoSlots is not null && (!selectedDangoId.HasValue || (!returningFromRoom && slotsBlocked) || slotPreviewPending || IsCreatingDango)) return;
         if (IsInPorch || IsDangoAway) return;
         ClearLiveDirectionalInput();
         if (IsEditing) CloseEditor(focusStage: false);
