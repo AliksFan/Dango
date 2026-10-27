@@ -17,6 +17,7 @@ internal sealed record ActionOutput(DangoBeltInput Motor, IReadOnlyList<Attachme
 
 internal sealed class DangoActionController
 {
+    internal const double ShakeStrength = .72;
     private const AttachmentChannel EyeChannels = AttachmentChannel.LeftGaze | AttachmentChannel.RightGaze |
         AttachmentChannel.LeftEyePose | AttachmentChannel.RightEyePose | AttachmentChannel.LeftBlink | AttachmentChannel.RightBlink;
     private static readonly ActionOutput Idle = new(default, Array.Empty<AttachmentIntent>(), "idle");
@@ -75,21 +76,24 @@ internal sealed class DangoActionController
         var input = default(DangoBeltInput);
         var phase = "enter";
         var doneAt = Duration(kind);
-        var settleTail = kind == DangoActionKind.Shake ? .2 : .35;
+        var settleTail = kind == DangoActionKind.Shake ? .3 : .35;
         var driveEnd = doneAt - settleTail;
         var outRamp = Math.Min(1, Math.Max(0, (driveEnd - elapsed) / .2));
-        var envelope = kind == DangoActionKind.Shake ? outRamp : Math.Min(Math.Min(1, elapsed / .25), outRamp);
+        var envelope = Math.Min(Math.Min(1, elapsed / .25), outRamp);
 
         switch (kind)
         {
             case DangoActionKind.Shake:
+                input = elapsed < driveEnd ? new DangoBeltInput(InputActive: true)
+                    { MuscleShakeTime = elapsed, MuscleShakeStrength = ShakeStrength } : default;
+                phase = elapsed < .1 ? "enter" : elapsed < driveEnd ? "hold" : "settle";
+                break;
             case DangoActionKind.Sway:
             case DangoActionKind.Peek:
             case DangoActionKind.Lean:
-                var amplitude = kind switch { DangoActionKind.Shake => .18, DangoActionKind.Sway => .10, DangoActionKind.Peek => .10, _ => .12 };
+                var amplitude = kind switch { DangoActionKind.Sway => .10, DangoActionKind.Peek => .10, _ => .12 };
                 var offset = kind switch
                 {
-                    DangoActionKind.Shake => Math.Sin(elapsed * 2 * Math.PI * 3.5) * amplitude * Math.Max(0, 1 - elapsed / driveEnd),
                     DangoActionKind.Sway => Math.Sin(elapsed * Math.PI * 1.3) * amplitude,
                     _ => direction * amplitude * Smooth(Math.Clamp((elapsed - .25) / .6, 0, 1)) *
                          (elapsed < 1.45 ? 1 : 1 - Smooth(Math.Clamp((elapsed - 1.45) / .6, 0, 1)))
@@ -228,7 +232,7 @@ internal sealed class DangoActionController
     private void Reset() { Active = false; elapsed = groundedTime = observeTime = 0; jumped = leftGround = eyesOwned = false; }
     private static double Duration(DangoActionKind action) => action switch
     {
-        DangoActionKind.Shake => .9, DangoActionKind.Sway => 2.6,
+        DangoActionKind.Shake => 1.05, DangoActionKind.Sway => 2.6,
         DangoActionKind.Peek or DangoActionKind.Lean => 2.4,
         DangoActionKind.Stretch => 1.8,
         DangoActionKind.Lower => 1.6,

@@ -12,12 +12,13 @@ internal static class Program
     {
         var module = Path.Combine(AppContext.BaseDirectory, "dango_belt_room.dll");
         if (args.Length == 2 && args[0] == "--verify") return ActionLabVerification.Run(module, args[1]);
+        if (args.Length is 2 or 3 && args[0] == "--verify-shake") return ShakeVerification.Run(module, args[1], args.Length == 3 ? args[2] : null);
         if (args.Length != 0) return 2;
         var app = new Application();
         using var host = new ActionLabHost(module);
         var window = new Window
         {
-            Title = "Dango · 动作实验", Width = 1080, Height = 760, MinWidth = 940, MinHeight = 700,
+            Title = "Dango · 动作实验 · 中段抖身候选", Width = 1080, Height = 760, MinWidth = 940, MinHeight = 700,
             Content = host, WindowStartupLocation = WindowStartupLocation.CenterScreen,
         };
         var watch = Stopwatch.StartNew();

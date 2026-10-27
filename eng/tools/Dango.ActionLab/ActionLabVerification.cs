@@ -48,7 +48,7 @@ internal static class ActionLabVerification
                 var nativeStart = initial.Tick;
                 var startHeight = initial.Stats[11] - initial.Stats[9];
                 var minimumHeight = (double)startHeight; var maximumHeight = (double)startHeight;
-                var peakGap = 0d; var maxPenetration = 0d; var maxTopShift = 0d;
+                var peakGap = 0d; var maxPenetration = 0d; var maxTopShift = 0d; var peakMiddle = 0d;
                 var initialEye = session.Runtime.LastFrame!.Bodies[0].Attachments!.Face.Left;
                 var minEyeOpenness = 1d; var maxEyeShift = 0d;
                 var airborne = false; var jumpAccepted = false; var steps = 0;
@@ -64,6 +64,13 @@ internal static class ActionLabVerification
                     peakGap = Math.Max(peakGap, frame.Stats[12]);
                     maxPenetration = Math.Max(maxPenetration, frame.Stats[31]);
                     maxTopShift = Math.Max(maxTopShift, Math.Abs(observation.TopX - start.TopX));
+                    if (kind == DangoActionKind.Shake)
+                        for (var p = 0; p < 256; p++)
+                        {
+                            var height = (double)(initial.Curve[2*p+1] - initial.Stats[9]) / (initial.Stats[11] - initial.Stats[9]);
+                            if (height is >= .3 and <= .68)
+                                peakMiddle = Math.Max(peakMiddle, Math.Sqrt(Math.Pow(frame.Curve[2*p] - initial.Curve[2*p], 2) + Math.Pow(frame.Curve[2*p+1] - initial.Curve[2*p+1], 2)));
+                        }
                     var eye = session.Runtime.LastFrame!.Bodies[0].Attachments!.Face.Left;
                     minEyeOpenness = Math.Min(minEyeOpenness, eye.Openness);
                     maxEyeShift = Math.Max(maxEyeShift, Math.Abs(eye.Center.X - initialEye.Center.X));
@@ -75,7 +82,7 @@ internal static class ActionLabVerification
                 var moved = session.Observe().CoreX - start.CoreX;
                 reports.Add(new { action = kind.ToString(), name, direction, steps, nativeSteps = last.Tick - nativeStart,
                     error = session.Error, controllerError = session.Controller.Error, moved, minimumHeight, maximumHeight,
-                    startHeight, peakGap, maxPenetration, maxTopShift, minEyeOpenness, maxEyeShift, airborne, jumpAccepted });
+                    startHeight, peakGap, maxPenetration, maxTopShift, peakMiddle, minEyeOpenness, maxEyeShift, airborne, jumpAccepted });
                 void Check(bool condition, string message) { if (!condition) failures.Add($"{kind}/{direction}: {message}"); }
                 Check(session.Error is null && !session.Controller.Active, $"Action failed: {session.Error ?? "timeout"}");
                 Check(last.Tick - nativeStart == (ulong)steps, "Native step ownership diverged.");
@@ -85,13 +92,13 @@ internal static class ActionLabVerification
                     Check(airborne && jumpAccepted && session.Observe().Grounded, "Hop did not lift off and land.");
                     Check(peakGap is > .02 and < .35, $"Light hop exceeded its experiment range: {peakGap}");
                 }
-                if (kind == DangoActionKind.Shake) Check(maxTopShift > .008, "Shake response is too small for review.");
+                if (kind == DangoActionKind.Shake) Check(peakMiddle > .008, "Shake did not physically deform its middle region.");
                 if (kind == DangoActionKind.SlowBlink) Check(minEyeOpenness < .1, "Slow blink did not close real rendered eyes.");
                 if (kind == DangoActionKind.Squint) Check(minEyeOpenness < .6, "Squint did not narrow real rendered eyes.");
                 if (kind is DangoActionKind.LookAway or DangoActionKind.LookBack) Check(maxEyeShift > .005, "Gaze did not move real rendered eyes.");
                 if (kind == DangoActionKind.Approach) Check(moved * direction > .15, "Approach did not physically move.");
                 if (kind is DangoActionKind.Retreat or DangoActionKind.Recoil) Check(moved * direction < -.005, "Retreat did not physically move.");
-                if (kind is DangoActionKind.Shake or DangoActionKind.Sway or DangoActionKind.Peek or DangoActionKind.Lean)
+                if (kind is DangoActionKind.Sway or DangoActionKind.Peek or DangoActionKind.Lean)
                     Check(maxTopShift > .0005, "The body did not physically deform.");
                 if (kind == DangoActionKind.Lower) Check(minimumHeight < startHeight - .002, "Lower did not physically compress.");
                 if (kind == DangoActionKind.Stretch) Check(maximumHeight > startHeight + .002, "Stretch did not physically extend.");
@@ -141,7 +148,7 @@ internal static class ActionLabVerification
         }
     }
 
-    private static void Layout(ActionLabPanel panel, double width, double height)
+    internal static void Layout(ActionLabPanel panel, double width, double height)
     { panel.Measure(new(width, height)); panel.Arrange(new(0, 0, width, height)); panel.UpdateLayout(); }
 
     private static void CheckButtons(ActionLabPanel panel, double width, double height)
@@ -154,7 +161,7 @@ internal static class ActionLabVerification
         }
     }
 
-    private static void Save(ActionLabPanel panel, string directory, string name, int width, int height)
+    internal static void Save(ActionLabPanel panel, string directory, string name, int width, int height)
     {
         panel.UpdateLayout();
         var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
@@ -165,7 +172,7 @@ internal static class ActionLabVerification
         using var stream = File.Create(Path.Combine(directory, name)); encoder.Save(stream);
     }
 
-    private static string ValidateOutput(string output)
+    internal static string ValidateOutput(string output)
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);
         while (root is not null && !File.Exists(Path.Combine(root.FullName, "Dango.slnx"))) root = root.Parent;

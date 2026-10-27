@@ -28,6 +28,13 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
     private bool actionPreview;
     internal bool UsesBeltRoom => beltRoom;
     internal DangoBeltRoomFrame? LastBeltRoomFrame => scene?.BeltRoomFrame;
+    internal bool SupportsMuscleActuation => actionPreview && scene?.SupportsMuscleActuation == true;
+    internal DangoMuscleDiagnostics ReadActionMuscles()
+    {
+        VerifyAccess();
+        if (!actionPreview || scene is null) throw new InvalidOperationException("只有动作实验可以读取肌肉诊断。");
+        return scene.ReadMuscleDiagnostics();
+    }
     internal bool HasBodySnapshot => !beltRoom || scene is not null;
     internal BodySupportEnvelope? SupportEnvelope => scene?.SupportEnvelope ?? (beltRoom ? null : new BodySupportEnvelope(-80, 80, 120));
     internal bool HasFloorSupport => scene?.HasFloorSupport == true;

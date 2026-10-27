@@ -28,6 +28,8 @@ internal sealed class BeltRoomSceneAdapter : IDisposable
     public bool SupportsFurnitureCollection => world.SupportsFurnitureCollection;
     public DesktopPhysicsSceneFrame LastFrame { get; private set; }
     public int LastErrorCode { get; private set; }
+    internal bool SupportsMuscleActuation => world.SupportsMuscleActuation;
+    internal DangoMuscleDiagnostics ReadMuscleDiagnostics() => world.ReadMuscleDiagnostics();
     public LogicalPoint CoreHost => ToHost(new(Frame.Stats[0], Frame.Stats[1]));
     public double GroundY => origin.Y - configuration.GroundHeight * Scale;
 

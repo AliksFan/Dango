@@ -1,5 +1,35 @@
 # F7-0 independent belt room ABI 1
 
+## Optional isolated muscle actuation (2026-10-27)
+
+The existing frame layout, 9-control step ABI and default behavior are unchanged.
+`dango_belt_room_step_muscles` adds single-step shake time `[0,2]` and strength
+`[0,1]`. Zero strength follows the ordinary path. Active shake rejects concurrent
+horizontal, vertical, jump, drag and cancel controls. Inputs are validated before
+writes and are never retained after a successful or refused step. The existing
+fault rollback and prepared-scene barrier apply.
+
+Eight material-attached contractile fibres exert equal/opposite central forces.
+Activation phases differ; a smooth near-ground weight attenuates the entire pair,
+preserving balance. Optional active follower-force iterations use the existing
+integrator and guards, with a finite convergence limit. Discarded trials still
+consume the original frame's shared guard work budget. Only the converged trial
+and its actuator work survive. No point is pinned, no pose/velocity is overwritten and no
+friction parameter changes. The consumer currently covers one default body on
+flat ground, not furniture/platform support.
+
+`dango_belt_room_read_muscle_diagnostics` returns 32 doubles (v1; offsets in the
+header), including actual net force, torque, actuator work, individual tensions
+and convergence diagnostics. Actuator work is also included in the existing
+integrator force-work ledger. Default bodies do not perform follower iterations.
+The managed consumer must explicitly reject a module missing this capability;
+there is no fallback to top dragging or rendered contour movement.
+
+Native tests: `dango_belt_muscle_tests`; button/managed integration:
+`Dango.ActionLab --verify-shake <new-output-directory> [previous-room-module]`.
+
+## Existing room contract
+
 2026-10-21 W/S update: this room embeds the same balanced upper/lower deformation
 control as [the product body](dango_belt_product.md). Both held channels cancel
 only the vertical pair; horizontal input, drag and original jump gates remain.

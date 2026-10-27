@@ -42,6 +42,14 @@ DANGO_BELT_ROOM_API const char* dango_belt_room_contact_model(void);
 DANGO_BELT_ROOM_API int dango_belt_room_create(const dango_belt_config*,const float*,int,
  float,float,float,float,void**);
 DANGO_BELT_ROOM_API int dango_belt_room_step(void*,float,const dango_belt_room_input*,int);
+/* Optional single-step internal shake input: time [0,2], strength [0,1].
+   No held input; zero strength is exactly the ordinary path. */
+DANGO_BELT_ROOM_API int dango_belt_room_step_muscles(void*,float,const dango_belt_room_input*,int,float,float);
+/* v1, 32 doubles: 0 version,1 count,2 attempt,3 time,4 strength,5 active substeps,
+   6 pairs,7/8 net force,9 peak abs torque,10 actuator work,11 peak tension,
+   12 minimum contact weight,13 envelope,14 total follower iterations,
+   15 maximum follower residual,16..23 last fibre tensions. */
+DANGO_BELT_ROOM_API int dango_belt_room_read_muscle_diagnostics(void*,double*,int);
 DANGO_BELT_ROOM_API int dango_belt_room_read_frame(void*,dango_belt_room_frame*,int);
 /* Changes the interval; solid contact is enabled separately. Shares layout revision. */
 DANGO_BELT_ROOM_API int dango_belt_room_set_bounds(void*,float,float,uint64_t);

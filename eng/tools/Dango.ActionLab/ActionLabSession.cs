@@ -55,6 +55,8 @@ internal sealed class ActionLabSession : IDisposable
     internal bool Trigger(DangoActionKind kind, int direction)
     {
         if (Paused || Error is not null) return false;
+        if (kind == DangoActionKind.Shake && !Runtime.SupportsMuscleActuation)
+        { Phase = "当前物理模块不支持内部肌肉抖身"; return false; }
         var started = Controller.TryStart(kind, direction, Observe());
         if (!started) Phase = Controller.RejectionReason ?? "请等待当前动作结束";
         else { LastAction = kind; Phase = "准备动作"; }

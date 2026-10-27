@@ -2,15 +2,7 @@
 #include <stdio.h>
 
 #define CHECK(c) do { if (!(c)) { fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#c); return 1; } } while (0)
-static const dango_belt_config preview_config={
- .node_count=16,.substep_count=4,.radial_rest_length=.68f,.radial_minimum_ratio=.65f,.radial_maximum_ratio=1.22f,
- .perimeter_minimum_ratio=.73f,.perimeter_maximum_ratio=1.07f,.radial_hertz=1.82f,.perimeter_hertz=15.075f,
- .radial_damping=1.85f,.perimeter_damping=1.85f,.area_strength=4.8f,.local_angle_balance_strength=1.7f,
- .gravity=9.8f,.core_mass=.12f,.node_mass=.015f,.drop_height=.42f,.ground_height=-.72f,.node_radius=.045f,
- .friction=.72f,.drag_stiffness=10,.drag_damping=2.2f,.drag_maximum_force=8,.horizontal_force=2.4f,
- .maximum_horizontal_speed=3.2f,.air_control_ratio=.35f,.downward_force=2.2f,.jump_impulse=.42f,.jump_cooldown_seconds=.45f,
- .maximum_speed=12,.minimum_area=.42f,.linear_damping=1.8f};
-static const float preview_calibration[11]={1.4f,1,1,4,1.4f,1,1,1,1.8f,35,60};
+#include "dango_belt_action_test_fixture.h"
 static int same_physics(const dango_belt_room_frame* a,const dango_belt_room_frame* b){
  return !memcmp(a->body_snapshot,b->body_snapshot,sizeof a->body_snapshot)&&
   !memcmp(a->scaffold,b->scaffold,sizeof a->scaffold)&&!memcmp(a->curve,b->curve,sizeof a->curve)&&

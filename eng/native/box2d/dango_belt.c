@@ -14,6 +14,8 @@ typedef struct belt_body {
  double radius,scale,left,right,ramp,cooldown,drag_theta;
  /* Per-instance experiment input; default preserves the accepted jump exactly. */
  double jump_speed_scale;
+ /* Transient single-step muscle input; never retained by the room API. */
+ double muscle_time,muscle_strength,muscle_diag[32];
  int short_bones,grounded,dragging,original_ground_jump,has_stepped;double stats[64],cal[11],diag[48];
  int shape_guard,speed_saturation,whale_drive,radial_drive;double radial_diag[16],rear_diag[16];double whale_gain,whale_diag[16],force_ledger[1024];double guard[24],solver_diag[24],speed_limit[12];
 } belt_body;
@@ -238,6 +240,7 @@ static void belt_force_ledger_begin(belt_body* b,double attempt,int substep){mem
 static void belt_force_ledger_add(belt_body* b,double x,double y,double fx,double fy,int kind,double material){
  int n=(int)b->force_ledger[4];if(n>=97)return;double* row=b->force_ledger+8+6*n;row[0]=x;row[1]=y;row[2]=fx;row[3]=fy;row[4]=kind;row[5]=material;b->force_ledger[4]=n+1;b->force_ledger[5]=(double)((int)b->force_ledger[5]|(1<<(kind-1)));
 }
+#include "dango_belt_muscle.h"
 /* Exact normalized material-interval integral: the selected world half is
    located on the continuous curve, never on the sixteen scaffold points. */
 #if defined(DANGO_BELT_PROFILE) && DANGO_BELT_PROFILE
@@ -510,7 +513,7 @@ int dango_belt_reconfigure(void* handle,const dango_belt_config* cfg,const float
 static void belt_apply_calibration_damping(belt_body* b,double h,const float* c,bool jump){
  if(b->cal[8]>0){double before=belt_kinetic(b),p0[3],p1[3],factor=1/(1+h*b->cal[8]);belt_momentum(b,p0);for(int j=0;j<BELT_D;++j)b->v[j]*=factor;belt_momentum(b,p1);b->diag[10]+=belt_kinetic(b)-before;for(int j=0;j<3;++j)b->diag[38+j]+=p1[j]-p0[j];}
  if(b->cal[9]==0&&b->cal[10]==0)return;
- double bounds[4],foot;belt_bounds(b->q,bounds,&foot);bool active=c[0]!=0||c[1]!=0||c[2]!=0||c[3]!=0||c[6]!=0||c[8]!=0||jump;
+ double bounds[4],foot;belt_bounds(b->q,bounds,&foot);bool active=c[0]!=0||c[1]!=0||c[2]!=0||c[3]!=0||c[6]!=0||c[8]!=0||jump||b->muscle_strength>0;
  if((b->cal[9]>0||b->cal[10]>0)&&!active&&bounds[1]<=b->cfg.ground_height+.001){double before=belt_kinetic(b),p0[3],p1[3];belt_momentum(b,p0);double total=b->mass[0]+b->mass[34],delta=fmax(-b->cal[9]*h,fmin(b->cal[9]*h,p0[0]/total)),factor=exp(-b->cal[10]*h);b->v[0]-=delta;b->v[34]-=delta;for(int j=0;j<BELT_D;j+=2)b->v[j]*=factor;belt_momentum(b,p1);b->diag[11]+=belt_kinetic(b)-before;for(int j=0;j<3;++j)b->diag[41+j]+=p1[j]-p0[j];}
 }
 static bool belt_try_jump(belt_body* b,bool requested,double h){
@@ -537,6 +540,7 @@ int dango_belt_step(void* handle,float dt,const float* c,int count){belt_body* b
  belt_body backup=*b;if(b->radial_drive){double tick=b->solver_diag[1]+1;memset(b->radial_diag,0,sizeof b->radial_diag);b->radial_diag[0]=3;b->radial_diag[1]=1;b->radial_diag[2]=tick;memset(b->rear_diag,0,sizeof b->rear_diag);b->rear_diag[0]=b->rear_diag[1]=1;b->rear_diag[2]=tick;}if(b->whale_drive){double tick=b->whale_diag[2]+1;memset(b->whale_diag,0,sizeof b->whale_diag);b->whale_diag[0]=b->whale_diag[1]=1;b->whale_diag[2]=tick;b->whale_diag[12]=b->whale_gain;}double attempt=b->solver_diag[1]+1;memset(b->solver_diag,0,sizeof b->solver_diag);b->solver_diag[0]=1;b->solver_diag[1]=attempt;b->solver_diag[4]=b->solver_diag[5]=b->solver_diag[6]=-1;memset(b->speed_limit,0,sizeof b->speed_limit);b->speed_limit[0]=1;b->speed_limit[1]=b->speed_saturation;b->speed_limit[2]=attempt;b->speed_limit[4]=1;
  if(b->shape_guard){double tick=b->guard[2]+1;memset(b->guard,0,sizeof b->guard);b->guard[0]=1;b->guard[1]=1;b->guard[2]=tick;b->guard[19]=.04*b->radius;b->guard[20]=1e-4*b->radius*b->radius;b->guard[21]=BELT_GUARD_FRAME_BUDGET;if(!belt_guard_path(b,b->q,b->q,4)){belt_solver_fail(b,19);goto fault;}b->guard[14]=belt_guard_energy(b);}
  memset(b->stats,0,sizeof b->stats);memset(b->diag,0,sizeof b->diag);b->diag[0]=1;b->diag[2]=belt_kinetic(b);b->diag[4]=belt_elastic_energy(b);b->diag[6]=belt_gravity_energy(b);belt_momentum(b,&b->diag[29]);b->diag[47]=dt;double h=dt/b->cfg.substep_count;
+ memset(b->muscle_diag,0,sizeof b->muscle_diag);b->muscle_diag[0]=1;b->muscle_diag[1]=32;b->muscle_diag[2]=attempt;b->muscle_diag[3]=b->muscle_time;b->muscle_diag[4]=b->muscle_strength;
  bool vertical_cancel=c[1]>0&&c[6]>0;
  bool accepted=belt_try_jump(b,c[2]!=0,h);
  if(c[3]!=0&&!b->dragging){double bounds[4],foot;belt_bounds(b->q,bounds,&foot);double roots[64];int n=belt_roots(b->q,1,1,0,roots);double high=-INFINITY;for(int i=0;i<n;++i){belt_v p=belt_eval(b->q,roots[i],0);if(p.y>high){high=p.y;b->drag_theta=roots[i];}}}b->dragging=c[3]!=0;
@@ -557,7 +561,10 @@ int dango_belt_step(void* handle,float dt,const float* c,int count){belt_body* b
 #ifdef DANGO_BELT_ROOM_HOOKS
   belt_room_before_integrate(b);
 #endif
-  belt_apply_calibration_damping(b,h,c,accepted);b->solver_diag[15]=2;if(!belt_integrate(b,h,f))goto fault;if(b->radial_drive){for(int j=0;j<BELT_D;++j){b->radial_diag[13]+=radial_force[j]*(b->q[j]-radial_old[j]);b->rear_diag[12]+=rear_force[j]*(b->q[j]-radial_old[j]);}}if(b->whale_drive){for(int j=0;j<BELT_D;++j)b->whale_diag[8]+=whale_force[j]*(b->q[j]-whale_old[j]);b->whale_diag[14]=fmax(b->whale_diag[14],b->guard[4]);}b->solver_diag[15]=3;if(!BELT_CONTACT_DISPATCH(b))goto fault;b->solver_diag[15]=4;{int samples=0;double maximum=0,coarse=0;b->solver_diag[14]=belt_speed_certificate(b,&samples,&maximum,&coarse);b->solver_diag[19]=samples;b->solver_diag[20]=maximum;b->solver_diag[21]=b->solver_diag[14];if(samples>256){b->solver_diag[22]=coarse;b->solver_diag[23]=b->solver_diag[14];}}if(!belt_limit_speed(b,&b->solver_diag[14]))goto fault;if(b->solver_diag[14]>b->cfg.maximum_speed){belt_solver_fail(b,13);goto fault;}
+  belt_apply_calibration_damping(b,h,c,accepted);b->solver_diag[15]=2;
+  if(b->muscle_strength>0){if(!belt_integrate_muscles(b,h,f,b->muscle_time+small*h)){if(b->solver_diag[3]==0)belt_solver_fail(b,25);goto fault;}}
+  else if(!belt_integrate(b,h,f))goto fault;
+  if(b->radial_drive){for(int j=0;j<BELT_D;++j){b->radial_diag[13]+=radial_force[j]*(b->q[j]-radial_old[j]);b->rear_diag[12]+=rear_force[j]*(b->q[j]-radial_old[j]);}}if(b->whale_drive){for(int j=0;j<BELT_D;++j)b->whale_diag[8]+=whale_force[j]*(b->q[j]-whale_old[j]);b->whale_diag[14]=fmax(b->whale_diag[14],b->guard[4]);}b->solver_diag[15]=3;if(!BELT_CONTACT_DISPATCH(b))goto fault;b->solver_diag[15]=4;{int samples=0;double maximum=0,coarse=0;b->solver_diag[14]=belt_speed_certificate(b,&samples,&maximum,&coarse);b->solver_diag[19]=samples;b->solver_diag[20]=maximum;b->solver_diag[21]=b->solver_diag[14];if(samples>256){b->solver_diag[22]=coarse;b->solver_diag[23]=b->solver_diag[14];}}if(!belt_limit_speed(b,&b->solver_diag[14]))goto fault;if(b->solver_diag[14]>b->cfg.maximum_speed){belt_solver_fail(b,13);goto fault;}
   double bounds[4],foot;belt_bounds(b->q,bounds,&foot);if(bounds[0]<b->left||bounds[2]>b->right){belt_solver_fail(b,14);goto fault;}
   b->stats[50]+=1;
   if(b->shape_guard)b->guard[22]+=1;

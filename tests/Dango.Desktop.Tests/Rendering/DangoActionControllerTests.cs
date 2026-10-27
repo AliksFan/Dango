@@ -26,66 +26,53 @@ public sealed class DangoActionControllerTests
     }
 
     [TestMethod]
-    public void ShakeAndSwayHaveDifferentDurationsAndMeasuredDragTargets()
+    public void ShakeUsesOnlyInternalMusclesWhileOtherBodyActionsKeepTheirExistingPath()
     {
         var shake = new DangoActionController();
         Assert.IsTrue(shake.TryStart(DangoActionKind.Shake, 1, Sample()));
-        var first = shake.Advance(.1, Sample());
-        Assert.IsTrue(first.Motor.DragActive);
-        Assert.AreEqual(.9, RunToCompletion(shake, Sample()), .001);
-
+        var active = 0;
+        var lastMuscleTime = 0d;
+        for (var i = 0; i < 70; i++)
+        {
+            var motor = shake.Advance(.02, Sample()).Motor;
+            Assert.IsFalse(motor.DragActive);
+            Assert.AreEqual(0, motor.Horizontal);
+            Assert.AreEqual(0, motor.Stretch);
+            Assert.AreEqual(0, motor.Downward);
+            Assert.IsFalse(motor.JumpPressed);
+            if (motor.MuscleShakeStrength > 0)
+            {
+                active++;
+                Assert.IsTrue(motor.MuscleShakeTime > lastMuscleTime);
+                Assert.IsTrue(motor.MuscleShakeTime < .75);
+                lastMuscleTime = motor.MuscleShakeTime;
+            }
+            else Assert.AreEqual(default, motor);
+        }
+        Assert.IsTrue(active > 30);
+        Assert.IsFalse(shake.Active);
         var sway = new DangoActionController();
         Assert.IsTrue(sway.TryStart(DangoActionKind.Sway, 1, Sample()));
+        var swayMotor = sway.Advance(.1, Sample()).Motor;
+        Assert.IsTrue(swayMotor.DragActive);
+        Assert.AreEqual(0, swayMotor.MuscleShakeStrength);
         Assert.AreEqual(2.6, RunToCompletion(sway, Sample()), .001);
     }
 
     [TestMethod]
-    public void ShakeUsesDistinctShortCycleAndEndsWithPointTwoSecondsOfFreeSettling()
+    public void ShakeHasFiniteDrivePassiveTailAndCancellationWithoutHeldMuscles()
     {
         var shake = new DangoActionController();
-        var sway = new DangoActionController();
-        Assert.IsTrue(shake.TryStart(DangoActionKind.Shake, 1, Sample()));
-        Assert.IsTrue(sway.TryStart(DangoActionKind.Sway, 1, Sample()));
-        var peakTarget = 0d;
-        var firstShakeReversal = 0d;
-        var firstSwayReversal = 0d;
-        var lastShakeDrag = 0d;
-        var priorShake = 0d;
-        var priorSway = 0d;
-        for (var i = 1; i <= 130; i++)
-        {
-            var t = i * .02;
-            if (shake.Active)
-            {
-                var output = shake.Advance(.02, Sample());
-                if (output.Motor.DragActive)
-                {
-                    var offset = output.Motor.DragTargetX;
-                    peakTarget = Math.Max(peakTarget, Math.Abs(offset));
-                    lastShakeDrag = t;
-                    if (firstShakeReversal == 0 && priorShake > 0 && offset < 0) firstShakeReversal = t;
-                    priorShake = offset;
-                }
-                else Assert.IsTrue(t >= .7, $"Shake released before its 2.4-cycle drive window at {t:F2}s");
-            }
-            if (sway.Active)
-            {
-                var output = sway.Advance(.02, Sample());
-                if (output.Motor.DragActive)
-                {
-                    var offset = output.Motor.DragTargetX;
-                    if (firstSwayReversal == 0 && priorSway > 0 && offset < 0) firstSwayReversal = t;
-                    priorSway = offset;
-                }
-            }
-        }
-        Assert.IsTrue(peakTarget > .12 && peakTarget <= .18, $"Expected a larger target excursion, got {peakTarget:F3}m");
-        Assert.IsTrue(firstShakeReversal is > 0 and < .2, $"Shake reversal was {firstShakeReversal:F2}s");
-        Assert.IsTrue(firstSwayReversal > .6, $"Sway reversal was {firstSwayReversal:F2}s");
-        Assert.AreEqual(.7, lastShakeDrag, .02);
-        Assert.IsFalse(shake.Active);
+        Assert.IsTrue(shake.TryStart(DangoActionKind.Shake, -1, Sample()));
+        for (var i = 0; i < 38; i++) shake.Advance(.02, Sample());
+        Assert.IsTrue(shake.Active);
+        Assert.AreEqual(default, shake.Advance(.02, Sample()).Motor);
+        Assert.AreEqual(1.06, RunToCompletion(shake, Sample()), .021);
+        Assert.IsTrue(shake.TryStart(DangoActionKind.Shake, -1, Sample()));
+        Assert.IsGreaterThan(0d, shake.Advance(.1, Sample()).Motor.MuscleShakeStrength);
+        Assert.AreEqual(default, shake.Cancel().Motor);
+        Assert.AreEqual(default, shake.Advance(.02, Sample()).Motor);
     }
-
     [TestMethod]
     public void SlowBlinkEmitsOneEventAndReleasesOnlyEyeChannels()
     {
@@ -234,6 +221,9 @@ public sealed class DangoActionControllerTests
                 Assert.IsTrue(double.IsFinite(output.Motor.Downward) && Math.Abs(output.Motor.Downward) <= 1, $"{kind} downward input out of range");
                 Assert.IsTrue(double.IsFinite(output.Motor.Stretch) && Math.Abs(output.Motor.Stretch) <= 1, $"{kind} stretch input out of range");
                 Assert.IsTrue(double.IsFinite(output.Motor.DragTargetX) && double.IsFinite(output.Motor.DragTargetY), $"{kind} emitted non-finite drag target");
+                Assert.IsTrue(double.IsFinite(output.Motor.MuscleShakeTime) && output.Motor.MuscleShakeTime is >= 0 and <= 2);
+                Assert.IsTrue(output.Motor.MuscleShakeStrength is >= 0 and <= 1);
+                if (kind != DangoActionKind.Shake) Assert.AreEqual(0, output.Motor.MuscleShakeStrength);
                 if (kind is DangoActionKind.Approach or DangoActionKind.Retreat)
                     x += output.Motor.Horizontal * .03;
             }

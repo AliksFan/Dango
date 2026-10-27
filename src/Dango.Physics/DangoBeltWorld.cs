@@ -6,7 +6,11 @@ namespace Dango.Physics;
 
 public readonly record struct DangoBeltInput(double Horizontal=0, double Stretch=0, double Downward=0,
     bool JumpPressed=false, bool DragActive=false, double DragTargetX=0, double DragTargetY=0,
-    bool InputActive=false, bool CancelForces=false);
+    bool InputActive=false, bool CancelForces=false)
+{
+    public double MuscleShakeTime { get; init; }
+    public double MuscleShakeStrength { get; init; }
+}
 
 /// <summary>Native world coordinates. Scaffold has core then 16 massless attachments, each x/y/vx/vy.</summary>
 public sealed record DangoBeltFrame(float[] Scaffold, float[] Curve, float[] Stats)
@@ -208,6 +212,8 @@ public sealed class DangoBeltWorld : IDisposable
     public void Step(double dt,DangoBeltInput input)
     {
         using var nativeAccess=EnterNative();
+        if (input.MuscleShakeStrength != 0 || input.MuscleShakeTime != 0)
+            throw new NotSupportedException("Internal muscles require the room's explicit single-step capability.");
         if(!Finite(dt)||dt<=0||dt>1d/30 || !Finite(input.Horizontal)||Math.Abs(input.Horizontal)>1 ||
             !Finite(input.Stretch)||input.Stretch is <0 or >1 || !Finite(input.Downward)||input.Downward is <0 or >1 ||
             !Finite(input.DragTargetX)||!Finite(input.DragTargetY)) throw new ArgumentOutOfRangeException(nameof(input));

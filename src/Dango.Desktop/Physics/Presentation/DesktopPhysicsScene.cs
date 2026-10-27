@@ -87,6 +87,12 @@ public sealed partial class DesktopPhysicsScene : IDisposable
     internal int HorizontalRebaseCount { get; private set; }
     internal double PreviewJumpSpeedScale => beltRoom is null ? world.PreviewJumpSpeedScale : 1;
     internal double ContinuousCoreX(DangoBodyState body) => body.CoreX + horizontalCoreOffset;
+    internal bool SupportsMuscleActuation => beltRoom?.SupportsMuscleActuation == true;
+    internal DangoMuscleDiagnostics ReadMuscleDiagnostics()
+    {
+        VerifyAccess();
+        return beltRoom?.ReadMuscleDiagnostics() ?? throw new NotSupportedException("内部肌肉动作需要连续带物理。");
+    }
 
     internal void SetActionJumpSpeedScale(double scale)
     {
