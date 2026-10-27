@@ -47,6 +47,8 @@ DANGO_BELT_ROOM_API int dango_belt_room_step(void*,float,const dango_belt_room_i
 DANGO_BELT_ROOM_API int dango_belt_room_step_muscles(void*,float,const dango_belt_room_input*,int,float,float);
 /* Optional profile: 0 preserves the original fibres, 1 uses soft shoulders. */
 DANGO_BELT_ROOM_API int dango_belt_room_step_muscles_profile(void*,float,const dango_belt_room_input*,int,float,float,int);
+/* Optional profile2: current eye-line world unit axis plus replayable seed. */
+DANGO_BELT_ROOM_API int dango_belt_room_step_muscles_pattern(void*,float,const dango_belt_room_input*,int,float,float,int,float,float,uint32_t);
 /* v1, 32 doubles: 0 version,1 count,2 attempt,3 time,4 strength,5 active substeps,
    6 pairs,7/8 net force,9 peak abs torque,10 actuator work,11 peak tension,
    12 minimum contact weight,13 envelope,14 total follower iterations,

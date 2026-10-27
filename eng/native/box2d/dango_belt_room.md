@@ -33,6 +33,32 @@ inputs, validated before writes and cleared after success or rollback; diagnosti
 slot24 reports the successful step's profile. Missing profile support is refused,
 never silently substituted. Neither profile changes material, timing or guards.
 
+`dango_belt_room_step_muscles_pattern` adds profile2, a supplied world unit eye-line
+axis and a uint32 replay seed. Legacy profile exports still accept only0/1. The
+new active force field uses the middle75% of the body's height projected onto
+the eye normal, with a core-centred grid of reference spacing `0.04*pi*radius`
+and at most25 rows. Half-spacing edge weights fade smoothly. Each row contracts
+the continuous interior section containing the projected core, along its true
+endpoint chord. This changes fixed-material fibres to sliding section force
+points only for profile2; no rendered contour or velocity is prescribed.
+
+Each pair shares bounded noise `[0.6,1]` indexed only by seed,row,time knot and
+smoothly interpolated at6.4Hz, on the existing3.2Hz burst. Trial count never
+consumes random state. Total tension budget is4 versus the legacy eight-pair
+budget8; the full budget exceeded the existing lab displacement assertion of
+0.15m. This assertion is an engineering acceptance line, not a runtime solver
+stability bound or a force/pose clamp. Original
+profiles retain their formulas. One derivative-root partition and safeguarded
+Newton solve each true Fourier intersection; ambiguous or missing sections
+refuse. Existing frame guard work and follower limits are unchanged.
+
+Diagnostics slots25..30 report seed,unit axisX/Y,spacing and lower/upper band
+coordinates. Slot6 is the full active pair count; slots16..23 contain only the
+first8 tension samples, and the force ledger contains all pairs. Axis and seed
+are validated before writes and cleared after success or rollback. The managed
+consumer refuses a module without the pattern export instead of substituting
+legacy fibres.
+
 `dango_belt_room_read_active_forces` copies the last accepted substep's 1024-double
 force ledger without advancing physics. Header slots0..7 are schema1, capacity1024,
 solver attempt, substep(-1 before first step), row count, source mask, row width6,

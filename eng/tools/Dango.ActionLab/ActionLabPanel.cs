@@ -153,7 +153,7 @@ internal sealed class ActionLabPanel : Grid, IDisposable
             row.ColumnDefinitions.Add(new() { Width = new(100) });
             row.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
             row.Children.Add(new TextBlock { Text = name, VerticalAlignment = VerticalAlignment.Center, ToolTip = hint });
-            var choices = new StackPanel { Orientation = Orientation.Horizontal };
+            var choices = new WrapPanel { Orientation = Orientation.Horizontal };
             foreach (var candidate in ActionLabCandidates.For(kind))
             {
                 var button = MakeButton(candidate.Label, hint + " · " + candidate.Hint, "M6,4 L15,10 6,16 Z");
@@ -261,6 +261,8 @@ internal sealed class ActionLabPanel : Grid, IDisposable
         RenderForces();
         if (Session.Runtime.LastBeltRoomFrame is { } native)
             diagnostics.Text = $"步进 {native.Tick} · 接地 {(native.Stats[14] != 0 ? "是" : "否")}\n离地 {native.Stats[12]:F4} m · 故障 {native.Fault}\n动作 {Session.Controller.Elapsed:F2} s";
+        if (Session.LastAction == DangoActionKind.Shake && Session.LastCandidateId == "random")
+            diagnostics.Text += $" · seed {Session.LastMuscleSeed}";
     }
 
     private void RenderForces()

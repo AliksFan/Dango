@@ -3,6 +3,7 @@ using Dango.Core.Coordinates;
 using Dango.Desktop.Physics.Presentation;
 using Dango.Desktop.Rendering.Actions;
 using Dango.Desktop.Rendering.Visuals;
+using Dango.Physics;
 
 namespace Dango.ActionLab;
 
@@ -20,6 +21,7 @@ internal sealed class ActionLabSession : IDisposable
     internal string? Error { get; private set; }
     internal DangoActionKind? LastAction { get; private set; }
     internal string? LastCandidateId { get; private set; }
+    internal uint? LastMuscleSeed { get; private set; }
     internal long Steps { get; private set; }
     internal bool Paused { get; private set; }
     private bool disposed;
@@ -47,23 +49,63 @@ internal sealed class ActionLabSession : IDisposable
         var frame = Runtime.LastBeltRoomFrame ?? throw new InvalidOperationException("缺少物理快照。");
         var s = frame.Stats;
         var top = Enumerable.Range(0, 256).MaxBy(i => frame.Curve[2 * i + 1]);
+        var eyeAxis = ReadDisplayedEyeAxis();
         // BeltRoomSceneAdapter uses 72 DIP/m and the fixed reference floor.
         return new(s[0], s[1], frame.Curve[2 * top], frame.Curve[2 * top + 1], s[14] != 0,
             frame.Scaffold[2], frame.Scaffold[3], (Left - Reference.Center.X) / 72,
-            (Right - Reference.Center.X) / 72);
+            (Right - Reference.Center.X) / 72, eyeAxis.X, eyeAxis.Y);
     }
 
-    internal bool Trigger(DangoActionKind kind, int direction, string candidateId = "current")
+    private LogicalVector ReadDisplayedEyeAxis()
+    {
+        var displayed = Runtime.LastFrame;
+        if (displayed is null || displayed.Bodies.FirstOrDefault() is not { IsVisible: true,
+            FallbackReason: PhysicsPresentationFallbackReason.None, Attachments: { } attachments } body ||
+            !attachments.Face.Left.Visible || !attachments.Face.Right.Visible)
+            return new(double.NaN, double.NaN);
+        // CreateEye draws at (80 + 160*x, 66 - 160*y): both material axes
+        // use reference width, not the 160x120 host aspect ratio. Apply the same
+        // optional displayed gait scale; translations cancel in the eye delta.
+        var gait = displayed.Gait is { } candidate && displayed.EntityIds.Count > 0 &&
+            candidate.Matches(body, displayed.EntityIds[0]) ? candidate : null;
+        var hostDx = (attachments.Face.Right.Center.X - attachments.Face.Left.Center.X) * 160 * (gait?.ScaleX ?? 1);
+        var hostDy = -(attachments.Face.Right.Center.Y - attachments.Face.Left.Center.Y) * 160 * (gait?.ScaleY ?? 1);
+        // BeltRoomSceneAdapter.ToHost uses equal 72 DIP/m and downward host Y.
+        var worldX = hostDx / 72;
+        var worldY = -hostDy / 72;
+        var length = Math.Sqrt(worldX * worldX + worldY * worldY);
+        return double.IsFinite(length) && length > 1e-9
+            ? new(worldX / length, worldY / length) : new(double.NaN, double.NaN);
+    }
+
+    internal bool Trigger(DangoActionKind kind, int direction, string candidateId = "current", uint? seedOverride = null)
     {
         if (Paused || Error is not null) return false;
+        if (Controller.Active) { Phase = "请等待当前动作结束"; return false; }
         if (kind == DangoActionKind.Shake && !Runtime.SupportsMuscleActuation)
         { Phase = "当前物理模块不支持内部肌肉抖身"; return false; }
         if (!Enum.IsDefined(kind)) { Phase = "不支持此动作类型"; return false; }
         var candidate = ActionLabCandidates.For(kind).FirstOrDefault(c => c.Id == candidateId);
         if (candidate is null) { Phase = "不支持此动作候选"; return false; }
-        var started = Controller.TryStart(kind, direction, Observe(), candidate.ShakeStrength, candidate.ShakeProfile);
+        var random = candidate.ShakeProfile == DangoMuscleShakeProfile.EyeAlignedRandom;
+        if (!random && seedOverride is not null) { Phase = "此动作候选不支持随机种子"; return false; }
+        var observation = Observe();
+        if (random && (!double.IsFinite(observation.EyeAxisX) || !double.IsFinite(observation.EyeAxisY)))
+        { Phase = "无法读取两眼实际连线；随机抖身未启动"; return false; }
+        uint seed = 0;
+        if (random)
+        {
+            if (seedOverride is { } supplied) seed = supplied;
+            else do { seed = (uint)Random.Shared.NextInt64(0, 1L << 32); } while (LastMuscleSeed == seed);
+        }
+        var started = Controller.TryStart(kind, direction, observation, candidate.ShakeStrength, candidate.ShakeProfile, seed);
         if (!started) Phase = Controller.RejectionReason ?? "请等待当前动作结束";
-        else { LastAction = kind; LastCandidateId = candidate.Id; Phase = "准备动作"; }
+        else
+        {
+            LastAction = kind; LastCandidateId = candidate.Id;
+            if (random) LastMuscleSeed = seed;
+            Phase = "准备动作";
+        }
         return started;
     }
 

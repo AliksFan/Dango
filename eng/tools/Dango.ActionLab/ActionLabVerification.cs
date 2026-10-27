@@ -9,6 +9,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Dango.Desktop.Rendering.Actions;
+using Dango.Physics;
 
 namespace Dango.ActionLab;
 
@@ -72,7 +73,8 @@ internal static class ActionLabVerification
                 var initialEye = session.Runtime.LastFrame!.Bodies[0].Attachments!.Face.Left;
                 var minEyeOpenness = 1d; var maxEyeShift = 0d;
                 var airborne = false; var jumpAccepted = false; var steps = 0;
-                var peakForceArrows = 0; var forceSources = new HashSet<int>(); var impulseLabel = false;
+                var peakForceArrows = 0; var forceSources = new HashSet<int>(); var impulseLabel = false; var peakMusclePairs = 0;
+                DangoMuscleDiagnostics? randomDiagnostics = null;
                 panel.CandidateButtons[(kind, candidate.Id)].BringIntoView(); panel.UpdateLayout();
                 CheckReachable(panel.CandidateButtons[(kind, candidate.Id)], panel, 1144, 720);
                 panel.TriggerForVerification(kind, direction, candidate.Id);
@@ -84,10 +86,17 @@ internal static class ActionLabVerification
                     Equals(panel.CandidateButtons[(kind, candidate.Id)].Tag, "Selected"), "Playing highlight does not identify exactly this candidate.");
                 for (; steps < 370 && session.Controller.Active && session.Error is null; steps++)
                 {
+                    var suppliedObservation = session.Observe();
                     panel.Step();
                     var frame = session.Runtime.LastBeltRoomFrame!;
                     var observation = session.Observe();
                     VerifyForceArrows(panel);
+                    if (candidate.ShakeProfile == DangoMuscleShakeProfile.EyeAlignedRandom && session.Controller.Active &&
+                        panel.ForceOverlay.Arrows.Any(a => a.Force.SourceKind == 6))
+                    {
+                        randomDiagnostics = VerifyRandomAxis(panel, suppliedObservation);
+                        peakMusclePairs = Math.Max(peakMusclePairs, randomDiagnostics.PairCount);
+                    }
                     peakForceArrows = Math.Max(peakForceArrows, panel.ForceOverlay.Arrows.Count);
                     foreach (var arrow in panel.ForceOverlay.Arrows) forceSources.Add(arrow.Force.SourceKind);
                     if (session.Controller.Active && kind is (DangoActionKind.SlowBlink or DangoActionKind.Squint or DangoActionKind.LookAway or DangoActionKind.LookBack))
@@ -124,7 +133,9 @@ internal static class ActionLabVerification
                 var last = session.Runtime.LastBeltRoomFrame!;
                 var moved = session.Observe().CoreX - start.CoreX;
                 reports.Add(new { action = kind.ToString(), name, candidateId = candidate.Id, strength = kind == DangoActionKind.Shake ? candidate.ShakeStrength : (double?)null,
-                    profile = kind == DangoActionKind.Shake ? candidate.ShakeProfile.ToString() : null, direction, steps, nativeSteps = last.Tick - nativeStart,
+                    profile = kind == DangoActionKind.Shake ? candidate.ShakeProfile.ToString() : null,
+                    seed = candidate.ShakeProfile == DangoMuscleShakeProfile.EyeAlignedRandom ? session.LastMuscleSeed : null,
+                    peakMusclePairs, randomDiagnostics, direction, steps, nativeSteps = last.Tick - nativeStart,
                     error = session.Error, controllerError = session.Controller.Error, moved, minimumHeight, maximumHeight,
                     startHeight, peakGap, maxPenetration, maxTopShift, peakMiddle, minEyeOpenness, maxEyeShift, airborne, jumpAccepted,
                     peakForceArrows, forceSources = forceSources.Order().ToArray(), impulseLabel });
@@ -144,6 +155,8 @@ internal static class ActionLabVerification
                     Check(peakGap is > .02 and < .35, $"Light hop exceeded its experiment range: {peakGap}");
                 }
                 if (kind == DangoActionKind.Shake) Check(peakMiddle > .008, "Shake did not physically deform its middle region.");
+                if (candidate.ShakeProfile == DangoMuscleShakeProfile.EyeAlignedRandom)
+                    Check(peakMusclePairs > 8, "Expanded random band did not add muscle pairs at the retained spacing.");
                 if (kind == DangoActionKind.SlowBlink) Check(minEyeOpenness < .1, "Slow blink did not close real rendered eyes.");
                 if (kind == DangoActionKind.Squint) Check(minEyeOpenness < .6, "Squint did not narrow real rendered eyes.");
                 if (kind is DangoActionKind.LookAway or DangoActionKind.LookBack) Check(maxEyeShift > .005, "Gaze did not move real rendered eyes.");
@@ -162,9 +175,14 @@ internal static class ActionLabVerification
                 }
                 Require(!IsWindowVisible(source.Handle), "Hidden surface became visible during actions.");
             }
+            CheckSeedReplay(module);
             // Same button path, then cancellation and minimize-style pause: no held
             // force, no queued replay, and no native advancement during the pause.
-            panel.Restart(); panel.TriggerForVerification(DangoActionKind.Sway, 1); panel.Step();
+            panel.Restart(); panel.TriggerForVerification(DangoActionKind.Shake, 1, "random"); panel.Step();
+            Require(panel.Session.LastMuscleSeed is not null, "Random action did not retain its replay seed.");
+            var originalSeed = panel.Session.LastMuscleSeed;
+            Require(!panel.Session.Trigger(DangoActionKind.Shake, 1, "random", seedOverride: 37) &&
+                panel.Session.LastMuscleSeed == originalSeed, "Busy rejection replaced the action seed.");
             Require(panel.StopButton.IsEnabled, "Stop was disabled while playing.");
             panel.StopButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Require(!panel.Session.Controller.Active, "Cancel retained an action.");
@@ -173,12 +191,16 @@ internal static class ActionLabVerification
             Require(panel.Session.Runtime.LastBeltRoomFrame!.BodySnapshot[83] == 0, "Cancel retained the native drag force.");
             var pausedAt = panel.Session.Runtime.LastBeltRoomFrame!.Tick;
             // Pause an active candidate to prove it is cancelled rather than resumed.
-            panel.TriggerForVerification(DangoActionKind.Shake, -1, "soft"); panel.Step();
+            panel.TriggerForVerification(DangoActionKind.Shake, -1, "random"); panel.Step();
+            Require(panel.Session.LastMuscleSeed != originalSeed, "A new random button action reused its previous seed.");
             pausedAt = panel.Session.Runtime.LastBeltRoomFrame!.Tick;
             panel.Session.SetPaused(true); panel.Render();
             Require(panel.CandidateButtons.Values.All(b => !b.IsEnabled), "Paused scene left actions enabled.");
             Require(panel.ForceOverlay.Frame is null && panel.ForceOverlay.Arrows.Count == 0, "Pause retained force arrows.");
             Require(panel.RestartButton.IsEnabled, "Paused scene hid recovery.");
+            var pausedSeed = panel.Session.LastMuscleSeed;
+            Require(!panel.Session.Trigger(DangoActionKind.Shake, 1, "random", seedOverride: 38) &&
+                panel.Session.LastMuscleSeed == pausedSeed, "Pause rejection replaced the action seed.");
             for (var i = 0; i < 20; i++) panel.Step();
             Require(panel.Session.Runtime.LastBeltRoomFrame!.Tick == pausedAt, "Paused scene advanced.");
             panel.Session.SetPaused(false); panel.Step();
@@ -191,7 +213,7 @@ internal static class ActionLabVerification
             Require(panel.Session.Runtime.LastFrame!.Bodies[0].Attachments!.Face.Left.Openness > .95, "Cancel retained an eye pose.");
             // Exercise the controller's actual invalid-time fault gate, then the
             // session's error propagation. This is not a native-fault simulation.
-            panel.TriggerForVerification(DangoActionKind.Shake, 1, "soft");
+            panel.TriggerForVerification(DangoActionKind.Shake, 1, "random");
             panel.Session.Controller.Advance(double.NaN, panel.Session.Observe()); panel.Step();
             Require(panel.Session.Error is not null && !panel.Session.Controller.Active, "Controller fault did not stop the session.");
             Require(panel.CandidateButtons.Values.All(b => !b.IsEnabled), "Fault left actions enabled.");
@@ -218,6 +240,7 @@ internal static class ActionLabVerification
                 layouts = layoutReports,
                 scrolling = "Every candidate brought into view at all three sizes; ancestor clips and fixed tools checked at every position.",
                 faultRecovery = "Controller invalid-time fault stops the session; all candidates disable; rebuild recovers. Missing native module startup/retry also covered.",
+                randomReplay = "Main candidate cases use fresh seeds through real buttons; two identical fresh sessions also replay 40 steps with explicit seed 0x9123abcd and compare contours/force ledgers. Busy, paused and invalid-direction rejections preserve the accepted seed.",
                 forceOverlay = "Read-only last-substep active-force ledger; every nonzero entry checked for provenance, host origin, vector direction and fixed 90 DIP/N length. Toggle does not step physics. Eye pose and jump impulse labels, cancellation/pause/fault/completion clearing covered. Excludes gravity, elasticity, damping, contacts and constraint reactions.",
                 moduleSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(module))),
                 scope = "deterministic real native steps + hidden WPF buttons/rendering; visible input, wall-clock cadence and aesthetics remain unverified" });
@@ -228,6 +251,56 @@ internal static class ActionLabVerification
             if (directory is not null) Write(directory, new { passed = false, failure = error.Message, cases = reports, layouts = layoutReports });
             return 1;
         }
+    }
+
+    private static DangoMuscleDiagnostics VerifyRandomAxis(ActionLabPanel panel, ActionObservation supplied)
+    {
+        var muscles = panel.Session.Runtime.ReadActionMuscles();
+        Require(muscles.Profile == DangoMuscleShakeProfile.EyeAlignedRandom && muscles.Seed == panel.Session.LastMuscleSeed,
+            "Random muscle diagnostics did not preserve this action's profile and replay seed.");
+        Require(Math.Abs(muscles.AxisX - supplied.EyeAxisX) < 1e-6 && Math.Abs(muscles.AxisY - supplied.EyeAxisY) < 1e-6,
+            "Native input axis does not match the previous successfully displayed eyes.");
+        var pairs = panel.ForceOverlay.Arrows.Where(a => a.Force.SourceKind == 6).Select(a => a.Force).ToArray();
+        Require(pairs.Length % 2 == 0, "Random muscle ledger contains an incomplete force pair.");
+        foreach (var f in pairs)
+        {
+            var magnitude = Math.Sqrt(f.ForceX * f.ForceX + f.ForceY * f.ForceY);
+            Require(Math.Abs(f.ForceX * muscles.AxisY - f.ForceY * muscles.AxisX) <= 1e-6 * magnitude,
+                "Random muscle force is not parallel to the actual supplied eye axis.");
+        }
+        for (var i = 0; i < pairs.Length; i += 2)
+        {
+            var a = pairs[i]; var b = pairs[i + 1];
+            Require(Math.Abs(a.ForceX + b.ForceX) < 1e-8 && Math.Abs(a.ForceY + b.ForceY) < 1e-8,
+                "Random muscle pair does not share equal opposing tension.");
+            Require((b.X - a.X) * a.ForceX + (b.Y - a.Y) * a.ForceY > 0,
+                "Random muscle pair does not pull inward along the eye axis.");
+        }
+        return muscles;
+    }
+
+    private static void CheckSeedReplay(string module)
+    {
+        // Explicit seed replay uses the session seam; matrix cases above always
+        // start through enabled real candidate buttons with freshly generated seeds.
+        using var first = new ActionLabSession(module);
+        using var replay = new ActionLabSession(module);
+        const uint seed = 0x9123abcd;
+        Require(first.Trigger(DangoActionKind.Shake, 1, "random", seed) &&
+            replay.Trigger(DangoActionKind.Shake, 1, "random", seed), "Explicit replay seed was rejected.");
+        Require(first.LastMuscleSeed == seed && replay.LastMuscleSeed == seed, "Explicit replay seed was replaced.");
+        for (var i = 0; i < 40; i++)
+        {
+            first.Step(); replay.Step();
+            Require(first.Error is null && replay.Error is null &&
+                first.Runtime.LastBeltRoomFrame!.Curve.SequenceEqual(replay.Runtime.LastBeltRoomFrame!.Curve) &&
+                first.Runtime.ReadActionForces().Forces.SequenceEqual(replay.Runtime.ReadActionForces().Forces),
+                "Identical seeds and initial scenes did not replay the same random trajectory/forces.");
+        }
+        var previous = first.LastMuscleSeed;
+        first.Cancel();
+        Require(!first.Trigger(DangoActionKind.Shake, 0, "random", 23) && first.LastMuscleSeed == previous,
+            "Rejected random action replaced the last accepted seed.");
     }
 
     private static void CheckForceToggle(ActionLabPanel panel)

@@ -158,7 +158,7 @@ dotnet build eng/tools/Dango.ActionLab/Dango.ActionLab.csproj -c Release -p:NuGe
 
 仍未验证：新版真实鼠标／键盘／滚轮与拖动手感、前台连续节奏、DPI／高对比矩阵及三档用户审美。后台验证进程均已退出；仅保留构建、截图、模拟时间动图与证据，无新端口、服务或业务持久数据。当前为本地实验候选，未合入 main、推送、部署或替换日常安装及受保护 DLL；此前留给用户审核的窗口不自动关闭。
 
-## 2026-10-27 肩侧鼓起候选与主动施力显示（当前）
+## 2026-10-27 肩侧鼓起候选与主动施力显示（上一版，基线 b044064）
 
 用户已看到三档新版并选择“更强”的幅度，反馈上半两侧凸起像耸肩。原三档窗口由用户自行关闭旧版并看到新版；该人工反馈只确定幅度偏好，不代表整个动作验收。本轮以 1.44 强度保留“原更强”对照，新增同强度“肩部柔和”，其余 13 个动作仍为既有版本。候选数由目录动态计算，本轮 15 个候选按钮、30 个候选方向组合，不为未来动作写死数量。
 
@@ -185,3 +185,33 @@ dotnet build eng/tools/Dango.ActionLab/Dango.ActionLab.csproj -c Release -p:NuGe
 [`shoulder-force-shake-01/result.json`](../../../artifacts/action-lab/shoulder-force-shake-01/result.json) 的两候选×两方向、取消／暂停恢复、内力／做功、旧 profile 拒绝和普通输入 360 步等价均通过。托管专项以初始半宽的 25% 为肩部外侧阈值，实际中段 RMS 为 0.081891→0.083567 m、肩外鼓为 0.026643→0.020265 m、肩上抬为 0.082347→0.081612 m、顶部 RMS 为 0.038307→0.045090 m；这与独立探测采样时刻和肩区边界略有不同，证据口径分别保留。
 
 新版前台手感、箭头阅读性、多 DPI／高对比与肩部视觉接受仍待用户审核。后台检查进程已退出，无新端口、服务或业务持久数据；只保留实验构建与证据。未合入 main、推送、部署、安装或替换受保护 DLL。
+
+## 2026-10-27 沿眼线的随机内收（当前）
+
+用户确认力覆盖身体中间 **3/4 高度**，从两侧沿两眼实际连线朝内，沿用现有间距密度并随机改变大小。保留“原更强／肩部柔和”，新增“随机”；其它 13 个动作不变。候选数仍由目录计算，本轮 16 个按钮、32 个候选方向组合。界面继续遵循桌面规范 v0.1 第 2–6 节，必要时行内换行，预览和固定操作区不缩小。
+
+新 profile 使用当前轮廓沿眼线的截面，两端施加等大反向中央拉力。沿眼线法向高度取 12.5%–87.5% 的活动带，力点采用 `0.04π × 实际身体参考半径` 的固定间距网格，扩大覆盖时增加施力点，上下边缘半间距平滑渐入，最多 25 对。这里保持的是原力点的参考间距密度，点位随当前轮廓截面变化；区别于旧 profile 的固定材料角肌束。真实 Fourier 曲线交点由有界求解获得，不用显示轮廓采样点或姿态插值冒充物理。
+
+每步以**上一成功展示帧的真实两眼中心连线**转换出世界单位轴，处理眼布局 Y 方向和同帧显示缩放；不以身体谐波替代眼轴，不单独推进眼睛求解。没有合法眼轴时拒绝启动，动作中丢失眼轴则释放输入并报错。每次成功按按钮生成新的 uint32 种子，诊断可见；支持指定种子重放。忙中、暂停或被拒绝的请求不更换正在使用的种子。
+
+随机值只依赖种子、行号和动作时间，在 `[0.6,1]` 范围以 6.4 Hz 时间结点平滑衔接，叠加现有 3.2 Hz 激活与约 0.75 s 包络。每对两端共享张力，随机序列不因 follower 试算次数、回滚或渲染调用改变。首次总预算 8 的横向模式超过既有专项测试的 0.15 m 形变验收断言；这是前几轮沿用的工程检查线，**不是用户指定的幅度上限或原生求解器的稳定性界限**，不表示超过它就物理不安全，也没有运行时锁姿态截断。只将新模式预算降为 4，原 profile 0/1 公式、材料、频率、时长和实际物理门禁不变。失败和唯一减幅原因保留于 `artifacts/action-lab/shoulder-probe/random-profile/REPORT.txt`，未为达到指定比例反复扫参。
+
+“显示力”仍从真实成功末子步账本绘图，能显示全部活动截面成对力，不只前 8 个诊断张力样本。UI 报告同时记录本次种子、实际输入轴、间距、活动带及动态力对数；显示开关不推进物理，停止／暂停／故障／结束均不保留旧箭头。
+
+可见入口为 `artifacts/action-lab/random-inward-candidate/Dango.ActionLab.exe`，标题“Dango · 动作实验 · 随机内收候选”。之前候选可执行目录保留。后台原生测时均值约 12–15 ms、峰值约 17–23 ms，仅为 native 活跃步，不能宣称完整 WPF 持续 60 FPS 或用户观感通过。
+
+```powershell
+dotnet build eng/tools/Dango.ActionLab/Dango.ActionLab.csproj -c Release -p:NuGetAudit=false -o artifacts/action-lab/random-inward-candidate
+& ./artifacts/action-lab/random-inward-candidate/Dango.ActionLab.exe --verify ./artifacts/action-lab/random-inward-check-new
+& ./artifacts/action-lab/random-inward-candidate/Dango.ActionLab.exe --verify-shake ./artifacts/action-lab/random-inward-shake-new ./artifacts/action-lab/shoulder-force-candidate/dango_belt_room.dll
+```
+
+专项第三参数应使用上一版肩部模块（SHA-256 `4D5CB78A5C2CBF1E0556ECEFE0093CF3AB56E90FEC395D27CA25E354D07587EA`）。固定水平轴与种子的原生参考测量和真实按钮的实际眼轴／新随机种子分别记录，不混为同一轨迹。原更强对照应保持位移不变，普通输入等价和旧模块未知 pattern 拒绝均需通过。
+
+最终 Release 构建 0 警告／0 错误；控制器与 Room 针对性测试 25 通过、2 个旧模块负控因夹具缺失而跳过（`random-inward-final.trx`）。最终原生全套含新随机 profile、旋转／不对称截面、交点与原多项式根对照、重放／异种子、平滑性、非法轴无写入、自由体动量／做功、故障回滚、释放与连续 10 次，以及旧 profile0/1 回归，均通过：`artifacts/action-lab/random-native-final.txt`。
+
+[`random-inward-check-01/result.json`](../../../artifacts/action-lab/random-inward-check-01/result.json) 的 32 个按钮方向组合通过，包含实际眼轴与全部成对力的平行／朝内／等大反向验证、显式种子实际 Session 重放、忙中／暂停拒绝不改种子、后续按钮更换种子及原力图清场／布局检查。此轮按钮试验两次随机种子为 1984452534、159721440，动态最大 10 对力（20 条箭头），接地间隙为 0；截图已核对。所测种子通过不代表整个 uint32 种子空间的视觉或稳定性验收。
+
+[`random-inward-shake-01/result.json`](../../../artifacts/action-lab/random-inward-shake-01/result.json) 的三候选×两方向、普通输入 360 步等价、旧模块未知 pattern 拒绝、原更强位移保持一致及取消／暂停检查均通过。原生模块 SHA-256 为 `FB0A7808FC2AE291C83D1C24C04DB8E49BC96DF850B3BF64D69350304B7812B0`。
+
+新版尚未打开前台；真实连续输入、完整界面墙钟节奏、DPI／高对比与随机模式观感待用户审核。后台检查已退出，无新端口、服务或业务持久数据，保留本地实验构建与证据。未合入 main、推送、部署、安装或替换受保护 DLL。

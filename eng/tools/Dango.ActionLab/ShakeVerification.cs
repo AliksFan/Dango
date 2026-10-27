@@ -70,7 +70,8 @@ internal static class ShakeVerification
                         forces = Math.Max(forces, Math.Abs(muscles.NetForceX) + Math.Abs(muscles.NetForceY));
                         activeStepMilliseconds += watch.Elapsed.TotalMilliseconds;
                         maximumStepMilliseconds = Math.Max(maximumStepMilliseconds, watch.Elapsed.TotalMilliseconds);
-                        Require(muscles.PairCount == 8, "The muscle field did not contain eight real force pairs.");
+                        Require(candidate.ShakeProfile == DangoMuscleShakeProfile.EyeAlignedRandom
+                            ? muscles.PairCount is >= 2 and <= 25 : muscles.PairCount == 8, "Unexpected real muscle pair count.");
                         Require(Math.Abs(muscles.Strength - candidate.ShakeStrength) < 1e-6, "The selected candidate used a different muscle strength.");
                         Require(muscles.Profile == candidate.ShakeProfile, "The selected candidate used a different muscle profile.");
                     }
@@ -96,7 +97,8 @@ internal static class ShakeVerification
                     $"Body/contact response failed: upper={peakUpper}, foot={peakFoot}, drift={drift}, gap={peakGap}, settled={settled}");
                 Require(forces < 1e-10 && torque < 1e-10 && work > 0, "Internal force/work accounting failed.");
                 if (direction == 1) { using var stream = File.Create(Path.Combine(candidateDirectory, "shake-simulated-time.gif")); gif.Save(stream); }
-                cases.Add(new { candidateId = candidate.Id, candidate.ShakeStrength, direction, activeFrames = active, peakUpper, peakFoot, drift, peakGap, settled, work, forces, torque,
+                cases.Add(new { candidateId = candidate.Id, candidate.ShakeStrength, profile = candidate.ShakeProfile.ToString(), seed = session.LastMuscleSeed,
+                    direction, activeFrames = active, peakUpper, peakFoot, drift, peakGap, settled, work, forces, torque,
                     averageActiveStepMilliseconds = activeStepMilliseconds / active, maximumStepMilliseconds });
                 panel.TriggerForVerification(DangoActionKind.Shake, direction, candidate.Id);
                 for (var i = 0; i < 15; i++) panel.Step();
@@ -151,6 +153,16 @@ internal static class ShakeVerification
             }
             catch (NotSupportedException) { Require(previous.Read().Tick == before, "Unsupported profile advanced old physics."); }
         }
+        if (!previous.SupportsEyeAlignedRandom)
+        {
+            try
+            {
+                previous.Step(1, new DangoBeltInput { MuscleShakeTime = .2, MuscleShakeStrength = 1.44,
+                    MuscleShakeProfile = DangoMuscleShakeProfile.EyeAlignedRandom, MuscleShakeAxisX = 1, MuscleShakeSeed = 37 });
+                throw new InvalidOperationException("Old module silently substituted a nonrandom muscle profile.");
+            }
+            catch (NotSupportedException) { Require(previous.Read().Tick == before, "Unsupported random profile advanced old physics."); }
+        }
         for (var i = 0; i < 360; i++)
         {
             var input = i switch
@@ -178,7 +190,9 @@ internal static class ShakeVerification
         var outerHalfWidth = .5 * (initial.Stats[10] - initial.Stats[8]);
         for (var i = 0; i < 150; i++)
         {
-            world.Step(1, i < 45 ? new DangoBeltInput(InputActive: true) { MuscleShakeTime = (i + 1) / 60d, MuscleShakeStrength = strength, MuscleShakeProfile = profile } : default);
+            world.Step(1, i < 45 ? new DangoBeltInput(InputActive: true) { MuscleShakeTime = (i + 1) / 60d, MuscleShakeStrength = strength, MuscleShakeProfile = profile,
+                MuscleShakeAxisX = profile == DangoMuscleShakeProfile.EyeAlignedRandom ? 1 : 0,
+                MuscleShakeSeed = profile == DangoMuscleShakeProfile.EyeAlignedRandom ? 0x1234u : 0 } : default);
             var frame = world.Read();
             var middleSum = 0d; var topSum = 0d; var middleCount = 0; var topCount = 0;
             for (var p = 0; p < 256; p++)

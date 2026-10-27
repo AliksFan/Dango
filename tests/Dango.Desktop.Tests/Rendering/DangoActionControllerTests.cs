@@ -100,7 +100,7 @@ public sealed class DangoActionControllerTests
     public void MuscleProfileIsFrozenAndInvalidProfilesDoNotStart()
     {
         var c = new DangoActionController();
-        Assert.IsFalse(c.TryStart(DangoActionKind.Shake, 1, Sample(), 1.44, (DangoMuscleShakeProfile)2));
+        Assert.IsFalse(c.TryStart(DangoActionKind.Shake, 1, Sample(), 1.44, (DangoMuscleShakeProfile)3));
         Assert.IsFalse(c.TryStart(DangoActionKind.Sway, 1, Sample(), .72, DangoMuscleShakeProfile.SoftShoulders));
         Assert.IsTrue(c.TryStart(DangoActionKind.Shake, 1, Sample(), 1.44, DangoMuscleShakeProfile.SoftShoulders));
         Assert.AreEqual(DangoMuscleShakeProfile.SoftShoulders, c.Advance(.1, Sample()).Motor.MuscleShakeProfile);
@@ -109,6 +109,30 @@ public sealed class DangoActionControllerTests
         Assert.AreEqual(default, c.Cancel().Motor);
         Assert.IsTrue(c.TryStart(DangoActionKind.Shake, 1, Sample()));
         Assert.AreEqual(DangoMuscleShakeProfile.Original, c.Advance(.1, Sample()).Motor.MuscleShakeProfile);
+    }
+
+    [TestMethod]
+    public void RandomSeedIsFrozenWhileEyeAxisTracksSuccessfulObservations()
+    {
+        var c = new DangoActionController();
+        var initial = Sample() with { EyeAxisX = .6, EyeAxisY = .8 };
+        var next = Sample() with { EyeAxisX = .8, EyeAxisY = .6 };
+        Assert.IsFalse(c.TryStart(DangoActionKind.Shake, 1, initial with { EyeAxisX = double.NaN }, 1.44, DangoMuscleShakeProfile.EyeAlignedRandom));
+        Assert.IsTrue(c.TryStart(DangoActionKind.Shake, 1, initial, 1.44, DangoMuscleShakeProfile.EyeAlignedRandom, 123456789));
+        var first = c.Advance(.1, initial).Motor;
+        Assert.AreEqual(123456789u, first.MuscleShakeSeed);
+        Assert.AreEqual(.6, first.MuscleShakeAxisX);
+        Assert.AreEqual(.8, first.MuscleShakeAxisY);
+        Assert.IsFalse(c.TryStart(DangoActionKind.Shake, 1, next, 1.44, DangoMuscleShakeProfile.EyeAlignedRandom, 37));
+        var second = c.Advance(.1, next).Motor;
+        Assert.AreEqual(123456789u, second.MuscleShakeSeed);
+        Assert.AreEqual(.8, second.MuscleShakeAxisX);
+        Assert.AreEqual(.6, second.MuscleShakeAxisY);
+        Assert.AreEqual(default, c.Advance(.1, next with { EyeAxisX = 0, EyeAxisY = 0 }).Motor);
+        Assert.IsFalse(c.Active);
+        Assert.IsNotNull(c.Error);
+        Assert.IsFalse(c.TryStart(DangoActionKind.Shake, 1, Sample(), .72, DangoMuscleShakeProfile.Original, 37));
+        Assert.IsTrue(c.TryStart(DangoActionKind.Sway, 1, Sample() with { EyeAxisX = double.NaN }));
     }
 
     [TestMethod]
