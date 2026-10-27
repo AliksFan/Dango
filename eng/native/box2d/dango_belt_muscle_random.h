@@ -5,7 +5,7 @@
 static double belt_muscle_random_value(uint32_t seed,int row,uint32_t knot){
  uint32_t x=seed^((uint32_t)(row+13)*UINT32_C(0x9e3779b9))^(knot*UINT32_C(0x85ebca6b));
  x^=x>>16;x*=UINT32_C(0x7feb352d);x^=x>>15;x*=UINT32_C(0x846ca68b);x^=x>>16;
- return .6+.4*(double)(x>>8)/16777215.;
+ return (x&1?-1:1)*(.6+.4*(double)(x>>8)/16777215.);
 }
 static double belt_muscle_random_gain(uint32_t seed,int row,double time){
  double t=fmax(0,time)*6.4;uint32_t k=(uint32_t)floor(t);double s=belt_muscle_smooth(t-k);
