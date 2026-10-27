@@ -6,6 +6,8 @@ using System.Windows.Threading;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.AppShell.Rooms;
+using Dango.Desktop.Dangos;
+using Dango.Desktop.Furniture;
 using Dango.Desktop.Rendering.Visuals;
 using Dango.Physics;
 
@@ -28,6 +30,12 @@ public sealed class LocalRoomWindowReturnAppearanceTests
         var seed = new AppearanceSettingsSession(appearancePath);
         seed.StagePreview(InitialAppearance);
         Assert.IsTrue(seed.TrySave());
+        var legacyAppearanceBytes = File.ReadAllBytes(appearancePath);
+        var rosterStore = new DangoRosterStore(root);
+        var roster = rosterStore.LoadOrInitialize().Snapshot!;
+        var dangoId = roster.SelectedId!.Value;
+        var named = rosterStore.Rename(roster, dangoId, "虚构返程团子", Guid.NewGuid());
+        Assert.AreEqual(FurnitureCommitState.Committed, named.State, named.Warning);
         using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"));
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
         Assert.IsTrue(runtime.UsesBeltRoom);
@@ -91,12 +99,14 @@ public sealed class LocalRoomWindowReturnAppearanceTests
         E<Slider>(home, "EyeSpacingSlider").Value = EditedAppearance.EyeLayout.SpacingControlPercent;
         Assert.AreEqual(EditedAppearance, home.DraftAppearance);
         Assert.IsTrue(appearance.IsDirty);
-        Assert.AreEqual(InitialAppearance, new AppearanceSettingsSession(appearancePath).SavedAppearance,
+        Assert.AreEqual(InitialAppearance, rosterStore.LoadOrInitialize().Snapshot!.Find(dangoId)!.Appearance,
             "A real post-return preview must not save before Apply.");
+        CollectionAssert.AreEqual(legacyAppearanceBytes, File.ReadAllBytes(appearancePath));
         Assert.IsTrue(E<Button>(home, "ApplyButton").IsEnabled);
         Click(home, "ApplyButton");
         Assert.AreEqual(EditedAppearance, appearance.SavedAppearance);
-        Assert.AreEqual(EditedAppearance, new AppearanceSettingsSession(appearancePath).SavedAppearance);
+        Assert.AreEqual(EditedAppearance, rosterStore.LoadOrInitialize().Snapshot!.Find(dangoId)!.Appearance);
+        CollectionAssert.AreEqual(legacyAppearanceBytes, File.ReadAllBytes(appearancePath), "Roster edits must preserve the legacy appearance source.");
         Assert.IsFalse(appearance.IsDirty);
         WaitUntil(() => home.BoundBeltPresenter!.Appearance == EditedAppearance);
         Assert.AreEqual(EditedAppearance, home.BoundBeltPresenter!.Appearance);
@@ -116,7 +126,8 @@ public sealed class LocalRoomWindowReturnAppearanceTests
             "Fresh entry must create a room owner from the newly saved appearance, never reuse the old physical world.");
         Assert.AreEqual(1, runtime.EntityIds.Count);
         AssertRenderedAppearance(runtime, Field<DeformableDangoVisual>(window.Scene, "body"), runtime.EntityIds.Single(), EditedAppearance);
-        Assert.AreEqual(EditedAppearance, new AppearanceSettingsSession(appearancePath).SavedAppearance);
+        Assert.AreEqual(EditedAppearance, rosterStore.LoadOrInitialize().Snapshot!.Find(dangoId)!.Appearance);
+        CollectionAssert.AreEqual(legacyAppearanceBytes, File.ReadAllBytes(appearancePath), "Roster edits must preserve the legacy appearance source.");
     }
 
     [STATestMethod]

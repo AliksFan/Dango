@@ -6,6 +6,8 @@ using System.Windows.Threading;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.AppShell.Rooms;
+using Dango.Desktop.Dangos;
+using Dango.Desktop.Furniture;
 using Dango.Desktop.Rendering.Visuals;
 
 namespace Dango.Desktop.Tests.AppShell;
@@ -223,6 +225,10 @@ public sealed class LocalRoomProductTests
     {
         var root = Path.Combine(TestRepository.Root, "artifacts", "local-room", "tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
+        var store = new DangoRosterStore(root);
+        var snapshot = store.LoadOrInitialize().Snapshot!;
+        var created = store.Create(snapshot, 0, "虚构普通房团子", DangoAppearanceConfiguration.Default, Guid.NewGuid());
+        Assert.AreEqual(FurnitureCommitState.Committed, created.State, created.Warning);
         return new(settingsFile: Path.Combine(root, "settings.json"));
     }
     private static T Field<T>(object instance, string name) =>
