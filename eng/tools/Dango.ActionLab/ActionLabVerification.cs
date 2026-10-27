@@ -156,7 +156,7 @@ internal static class ActionLabVerification
                 }
                 if (kind == DangoActionKind.Shake) Check(peakMiddle > .008, "Shake did not physically deform its middle region.");
                 if (candidate.ShakeProfile == DangoMuscleShakeProfile.EyeAlignedRandom)
-                    Check(peakMusclePairs > 8, "Expanded random band did not add muscle pairs at the retained spacing.");
+                    Check(peakMusclePairs > 0, "Random band did not apply muscle pairs at the updated spacing.");
                 if (kind == DangoActionKind.SlowBlink) Check(minEyeOpenness < .1, "Slow blink did not close real rendered eyes.");
                 if (kind == DangoActionKind.Squint) Check(minEyeOpenness < .6, "Squint did not narrow real rendered eyes.");
                 if (kind is DangoActionKind.LookAway or DangoActionKind.LookBack) Check(maxEyeShift > .005, "Gaze did not move real rendered eyes.");

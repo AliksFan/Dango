@@ -152,7 +152,7 @@ static int random_force_contract(void){
    int nexact=belt_roots(proj,1,0,level,exact),nsection=belt_muscle_section_roots(proj,cuts,nc,level,section);CHECK(nexact==nsection);
    for(int i=0;i<nexact;++i)CHECK(fabs(exact[i]-section[i])<1e-8);
   }
-  CHECK(fabs(b.muscle_diag[28]-.04*BELT_PI*b.radius)<1e-13);double previous=-INFINITY,sum=0;
+  CHECK(fabs(b.muscle_diag[28]-.08*BELT_PI*b.radius)<1e-13);double previous=-INFINITY,sum=0;
   for(int i=0;i<(int)b.force_ledger[4];i+=2){const double* a=b.force_ledger+8+6*i;const double* z=a+6;
    double level=-sn*a[0]+cs*a[1];CHECK(level>b.muscle_diag[29]&&level<b.muscle_diag[30]);
    CHECK(fabs(-sn*(z[0]-a[0])+cs*(z[1]-a[1]))<1e-9);CHECK(fabs(-sn*a[2]+cs*a[3])<1e-10);
