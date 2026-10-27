@@ -29,6 +29,18 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
     internal bool UsesBeltRoom => beltRoom;
     internal DangoBeltRoomFrame? LastBeltRoomFrame => scene?.BeltRoomFrame;
     internal bool SupportsMuscleActuation => actionPreview && scene?.SupportsMuscleActuation == true;
+    internal DangoActiveForceFrame ReadActionForces()
+    {
+        VerifyAccess();
+        if (!actionPreview || scene is null) throw new InvalidOperationException("只有动作实验可以读取施力诊断。");
+        return scene.ReadActiveForces();
+    }
+    internal LogicalPoint ActionForceToHost(double x, double y)
+    {
+        VerifyAccess();
+        if (!actionPreview || scene is null) throw new InvalidOperationException("只有动作实验可以转换施力诊断。");
+        return scene.ToHost(new(x, y));
+    }
     internal DangoMuscleDiagnostics ReadActionMuscles()
     {
         VerifyAccess();

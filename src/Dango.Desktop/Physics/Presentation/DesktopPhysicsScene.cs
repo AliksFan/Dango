@@ -88,6 +88,8 @@ public sealed partial class DesktopPhysicsScene : IDisposable
     internal double PreviewJumpSpeedScale => beltRoom is null ? world.PreviewJumpSpeedScale : 1;
     internal double ContinuousCoreX(DangoBodyState body) => body.CoreX + horizontalCoreOffset;
     internal bool SupportsMuscleActuation => beltRoom?.SupportsMuscleActuation == true;
+    internal DangoActiveForceFrame ReadActiveForces() => beltRoom?.ReadActiveForces()
+        ?? throw new NotSupportedException("当前场景不支持真实主动施力诊断。");
     internal DangoMuscleDiagnostics ReadMuscleDiagnostics()
     {
         VerifyAccess();

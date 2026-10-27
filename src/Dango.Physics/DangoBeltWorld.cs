@@ -4,12 +4,15 @@ using Dango.Desktop.Physics.Tuning;
 
 namespace Dango.Physics;
 
+public enum DangoMuscleShakeProfile { Original = 0, SoftShoulders = 1 }
+
 public readonly record struct DangoBeltInput(double Horizontal=0, double Stretch=0, double Downward=0,
     bool JumpPressed=false, bool DragActive=false, double DragTargetX=0, double DragTargetY=0,
     bool InputActive=false, bool CancelForces=false)
 {
     public double MuscleShakeTime { get; init; }
     public double MuscleShakeStrength { get; init; }
+    public DangoMuscleShakeProfile MuscleShakeProfile { get; init; }
 }
 
 /// <summary>Native world coordinates. Scaffold has core then 16 massless attachments, each x/y/vx/vy.</summary>
@@ -212,7 +215,7 @@ public sealed class DangoBeltWorld : IDisposable
     public void Step(double dt,DangoBeltInput input)
     {
         using var nativeAccess=EnterNative();
-        if (input.MuscleShakeStrength != 0 || input.MuscleShakeTime != 0)
+        if (input.MuscleShakeStrength != 0 || input.MuscleShakeTime != 0 || input.MuscleShakeProfile != DangoMuscleShakeProfile.Original)
             throw new NotSupportedException("Internal muscles require the room's explicit single-step capability.");
         if(!Finite(dt)||dt<=0||dt>1d/30 || !Finite(input.Horizontal)||Math.Abs(input.Horizontal)>1 ||
             !Finite(input.Stretch)||input.Stretch is <0 or >1 || !Finite(input.Downward)||input.Downward is <0 or >1 ||

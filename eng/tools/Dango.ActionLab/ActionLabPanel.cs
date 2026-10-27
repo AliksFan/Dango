@@ -37,6 +37,11 @@ internal sealed class ActionLabPanel : Grid, IDisposable
     private readonly Canvas world = new() { Width = 520, Height = 340, ClipToBounds = true };
     private readonly DeformableDangoVisual body = new() { ShowHat = false, IsHitTestVisible = false };
     private readonly DangoHatVisual hat = new() { IsHitTestVisible = false };
+    internal ActionForceOverlay ForceOverlay { get; } = new();
+    internal CheckBox ShowForces { get; } = new() { Content = "显示力", MinHeight = 32, VerticalContentAlignment = VerticalAlignment.Center };
+    private readonly TextBlock forceNote = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap, Visibility = Visibility.Collapsed };
+    internal string ForceNote => forceNote.Text;
+    private long forceActionStartStep;
     private readonly TextBlock phase = new() { TextWrapping = TextWrapping.Wrap, MinHeight = 44 };
     private readonly TextBlock diagnostics = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Visibility = Visibility.Collapsed };
     private readonly Dictionary<DangoActionKind, Button> buttons = [];
@@ -81,7 +86,7 @@ internal sealed class ActionLabPanel : Grid, IDisposable
         scene.Child = view;
         var floor = new System.Windows.Shapes.Line { X1 = ActionLabSession.Left, X2 = ActionLabSession.Right, Y1 = ActionLabSession.Floor, Y2 = ActionLabSession.Floor, StrokeThickness = .7 };
         floor.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "HomeLine");
-        world.Children.Add(floor); world.Children.Add(body); world.Children.Add(hat);
+        world.Children.Add(floor); world.Children.Add(body); world.Children.Add(hat); world.Children.Add(ForceOverlay);
         SetRow(scene, 1); Children.Add(scene);
 
         var controls = new Grid();
@@ -115,7 +120,18 @@ internal sealed class ActionLabPanel : Grid, IDisposable
         debug.Checked += (_, _) => { diagnostics.Visibility = Visibility.Visible; Render(); };
         debug.Unchecked += (_, _) => diagnostics.Visibility = Visibility.Collapsed;
         var diagnosticArea = new StackPanel();
-        diagnosticArea.Children.Add(debug); diagnosticArea.Children.Add(diagnostics);
+        var options = new StackPanel { Orientation = Orientation.Horizontal };
+        ShowForces.Margin = new(0, 0, 18, 0);
+        ShowForces.ToolTip = "显示主动施力：成功物理步的最后子步；固定 1 N = 90 DIP（预览世界坐标）。\n包括实际肌力、牵引及水平/纵向驱动；不含重力、弹性、阻尼、接触与约束反力。\n箭头起点为积分时实际施力位置；跳跃瞬时冲量及眼部姿态指令不是持续力。";
+        AutomationProperties.SetName(ShowForces, "显示主动施力");
+        AutomationProperties.SetHelpText(ShowForces, (string)ShowForces.ToolTip);
+        ToolTipService.SetInitialShowDelay(ShowForces, 250);
+        ShowForces.Checked += (_, _) => Render();
+        ShowForces.Unchecked += (_, _) => Render();
+        options.Children.Add(ShowForces); options.Children.Add(debug);
+        forceNote.SetResourceReference(TextBlock.ForegroundProperty, "HomeMuted");
+        forceNote.ToolTip = ShowForces.ToolTip;
+        diagnosticArea.Children.Add(options); diagnosticArea.Children.Add(forceNote); diagnosticArea.Children.Add(diagnostics);
         SetRow(diagnosticArea, 3); controls.Children.Add(diagnosticArea);
         SetColumn(controls, 1); SetRowSpan(controls, 3); Children.Add(controls);
 
@@ -144,7 +160,13 @@ internal sealed class ActionLabPanel : Grid, IDisposable
                 button.Margin = new(0, 0, 8, 0); button.Padding = new(8);
                 AutomationProperties.SetName(button, name + " · " + candidate.Label);
                 DesktopTheme.SetPreserveSelectedHover(button, true);
-                button.Click += (_, _) => { if (button.IsEnabled) { Session.Trigger(kind, Direction, candidate.Id); Render(); } };
+                button.Click += (_, _) =>
+                {
+                    if (!button.IsEnabled) return;
+                    if (Session.Trigger(kind, Direction, candidate.Id))
+                    { forceActionStartStep = Session.Steps; ForceOverlay.Clear(); }
+                    Render();
+                };
                 candidateButtons.Add((kind, candidate.Id), button);
                 if (candidate.Id == "current") buttons.Add(kind, button);
                 choices.Children.Add(button);
@@ -236,8 +258,37 @@ internal sealed class ActionLabPanel : Grid, IDisposable
         stop.IsEnabled = active && Session.Error is null && !Session.Paused;
         var selected = Session.LastAction is { } current ? Actions.First(a => a.Kind == current).Name + " · " + ActionLabCandidates.For(current).First(c => c.Id == Session.LastCandidateId).Label + " · " : "";
         phase.Text = selected + PhaseLabel(Session.Phase);
+        RenderForces();
         if (Session.Runtime.LastBeltRoomFrame is { } native)
             diagnostics.Text = $"步进 {native.Tick} · 接地 {(native.Stats[14] != 0 ? "是" : "否")}\n离地 {native.Stats[12]:F4} m · 故障 {native.Fault}\n动作 {Session.Controller.Elapsed:F2} s";
+    }
+
+    private void RenderForces()
+    {
+        ForceOverlay.Clear();
+        var show = ShowForces.IsChecked == true;
+        forceNote.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (!show) { forceNote.Text = ""; return; }
+        const string scope = "主动施力 · 末子步 · 不含重力/接触\n";
+        const string scale = "1 N = 90 DIP";
+        forceNote.Text = scope + scale + " · 当前无主动施力";
+        if (!Session.Controller.Active || Session.Paused || Session.Error is not null || Session.Steps <= forceActionStartStep)
+            return;
+        try
+        {
+            var frame = Session.Runtime.ReadActionForces();
+            ForceOverlay.Show(frame, Session.Runtime.ActionForceToHost);
+            var kind = Session.Controller.Current;
+            if (kind is DangoActionKind.SlowBlink or DangoActionKind.Squint or DangoActionKind.LookAway or DangoActionKind.LookBack)
+                forceNote.Text = scope + "眼部姿态指令，无力箭头";
+            else if (kind == DangoActionKind.ChargedHop && Session.Phase is ("launch" or "await-liftoff" or "airborne"))
+                forceNote.Text = scope + "起跳：瞬时冲量，非持续力";
+            else forceNote.Text = scope + scale + $" · {ForceOverlay.Arrows.Count} 条箭头";
+        }
+        catch (NotSupportedException)
+        { ForceOverlay.Clear(); forceNote.Text = scope + "当前物理模块未提供施力数据"; }
+        catch (InvalidOperationException error)
+        { ForceOverlay.Clear(); forceNote.Text = scope + "施力显示不可用：" + error.Message; }
     }
 
     private static string PhaseLabel(string phase) => phase switch

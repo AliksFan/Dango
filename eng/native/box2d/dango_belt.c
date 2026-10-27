@@ -16,6 +16,7 @@ typedef struct belt_body {
  double jump_speed_scale;
  /* Transient single-step muscle input; never retained by the room API. */
  double muscle_time,muscle_strength,muscle_diag[32];
+ int muscle_profile;
  int short_bones,grounded,dragging,original_ground_jump,has_stepped;double stats[64],cal[11],diag[48];
  int shape_guard,speed_saturation,whale_drive,radial_drive;double radial_diag[16],rear_diag[16];double whale_gain,whale_diag[16],force_ledger[1024];double guard[24],solver_diag[24],speed_limit[12];
 } belt_body;
@@ -540,7 +541,7 @@ int dango_belt_step(void* handle,float dt,const float* c,int count){belt_body* b
  belt_body backup=*b;if(b->radial_drive){double tick=b->solver_diag[1]+1;memset(b->radial_diag,0,sizeof b->radial_diag);b->radial_diag[0]=3;b->radial_diag[1]=1;b->radial_diag[2]=tick;memset(b->rear_diag,0,sizeof b->rear_diag);b->rear_diag[0]=b->rear_diag[1]=1;b->rear_diag[2]=tick;}if(b->whale_drive){double tick=b->whale_diag[2]+1;memset(b->whale_diag,0,sizeof b->whale_diag);b->whale_diag[0]=b->whale_diag[1]=1;b->whale_diag[2]=tick;b->whale_diag[12]=b->whale_gain;}double attempt=b->solver_diag[1]+1;memset(b->solver_diag,0,sizeof b->solver_diag);b->solver_diag[0]=1;b->solver_diag[1]=attempt;b->solver_diag[4]=b->solver_diag[5]=b->solver_diag[6]=-1;memset(b->speed_limit,0,sizeof b->speed_limit);b->speed_limit[0]=1;b->speed_limit[1]=b->speed_saturation;b->speed_limit[2]=attempt;b->speed_limit[4]=1;
  if(b->shape_guard){double tick=b->guard[2]+1;memset(b->guard,0,sizeof b->guard);b->guard[0]=1;b->guard[1]=1;b->guard[2]=tick;b->guard[19]=.04*b->radius;b->guard[20]=1e-4*b->radius*b->radius;b->guard[21]=BELT_GUARD_FRAME_BUDGET;if(!belt_guard_path(b,b->q,b->q,4)){belt_solver_fail(b,19);goto fault;}b->guard[14]=belt_guard_energy(b);}
  memset(b->stats,0,sizeof b->stats);memset(b->diag,0,sizeof b->diag);b->diag[0]=1;b->diag[2]=belt_kinetic(b);b->diag[4]=belt_elastic_energy(b);b->diag[6]=belt_gravity_energy(b);belt_momentum(b,&b->diag[29]);b->diag[47]=dt;double h=dt/b->cfg.substep_count;
- memset(b->muscle_diag,0,sizeof b->muscle_diag);b->muscle_diag[0]=1;b->muscle_diag[1]=32;b->muscle_diag[2]=attempt;b->muscle_diag[3]=b->muscle_time;b->muscle_diag[4]=b->muscle_strength;
+ memset(b->muscle_diag,0,sizeof b->muscle_diag);b->muscle_diag[0]=1;b->muscle_diag[1]=32;b->muscle_diag[2]=attempt;b->muscle_diag[3]=b->muscle_time;b->muscle_diag[4]=b->muscle_strength;b->muscle_diag[24]=b->muscle_profile;
  bool vertical_cancel=c[1]>0&&c[6]>0;
  bool accepted=belt_try_jump(b,c[2]!=0,h);
  if(c[3]!=0&&!b->dragging){double bounds[4],foot;belt_bounds(b->q,bounds,&foot);double roots[64];int n=belt_roots(b->q,1,1,0,roots);double high=-INFINITY;for(int i=0;i<n;++i){belt_v p=belt_eval(b->q,roots[i],0);if(p.y>high){high=p.y;b->drag_theta=roots[i];}}}b->dragging=c[3]!=0;

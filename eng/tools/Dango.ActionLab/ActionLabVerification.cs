@@ -35,18 +35,25 @@ internal static class ActionLabVerification
             { Width = 1144, Height = 720, WindowStyle = unchecked((int)0x80000000) }) { RootVisual = panel };
             Layout(panel, 1144, 720);
             Require(!IsWindowVisible(source.Handle), "Verification window became visible.");
-            Require(panel.ActionButtons.Count == 14, "The experiment must expose exactly 14 actions.");
+            var expectedButtons = ActionLabPanel.Actions.Sum(a => ActionLabCandidates.For(a.Kind).Count);
+            var expectedCases = expectedButtons * 2;
+            Require(panel.ActionButtons.Count == ActionLabPanel.Actions.Length, "The experiment must expose every action.");
+            Require(panel.ShowForces.IsChecked != true, "Force overlay must default off.");
+            CheckForceToggle(panel);
             Save(panel, directory, "overview.png", 1144, 720);
-            Require(panel.CandidateButtons.Count == 16, "Expected three shake choices and thirteen existing actions.");
+            Require(panel.CandidateButtons.Count == expectedButtons, "Candidate buttons do not match the catalog.");
+            foreach (var showForces in new[] { false, true })
             foreach (var (width, height, label) in new[] { (1044, 660, "minimum"), (1144, 720, "common"), (1044, 900, "portrait") })
             {
+                panel.ShowForces.IsChecked = showForces; panel.Render();
+                var suffix = showForces ? "-forces" : "";
                 Layout(panel, width, height);
                 CheckButtons(panel, width, height, requireScrolling: label == "minimum");
-                layoutReports.Add(new { label, width, height, extentHeight = panel.CandidateScroll.ExtentHeight,
+                layoutReports.Add(new { label, showForces, width, height, extentHeight = panel.CandidateScroll.ExtentHeight,
                     viewportHeight = panel.CandidateScroll.ViewportHeight, bottomOffset = panel.CandidateScroll.VerticalOffset });
-                Save(panel, directory, label + "-bottom.png", width, height);
+                Save(panel, directory, label + suffix + "-bottom.png", width, height);
                 panel.CandidateScroll.ScrollToTop(); panel.UpdateLayout();
-                Save(panel, directory, label + "-top.png", width, height);
+                Save(panel, directory, label + suffix + "-top.png", width, height);
             }
             Layout(panel, 1144, 720);
 
@@ -65,11 +72,13 @@ internal static class ActionLabVerification
                 var initialEye = session.Runtime.LastFrame!.Bodies[0].Attachments!.Face.Left;
                 var minEyeOpenness = 1d; var maxEyeShift = 0d;
                 var airborne = false; var jumpAccepted = false; var steps = 0;
+                var peakForceArrows = 0; var forceSources = new HashSet<int>(); var impulseLabel = false;
                 panel.CandidateButtons[(kind, candidate.Id)].BringIntoView(); panel.UpdateLayout();
                 CheckReachable(panel.CandidateButtons[(kind, candidate.Id)], panel, 1144, 720);
                 panel.TriggerForVerification(kind, direction, candidate.Id);
                 Require(session.Controller.Active, $"Button failed to start {name}/{candidate.Id}: {session.Phase}");
                 Require(session.LastCandidateId == candidate.Id, "Button selected a different candidate.");
+                Require(panel.ForceOverlay.Arrows.Count == 0, "Starting action retained the previous ledger.");
                 Require(panel.CandidateButtons.Values.All(b => !b.IsEnabled), "Busy scene left candidate buttons enabled.");
                 Require(panel.CandidateButtons.Count(b => Equals(b.Value.Tag, "Selected")) == 1 &&
                     Equals(panel.CandidateButtons[(kind, candidate.Id)].Tag, "Selected"), "Playing highlight does not identify exactly this candidate.");
@@ -78,6 +87,21 @@ internal static class ActionLabVerification
                     panel.Step();
                     var frame = session.Runtime.LastBeltRoomFrame!;
                     var observation = session.Observe();
+                    VerifyForceArrows(panel);
+                    peakForceArrows = Math.Max(peakForceArrows, panel.ForceOverlay.Arrows.Count);
+                    foreach (var arrow in panel.ForceOverlay.Arrows) forceSources.Add(arrow.Force.SourceKind);
+                    if (session.Controller.Active && kind is (DangoActionKind.SlowBlink or DangoActionKind.Squint or DangoActionKind.LookAway or DangoActionKind.LookBack))
+                    {
+                        Require(panel.ForceOverlay.Arrows.Count == 0, "Eye pose drew a fake force arrow.");
+                        Require(panel.ForceNote.Contains("眼部姿态指令，无力箭头"), "Eye pose did not explain its non-force channel.");
+                    }
+                    if (kind == DangoActionKind.ChargedHop && frame.Stats[15] != 0)
+                    {
+                        Require(panel.ForceOverlay.Arrows.Count == 0 && panel.ForceNote.Contains("瞬时冲量，非持续力"),
+                            "Jump impulse was represented as a continuing force.");
+                        impulseLabel = true;
+                    }
+                    if (steps == 24) CheckForceToggle(panel);
                     minimumHeight = Math.Min(minimumHeight, frame.Stats[11] - frame.Stats[9]);
                     maximumHeight = Math.Max(maximumHeight, frame.Stats[11] - frame.Stats[9]);
                     peakGap = Math.Max(peakGap, frame.Stats[12]);
@@ -99,18 +123,24 @@ internal static class ActionLabVerification
                 }
                 var last = session.Runtime.LastBeltRoomFrame!;
                 var moved = session.Observe().CoreX - start.CoreX;
-                reports.Add(new { action = kind.ToString(), name, candidateId = candidate.Id, strength = kind == DangoActionKind.Shake ? candidate.ShakeStrength : (double?)null, direction, steps, nativeSteps = last.Tick - nativeStart,
+                reports.Add(new { action = kind.ToString(), name, candidateId = candidate.Id, strength = kind == DangoActionKind.Shake ? candidate.ShakeStrength : (double?)null,
+                    profile = kind == DangoActionKind.Shake ? candidate.ShakeProfile.ToString() : null, direction, steps, nativeSteps = last.Tick - nativeStart,
                     error = session.Error, controllerError = session.Controller.Error, moved, minimumHeight, maximumHeight,
-                    startHeight, peakGap, maxPenetration, maxTopShift, peakMiddle, minEyeOpenness, maxEyeShift, airborne, jumpAccepted });
+                    startHeight, peakGap, maxPenetration, maxTopShift, peakMiddle, minEyeOpenness, maxEyeShift, airborne, jumpAccepted,
+                    peakForceArrows, forceSources = forceSources.Order().ToArray(), impulseLabel });
                 void Check(bool condition, string message) { if (!condition) failures.Add($"{kind}/{candidate.Id}/{direction}: {message}"); }
                 Check(session.Error is null && !session.Controller.Active, $"Action failed: {session.Error ?? "timeout"}");
                 Check(panel.CandidateButtons.Values.All(b => b.IsEnabled), "Completed scene did not re-enable all candidates.");
                 Check(panel.CandidateButtons.Values.All(b => b.Tag is null), "Completed action retained a playing highlight.");
+                Check(panel.ForceOverlay.Arrows.Count == 0 && panel.ForceOverlay.Frame is null, "Completed action retained its force ledger.");
+                if (kind is not (DangoActionKind.SlowBlink or DangoActionKind.Squint or DangoActionKind.LookAway or DangoActionKind.LookBack))
+                    Check(peakForceArrows > 0, "Body action did not display any real active forces.");
                 Check(last.Tick - nativeStart == (ulong)steps, "Native step ownership diverged.");
                 Check(maxPenetration < .003, $"Ground penetration: {maxPenetration}");
                 if (kind == DangoActionKind.ChargedHop)
                 {
                     Check(airborne && jumpAccepted && session.Observe().Grounded, "Hop did not lift off and land.");
+                    Check(impulseLabel, "Hop did not identify its instantaneous impulse.");
                     Check(peakGap is > .02 and < .35, $"Light hop exceeded its experiment range: {peakGap}");
                 }
                 if (kind == DangoActionKind.Shake) Check(peakMiddle > .008, "Shake did not physically deform its middle region.");
@@ -138,14 +168,16 @@ internal static class ActionLabVerification
             Require(panel.StopButton.IsEnabled, "Stop was disabled while playing.");
             panel.StopButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Require(!panel.Session.Controller.Active, "Cancel retained an action.");
+            Require(panel.ForceOverlay.Frame is null && panel.ForceOverlay.Arrows.Count == 0, "Cancel retained force arrows.");
             panel.Step();
             Require(panel.Session.Runtime.LastBeltRoomFrame!.BodySnapshot[83] == 0, "Cancel retained the native drag force.");
             var pausedAt = panel.Session.Runtime.LastBeltRoomFrame!.Tick;
             // Pause an active candidate to prove it is cancelled rather than resumed.
-            panel.TriggerForVerification(DangoActionKind.Shake, -1, "strong"); panel.Step();
+            panel.TriggerForVerification(DangoActionKind.Shake, -1, "soft"); panel.Step();
             pausedAt = panel.Session.Runtime.LastBeltRoomFrame!.Tick;
             panel.Session.SetPaused(true); panel.Render();
             Require(panel.CandidateButtons.Values.All(b => !b.IsEnabled), "Paused scene left actions enabled.");
+            Require(panel.ForceOverlay.Frame is null && panel.ForceOverlay.Arrows.Count == 0, "Pause retained force arrows.");
             Require(panel.RestartButton.IsEnabled, "Paused scene hid recovery.");
             for (var i = 0; i < 20; i++) panel.Step();
             Require(panel.Session.Runtime.LastBeltRoomFrame!.Tick == pausedAt, "Paused scene advanced.");
@@ -159,10 +191,11 @@ internal static class ActionLabVerification
             Require(panel.Session.Runtime.LastFrame!.Bodies[0].Attachments!.Face.Left.Openness > .95, "Cancel retained an eye pose.");
             // Exercise the controller's actual invalid-time fault gate, then the
             // session's error propagation. This is not a native-fault simulation.
-            panel.TriggerForVerification(DangoActionKind.Shake, 1, "max");
+            panel.TriggerForVerification(DangoActionKind.Shake, 1, "soft");
             panel.Session.Controller.Advance(double.NaN, panel.Session.Observe()); panel.Step();
             Require(panel.Session.Error is not null && !panel.Session.Controller.Active, "Controller fault did not stop the session.");
             Require(panel.CandidateButtons.Values.All(b => !b.IsEnabled), "Fault left actions enabled.");
+            Require(panel.ForceOverlay.Frame is null && panel.ForceOverlay.Arrows.Count == 0, "Fault retained force arrows.");
             var faultAt = panel.Session.Runtime.LastBeltRoomFrame!.Tick;
             for (var i = 0; i < 20; i++) panel.Step();
             Require(panel.Session.Runtime.LastBeltRoomFrame!.Tick == faultAt, "Faulted scene kept advancing.");
@@ -179,12 +212,13 @@ internal static class ActionLabVerification
             Require(recovery.RetryButton!.IsEnabled, "Startup retry is disabled.");
             recovery.RetryButton!.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Require(recovery.Panel is not null && recovery.Error is null, "Retry did not recover the real native scene.");
-            Require(reports.Count == 32, "Candidate/direction matrix did not cover exactly 32 cases.");
-            Write(directory, new { passed = failures.Count == 0, failures, hidden = true, actionCount = 14, buttonCount = 16, expectedCases = 32, cases = reports,
+            Require(reports.Count == expectedCases, "Candidate/direction matrix did not cover the catalog completely.");
+            Write(directory, new { passed = failures.Count == 0, failures, hidden = true, actionCount = ActionLabPanel.Actions.Length, buttonCount = expectedButtons, expectedCases, cases = reports,
                 layoutSizes = new[] { "1044x660 minimum client", "1144x720 common client", "1044x900 portrait client" },
                 layouts = layoutReports,
                 scrolling = "Every candidate brought into view at all three sizes; ancestor clips and fixed tools checked at every position.",
                 faultRecovery = "Controller invalid-time fault stops the session; all candidates disable; rebuild recovers. Missing native module startup/retry also covered.",
+                forceOverlay = "Read-only last-substep active-force ledger; every nonzero entry checked for provenance, host origin, vector direction and fixed 90 DIP/N length. Toggle does not step physics. Eye pose and jump impulse labels, cancellation/pause/fault/completion clearing covered. Excludes gravity, elasticity, damping, contacts and constraint reactions.",
                 moduleSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(module))),
                 scope = "deterministic real native steps + hidden WPF buttons/rendering; visible input, wall-clock cadence and aesthetics remain unverified" });
             return failures.Count == 0 ? 0 : 1;
@@ -193,6 +227,47 @@ internal static class ActionLabVerification
         {
             if (directory is not null) Write(directory, new { passed = false, failure = error.Message, cases = reports, layouts = layoutReports });
             return 1;
+        }
+    }
+
+    private static void CheckForceToggle(ActionLabPanel panel)
+    {
+        var session = panel.Session;
+        var steps = session.Steps;
+        var tick = session.Runtime.LastBeltRoomFrame!.Tick;
+        var elapsed = session.Controller.Elapsed;
+        panel.ShowForces.IsChecked = false; panel.Render();
+        Require(panel.ForceOverlay.Arrows.Count == 0 && panel.ForceOverlay.Frame is null, "Hiding forces retained the ledger.");
+        panel.ShowForces.IsChecked = true; panel.Render();
+        Require(session.Steps == steps && session.Runtime.LastBeltRoomFrame!.Tick == tick && session.Controller.Elapsed == elapsed,
+            "Force overlay toggle advanced physical or action time.");
+    }
+
+    private static void VerifyForceArrows(ActionLabPanel panel)
+    {
+        var session = panel.Session;
+        if (!session.Controller.Active || session.Paused || session.Error is not null)
+        {
+            Require(panel.ForceOverlay.Frame is null && panel.ForceOverlay.Arrows.Count == 0, "Inactive scene retained force arrows.");
+            return;
+        }
+        var ledger = session.Runtime.ReadActionForces();
+        var displayed = panel.ForceOverlay.Frame;
+        Require(displayed is not null && displayed.Attempt == ledger.Attempt && displayed.Substep == ledger.Substep &&
+            displayed.Forces.SequenceEqual(ledger.Forces), "Overlay did not use the actual successful native force ledger.");
+        var nonzero = ledger.Forces.Where(f => f.ForceX != 0 || f.ForceY != 0).ToArray();
+        Require(panel.ForceOverlay.Arrows.Select(a => a.Force).SequenceEqual(nonzero), "Displayed arrows lost or invented a force entry.");
+        foreach (var arrow in panel.ForceOverlay.Arrows)
+        {
+            var origin = session.Runtime.ActionForceToHost(arrow.Force.X, arrow.Force.Y);
+            Require(Math.Abs(arrow.Start.X - origin.X) < 1e-6 && Math.Abs(arrow.Start.Y - origin.Y) < 1e-6,
+                "Force origin does not match the native application point.");
+            // The preview conversion is +X right, +Y up. Force length uses the
+            // declared fixed scale, independently of the world's meter scale.
+            var vector = arrow.End - arrow.Start;
+            Require(Math.Abs(vector.X - arrow.Force.ForceX * ActionForceOverlay.DipPerNewton) < 1e-6 &&
+                Math.Abs(vector.Y + arrow.Force.ForceY * ActionForceOverlay.DipPerNewton) < 1e-6,
+                "Arrow direction or fixed force scale diverged from the native vector.");
         }
     }
 
@@ -211,6 +286,7 @@ internal static class ActionLabVerification
             CheckReachable(button, panel, width, height);
             CheckReachable(panel.StopButton, panel, width, height);
             CheckReachable(panel.RestartButton, panel, width, height);
+            CheckReachable(panel.ShowForces, panel, width, height, minimumHeight: 32);
         }
         // Read settled extent/viewport after BringIntoView has completed layout;
         // a taller layout can fit all rows and correctly remain at offset zero.
@@ -230,15 +306,15 @@ internal static class ActionLabVerification
         }
     }
 
-    private static void CheckReachable(Button button, ActionLabPanel panel, double width, double height)
+    private static void CheckReachable(FrameworkElement control, ActionLabPanel panel, double width, double height, double minimumHeight = 40)
     {
-        var bounds = button.TransformToAncestor(panel).TransformBounds(new Rect(button.RenderSize));
+        var bounds = control.TransformToAncestor(panel).TransformBounds(new Rect(control.RenderSize));
         Require(bounds.Right <= width + .5 && bounds.Bottom <= height + .5 && bounds.X >= -.5 && bounds.Y >= -.5,
-            "Button leaves the experiment bounds: " + System.Windows.Automation.AutomationProperties.GetName(button));
-        Require(button.ActualHeight >= 40 && button.ActualWidth >= 40, "Button hit area is too small.");
-        for (var ancestor = VisualTreeHelper.GetParent(button); ancestor is Visual visual; ancestor = VisualTreeHelper.GetParent(ancestor))
+            "Button leaves the experiment bounds: " + System.Windows.Automation.AutomationProperties.GetName(control));
+        Require(control.ActualHeight >= minimumHeight && control.ActualWidth >= 40, "Button hit area is too small.");
+        for (var ancestor = VisualTreeHelper.GetParent(control); ancestor is Visual visual; ancestor = VisualTreeHelper.GetParent(ancestor))
         {
-            var local = button.TransformToAncestor(visual).TransformBounds(new Rect(button.RenderSize));
+            var local = control.TransformToAncestor(visual).TransformBounds(new Rect(control.RenderSize));
             if (ancestor is FrameworkElement element && (element.ClipToBounds || element is ScrollContentPresenter))
                 Require(Contains(new Rect(element.RenderSize), local), "Button is clipped by a scrolling/layout ancestor.");
             if (VisualTreeHelper.GetClip(visual) is { } clip)

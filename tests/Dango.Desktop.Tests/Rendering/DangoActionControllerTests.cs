@@ -1,5 +1,6 @@
 using Dango.Core.Animation;
 using Dango.Desktop.Rendering.Actions;
+using Dango.Physics;
 
 namespace Dango.Desktop.Tests.Rendering;
 
@@ -93,6 +94,21 @@ public sealed class DangoActionControllerTests
         Assert.IsFalse(controller.TryStart(DangoActionKind.Sway, 1, Sample(), 1.44));
         Assert.IsTrue(controller.TryStart(DangoActionKind.Shake, 1, Sample()));
         Assert.AreEqual(.72, controller.Advance(.1, Sample()).Motor.MuscleShakeStrength);
+    }
+
+    [TestMethod]
+    public void MuscleProfileIsFrozenAndInvalidProfilesDoNotStart()
+    {
+        var c = new DangoActionController();
+        Assert.IsFalse(c.TryStart(DangoActionKind.Shake, 1, Sample(), 1.44, (DangoMuscleShakeProfile)2));
+        Assert.IsFalse(c.TryStart(DangoActionKind.Sway, 1, Sample(), .72, DangoMuscleShakeProfile.SoftShoulders));
+        Assert.IsTrue(c.TryStart(DangoActionKind.Shake, 1, Sample(), 1.44, DangoMuscleShakeProfile.SoftShoulders));
+        Assert.AreEqual(DangoMuscleShakeProfile.SoftShoulders, c.Advance(.1, Sample()).Motor.MuscleShakeProfile);
+        Assert.IsFalse(c.TryStart(DangoActionKind.Shake, 1, Sample()));
+        Assert.AreEqual(DangoMuscleShakeProfile.SoftShoulders, c.Advance(.1, Sample()).Motor.MuscleShakeProfile);
+        Assert.AreEqual(default, c.Cancel().Motor);
+        Assert.IsTrue(c.TryStart(DangoActionKind.Shake, 1, Sample()));
+        Assert.AreEqual(DangoMuscleShakeProfile.Original, c.Advance(.1, Sample()).Motor.MuscleShakeProfile);
     }
 
     [TestMethod]

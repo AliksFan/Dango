@@ -34,13 +34,14 @@ internal static class ShakeVerification
             var regionMotions = new List<RegionMotion>();
             foreach (var candidate in ActionLabCandidates.For(DangoActionKind.Shake))
             {
-                var motion = MeasureRegions(module, candidate.ShakeStrength);
-                if (regionMotions.Count > 0)
-                    Require(motion.MiddleRms > regionMotions[^1].MiddleRms * 1.05,
-                        "A stronger candidate did not visibly increase middle-body motion.");
+                var motion = MeasureRegions(module, candidate.ShakeStrength, candidate.ShakeProfile);
                 regionMotions.Add(motion);
-                cases.Add(new { candidateId = candidate.Id, candidate.ShakeStrength, regions = motion });
+                cases.Add(new { candidateId = candidate.Id, candidate.ShakeStrength, profile = candidate.ShakeProfile.ToString(), regions = motion });
             }
+            Require(regionMotions[1].ShoulderOut < regionMotions[0].ShoulderOut * .9 &&
+                regionMotions[1].MiddleRms >= regionMotions[0].MiddleRms * .8 &&
+                regionMotions[1].TopRms <= regionMotions[0].TopRms * 1.25,
+                "Shoulder candidate did not reduce the upper-side bulge while retaining the burst.");
             foreach (var candidate in ActionLabCandidates.For(DangoActionKind.Shake))
             foreach (var direction in new[] { -1, 1 })
             {
@@ -71,6 +72,7 @@ internal static class ShakeVerification
                         maximumStepMilliseconds = Math.Max(maximumStepMilliseconds, watch.Elapsed.TotalMilliseconds);
                         Require(muscles.PairCount == 8, "The muscle field did not contain eight real force pairs.");
                         Require(Math.Abs(muscles.Strength - candidate.ShakeStrength) < 1e-6, "The selected candidate used a different muscle strength.");
+                        Require(muscles.Profile == candidate.ShakeProfile, "The selected candidate used a different muscle profile.");
                     }
                     Require(frame.BodySnapshot[83] == 0, "Shake used the old top-drag actuator.");
                     peakGap = Math.Max(peakGap, frame.Stats[12]); drift = Math.Max(drift, Math.Abs(frame.Stats[0] - initial.Stats[0]));
@@ -111,7 +113,7 @@ internal static class ShakeVerification
                 using var reference = new DangoBeltRoomWorld(baselineModule, DangoBodyMaterial.Configure(DangoBodyControls.Default));
                 if (reference.SupportsMuscleActuation)
                 {
-                    var previousRegions = MeasureRegions(baselineModule, DangoActionController.ShakeStrength); var currentRegions = regionMotions[0];
+                    var previousRegions = MeasureRegions(baselineModule, ActionLabCandidates.For(DangoActionKind.Shake)[0].ShakeStrength); var currentRegions = regionMotions[0];
                     cases.Add(new { previousRegions, currentRegions });
                     Require(Math.Abs(currentRegions.Middle - previousRegions.Middle) < 1e-7 &&
                         Math.Abs(currentRegions.Top - previousRegions.Top) < 1e-7 &&
@@ -139,6 +141,16 @@ internal static class ShakeVerification
             try { previous.Step(1, new DangoBeltInput { MuscleShakeTime = .2, MuscleShakeStrength = .4 }); throw new InvalidOperationException("Old module silently accepted muscles."); }
             catch (NotSupportedException) { Require(previous.Read().Tick == before, "Unsupported actuation advanced old physics."); }
         }
+        else if (!previous.SupportsMuscleProfiles)
+        {
+            try
+            {
+                previous.Step(1, new DangoBeltInput { MuscleShakeTime = .2, MuscleShakeStrength = 1.44,
+                    MuscleShakeProfile = DangoMuscleShakeProfile.SoftShoulders });
+                throw new InvalidOperationException("Old module silently substituted the original muscle profile.");
+            }
+            catch (NotSupportedException) { Require(previous.Read().Tick == before, "Unsupported profile advanced old physics."); }
+        }
         for (var i = 0; i < 360; i++)
         {
             var input = i switch
@@ -156,15 +168,17 @@ internal static class ShakeVerification
         return 360;
     }
 
-    private sealed record RegionMotion(double Middle, double Top, double Foot, double MiddleRms, double TopRms);
-    private static RegionMotion MeasureRegions(string module, double strength)
+    private sealed record RegionMotion(double Middle, double Top, double Foot, double MiddleRms, double TopRms, double ShoulderUp, double ShoulderOut);
+    private static RegionMotion MeasureRegions(string module, double strength, DangoMuscleShakeProfile profile = DangoMuscleShakeProfile.Original)
     {
         using var world = new DangoBeltRoomWorld(module, DangoBodyMaterial.Configure(DangoBodyControls.Default), left: -5, right: 5);
         for (var i = 0; i < 120; i++) world.Step(1);
         var initial = world.Read(); var middle = 0d; var top = 0d; var foot = 0d; var middleRms = 0d; var topRms = 0d;
+        var shoulderUp = 0d; var shoulderOut = 0d;
+        var outerHalfWidth = .5 * (initial.Stats[10] - initial.Stats[8]);
         for (var i = 0; i < 150; i++)
         {
-            world.Step(1, i < 45 ? new DangoBeltInput(InputActive: true) { MuscleShakeTime = (i + 1) / 60d, MuscleShakeStrength = strength } : default);
+            world.Step(1, i < 45 ? new DangoBeltInput(InputActive: true) { MuscleShakeTime = (i + 1) / 60d, MuscleShakeStrength = strength, MuscleShakeProfile = profile } : default);
             var frame = world.Read();
             var middleSum = 0d; var topSum = 0d; var middleCount = 0; var topCount = 0;
             for (var p = 0; p < 256; p++)
@@ -173,12 +187,18 @@ internal static class ShakeVerification
                 var distance = Math.Sqrt(Math.Pow(frame.Curve[2*p] - initial.Curve[2*p], 2) + Math.Pow(frame.Curve[2*p+1] - initial.Curve[2*p+1], 2));
                 if (height is >= .3 and <= .68) { middle = Math.Max(middle, distance); middleSum += distance * distance; middleCount++; }
                 if (height >= .78) { top = Math.Max(top, distance); topSum += distance * distance; topCount++; }
+                var initialSide = initial.Curve[2*p] - initial.Stats[0];
+                if (height is >= .6 and <= .9 && Math.Abs(initialSide) > outerHalfWidth * .25)
+                {
+                    shoulderUp = Math.Max(shoulderUp, frame.Curve[2*p+1] - initial.Curve[2*p+1]);
+                    shoulderOut = Math.Max(shoulderOut, Math.Sign(initialSide) * (frame.Curve[2*p] - initial.Curve[2*p]));
+                }
                 if (initial.Curve[2*p+1] < initial.Stats[9] + .035) foot = Math.Max(foot, distance);
             }
             middleRms = Math.Max(middleRms, Math.Sqrt(middleSum / middleCount));
             topRms = Math.Max(topRms, Math.Sqrt(topSum / topCount));
         }
-        return new(middle, top, foot, middleRms, topRms);
+        return new(middle, top, foot, middleRms, topRms, shoulderUp, shoulderOut);
     }
 
     private static void AddGifFrame(GifBitmapEncoder gif, ActionLabPanel panel)

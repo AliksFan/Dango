@@ -12,6 +12,8 @@ static int belt_muscle_force_at(belt_body* b,const double* q,double* force,doubl
  double torque=0,minimum_weight=1;int pairs=0;
  for(int bank=0;bank<2;++bank)for(int i=0;i<4;++i){
   double a=(.55+.04*i)*BELT_PI,z=(1.85+.04*i)*BELT_PI;
+  /* A small material shift softens the upper-side bulge, preserving the burst. */
+  if(b->muscle_profile==1)a=(.57+.04*i)*BELT_PI;
   if(bank){a=BELT_PI-a;z=BELT_PI-z;}
   double ba[BELT_B],bz[BELT_B];belt_basis(a,0,ba);belt_basis(z,0,bz);
   belt_v pa=belt_eval_basis(q,ba),pz=belt_eval_basis(q,bz),d=belt_sub(pz,pa);double length=hypot(d.x,d.y);

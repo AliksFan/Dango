@@ -24,6 +24,7 @@ internal sealed class DangoActionController
     private DangoActionKind kind;
     private int direction;
     private double elapsed, groundedTime, observeTime, startX, startTopX, shakeStrength;
+    private DangoMuscleShakeProfile shakeProfile;
     private bool jumped, leftGround, eyesOwned;
 
     internal bool Active { get; private set; }
@@ -32,14 +33,16 @@ internal sealed class DangoActionController
     internal string? RejectionReason { get; private set; }
     internal double Elapsed => elapsed;
 
-    internal bool TryStart(DangoActionKind action, int sign, ActionObservation observation, double shakeStrength = ShakeStrength)
+    internal bool TryStart(DangoActionKind action, int sign, ActionObservation observation, double shakeStrength = ShakeStrength,
+        DangoMuscleShakeProfile shakeProfile = DangoMuscleShakeProfile.Original)
     {
         if (Active) return Reject("当前动作尚未结束。");
         if (!Enum.IsDefined(action)) return Reject("不支持此动作类型。");
         if (sign is not (-1 or 1)) return Reject("动作方向必须是左或右。");
         if (!double.IsFinite(shakeStrength) || shakeStrength is <= 0 or > 2)
             return Reject("抖身驱动力超出支持范围。");
-        if (action != DangoActionKind.Shake && shakeStrength != ShakeStrength)
+        if (!Enum.IsDefined(shakeProfile)) return Reject("不支持此抖身发力方案。");
+        if (action != DangoActionKind.Shake && (shakeStrength != ShakeStrength || shakeProfile != DangoMuscleShakeProfile.Original))
             return Reject("此动作不支持抖身候选参数。");
         if (!Finite(observation) || !observation.Grounded) return Reject("动作需要团子处于稳定落地状态；请稍后重试。");
         if (action is DangoActionKind.Approach or DangoActionKind.Retreat or DangoActionKind.Recoil)
@@ -60,6 +63,7 @@ internal sealed class DangoActionController
         startX = observation.CoreX;
         startTopX = observation.TopX;
         this.shakeStrength = shakeStrength;
+        this.shakeProfile = shakeProfile;
         jumped = leftGround = eyesOwned = false;
         Active = true;
         Error = null;
@@ -90,7 +94,7 @@ internal sealed class DangoActionController
         {
             case DangoActionKind.Shake:
                 input = elapsed < driveEnd ? new DangoBeltInput(InputActive: true)
-                    { MuscleShakeTime = elapsed, MuscleShakeStrength = shakeStrength } : default;
+                    { MuscleShakeTime = elapsed, MuscleShakeStrength = shakeStrength, MuscleShakeProfile = shakeProfile } : default;
                 phase = elapsed < .1 ? "enter" : elapsed < driveEnd ? "hold" : "settle";
                 break;
             case DangoActionKind.Sway:

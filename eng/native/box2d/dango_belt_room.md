@@ -26,6 +26,24 @@ integrator force-work ledger. Default bodies do not perform follower iterations.
 The managed consumer must explicitly reject a module missing this capability;
 there is no fallback to top dragging or rendered contour movement.
 
+`dango_belt_room_step_muscles_profile` optionally selects profile 0 (the original
+fibres) or 1 (upper material angle starts at 0.57 pi instead of 0.55 pi). Existing
+step exports still select profile 0. Profile, time and strength are single-step
+inputs, validated before writes and cleared after success or rollback; diagnostic
+slot24 reports the successful step's profile. Missing profile support is refused,
+never silently substituted. Neither profile changes material, timing or guards.
+
+`dango_belt_room_read_active_forces` copies the last accepted substep's 1024-double
+force ledger without advancing physics. Header slots0..7 are schema1, capacity1024,
+solver attempt, substep(-1 before first step), row count, source mask, row width6,
+quadrature64. Each row is x,y,fx,fy,source kind,material; positions are world metres
+and vectors are newtons. It contains actual active drive forces, including paired
+muscle forces, but excludes gravity, passive elasticity/damping, contact/constraint
+reactions and jump impulses. Kind6 denotes local material-point drive, including
+muscles when active; historical rear balancing also uses this kind. Failed steps
+retain the previous successful ledger. Null/undersized output is refused without
+writes. A read or display toggle must never advance the world.
+
 Native tests: `dango_belt_muscle_tests`; button/managed integration:
 `Dango.ActionLab --verify-shake <new-output-directory> [previous-room-module]`.
 

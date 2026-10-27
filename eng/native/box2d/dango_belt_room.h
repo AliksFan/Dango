@@ -45,11 +45,16 @@ DANGO_BELT_ROOM_API int dango_belt_room_step(void*,float,const dango_belt_room_i
 /* Optional single-step internal shake input: time [0,2], strength [0,2].
    No held input; zero strength is exactly the ordinary path. */
 DANGO_BELT_ROOM_API int dango_belt_room_step_muscles(void*,float,const dango_belt_room_input*,int,float,float);
+/* Optional profile: 0 preserves the original fibres, 1 uses soft shoulders. */
+DANGO_BELT_ROOM_API int dango_belt_room_step_muscles_profile(void*,float,const dango_belt_room_input*,int,float,float,int);
 /* v1, 32 doubles: 0 version,1 count,2 attempt,3 time,4 strength,5 active substeps,
    6 pairs,7/8 net force,9 peak abs torque,10 actuator work,11 peak tension,
    12 minimum contact weight,13 envelope,14 total follower iterations,
-   15 maximum follower residual,16..23 last fibre tensions. */
+   15 maximum follower residual,16..23 last fibre tensions,24 active profile. */
 DANGO_BELT_ROOM_API int dango_belt_room_read_muscle_diagnostics(void*,double*,int);
+/* Detached last successful substep's active point-force ledger (1024 doubles).
+   Excludes gravity, passive elastic/contact/constraint forces and jump impulses. */
+DANGO_BELT_ROOM_API int dango_belt_room_read_active_forces(void*,double*,int);
 DANGO_BELT_ROOM_API int dango_belt_room_read_frame(void*,dango_belt_room_frame*,int);
 /* Changes the interval; solid contact is enabled separately. Shares layout revision. */
 DANGO_BELT_ROOM_API int dango_belt_room_set_bounds(void*,float,float,uint64_t);

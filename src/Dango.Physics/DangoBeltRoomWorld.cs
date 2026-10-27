@@ -45,8 +45,11 @@ public sealed unsafe partial class DangoBeltRoomWorld : IDisposable
     private readonly SetSolidWallsDelegate? setSolidWalls;
     private readonly SetPreviewJumpSpeedScaleDelegate? setPreviewJumpSpeedScale;
     private readonly StepMusclesDelegate? stepMuscles;
+    private readonly StepMuscleProfileDelegate? stepMuscleProfile;
     private readonly ReadMusclesDelegate? readMuscles;
+    private readonly ReadMusclesDelegate? readActiveForces;
     public bool SupportsMuscleActuation => stepMuscles is not null && readMuscles is not null;
+    public bool SupportsMuscleProfiles => SupportsMuscleActuation && stepMuscleProfile is not null;
     public bool SupportsHorizontalBounds { get; private set; }
     public bool SupportsSolidWalls { get; private set; }
 
@@ -85,6 +88,10 @@ public sealed unsafe partial class DangoBeltRoomWorld : IDisposable
                     stepMuscles = Marshal.GetDelegateForFunctionPointer<StepMusclesDelegate>(muscleStep);
                     readMuscles = Marshal.GetDelegateForFunctionPointer<ReadMusclesDelegate>(muscleRead);
                 }
+                if (NativeLibrary.TryGetExport(library, "dango_belt_room_step_muscles_profile", out var muscleProfile))
+                    stepMuscleProfile = Marshal.GetDelegateForFunctionPointer<StepMuscleProfileDelegate>(muscleProfile);
+                if (NativeLibrary.TryGetExport(library, "dango_belt_room_read_active_forces", out var activeForces))
+                    readActiveForces = Marshal.GetDelegateForFunctionPointer<ReadMusclesDelegate>(activeForces);
                 read = Export<ReadDelegate>("dango_belt_room_read_frame");
                 setPlatform = Export<SetPlatformDelegate>("dango_belt_room_set_platform");
                 removePlatform = Export<RemovePlatformDelegate>("dango_belt_room_remove_platform");
@@ -113,6 +120,7 @@ public sealed unsafe partial class DangoBeltRoomWorld : IDisposable
         if (!Finite(input.Horizontal) || Math.Abs(input.Horizontal) > 1 ||
             !Finite(input.MuscleShakeTime) || input.MuscleShakeTime is < 0 or > 2 ||
             !Finite(input.MuscleShakeStrength) || input.MuscleShakeStrength is < 0 or > 2 ||
+            !Enum.IsDefined(input.MuscleShakeProfile) ||
             !Finite(input.Stretch) || input.Stretch is < 0 or > 1 ||
             !Finite(input.Downward) || input.Downward is < 0 or > 1 ||
             !Finite(input.DragTargetX) || !Finite(input.DragTargetY)) throw new ArgumentOutOfRangeException(nameof(input));
@@ -124,8 +132,15 @@ public sealed unsafe partial class DangoBeltRoomWorld : IDisposable
             if (input.MuscleShakeStrength > 0)
             {
                 if (!SupportsMuscleActuation) throw new NotSupportedException("当前物理模块不支持内部肌肉抖身。");
-                Check(stepMuscles!(handle, (float)DangoBeltWorld.FixedDt, in native, 1,
-                    (float)input.MuscleShakeTime, (float)input.MuscleShakeStrength), "step internal muscles");
+                if (input.MuscleShakeProfile == DangoMuscleShakeProfile.Original)
+                    Check(stepMuscles!(handle, (float)DangoBeltWorld.FixedDt, in native, 1,
+                        (float)input.MuscleShakeTime, (float)input.MuscleShakeStrength), "step internal muscles");
+                else
+                {
+                    if (stepMuscleProfile is null) throw new NotSupportedException("当前物理模块不支持肩部柔和抖身。");
+                    Check(stepMuscleProfile(handle, (float)DangoBeltWorld.FixedDt, in native, 1,
+                        (float)input.MuscleShakeTime, (float)input.MuscleShakeStrength, (int)input.MuscleShakeProfile), "step muscle profile");
+                }
             }
             else Check(step(handle, (float)DangoBeltWorld.FixedDt, in native, 1), "step");
         }
@@ -137,10 +152,33 @@ public sealed unsafe partial class DangoBeltRoomWorld : IDisposable
         if (!SupportsMuscleActuation) throw new NotSupportedException("当前物理模块不支持内部肌肉抖身。");
         var values = new double[32];
         lock (NativeGate) Check(readMuscles!(handle, values, values.Length), "read muscle diagnostics");
-        if (values.Any(v => !Finite(v)) || values[0] != 1 || values[1] != 32)
+        if (values.Any(v => !Finite(v)) || values[0] != 1 || values[1] != 32 ||
+            values[24] != Math.Truncate(values[24]) || !Enum.IsDefined((DangoMuscleShakeProfile)(int)values[24]))
             throw new InvalidOperationException("肌肉诊断格式无效。");
         return new(values[3], values[4], (int)values[5], (int)values[6], values[7], values[8],
-            values[9], values[10], values[11], values[12], values[13]);
+            values[9], values[10], values[11], values[12], values[13], (DangoMuscleShakeProfile)(int)values[24]);
+    }
+
+    public DangoActiveForceFrame ReadActiveForces()
+    {
+        VerifyAccess();
+        if (readActiveForces is null) throw new NotSupportedException("当前物理模块不支持真实主动施力诊断。");
+        var values = new double[1024];
+        lock (NativeGate) Check(readActiveForces(handle, values, values.Length), "read active forces");
+        if (values.Any(v => !Finite(v)) || values[0] != 1 || values[1] != 1024 || values[6] != 6 ||
+            values[2] < 0 || values[2] > 9007199254740991 || values[2] != Math.Truncate(values[2]) ||
+            values[3] is < -1 or > 3 || values[3] != Math.Truncate(values[3]) ||
+            values[4] is < 0 or > 97 || values[4] != Math.Truncate(values[4]))
+            throw new InvalidOperationException("主动施力诊断格式无效。");
+        var forces = new DangoActiveForce[(int)values[4]];
+        for (var i = 0; i < forces.Length; i++)
+        {
+            var p = 8 + 6 * i;
+            if (values[p + 4] is < 1 or > 6 || values[p + 4] != Math.Truncate(values[p + 4]))
+                throw new InvalidOperationException("主动施力来源无效。");
+            forces[i] = new(values[p], values[p + 1], values[p + 2], values[p + 3], (int)values[p + 4], values[p + 5]);
+        }
+        return new((ulong)values[2], (int)values[3], Array.AsReadOnly(forces));
     }
 
     public void SetHorizontalBounds(double left, double right, ulong expectedRevision)
@@ -253,6 +291,7 @@ public sealed unsafe partial class DangoBeltRoomWorld : IDisposable
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int SetSolidWallsDelegate(nint handle, int enabled, ulong expectedRevision);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int SetPreviewJumpSpeedScaleDelegate(nint handle, float scale);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int StepMusclesDelegate(nint handle, float dt, in NativeInput input, int count, float time, float strength);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int StepMuscleProfileDelegate(nint handle, float dt, in NativeInput input, int count, float time, float strength, int profile);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int ReadMusclesDelegate(nint handle, [Out] double[] values, int count);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate int DestroyDelegate(nint handle);
     [StructLayout(LayoutKind.Sequential)] private struct NativeInput { public ulong BodyId; public fixed float Controls[9]; public int Reserved; }

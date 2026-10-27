@@ -61,7 +61,7 @@ internal sealed class ActionLabSession : IDisposable
         if (!Enum.IsDefined(kind)) { Phase = "不支持此动作类型"; return false; }
         var candidate = ActionLabCandidates.For(kind).FirstOrDefault(c => c.Id == candidateId);
         if (candidate is null) { Phase = "不支持此动作候选"; return false; }
-        var started = Controller.TryStart(kind, direction, Observe(), candidate.ShakeStrength);
+        var started = Controller.TryStart(kind, direction, Observe(), candidate.ShakeStrength, candidate.ShakeProfile);
         if (!started) Phase = Controller.RejectionReason ?? "请等待当前动作结束";
         else { LastAction = kind; LastCandidateId = candidate.Id; Phase = "准备动作"; }
         return started;
@@ -81,7 +81,7 @@ internal sealed class ActionLabSession : IDisposable
             var failure = Runtime.LastError ?? Runtime.AttachmentError ?? Controller.Error;
             if (failure is not null) Fail(failure);
         }
-        catch (Exception error) when (error is InvalidOperationException or ArgumentException or ArithmeticException)
+        catch (Exception error) when (error is InvalidOperationException or ArgumentException or ArithmeticException or NotSupportedException)
         { Fail(error.Message); }
     }
 
