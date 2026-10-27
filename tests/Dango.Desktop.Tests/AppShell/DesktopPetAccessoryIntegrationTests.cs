@@ -8,6 +8,7 @@ using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.Rooms;
 using Dango.Desktop.DesktopHost;
 using Dango.Desktop.Physics.Presentation;
+using Dango.Desktop.Physics.Tuning;
 using Dango.Desktop.Rendering.Visuals;
 using Canvas = System.Windows.Controls.Canvas;
 using Point = System.Windows.Point;
@@ -18,6 +19,7 @@ namespace Dango.Desktop.Tests.AppShell;
 [DoNotParallelize]
 public sealed class DesktopPetAccessoryIntegrationTests
 {
+    public TestContext TestContext { get; set; } = null!;
     [STATestMethod]
     [TestCategory("NativeIntegration")]
     public void ActualDesktopPetWindowConsumesAccessoryRuntimeAndReplacesLegacyHat()
@@ -80,14 +82,14 @@ public sealed class DesktopPetAccessoryIntegrationTests
     [TestCategory("NativeIntegration")]
     [DataRow(false)]
     [DataRow(true)]
-    public void ExistingRasterOutsideBodyIsIncludedInNativeDisplayRegionAndRemovedWhenUnequipped(bool stableViewport)
+    public void ExistingRasterOutsideBodyIsPaintedAndRemovedWhenUnequipped(bool stableViewport)
     {
         using var rig = new Fixture(stableViewport);
         rig.PrimeAccessoryBinding();
         var visual = rig.Accessories.OrderByDescending(value => value.DrawingBounds.Width).First();
         var point = rig.OpaqueAccessoryPointOutsideBody(visual);
-        Assert.IsTrue(InOwnWindowRegion(rig.Window, point.Window),
-            "A real opaque accessory pixel outside body/hat paths cannot be clipped by the native region.");
+        Assert.IsTrue(IsPaintedPixel(rig.Window, point.Window),
+            "A real opaque accessory pixel outside body/hat paths must remain painted.");
         Assert.IsFalse(rig.Window.HitTestScenePoint(point.Scene),
             "Including a picture in the display region cannot make it a body interaction target.");
         Assert.AreEqual((nint)(-1), SendMessage(rig.Window.Handle, 0x0084, 0, Pack(rig.Window.PointToScreen(point.Window))));
@@ -98,16 +100,16 @@ public sealed class DesktopPetAccessoryIntegrationTests
         rig.Runtime.SetAccessories(AccessoryConfiguration.Empty);
         rig.ReapplyCurrent();
         Assert.HasCount(0, rig.Accessories);
-        Assert.IsFalse(InOwnWindowRegion(rig.Window, rig.Window.PointFromScreen(point.Screen)),
-            "Taking off the item must remove its previous native display region.");
+        Assert.IsFalse(IsPaintedPixel(rig.Window, rig.Window.PointFromScreen(point.Screen)),
+            "Taking off the item must clear its previous painted pixels.");
         AssertReadOnlyAndBodyOnly(rig);
     }
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
-    public void StableViewportDragKeepsCurrentWpfOpaquePixelsInsideNativeRegion()
+    public void StableViewportDragKeepsCurrentOpaquePixelsDrawable()
     {
-        using var rig = new Fixture(stableViewport: true, beltRoom: true);
+        using var rig = new Fixture(stableViewport: true);
         DesktopPetRoomFixture.WaitUntil(() => rig.Driver.IsReady, rig.Runtime);
         var center = DangoHostFrameBinding.Bounds(rig.Frame, 0).Center;
         var bodyCenter = rig.Scene.RoomToScene(new(center.X, center.Y + rig.Runtime.NeutralBodyGroundOffset));
@@ -122,7 +124,9 @@ public sealed class DesktopPetAccessoryIntegrationTests
             {
                 var point = new Point(start.X + 100 * Math.Sin(i * Math.PI / 12), start.Y - 120 * Math.Sin(i * Math.PI / 24));
                 Assert.IsTrue(rig.Driver.PointerMove(point), $"Drag move {i} must be accepted.");
-                rig.WaitForNewFrame(previousSteps);
+                // Advance a fixed amount of physical time per target; faster
+                // presentation must not compress the whole gesture into 0.2 s.
+                rig.WaitForNewFrame(previousSteps, minimumSteps: 6);
                 Assert.IsTrue(rig.Window.HasHealthyFrame, rig.Window.LastFrameRejection);
                 Assert.AreSame(rig.Frame, rig.Window.LastAppliedFrame, "The natural scene callback must update the pet window without a test-side reapply.");
                 Assert.IsTrue(rig.Driver.IsPointerActive, $"Drag sample {i} must retain its live pointer gesture.");
@@ -153,7 +157,44 @@ public sealed class DesktopPetAccessoryIntegrationTests
         Assert.IsTrue(maximumLift > 20, "The real body must leave the floor during the drag trajectory.");
     }
 
-    private static (int SampledOpaquePixels, int ClippedOpaquePixels) CountWpfOpaquePixelsOutsideNativeRegion(DesktopPetDangoWindow window)
+    [STATestMethod]
+    [TestCategory("NativeIntegration")]
+    public void AdvancingNativeFrameDoesNotClipThePrecedingImage()
+    {
+        using var rig = new Fixture(stableViewport: true);
+        DesktopPetRoomFixture.WaitUntil(() => rig.Driver.IsReady, rig.Runtime);
+        rig.Runtime.SetAccessories(new AccessoryConfiguration([
+            new("hat", "Fictional top hat", "builtin-top-hat", 64, 64) { BodyAnchorX = .5, BodyAnchorY = 0 },
+            new("sprout", "Fictional sprout", "builtin-sprout", 64, 64) { BodyAnchorX = .5, BodyAnchorY = 0 },
+        ]));
+        rig.WaitForNewFrame(rig.Frame.Bodies.Single().Diagnostics.SimulatedStepCount);
+        var center = DangoHostFrameBinding.Bounds(rig.Frame, 0).Center;
+        var sceneCenter = rig.Scene.RoomToScene(new(center.X, center.Y + rig.Runtime.NeutralBodyGroundOffset));
+        var start = new Point(sceneCenter.X, sceneCenter.Y);
+        Assert.IsTrue(rig.Driver.PointerDown(start));
+        try
+        {
+            for (var i = 1; i <= 16; i++)
+            {
+                // WPF submits image pixels asynchronously. Keep the preceding
+                // real image while the UI thread advances its HWND state.
+                var submittedImage = RenderWindow(rig.Window);
+                var steps = rig.Frame.Bodies.Single().Diagnostics.SimulatedStepCount;
+                Assert.IsTrue(rig.Driver.PointerMove(new(start.X + i * 4, start.Y - i * 7)));
+                rig.WaitForNewFrame(steps);
+                Assert.AreSame(rig.Frame, rig.Window.LastAppliedFrame);
+                var coverage = CountWpfOpaquePixelsOutsideNativeRegion(rig.Window, submittedImage);
+                Assert.IsTrue(coverage.SampledOpaquePixels > 1000);
+                Assert.IsTrue(coverage.ClippedOpaquePixels <= 2,
+                    $"The next HWND update cut {coverage.ClippedOpaquePixels}/{coverage.SampledOpaquePixels} interior pixels " +
+                    "from the preceding real image. A separately updated native shape cannot safely clip asynchronously presented pixels.");
+            }
+        }
+        finally { rig.Driver.PointerUp(start); }
+        Assert.IsFalse(rig.Runtime.IsDragging);
+    }
+
+    private static RenderTargetBitmap RenderWindow(DesktopPetDangoWindow window)
     {
         window.UpdateLayout();
         var dpi = VisualTreeHelper.GetDpi(window);
@@ -161,13 +202,99 @@ public sealed class DesktopPetAccessoryIntegrationTests
         var height = (int)Math.Ceiling(window.ActualHeight * dpi.DpiScaleY);
         var bitmap = new RenderTargetBitmap(width, height, 96 * dpi.DpiScaleX, 96 * dpi.DpiScaleY, PixelFormats.Pbgra32);
         bitmap.Render(window);
+        return bitmap;
+    }
+
+    [STATestMethod]
+    [TestCategory("NativeIntegration")]
+    [DataRow(100d, 50d, 50d)]
+    [DataRow(100d, 13d, 34d)]
+    [DataRow(120d, 100d, 0d)]
+    public void AirborneDownwardDragPaintsTheCompleteNativeBodyBoundary(double size, double softness, double build)
+    {
+        using var rig = new Fixture(stableViewport: true, new DangoBodyControls(size, softness, build));
+        DesktopPetRoomFixture.WaitUntil(() => rig.Driver.IsReady, rig.Runtime);
+        rig.Runtime.SetAccessories(AccessoryConfiguration.Empty);
+        rig.WaitForNewFrame(rig.Frame.Bodies.Single().Diagnostics.SimulatedStepCount);
+        var center = DangoHostFrameBinding.Bounds(rig.Frame, 0).Center;
+        var origin = rig.Scene.RoomToScene(new(center.X, center.Y + rig.Runtime.NeutralBodyGroundOffset));
+        var start = new Point(origin.X, origin.Y);
+        Assert.IsTrue(rig.Driver.PointerDown(start));
+        var maximumBottom = double.MinValue;
+        try
+        {
+            for (var i = 1; i <= 16; i++)
+            {
+                var step = rig.Frame.Bodies.Single().Diagnostics.SimulatedStepCount;
+                Assert.IsTrue(rig.Driver.PointerMove(new(start.X, start.Y - i * 14)));
+                rig.WaitForNewFrame(step, minimumSteps: 6);
+            }
+            for (var i = 1; i <= 12; i++)
+            {
+                var step = rig.Frame.Bodies.Single().Diagnostics.SimulatedStepCount;
+                Assert.IsTrue(rig.Driver.PointerMove(new(start.X, start.Y - 224 + i * 7)));
+                rig.WaitForNewFrame(step, minimumSteps: 6);
+                Assert.IsFalse(rig.Runtime.LastPhysicsFrame!.Bodies.Single().IsGrounded,
+                    "The downward sample must stay airborne; floor contact is not a clipping defect.");
+                var path = (System.Windows.Shapes.Path)rig.Body.FindName("BodyPath");
+                maximumBottom = Math.Max(maximumBottom, path.Data.Bounds.Bottom);
+                var actual = RenderWindow(rig.Window);
+                var transform = path.TransformToAncestor(rig.Window);
+                var zero = transform.Transform(default(Point));
+                var x = transform.Transform(new Point(1, 0));
+                var y = transform.Transform(new Point(0, 1));
+                var reference = new DrawingVisual();
+                using (var drawing = reference.RenderOpen())
+                {
+                    drawing.PushTransform(new MatrixTransform(x.X - zero.X, x.Y - zero.Y,
+                        y.X - zero.X, y.Y - zero.Y, zero.X, zero.Y));
+                    drawing.DrawGeometry(Brushes.Black, null, path.Data);
+                    drawing.Pop();
+                }
+                var expected = new RenderTargetBitmap(actual.PixelWidth, actual.PixelHeight,
+                    actual.DpiX, actual.DpiY, PixelFormats.Pbgra32);
+                expected.Render(reference);
+                var desired = new byte[expected.PixelWidth * expected.PixelHeight * 4];
+                var painted = new byte[desired.Length];
+                expected.CopyPixels(desired, expected.PixelWidth * 4, 0);
+                actual.CopyPixels(painted, actual.PixelWidth * 4, 0);
+                var missing = 0;
+                for (var row = 1; row < actual.PixelHeight - 1; row++)
+                    for (var column = 1; column < actual.PixelWidth - 1; column++)
+                    {
+                        var interior = true;
+                        for (var dy = -1; dy <= 1 && interior; dy++)
+                            for (var dx = -1; dx <= 1; dx++)
+                                if (desired[((row + dy) * actual.PixelWidth + column + dx) * 4 + 3] < 250)
+                                { interior = false; break; }
+                        if (interior && painted[(row * actual.PixelWidth + column) * 4 + 3] < 200) missing++;
+                    }
+                var clips = new List<string>();
+                for (DependencyObject? node = path; node is not null; node = VisualTreeHelper.GetParent(node))
+                    if (node is Visual visual && VisualTreeHelper.GetClip(visual) is { } clip)
+                        clips.Add($"{node.GetType().Name}: {clip.Bounds}");
+                Assert.IsTrue(missing <= 2,
+                    $"Airborne downward frame {i} lost {missing} body interior pixels. " +
+                    $"Native geometry={path.Data.Bounds}; body slot={rig.Body.RenderSize}; clips={string.Join("; ", clips)}");
+            }
+        }
+        finally { rig.Driver.PointerUp(start); }
+        TestContext.WriteLine($"Maximum native body geometry bottom={maximumBottom}; body slot height={rig.Body.Height}.");
+    }
+
+    private static (int SampledOpaquePixels, int ClippedOpaquePixels) CountWpfOpaquePixelsOutsideNativeRegion(
+        DesktopPetDangoWindow window, BitmapSource? submittedImage = null)
+    {
+        var bitmap = submittedImage ?? RenderWindow(window);
+        var width = bitmap.PixelWidth;
+        var height = bitmap.PixelHeight;
         var pixels = new byte[width * height * 4];
         bitmap.CopyPixels(pixels, width * 4, 0);
         var region = CreateRectRgn(0, 0, 0, 0);
         Assert.AreNotEqual((nint)0, region);
         try
         {
-            Assert.IsTrue(GetWindowRgn(window.Handle, region) > 0, "The owned HWND must expose its current native region.");
+            var hasExtraClip = GetWindowRgn(window.Handle, region) > 0;
             var sampled = 0;
             var clipped = 0;
             // Erode the opaque alpha mask by one pixel so antialiasing and native
@@ -181,7 +308,7 @@ public sealed class DesktopPetAccessoryIntegrationTests
                             if (pixels[((y + dy) * width + x + dx) * 4 + 3] < 250) { interior = false; break; }
                     if (!interior) continue;
                     sampled++;
-                    if (!PtInRegion(region, x, y)) clipped++;
+                    if (hasExtraClip && !PtInRegion(region, x, y)) clipped++;
                 }
             return (sampled, clipped);
         }
@@ -203,7 +330,9 @@ public sealed class DesktopPetAccessoryIntegrationTests
         Assert.AreEqual(steps, rig.Frame.Bodies.Single().Diagnostics.SimulatedStepCount,
             "Consuming a raster in another host cannot tick the body or accessories.");
         var guard = rig.Window.CurrentPointerGuard ?? throw new AssertFailedException("The current frame must retain its body pointer guard.");
-        var bounds = DangoHostFrameBinding.Bounds(rig.Frame, 0).Translate(new(0, rig.Runtime.NeutralBodyGroundOffset));
+        var bounds = (rig.Frame.BeltRoom is { } belt && rig.Scene.NativePetCenter is { } core
+            ? DesktopPetDangoWindow.BeltBodyWorldBounds(belt, core)
+            : DangoHostFrameBinding.Bounds(rig.Frame, 0)).Translate(new(0, rig.Runtime.NeutralBodyGroundOffset));
         var first = rig.Scene.RoomToScene(new(bounds.X, bounds.Y));
         var last = rig.Scene.RoomToScene(new(bounds.Right, bounds.Bottom));
         var expected = new Rect(rig.Scene.PointToScreen(new(first.X, first.Y)), rig.Scene.PointToScreen(new(last.X, last.Y)));
@@ -239,12 +368,10 @@ public sealed class DesktopPetAccessoryIntegrationTests
         internal Dango.Desktop.Physics.Presentation.StackedPhysicsPresentationFrame Frame => Scene.LastAppliedFrame!;
         internal AccessoryMeshVisual[] Accessories => DesktopPetRoomFixture.Descendants<AccessoryMeshVisual>(Window).ToArray();
 
-        internal Fixture(bool stableViewport, bool beltRoom = false)
+        internal Fixture(bool stableViewport, DangoBodyControls? bodyControls = null)
         {
-            Runtime = beltRoom
-                ? ProductPhysicsComposition.Default.CreateRoom()
-                : StackedDangoSceneRuntime.CreateProduct();
-            if (beltRoom) Runtime.ConfigureBeltRoomAppearance(DangoAppearanceConfiguration.Default, beginRoom: true);
+            Runtime = ProductPhysicsComposition.Default.CreateRoom();
+            Runtime.ConfigureBeltRoomAppearance(DangoAppearanceConfiguration.Default.WithBody(bodyControls ?? DangoBodyControls.Default), beginRoom: true);
             var root = System.IO.Path.Combine(TestRepository.Root, "artifacts", "accessory-v1-desktop-pet", Guid.NewGuid().ToString("N"));
             var settings = new AccessorySettingsSession(root);
             var configuration = new AccessoryConfiguration([
@@ -312,9 +439,9 @@ public sealed class DesktopPetAccessoryIntegrationTests
             Assert.IsTrue(Window.HasHealthyFrame, Window.LastFrameRejection);
         }
 
-        internal void WaitForNewFrame(int previousSteps)
+        internal void WaitForNewFrame(int previousSteps, int minimumSteps = 1)
         {
-            DesktopPetRoomFixture.WaitUntil(() => Frame.Bodies.Single().Diagnostics.SimulatedStepCount > previousSteps,
+            DesktopPetRoomFixture.WaitUntil(() => Frame.Bodies.Single().Diagnostics.SimulatedStepCount >= previousSteps + minimumSteps,
                 Runtime, diagnostic: () => Window.LastFrameRejection);
             Window.UpdateLayout();
         }
@@ -354,17 +481,16 @@ public sealed class DesktopPetAccessoryIntegrationTests
         }
     }
 
-    private static bool InOwnWindowRegion(DesktopPetDangoWindow window, Point point)
+    private static bool IsPaintedPixel(DesktopPetDangoWindow window, Point point)
     {
-        var region = CreateRectRgn(0, 0, 0, 0);
-        Assert.AreNotEqual((nint)0, region);
-        try
-        {
-            Assert.IsTrue(GetWindowRgn(window.Handle, region) > 0, "The owned HWND must have its actual native region.");
-            var dpi = VisualTreeHelper.GetDpi(window);
-            return PtInRegion(region, (int)Math.Round(point.X * dpi.DpiScaleX), (int)Math.Round(point.Y * dpi.DpiScaleY));
-        }
-        finally { _ = DeleteObject(region); }
+        var bitmap = RenderWindow(window);
+        var dpi = VisualTreeHelper.GetDpi(window);
+        var x = (int)Math.Floor(point.X * dpi.DpiScaleX);
+        var y = (int)Math.Floor(point.Y * dpi.DpiScaleY);
+        if (x < 0 || y < 0 || x >= bitmap.PixelWidth || y >= bitmap.PixelHeight) return false;
+        var pixel = new byte[4];
+        bitmap.CopyPixels(new Int32Rect(x, y, 1, 1), pixel, 4, 0);
+        return pixel[3] > 0;
     }
 
     private static nint Pack(Point point) => (nint)((uint)(ushort)(short)Math.Round(point.X) |

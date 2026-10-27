@@ -10,14 +10,16 @@
         </ControlTemplate>
     </UserControl.Template>
     <Grid ClipToBounds="False">
-        <Grid x:Name="GaitBodyLayer" IsHitTestVisible="False">
+        <!-- The contour may exceed the coordinate template. Canvas measures
+             paths without constraining their natural size to the body slot. -->
+        <Canvas x:Name="GaitBodyLayer" IsHitTestVisible="False" ClipToBounds="False">
         <Path x:Name="FallbackBodyPath"
               Fill="#FFFFE8C2"
               IsHitTestVisible="False" />
         <Path x:Name="BodyPath"
               Fill="#FFFFE8C2"
               IsHitTestVisible="False" />
-        </Grid>
+        </Canvas>
         <Canvas x:Name="DebugLayer" Width="160" Height="120" IsHitTestVisible="False" />
         <Grid x:Name="GaitAttachmentLayer" IsHitTestVisible="False">
         <Canvas x:Name="LeftEyeLayer"

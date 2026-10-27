@@ -18,7 +18,7 @@ public sealed class DesktopPetRoomNativeInputTests
     [TestCategory("NativeWindowInput")]
     [DataRow(false)]
     [DataRow(true)]
-    public void FixedViewportUpdatesItsNativeRegionWithoutBlockingOldBodyOrDistantBlankSpace(bool maximized)
+    public void FixedViewportFollowsPaintedAlphaWithoutBlockingOldBodyOrDistantBlankSpace(bool maximized)
     {
         using var rig = new DesktopPetRoomFixture();
         rig.Enter();
@@ -36,7 +36,11 @@ public sealed class DesktopPetRoomNativeInputTests
         var target = rig.ToScene(new(initial.X + 120, initial.Y - 180 + rig.Runtime.NeutralBodyGroundOffset));
         SendPointer(rig, application, 0x0201, oldPoint, 1);
         SendPointer(rig, application, 0x0200, target, 1);
-        application.WaitUntil(rig, () => rig.Runtime.CurrentSelectedCenter!.Value.Y < initial.Y - 100);
+        // Alpha belongs to the presented image, so wait for the visible old
+        // contact to be vacated. A fixed core lift assumes a particular spring
+        // overshoot and does not establish that the old screen pixel is clear.
+        application.WaitUntil(rig, () => !rig.Window.HitTestScenePoint(oldPoint) && At(oldScreen) == application.Handle);
+        Assert.IsTrue(rig.Runtime.IsDragging && rig.Driver.IsPointerActive);
         Assert.IsFalse(rig.Window.HitTestScenePoint(oldPoint), "The old contact must actually be outside the moved body.");
         Assert.AreEqual(application.Handle, At(oldScreen), "The previous body's native region must not remain behind.");
         Assert.AreEqual(application.Handle, At(distant));

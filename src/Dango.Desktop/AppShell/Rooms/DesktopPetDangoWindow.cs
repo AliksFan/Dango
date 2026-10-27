@@ -42,6 +42,7 @@ internal sealed class DesktopPetDangoWindow : Window
     private bool captured;
     private bool detailedApplyTimingEnabled;
     private bool stableViewportPositioned;
+    private bool nativeDisplayReady;
     internal nint Handle { get; private set; }
     internal bool InteractionEnabled { get; private set; }
     internal bool IsPointerCaptured => captured && NativeMethods.DesktopPetCapturedWindow == Handle;
@@ -98,7 +99,7 @@ internal sealed class DesktopPetDangoWindow : Window
             var source = (HwndSource)PresentationSource.FromVisual(this);
             Handle = source.Handle;
             NativeMethods.ApplyDesktopPetWindowStyles(Handle);
-            NativeMethods.SetDesktopPetRegion(Handle, []);
+            NativeMethods.SetDesktopPetDisplayReady(Handle, false);
             source.AddHook(MessageHook);
         };
         IsVisibleChanged += (_, _) => { if (!IsVisible) { HasHealthyFrame = false; CurrentPointerGuard = null; CancelPointer(); } };
@@ -109,7 +110,7 @@ internal sealed class DesktopPetDangoWindow : Window
     internal bool HitTestScenePoint(Point point) => HasHealthyFrame && scene.IsPetHit(point);
 
     // Called by the room host immediately after Show, inside its preparation
-    // failure boundary. Motion subsequently changes only our canvas and region.
+    // failure boundary. Motion subsequently changes only our canvas contents.
     internal void PositionStableViewport()
     {
         if (stableViewportPixels is not { } viewport || stableViewportPositioned) return;
@@ -227,7 +228,11 @@ internal sealed class DesktopPetDangoWindow : Window
                 timing = timing with { SecondLayoutMilliseconds = Stopwatch.GetElapsedTime(stage, finished).TotalMilliseconds };
                 stage = finished;
             }
-            UpdateNativeRegion(dpi, paths, accessories);
+            if (!nativeDisplayReady)
+            {
+                NativeMethods.SetDesktopPetDisplayReady(Handle, true);
+                nativeDisplayReady = true;
+            }
             if (observe)
             {
                 var finished = Stopwatch.GetTimestamp();
@@ -290,57 +295,6 @@ internal sealed class DesktopPetDangoWindow : Window
         if (visual is AccessoryMeshVisual { IsVisible: true, Frame: not null } accessory) yield return accessory;
         for (var i = 0; i < VisualTreeHelper.GetChildrenCount(visual); i++)
             foreach (var child in PaintedAccessories(VisualTreeHelper.GetChild(visual, i))) yield return child;
-    }
-
-    private void UpdateNativeRegion(DpiScale dpi, IReadOnlyList<Path> paths, IReadOnlyList<AccessoryMeshVisual> accessories)
-    {
-        var polygons = new List<NativeMethods.NativePoint[]>();
-        foreach (var path in paths)
-        {
-            var geometry = path.Data ?? throw new InvalidOperationException("当前团子透明轮廓已失效。");
-            var flattened = geometry.GetFlattenedPathGeometry(.15, ToleranceType.Absolute);
-            var geometryTransform = flattened.Transform ?? System.Windows.Media.Transform.Identity;
-            var transform = path.TransformToAncestor(this);
-            foreach (var figure in flattened.Figures)
-            {
-                var points = new List<Point> { figure.StartPoint };
-                foreach (var segment in figure.Segments)
-                {
-                    if (segment is PolyLineSegment line) points.AddRange(line.Points);
-                    else if (segment is LineSegment single) points.Add(single.Point);
-                }
-                polygons.Add(points.Select(point =>
-                {
-                    var transformed = transform.Transform(geometryTransform.Transform(point));
-                    return new NativeMethods.NativePoint
-                    {
-                        X = (int)Math.Round(transformed.X * dpi.DpiScaleX),
-                        Y = (int)Math.Round(transformed.Y * dpi.DpiScaleY),
-                    };
-                }).ToArray());
-            }
-        }
-        // Window regions clip painting as well as native input. Include the
-        // current picture bounds without adding them to scene.IsPetHit or the
-        // body pointer guard; the existing HTTRANSPARENT path remains in force.
-        // One conservative quad per picture avoids per-triangle GDI objects.
-        foreach (var accessory in accessories)
-        {
-            var bounds = accessory.Frame!.Bounds;
-            var transform = accessory.TransformToAncestor(this);
-            polygons.Add(new[] { bounds.TopLeft, bounds.TopRight, bounds.BottomRight, bounds.BottomLeft }.Select(point =>
-            {
-                var transformed = transform.Transform(point);
-                return new NativeMethods.NativePoint
-                {
-                    X = (int)Math.Round(transformed.X * dpi.DpiScaleX),
-                    Y = (int)Math.Round(transformed.Y * dpi.DpiScaleY),
-                };
-            }).ToArray());
-        }
-        if (!polygons.Any(polygon => polygon.Length >= 3))
-            throw new InvalidOperationException("独立团子层没有可呈现的健康轮廓。");
-        NativeMethods.SetDesktopPetRegion(Handle, polygons);
     }
 
     internal void SetInteractionEnabled(bool enabled)
