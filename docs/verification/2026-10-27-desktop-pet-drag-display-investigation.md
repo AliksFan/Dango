@@ -1,6 +1,6 @@
 # 桌宠拖动显示缺块排查
 
-后续状态：本页保留首轮排查历史。两处裁切的候选修复、自动验证和用户人工复验已完成，见[修复记录](2026-10-27-desktop-pet-drag-display-fix.md)；未合入 main 或替换正式包。
+后续状态：本页保留首轮排查历史。两处裁切的修复、自动验证和用户人工复验已完成，见[修复记录](2026-10-27-desktop-pet-drag-display-fix.md)；随后按用户授权完成[本地 main 整合](2026-10-27-desktop-pet-drag-display-main-integration.md)，正式包未替换。
 
 日期：2026-10-27。基线为本地 `main@d929a8ee85d050c45edc7bfb7c93b043aed35729`，排查保存在独立 `codex/desktop-pet-drag-display` 分支。用户报告拖动时偶尔出现“蘑菇头”“平头”和配饰部分消失。本轮未确认根因、未修改生产代码，也未将问题标记为修复或验收通过。
 
