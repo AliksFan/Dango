@@ -1,10 +1,13 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Dango.Core.Coordinates;
 using Dango.Desktop.Accessories;
+using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.Rooms;
 using Dango.Desktop.DesktopHost;
+using Dango.Desktop.Physics.Presentation;
 using Dango.Desktop.Rendering.Visuals;
 using Canvas = System.Windows.Controls.Canvas;
 using Point = System.Windows.Point;
@@ -100,6 +103,91 @@ public sealed class DesktopPetAccessoryIntegrationTests
         AssertReadOnlyAndBodyOnly(rig);
     }
 
+    [STATestMethod]
+    [TestCategory("NativeIntegration")]
+    public void StableViewportDragKeepsCurrentWpfOpaquePixelsInsideNativeRegion()
+    {
+        using var rig = new Fixture(stableViewport: true, beltRoom: true);
+        DesktopPetRoomFixture.WaitUntil(() => rig.Driver.IsReady, rig.Runtime);
+        var center = DangoHostFrameBinding.Bounds(rig.Frame, 0).Center;
+        var bodyCenter = rig.Scene.RoomToScene(new(center.X, center.Y + rig.Runtime.NeutralBodyGroundOffset));
+        var start = new Point(bodyCenter.X, bodyCenter.Y);
+        Assert.IsTrue(rig.Driver.PointerDown(start), "The real desktop-pet body must accept an in-process drag start.");
+        var checkedFrames = 0;
+        var maximumLift = 0d;
+        var previousSteps = rig.Frame.Bodies.Single().Diagnostics.SimulatedStepCount;
+        try
+        {
+            for (var i = 1; i <= 24; i++)
+            {
+                var point = new Point(start.X + 100 * Math.Sin(i * Math.PI / 12), start.Y - 120 * Math.Sin(i * Math.PI / 24));
+                Assert.IsTrue(rig.Driver.PointerMove(point), $"Drag move {i} must be accepted.");
+                rig.WaitForNewFrame(previousSteps);
+                Assert.IsTrue(rig.Window.HasHealthyFrame, rig.Window.LastFrameRejection);
+                Assert.AreSame(rig.Frame, rig.Window.LastAppliedFrame, "The natural scene callback must update the pet window without a test-side reapply.");
+                Assert.IsTrue(rig.Driver.IsPointerActive, $"Drag sample {i} must retain its live pointer gesture.");
+                if (i >= 4) Assert.IsTrue(rig.Runtime.IsDragging, "The trajectory must exercise physical dragging rather than light interaction.");
+                var steps = rig.Frame.Bodies.Single().Diagnostics.SimulatedStepCount;
+                Assert.IsTrue(steps > previousSteps, $"Drag sample {i} must observe a newly simulated real frame.");
+                previousSteps = steps;
+                maximumLift = Math.Max(maximumLift, center.Y - DangoHostFrameBinding.Bounds(rig.Frame, 0).Center.Y);
+                Assert.AreEqual(DangoContourFailure.None, rig.Body.LastContourFailure,
+                    $"The real drag frame {i} must keep a valid body contour.");
+                Assert.AreEqual(PhysicsPresentationFallbackReason.None, rig.Frame.Bodies.Single().FallbackReason,
+                    $"The real drag frame {i} must not use the presentation fallback.");
+                Assert.AreEqual(2, rig.Accessories.Length,
+                    $"The real drag frame {i} must retain both accessory layers.");
+                Assert.IsTrue(rig.Accessories.All(visual => visual.IsVisible && visual.Frame is not null && visual.CaptureBitmap() is not null),
+                    $"The real drag frame {i} must retain rendered images in both layers.");
+                var coverage = CountWpfOpaquePixelsOutsideNativeRegion(rig.Window);
+                Assert.IsTrue(coverage.SampledOpaquePixels >= 1000,
+                    $"Frame {i} needs a substantial WPF alpha sample; saw {coverage.SampledOpaquePixels} pixels.");
+                Assert.IsTrue(coverage.ClippedOpaquePixels <= Math.Max(2, coverage.SampledOpaquePixels / 10000),
+                    $"Frame {i} clipped {coverage.ClippedOpaquePixels}/{coverage.SampledOpaquePixels} opaque WPF pixels " +
+                    "after excluding one pixel of antialiased boundary. Native region must cover the current WPF frame.");
+                checkedFrames++;
+            }
+        }
+        finally { rig.Driver.PointerUp(start); }
+        Assert.AreEqual(24, checkedFrames, "Every actual stable-viewport drag frame must be checked.");
+        Assert.IsTrue(maximumLift > 20, "The real body must leave the floor during the drag trajectory.");
+    }
+
+    private static (int SampledOpaquePixels, int ClippedOpaquePixels) CountWpfOpaquePixelsOutsideNativeRegion(DesktopPetDangoWindow window)
+    {
+        window.UpdateLayout();
+        var dpi = VisualTreeHelper.GetDpi(window);
+        var width = (int)Math.Ceiling(window.ActualWidth * dpi.DpiScaleX);
+        var height = (int)Math.Ceiling(window.ActualHeight * dpi.DpiScaleY);
+        var bitmap = new RenderTargetBitmap(width, height, 96 * dpi.DpiScaleX, 96 * dpi.DpiScaleY, PixelFormats.Pbgra32);
+        bitmap.Render(window);
+        var pixels = new byte[width * height * 4];
+        bitmap.CopyPixels(pixels, width * 4, 0);
+        var region = CreateRectRgn(0, 0, 0, 0);
+        Assert.AreNotEqual((nint)0, region);
+        try
+        {
+            Assert.IsTrue(GetWindowRgn(window.Handle, region) > 0, "The owned HWND must expose its current native region.");
+            var sampled = 0;
+            var clipped = 0;
+            // Erode the opaque alpha mask by one pixel so antialiasing and native
+            // integer edge rounding cannot be mistaken for missing interior pixels.
+            for (var y = 1; y < height - 1; y++)
+                for (var x = 1; x < width - 1; x++)
+                {
+                    var interior = true;
+                    for (var dy = -1; dy <= 1 && interior; dy++)
+                        for (var dx = -1; dx <= 1; dx++)
+                            if (pixels[((y + dy) * width + x + dx) * 4 + 3] < 250) { interior = false; break; }
+                    if (!interior) continue;
+                    sampled++;
+                    if (!PtInRegion(region, x, y)) clipped++;
+                }
+            return (sampled, clipped);
+        }
+        finally { _ = DeleteObject(region); }
+    }
+
     private static void AssertReadOnlyAndBodyOnly(Fixture rig)
     {
         var frame = rig.Runtime.LastFrame;
@@ -140,7 +228,7 @@ public sealed class DesktopPetAccessoryIntegrationTests
 
     private sealed class Fixture : IDisposable
     {
-        internal readonly StackedDangoSceneRuntime Runtime = StackedDangoSceneRuntime.CreateProduct();
+        internal readonly StackedDangoSceneRuntime Runtime;
         internal readonly LocalRoomSceneView Scene = new() { Width = 1024, Height = 640 };
         internal readonly LocalRoomSceneDriver Driver;
         internal readonly Window SceneWindow;
@@ -151,8 +239,12 @@ public sealed class DesktopPetAccessoryIntegrationTests
         internal Dango.Desktop.Physics.Presentation.StackedPhysicsPresentationFrame Frame => Scene.LastAppliedFrame!;
         internal AccessoryMeshVisual[] Accessories => DesktopPetRoomFixture.Descendants<AccessoryMeshVisual>(Window).ToArray();
 
-        internal Fixture(bool stableViewport)
+        internal Fixture(bool stableViewport, bool beltRoom = false)
         {
+            Runtime = beltRoom
+                ? ProductPhysicsComposition.Default.CreateRoom()
+                : StackedDangoSceneRuntime.CreateProduct();
+            if (beltRoom) Runtime.ConfigureBeltRoomAppearance(DangoAppearanceConfiguration.Default, beginRoom: true);
             var root = System.IO.Path.Combine(TestRepository.Root, "artifacts", "accessory-v1-desktop-pet", Guid.NewGuid().ToString("N"));
             var settings = new AccessorySettingsSession(root);
             var configuration = new AccessoryConfiguration([
@@ -218,6 +310,13 @@ public sealed class DesktopPetAccessoryIntegrationTests
         {
             Assert.IsTrue(Scene.ApplyFrame(Runtime.LastFrame!, Runtime));
             Assert.IsTrue(Window.HasHealthyFrame, Window.LastFrameRejection);
+        }
+
+        internal void WaitForNewFrame(int previousSteps)
+        {
+            DesktopPetRoomFixture.WaitUntil(() => Frame.Bodies.Single().Diagnostics.SimulatedStepCount > previousSteps,
+                Runtime, diagnostic: () => Window.LastFrameRejection);
+            Window.UpdateLayout();
         }
 
         internal (Point Window, Point Scene, Point Screen) OpaqueAccessoryPointOutsideBody(AccessoryMeshVisual visual)
