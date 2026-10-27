@@ -388,9 +388,28 @@ internal sealed partial class DangoApplicationHost
         }
     }
 
-    private void CompleteLocalHandoff(long attempt, LocalRoomPresentation target)
+    private async void CompleteLocalHandoff(long attempt, LocalRoomPresentation target)
     {
-        if (disposed || !roomHandoff.Pending || attempt != roomHandoff.Generation || target != roomHandoff.Target) return;
+        bool IsCurrent() => !disposed && roomHandoff.Pending && attempt == roomHandoff.Generation && target == roomHandoff.Target;
+        if (!IsCurrent()) return;
+        if (target == LocalRoomPresentation.Window && selectedCatalogRoomId is not null && roomCatalogStore is not null)
+        {
+            // Hide can still be publishing a checkpoint when the restored room renders.
+            // Await our own writes before taking the same admission lock; never hold
+            // a file guard across this wait or acknowledge an invalidated handoff.
+            Task checkpoint;
+            do
+            {
+                checkpoint = roomCheckpointTask;
+                try { await checkpoint; }
+                catch (Exception)
+                {
+                    if (IsCurrent()) FailLocalHandoff(attempt, "位置／视角保存未能完成，暂不能恢复房间，请返回门廊核对后重试。");
+                    return;
+                }
+                if (!IsCurrent()) return;
+            } while (!ReferenceEquals(checkpoint, roomCheckpointTask));
+        }
         try
         {
             // Preparation and the rendered-frame acknowledgement are separate async boundaries.
