@@ -10,7 +10,7 @@ static double belt_muscle_smooth(double x){x=fmax(0,fmin(1,x));return x*x*(3-2*x
 static int belt_muscle_force_at(belt_body* b,const double* q,double* force,double time){
  double envelope=belt_muscle_smooth(time/.10)*belt_muscle_smooth((.75-time)/.18);
  b->muscle_diag[13]=envelope;if(envelope<=0||b->muscle_strength<=0)return 1;
- if(b->muscle_profile==2)return belt_muscle_random_force_at(b,q,force,time,envelope);
+ if(b->muscle_profile==2||b->muscle_profile==3)return belt_muscle_random_force_at(b,q,force,time,envelope);
  double torque=0,minimum_weight=1;int pairs=0;
  for(int bank=0;bank<2;++bank)for(int i=0;i<4;++i){
   double a=(.55+.04*i)*BELT_PI,z=(1.85+.04*i)*BELT_PI;

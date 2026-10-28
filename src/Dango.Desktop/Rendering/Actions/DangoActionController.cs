@@ -43,12 +43,12 @@ internal sealed class DangoActionController
         if (!double.IsFinite(shakeStrength) || shakeStrength is <= 0 or > 2)
             return Reject("抖身驱动力超出支持范围。");
         if (!Enum.IsDefined(shakeProfile)) return Reject("不支持此抖身发力方案。");
-        if (shakeProfile != DangoMuscleShakeProfile.EyeAlignedRandom && shakeSeed != 0)
+        if (shakeProfile is not (DangoMuscleShakeProfile.EyeAlignedRandom or DangoMuscleShakeProfile.EyeAlignedRandomWide) && shakeSeed != 0)
             return Reject("此发力方案不支持随机种子。");
         if (action != DangoActionKind.Shake && (shakeStrength != ShakeStrength || shakeProfile != DangoMuscleShakeProfile.Original))
             return Reject("此动作不支持抖身候选参数。");
         if (!Finite(observation) || !observation.Grounded) return Reject("动作需要团子处于稳定落地状态；请稍后重试。");
-        if (shakeProfile == DangoMuscleShakeProfile.EyeAlignedRandom && !ValidEyeAxis(observation))
+        if (shakeProfile is (DangoMuscleShakeProfile.EyeAlignedRandom or DangoMuscleShakeProfile.EyeAlignedRandomWide) && !ValidEyeAxis(observation))
             return Reject("随机内收需要可辨认的两眼连线。");
         if (action is DangoActionKind.Approach or DangoActionKind.Retreat or DangoActionKind.Recoil)
         {
@@ -82,7 +82,7 @@ internal sealed class DangoActionController
         if (!Active) return Idle;
         if (!double.IsFinite(seconds) || seconds <= 0 || seconds > .25 || !Finite(observation))
             return Fail("动作观测或时间步无效；已停止动作。");
-        if (shakeProfile == DangoMuscleShakeProfile.EyeAlignedRandom && !ValidEyeAxis(observation))
+        if (shakeProfile is (DangoMuscleShakeProfile.EyeAlignedRandom or DangoMuscleShakeProfile.EyeAlignedRandomWide) && !ValidEyeAxis(observation))
             return Fail("两眼连线不可用；已停止随机内收。");
         elapsed += seconds;
         if (elapsed >= 6 - 1e-9) return Fail(kind == DangoActionKind.ChargedHop && !leftGround
@@ -104,8 +104,8 @@ internal sealed class DangoActionController
                 input = elapsed < driveEnd ? new DangoBeltInput(InputActive: true)
                     { MuscleShakeTime = elapsed, MuscleShakeStrength = shakeStrength, MuscleShakeProfile = shakeProfile,
                       MuscleShakeSeed = shakeSeed,
-                      MuscleShakeAxisX = shakeProfile == DangoMuscleShakeProfile.EyeAlignedRandom ? observation.EyeAxisX : 0,
-                      MuscleShakeAxisY = shakeProfile == DangoMuscleShakeProfile.EyeAlignedRandom ? observation.EyeAxisY : 0 } : default;
+                      MuscleShakeAxisX = shakeProfile is DangoMuscleShakeProfile.EyeAlignedRandom or DangoMuscleShakeProfile.EyeAlignedRandomWide ? observation.EyeAxisX : 0,
+                      MuscleShakeAxisY = shakeProfile is DangoMuscleShakeProfile.EyeAlignedRandom or DangoMuscleShakeProfile.EyeAlignedRandomWide ? observation.EyeAxisY : 0 } : default;
                 phase = elapsed < .1 ? "enter" : elapsed < driveEnd ? "hold" : "settle";
                 break;
             case DangoActionKind.Sway:

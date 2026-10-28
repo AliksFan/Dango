@@ -125,8 +125,8 @@ public sealed unsafe partial class DangoBeltRoomWorld : IDisposable
             !Finite(input.MuscleShakeTime) || input.MuscleShakeTime is < 0 or > 2 ||
             !Finite(input.MuscleShakeStrength) || input.MuscleShakeStrength is < 0 or > 2 ||
             !Enum.IsDefined(input.MuscleShakeProfile) ||
-            (input.MuscleShakeProfile != DangoMuscleShakeProfile.EyeAlignedRandom && input.MuscleShakeSeed != 0) ||
-            (input.MuscleShakeProfile == DangoMuscleShakeProfile.EyeAlignedRandom &&
+            (input.MuscleShakeProfile is not (DangoMuscleShakeProfile.EyeAlignedRandom or DangoMuscleShakeProfile.EyeAlignedRandomWide) && input.MuscleShakeSeed != 0) ||
+            (input.MuscleShakeProfile is (DangoMuscleShakeProfile.EyeAlignedRandom or DangoMuscleShakeProfile.EyeAlignedRandomWide) &&
                 (!Finite(input.MuscleShakeAxisX) || !Finite(input.MuscleShakeAxisY) ||
                  Math.Abs(Math.Sqrt(input.MuscleShakeAxisX * input.MuscleShakeAxisX + input.MuscleShakeAxisY * input.MuscleShakeAxisY) - 1) > 1e-4)) ||
             !Finite(input.Stretch) || input.Stretch is < 0 or > 1 ||
@@ -140,7 +140,7 @@ public sealed unsafe partial class DangoBeltRoomWorld : IDisposable
             if (input.MuscleShakeStrength > 0)
             {
                 if (!SupportsMuscleActuation) throw new NotSupportedException("当前物理模块不支持内部肌肉抖身。");
-                if (input.MuscleShakeProfile == DangoMuscleShakeProfile.EyeAlignedRandom)
+                if (input.MuscleShakeProfile is DangoMuscleShakeProfile.EyeAlignedRandom or DangoMuscleShakeProfile.EyeAlignedRandomWide)
                 {
                     if (!SupportsEyeAlignedRandom) throw new NotSupportedException("当前物理模块不支持沿眼线随机内收。");
                     Check(stepMusclePattern!(handle, (float)DangoBeltWorld.FixedDt, in native, 1,

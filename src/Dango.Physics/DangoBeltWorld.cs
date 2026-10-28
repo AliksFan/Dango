@@ -4,7 +4,7 @@ using Dango.Desktop.Physics.Tuning;
 
 namespace Dango.Physics;
 
-public enum DangoMuscleShakeProfile { Original = 0, SoftShoulders = 1, EyeAlignedRandom = 2 }
+public enum DangoMuscleShakeProfile { Original = 0, SoftShoulders = 1, EyeAlignedRandom = 2, EyeAlignedRandomWide = 3 }
 
 public readonly record struct DangoBeltInput(double Horizontal=0, double Stretch=0, double Downward=0,
     bool JumpPressed=false, bool DragActive=false, double DragTargetX=0, double DragTargetY=0,

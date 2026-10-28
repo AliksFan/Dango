@@ -14,8 +14,10 @@ internal static class ActionLabCandidates
     private static readonly IReadOnlyList<ActionLabCandidate> Shake = Array.AsReadOnly<ActionLabCandidate>(
         [new("current", "原更强", "保留原更强抖身作为对照", 1.44),
          new("soft", "肩部柔和", "保持更强幅度，柔和上半两侧轮廓", 1.44, DangoMuscleShakeProfile.SoftShoulders),
-         new("random", "随机", "覆盖中间3/4高度，采用翻倍后的 .08π 参考弧长间距；沿两眼实际连线向内，每对共享有界平滑随机张力；本次seed可重放",
-             1.44, DangoMuscleShakeProfile.EyeAlignedRandom)]);
+         new("random", "随机", "覆盖中间3/4高度，采用 .08π 参考弧长间距；沿两眼实际连线，相邻施力行反向，大小平滑随机；本次seed可重放",
+             1.44, DangoMuscleShakeProfile.EyeAlignedRandom),
+         new("random-wide", "间距 +1/3", "与随机候选相同，仅施力行间距增加1/3；本次seed可重放",
+             1.44, DangoMuscleShakeProfile.EyeAlignedRandomWide)]);
 
     internal static IReadOnlyList<ActionLabCandidate> For(DangoActionKind kind)
     {

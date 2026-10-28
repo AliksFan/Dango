@@ -5,7 +5,7 @@
 static double belt_muscle_random_value(uint32_t seed,int row,uint32_t knot){
  uint32_t x=seed^((uint32_t)(row+13)*UINT32_C(0x9e3779b9))^(knot*UINT32_C(0x85ebca6b));
  x^=x>>16;x*=UINT32_C(0x7feb352d);x^=x>>15;x*=UINT32_C(0x846ca68b);x^=x>>16;
- return (x&1?-1:1)*(.6+.4*(double)(x>>8)/16777215.);
+ return (row&1?-1:1)*(.6+.4*(double)(x>>8)/16777215.);
 }
 static double belt_muscle_random_gain(uint32_t seed,int row,double time){
  double t=fmax(0,time)*6.4;uint32_t k=(uint32_t)floor(t);double s=belt_muscle_smooth(t-k);
@@ -43,7 +43,7 @@ static int belt_muscle_random_force_at(belt_body* b,const double* q,double* forc
  double extrema[64],cuts[66];int ne=belt_roots(projected,1,1,0,extrema),nc=0;cuts[nc++]=0;
  for(int i=0;i<ne;++i)if(extrema[i]>1e-9&&extrema[i]<2*BELT_PI-1e-9)cuts[nc++]=extrema[i];cuts[nc++]=2*BELT_PI;
  double low=bounds[1]+.125*(bounds[3]-bounds[1]),high=bounds[3]-.125*(bounds[3]-bounds[1]);
- double spacing=.08*BELT_PI*b->radius,center=projected[35],weights[25],sum=0;
+ double spacing=.08*BELT_PI*b->radius*(b->muscle_profile==3?4./3.:1),center=projected[35],weights[25],sum=0;
  for(int r=0;r<25;++r){double h=center+(r-12)*spacing;weights[r]=belt_muscle_smooth(fmin(h-low,high-h)/(.5*spacing));sum+=weights[r];}
  if(!isfinite(sum)||sum<=0)return 0;
  b->muscle_diag[25]=(double)b->muscle_seed;b->muscle_diag[26]=ax;b->muscle_diag[27]=ay;

@@ -87,7 +87,7 @@ internal sealed class ActionLabSession : IDisposable
         if (!Enum.IsDefined(kind)) { Phase = "不支持此动作类型"; return false; }
         var candidate = ActionLabCandidates.For(kind).FirstOrDefault(c => c.Id == candidateId);
         if (candidate is null) { Phase = "不支持此动作候选"; return false; }
-        var random = candidate.ShakeProfile == DangoMuscleShakeProfile.EyeAlignedRandom;
+        var random = candidate.ShakeProfile is DangoMuscleShakeProfile.EyeAlignedRandom or DangoMuscleShakeProfile.EyeAlignedRandomWide;
         if (!random && seedOverride is not null) { Phase = "此动作候选不支持随机种子"; return false; }
         var observation = Observe();
         if (random && (!double.IsFinite(observation.EyeAxisX) || !double.IsFinite(observation.EyeAxisY)))

@@ -311,14 +311,14 @@ static int room_step_muscles(void* handle,float dt,const dango_belt_room_input* 
  if(!input||count!=1||input->body_id!=1||input->reserved||dt!=.0166666f)return DANGO_BELT_ROOM_ARGUMENT;for(int i=0;i<9;++i)if(!isfinite(input->controls[i]))return DANGO_BELT_ROOM_ARGUMENT;
  const float* c=input->controls;if(fabsf(c[0])>1||c[1]<0||c[1]>1||c[6]<0||c[6]>1)return DANGO_BELT_ROOM_ARGUMENT;const int flags[4]={2,3,7,8};for(int i=0;i<4;++i)if(c[flags[i]]!=0&&c[flags[i]]!=1)return DANGO_BELT_ROOM_ARGUMENT;if(w->tick==UINT64_MAX)return DANGO_BELT_ROOM_REVISION;
  if(!isfinite(time)||time<0||time>2||!isfinite(strength)||strength<0||strength>2)return DANGO_BELT_ROOM_ARGUMENT;
- if(profile<0||profile>2)return DANGO_BELT_ROOM_ARGUMENT;
+ if(profile<0||profile>3)return DANGO_BELT_ROOM_ARGUMENT;
  double axis_length=hypot(axis_x,axis_y);
- if(profile==2&&(!isfinite(axis_x)||!isfinite(axis_y)||!isfinite(axis_length)||fabs(axis_length-1)>1e-4))return DANGO_BELT_ROOM_ARGUMENT;
- if(profile!=2&&seed!=0)return DANGO_BELT_ROOM_ARGUMENT;
+ if((profile==2||profile==3)&&(!isfinite(axis_x)||!isfinite(axis_y)||!isfinite(axis_length)||fabs(axis_length-1)>1e-4))return DANGO_BELT_ROOM_ARGUMENT;
+ if(profile!=2&&profile!=3&&seed!=0)return DANGO_BELT_ROOM_ARGUMENT;
  if(strength>0&&(c[0]!=0||c[1]!=0||c[2]!=0||c[3]!=0||c[6]!=0||c[8]!=0))return DANGO_BELT_ROOM_ARGUMENT;
  belt_body* b=room_body(w);belt_body backup=*b;room_world world_backup=*w;
  b->muscle_time=time;b->muscle_strength=strength;b->muscle_profile=strength>0?profile:0;
- b->muscle_axis_x=strength>0&&profile==2?axis_x/axis_length:0;b->muscle_axis_y=strength>0&&profile==2?axis_y/axis_length:0;b->muscle_seed=strength>0&&profile==2?seed:0;
+ b->muscle_axis_x=strength>0&&(profile==2||profile==3)?axis_x/axis_length:0;b->muscle_axis_y=strength>0&&(profile==2||profile==3)?axis_y/axis_length:0;b->muscle_seed=strength>0&&(profile==2||profile==3)?seed:0;
 #ifdef DANGO_BELT_ROOM_TRACE
  room_trace_safe_body=backup;
 #endif
