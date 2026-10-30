@@ -3,11 +3,12 @@ using Dango.Core.Coordinates;
 
 namespace Dango.Desktop.AppShell.Rooms;
 
-// One fixed, invertible projection is shared by the wallpaper, pet and pointer.
+// One invertible projection is shared by the pet and pointer; physical units stay unchanged.
 internal readonly record struct DesktopPetRoomMapping(RoomProjection Projection, LogicalRect SafeSceneBounds)
 {
-    internal static DesktopPetRoomMapping Create(double width, double height, Thickness insets, double groundY)
+    internal static DesktopPetRoomMapping Create(double width, double height, Thickness insets, double groundY, int displayPercent = 100)
     {
+        if (displayPercent is < 50 or > 200) throw new ArgumentOutOfRangeException(nameof(displayPercent));
         var safe = new LogicalRect(insets.Left, insets.Top,
             width - insets.Left - insets.Right, height - insets.Top - insets.Bottom);
         if (!double.IsFinite(width) || !double.IsFinite(height) || !double.IsFinite(groundY) ||
@@ -16,7 +17,7 @@ internal readonly record struct DesktopPetRoomMapping(RoomProjection Projection,
             throw new InvalidOperationException("主屏安全区域不足以呈现桌宠房间。");
         // Keep the requested multiplier relative to the previous default, while
         // removing its extra screen inset. Zoom the shared world around its centre.
-        var scale = (safe.Width - 32) / (LocalRoomSceneView.WorldWidth - 2 * LocalRoomSceneView.SideBoundaryInset) * 1.4;
+        var scale = (safe.Width - 32) / (LocalRoomSceneView.WorldWidth - 2 * LocalRoomSceneView.SideBoundaryInset) * 1.4 * displayPercent / 100d;
         return new(new(scale, safe.X + safe.Width / 2 - LocalRoomSceneView.WorldWidth / 2 * scale,
             safe.Bottom - groundY * scale), safe);
     }
@@ -31,4 +32,12 @@ internal readonly record struct DesktopPetRoomMapping(RoomProjection Projection,
     }
 
     internal LogicalRect Surface => SafeWorldBounds;
+
+    internal LogicalVector FitDisplayOffset(LogicalRect painted)
+    {
+        var safe = SafeWorldBounds;
+        return new(
+            painted.Width <= safe.Width ? Math.Clamp(0, safe.X - painted.X, safe.Right - painted.Right) : safe.X + safe.Width / 2 - painted.X - painted.Width / 2,
+            painted.Height <= safe.Height ? Math.Clamp(0, safe.Y - painted.Y, safe.Bottom - painted.Bottom) : safe.Y + safe.Height / 2 - painted.Y - painted.Height / 2);
+    }
 }

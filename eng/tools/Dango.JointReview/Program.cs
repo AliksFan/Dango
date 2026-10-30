@@ -223,6 +223,8 @@ internal static class Program
     {
         try
         {
+            if (args.Length > 0 && IsolatedPreviews.IsMode(args[0]))
+                return IsolatedPreviews.Run(args);
             if (args.Length is 4 or 5 && args[0] == "--ordinary-furniture-collection-verify")
             {
                 var seconds = args.Length == 5 ? double.Parse(args[4], CultureInfo.InvariantCulture) : 600;

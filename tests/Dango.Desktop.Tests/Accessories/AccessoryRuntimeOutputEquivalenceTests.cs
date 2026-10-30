@@ -21,7 +21,7 @@ public sealed class AccessoryRuntimeOutputEquivalenceTests
 {
     private const string BaselinePathVariable = "DANGO_ACCESSORY_EQUIVALENCE_BASELINE_PATH";
     private const string WriteVariable = "DANGO_ACCESSORY_EQUIVALENCE_WRITE_BASELINE";
-    private const int Schema = 1;
+    private const int Schema = 2;
     private const int FrameCount = 300 + 180 + 180 + 180 + 30 + 60;
     private static readonly TimeSpan Step = TimeSpan.FromSeconds(.02);
     private static readonly LogicalRect Bounds = new(400, 350, 160, 120);
@@ -44,8 +44,8 @@ public sealed class AccessoryRuntimeOutputEquivalenceTests
         baselinePath = Path.GetFullPath(baselinePath);
         var write = Environment.GetEnvironmentVariable(WriteVariable) == "1";
         var desktopSha = FileSha(typeof(StackedDangoSceneRuntime).Assembly.Location);
-        var nativePath = Environment.GetEnvironmentVariable("DANGO_PHYSICS_MODULE_PATH") ??
-            Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName);
+        var nativePath = Environment.GetEnvironmentVariable("DANGO_BELT_ROOM_MODULE") ??
+            Path.Combine(AppContext.BaseDirectory, "dango_belt_room.dll");
         var nativeSha = FileSha(nativePath);
         var configuration = Configuration();
         var fixtureSha = Digest(new
@@ -78,7 +78,7 @@ public sealed class AccessoryRuntimeOutputEquivalenceTests
         var settingsRoot = Path.Combine(TestRepository.Root, "artifacts", "accessory-runtime-equivalence", Guid.NewGuid().ToString("N"));
         var session = new AccessorySettingsSession(settingsRoot);
         session.Stage(configuration);
-        using var runtime = StackedDangoSceneRuntime.CreateProduct(nativePath);
+        using var runtime = StackedDangoSceneRuntime.CreateBeltRoom(nativePath);
         runtime.BindAccessories(session);
         runtime.SetAccessories(configuration);
         Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
@@ -298,6 +298,7 @@ public sealed class AccessoryRuntimeOutputEquivalenceTests
     {
         item = CanonicalItem(accessory.Item),
         accessory.Mesh.StepIndex,
+        accessory.Mesh.AllowFolding,
         verticesBits = accessory.Mesh.Vertices.Select(point => new[] { Bits(point.X), Bits(point.Y) }).ToArray(),
         textureCoordinatesBits = accessory.Mesh.TextureCoordinates.Select(point => new[] { Bits(point.X), Bits(point.Y) }).ToArray(),
         triangleIndices = accessory.Mesh.TriangleIndices.ToArray(),
@@ -319,8 +320,15 @@ public sealed class AccessoryRuntimeOutputEquivalenceTests
         item.Order,
         item.LockRotation,
         item.LimitSwing,
+        item.DeformationMode,
+        rig = item.Rig is null ? null : new
+        {
+            item.Rig.BindingVersion,
+            nodes = item.Rig.Nodes.Select(node => new[] { Bits(node.X), Bits(node.Y) }).ToArray(),
+            parameters = new[] { Bits(item.Rig.Softness), Bits(item.Rig.Damping), Bits(item.Rig.Restoration) },
+        },
         parameterBits = new[] { Bits(item.SizePercent), Bits(item.BaseAngleDegrees), Bits(item.ImagePivotX), Bits(item.ImagePivotY),
-            Bits(item.BodyAnchorX), Bits(item.BodyAnchorY), Bits(item.Softness), Bits(item.ConnectionStrength), Bits(item.RotationDamping),
+            Bits(item.BodyAnchorX), Bits(item.BodyAnchorY), Bits(item.ConnectionStrength), Bits(item.MaxConnectionTravelPercent), Bits(item.RotationDamping),
             Bits(item.ReturnStrength), Bits(item.MaxSwingDegrees), Bits(item.GravityInfluence) },
     };
     private static object EyeBits(EyePresentationFrame eye) => new
@@ -345,19 +353,23 @@ public sealed class AccessoryRuntimeOutputEquivalenceTests
         {
             Layer = AccessoryLayer.Front, Order = 2, BodyAnchorX = .72, BodyAnchorY = .2,
             SizePercent = 84, BaseAngleDegrees = 13, ImagePivotX = .3, ImagePivotY = .81,
-            Softness = 32, ConnectionStrength = 63, RotationDamping = 71, LockRotation = false,
+            ConnectionStrength = 63, RotationDamping = 71, LockRotation = false,
             ReturnStrength = 46, MaxSwingDegrees = 87, GravityInfluence = 29,
         },
         new("fictional-back-bowler", "Fictional back bowler", "builtin-bowler", 64, 64)
         {
             Layer = AccessoryLayer.Behind, Order = 1, BodyAnchorX = .29, BodyAnchorY = .56,
             SizePercent = 117, BaseAngleDegrees = -21, ImagePivotX = .8, ImagePivotY = .4,
-            Softness = 68, ConnectionStrength = 25, GravityInfluence = 43,
+            DeformationMode = AccessoryDeformationMode.SingleChain,
+            Rig = new([new(.8, .4), new(.6, .6), new(.4, .85)], .68),
+            ConnectionStrength = 25, GravityInfluence = 43,
         },
         new("fictional-front-leaf", "Fictional front leaf", "builtin-sprout", 64, 64)
         {
             Layer = AccessoryLayer.Front, Order = 1, BodyAnchorX = .228, BodyAnchorY = .756,
-            Softness = 84.46, ConnectionStrength = 0, RotationDamping = 0, LockRotation = false,
+            DeformationMode = AccessoryDeformationMode.SingleChain,
+            Rig = new([new(.5, .5), new(.7, .7), new(.8, .9)], .8446),
+            ConnectionStrength = 0, RotationDamping = 0, LockRotation = false,
             ReturnStrength = 60, MaxSwingDegrees = 178, LimitSwing = true, GravityInfluence = 20,
         },
     ]);

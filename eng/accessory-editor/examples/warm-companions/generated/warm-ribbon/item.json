@@ -1,0 +1,196 @@
+{
+  "id": "example-warm-ribbon",
+  "name": "\u8393\u674F\u8774\u8776\u7ED3",
+  "assetId": "aeff38d38fa5047196f4a0d9d9893c0565ff19886dcbc215c26c16c045e9b8c9",
+  "pixelWidth": 512,
+  "pixelHeight": 384,
+  "projectId": "2e31e19e9979479b85ff9dad9c2557bee90e4f3acae8b4c4495573d47ab83faf",
+  "projectVersion": 2,
+  "editRevision": 1,
+  "deformationMode": "skeleton",
+  "rig": null,
+  "skeleton": {
+    "pivot": {
+      "id": "P",
+      "x": 256,
+      "y": 154
+    },
+    "groups": [
+      {
+        "id": "ribbon-left",
+        "name": "\u5DE6\u98D8\u5E26",
+        "targetId": "knot-0",
+        "nodes": [
+          {
+            "id": "ribbon-left-0",
+            "x": 256,
+            "y": 154
+          },
+          {
+            "id": "ribbon-left-1",
+            "x": 207,
+            "y": 234
+          },
+          {
+            "id": "ribbon-left-2",
+            "x": 177,
+            "y": 309
+          }
+        ],
+        "parameters": {
+          "bend": 0.22,
+          "damping": 9,
+          "restoration": 10,
+          "gravity": 8,
+          "elasticity": 0
+        }
+      },
+      {
+        "id": "ribbon-right",
+        "name": "\u53F3\u98D8\u5E26",
+        "targetId": "knot-0",
+        "nodes": [
+          {
+            "id": "ribbon-right-0",
+            "x": 256,
+            "y": 154
+          },
+          {
+            "id": "ribbon-right-1",
+            "x": 299,
+            "y": 234
+          },
+          {
+            "id": "ribbon-right-2",
+            "x": 335,
+            "y": 309
+          }
+        ],
+        "parameters": {
+          "bend": 0.22,
+          "damping": 9,
+          "restoration": 10,
+          "gravity": 8,
+          "elasticity": 0
+        }
+      },
+      {
+        "id": "wing-left",
+        "name": "\u5DE6\u7ED3\u7FFC",
+        "targetId": "knot-0",
+        "nodes": [
+          {
+            "id": "wing-left-0",
+            "x": 256,
+            "y": 154
+          },
+          {
+            "id": "wing-left-1",
+            "x": 164,
+            "y": 139
+          },
+          {
+            "id": "wing-left-2",
+            "x": 88,
+            "y": 130
+          }
+        ],
+        "parameters": {
+          "bend": 0.1,
+          "damping": 12,
+          "restoration": 18,
+          "gravity": 1,
+          "elasticity": 0
+        }
+      },
+      {
+        "id": "wing-right",
+        "name": "\u53F3\u7ED3\u7FFC",
+        "targetId": "knot-0",
+        "nodes": [
+          {
+            "id": "wing-right-0",
+            "x": 256,
+            "y": 154
+          },
+          {
+            "id": "wing-right-1",
+            "x": 348,
+            "y": 139
+          },
+          {
+            "id": "wing-right-2",
+            "x": 424,
+            "y": 130
+          }
+        ],
+        "parameters": {
+          "bend": 0.1,
+          "damping": 12,
+          "restoration": 18,
+          "gravity": 1,
+          "elasticity": 0
+        }
+      },
+      {
+        "id": "knot",
+        "name": "\u4E2D\u5FC3\u56FA\u5B9A\u7ED3",
+        "targetId": null,
+        "nodes": [
+          {
+            "id": "knot-0",
+            "x": 256,
+            "y": 154
+          }
+        ],
+        "parameters": {
+          "bend": 0,
+          "damping": 15,
+          "restoration": 25,
+          "gravity": 0,
+          "elasticity": 0
+        }
+      }
+    ],
+    "layers": [
+      {
+        "id": "ribbon-left",
+        "groupId": "ribbon-left"
+      },
+      {
+        "id": "ribbon-right",
+        "groupId": "ribbon-right"
+      },
+      {
+        "id": "wing-left",
+        "groupId": "wing-left"
+      },
+      {
+        "id": "wing-right",
+        "groupId": "wing-right"
+      },
+      {
+        "id": "knot",
+        "groupId": "knot"
+      }
+    ],
+    "version": 1
+  },
+  "isEquipped": true,
+  "layer": "front",
+  "order": 2,
+  "sizePercent": 100,
+  "baseAngleDegrees": 0,
+  "imagePivotX": 0.5,
+  "imagePivotY": 0.4010416666666667,
+  "bodyAnchorX": 0.5,
+  "bodyAnchorY": 0.7,
+  "connectionStrength": 100,
+  "maxConnectionTravelPercent": 10,
+  "rotationDamping": 85,
+  "lockRotation": true,
+  "returnStrength": 90,
+  "maxSwingDegrees": 12,
+  "limitSwing": true,
+  "gravityInfluence": 0
+}

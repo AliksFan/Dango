@@ -1,0 +1,108 @@
+{
+  "id": "example-warm-cat-tail",
+  "name": "\u5976\u7CD6\u5377\u5C3E",
+  "assetId": "ea807d2cfa3c3ecf5e4ebe072e7725aba6dbc68f44db901fd71b5775944128fa",
+  "pixelWidth": 256,
+  "pixelHeight": 384,
+  "projectId": "745deab0b7549782b4381bbd8dd32ac3172506bd529785edc467879837c15227",
+  "projectVersion": 2,
+  "editRevision": 1,
+  "deformationMode": "skeleton",
+  "rig": null,
+  "skeleton": {
+    "pivot": {
+      "id": "P",
+      "x": 48,
+      "y": 328
+    },
+    "groups": [
+      {
+        "id": "tail",
+        "name": "\u5377\u5C3E\u67D4\u6027\u94FE",
+        "targetId": null,
+        "nodes": [
+          {
+            "id": "tail-0",
+            "x": 48,
+            "y": 328
+          },
+          {
+            "id": "tail-1",
+            "x": 103,
+            "y": 307
+          },
+          {
+            "id": "tail-2",
+            "x": 153,
+            "y": 271
+          },
+          {
+            "id": "tail-3",
+            "x": 185,
+            "y": 224
+          },
+          {
+            "id": "tail-4",
+            "x": 199,
+            "y": 175
+          },
+          {
+            "id": "tail-5",
+            "x": 190,
+            "y": 133
+          },
+          {
+            "id": "tail-6",
+            "x": 165,
+            "y": 102
+          },
+          {
+            "id": "tail-7",
+            "x": 132,
+            "y": 98
+          },
+          {
+            "id": "tail-8",
+            "x": 114,
+            "y": 120
+          }
+        ],
+        "parameters": {
+          "bend": 0.24,
+          "damping": 8,
+          "restoration": 11,
+          "gravity": 3,
+          "elasticity": 0.015
+        }
+      }
+    ],
+    "layers": [
+      {
+        "id": "tail-fur",
+        "groupId": "tail"
+      },
+      {
+        "id": "tail-tip",
+        "groupId": "tail"
+      }
+    ],
+    "version": 1
+  },
+  "isEquipped": true,
+  "layer": "behind",
+  "order": 0,
+  "sizePercent": 155,
+  "baseAngleDegrees": 0,
+  "imagePivotX": 0.1875,
+  "imagePivotY": 0.8541666666666666,
+  "bodyAnchorX": 0.87,
+  "bodyAnchorY": 0.68,
+  "connectionStrength": 100,
+  "maxConnectionTravelPercent": 10,
+  "rotationDamping": 85,
+  "lockRotation": true,
+  "returnStrength": 90,
+  "maxSwingDegrees": 12,
+  "limitSwing": true,
+  "gravityInfluence": 0
+}

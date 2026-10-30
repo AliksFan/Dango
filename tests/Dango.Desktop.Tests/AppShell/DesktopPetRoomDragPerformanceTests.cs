@@ -404,10 +404,11 @@ public sealed class DesktopPetRoomDragPerformanceTests
         }
         internal LogicalPoint ScreenToPhysicalWorld(Point screen)
         {
-            var source = Host.WallpaperSource ?? throw new AssertFailedException("The owned wallpaper HWND is missing.");
-            var local = new NativePoint((int)screen.X, (int)screen.Y);
-            Assert.IsTrue(ScreenToClient(source.Handle, ref local));
-            var sceneDip = source.CompositionTarget.TransformFromDevice.Transform(new Point(local.X, local.Y));
+            var source = System.Windows.PresentationSource.FromVisual(Window) as System.Windows.Interop.HwndSource
+                ?? throw new AssertFailedException("The owned pet HWND is missing.");
+            Assert.AreSame(source, System.Windows.PresentationSource.FromVisual(Host.Scene));
+            var origin = Host.SceneOriginPixels;
+            var sceneDip = source.CompositionTarget.TransformFromDevice.Transform(new Point(screen.X - origin.X, screen.Y - origin.Y));
             var displayed = Host.Scene.CurrentProjection.ScreenToWorld(new(sceneDip.X, sceneDip.Y));
             var offset = Host.Scene.PresentationOffset;
             return new(displayed.X - offset.X, displayed.Y - offset.Y - Runtime.NeutralBodyGroundOffset);

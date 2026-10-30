@@ -96,7 +96,7 @@ public sealed class HomePresentationLayoutTests
         Layout(home, size);
         foreach (var (name, key, action) in new[]
         {
-            ("FaceButton", "D", "捏脸"), ("WardrobeButton", "A", "换装"), ("EnterRoomButton", "W", "门廊"),
+            ("FaceButton", "E", "捏脸"), ("WardrobeButton", "Q", "换装"), ("EnterRoomButton", "F", "门廊"),
         })
         {
             var button = Element<Button>(home, name);
@@ -259,7 +259,7 @@ public sealed class HomePresentationLayoutTests
         var wardrobe = Element<Button>(home, "WardrobeButton");
         Assert.AreEqual(SystemColors.HighlightBrush, wardrobe.Background);
         Assert.AreEqual(SystemColors.HighlightTextBrush, wardrobe.Foreground);
-        foreach (var (name, key) in new[] { ("FaceButton", "D"), ("WardrobeButton", "A"), ("EnterRoomButton", "W") })
+        foreach (var (name, key) in new[] { ("FaceButton", "E"), ("WardrobeButton", "Q"), ("EnterRoomButton", "F") })
         {
             var button = Element<Button>(home, name);
             var letter = Descendants<TextBlock>(button).Single(text => text.Text == key);

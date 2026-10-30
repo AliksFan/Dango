@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <DesktopBuildPath Condition="'$(DesktopBuildPath)' == ''">$(MSBuildThisFileDirectory)..\..\..\..\src\Dango.Desktop\bin\Debug\net10.0-windows</DesktopBuildPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Dango.Desktop"><HintPath>$(DesktopBuildPath)\Dango.Desktop.dll</HintPath></Reference>
+    <Reference Include="Dango.Core"><HintPath>$(DesktopBuildPath)\Dango.Core.dll</HintPath></Reference>
+  </ItemGroup>
+  <Target Name="RequireDesktopBuild" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(DesktopBuildPath)\Dango.Desktop.dll')" Text="Build Dango.Desktop first, or set DesktopBuildPath to an existing matching build." />
+  </Target>
+</Project>

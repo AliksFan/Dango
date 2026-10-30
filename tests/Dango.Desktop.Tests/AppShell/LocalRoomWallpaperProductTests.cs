@@ -34,14 +34,14 @@ public sealed class LocalRoomWallpaperProductTests
         Assert.IsTrue(NativeMethods.GetCursorPos(out var previousCursor));
         var output = Path.Combine(TestRepository.Root, "artifacts", "local-room", "wallpaper-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(output);
-        var module = Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName);
+        var module = Path.Combine(AppContext.BaseDirectory, "dango_belt_room.dll");
         using var host = new DangoApplicationHost(settingsFile: Path.Combine(output, "settings.json"),
-            nativeLibraryPath: module, isolatedLocalRoomReview: true);
+            roomModulePath: module);
         try
         {
             var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
-            Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
-            host.ShowControlCenter(); Pump(350);
+            Assert.IsTrue(runtime.UsesBeltRoom);
+            host.ShowControlCenter(); ProductHostTestSupport.WaitForHome(host);
             host.EnterLocalRoom(); WaitForHandoff(host, "diagnostic room window");
             host.SwitchLocalRoomPresentation(LocalRoomPresentation.Wallpaper);
             WaitForHandoff(host, "diagnostic wallpaper");
@@ -106,11 +106,11 @@ public sealed class LocalRoomWallpaperProductTests
         Assert.IsTrue(NativeMethods.GetCursorPos(out var previousCursor));
         var output = Path.Combine(TestRepository.Root, "artifacts", "local-room", "wallpaper-tests", Guid.NewGuid().ToString("N"));
         using var host = new DangoApplicationHost(settingsFile: Path.Combine(output, "settings.json"),
-            nativeLibraryPath: Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName), isolatedLocalRoomReview: true);
+            roomModulePath: Path.Combine(AppContext.BaseDirectory, "dango_belt_room.dll"));
         try
         {
-            Assert.IsTrue(Field<StackedDangoSceneRuntime>(host, "stackedRuntime").TryInitialize());
-            host.ShowControlCenter(); Pump(350);
+            Assert.IsTrue(Field<StackedDangoSceneRuntime>(host, "stackedRuntime").UsesBeltRoom);
+            host.ShowControlCenter(); ProductHostTestSupport.WaitForHome(host);
             host.EnterLocalRoom(); WaitForHandoff(host, "pointer room window");
             Assert.AreEqual(LocalRoomPresentation.Window, host.LocalPresentation, host.LocalRoomFailure);
             host.SwitchLocalRoomPresentation(LocalRoomPresentation.Wallpaper); WaitForHandoff(host, "pointer wallpaper");
@@ -236,10 +236,10 @@ public sealed class LocalRoomWallpaperProductTests
         var output = Path.Combine(TestRepository.Root, "artifacts", "local-room", "wallpaper-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(output);
         using var host = new DangoApplicationHost(settingsFile: Path.Combine(output, "settings.json"),
-            nativeLibraryPath: Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName), isolatedLocalRoomReview: true);
+            roomModulePath: Path.Combine(AppContext.BaseDirectory, "dango_belt_room.dll"));
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
-        Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
-        host.ShowControlCenter(); Pump(350);
+        Assert.IsTrue(runtime.UsesBeltRoom);
+        host.ShowControlCenter(); ProductHostTestSupport.WaitForHome(host);
         host.EnterLocalRoom(); WaitForHandoff(host, "menu room window");
         host.SwitchLocalRoomPresentation(LocalRoomPresentation.Wallpaper); WaitForHandoff(host, "menu wallpaper");
         Assert.AreEqual(LocalRoomPresentation.Wallpaper, host.LocalPresentation, host.LocalRoomFailure);
@@ -249,7 +249,8 @@ public sealed class LocalRoomWallpaperProductTests
         var owner = runtime.FrameDriver;
         var session = Field<DesktopSceneSession>(host, "sceneSession");
         var snapshot = session.Snapshot;
-        var entity = runtime.EntityIds.Single();
+        var nativeIdentity = runtime.LastBeltRoomFrame!;
+        var entity = (nativeIdentity.OwnerEpoch, nativeIdentity.Generation, nativeIdentity.BodyId);
         var generation = Field<long>(wallpaper, "generation");
         var handle = source.Handle;
         typeof(DangoApplicationHost).GetMethod("ShowLocalRoomMenu", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(host, null);
@@ -265,7 +266,8 @@ public sealed class LocalRoomWallpaperProductTests
         Assert.AreEqual(generation, Field<long>(wallpaper, "generation"));
         Assert.AreSame(snapshot, session.Snapshot);
         Assert.AreSame(owner, runtime.FrameDriver);
-        Assert.AreEqual(entity, runtime.EntityIds.Single());
+        Assert.AreEqual(entity, (runtime.LastBeltRoomFrame!.OwnerEpoch, runtime.LastBeltRoomFrame.Generation, runtime.LastBeltRoomFrame.BodyId),
+            "A display switch must keep the actual native owner, world generation and body.");
         Assert.IsTrue(driver.OwnsRuntime);
         // A right-click menu's late Closed must not unblock the central menu.
         var petMenu = Field<System.Windows.Forms.ContextMenuStrip>(wallpaper, "petMenu");
@@ -297,27 +299,30 @@ public sealed class LocalRoomWallpaperProductTests
     {
         var output = Path.Combine(TestRepository.Root, "artifacts", "local-room", "wallpaper-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(output);
-        var module = Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName);
+        var module = Path.Combine(AppContext.BaseDirectory, "dango_belt_room.dll");
         Assert.IsTrue(File.Exists(module), "The real isolated native module must be present; this integration test cannot be skipped.");
         using var host = new DangoApplicationHost(settingsFile: Path.Combine(output, "settings.json"),
-            nativeLibraryPath: module, isolatedLocalRoomReview: true);
+            roomModulePath: module);
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
         var session = Field<DesktopSceneSession>(host, "sceneSession");
-        Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
+        Assert.IsTrue(runtime.UsesBeltRoom);
         host.ShowControlCenter();
-        Pump(350);
+        ProductHostTestSupport.WaitForHome(host);
         var homeWindow = Field<ControlCenterWindow>(host, "controlCenterWindow");
         var home = homeWindow.ProductHome;
         home.ResumePorch();
         Pump(350);
-        Assert.IsTrue(home.OwnsLiveFrameDriver, "The real porch must own the shared runtime before entry.");
-        Assert.AreSame(runtime, home.BoundRuntime);
-        Assert.AreSame(session, home.BoundSceneSession);
-        var entity = runtime.EntityIds.Single();
+        Assert.IsNotNull(home.DisplayedBeltSnapshot?.Frame, "The real porch must display its own successful worker frame before entry.");
+        Assert.IsTrue(((PorchSceneView)home.FindName("PorchScene")).HasBeltBody);
+        Assert.HasCount(0, runtime.EntityIds, "The room world must wait for the home pause barrier.");
+        var homeOwner = home.BoundBeltBody;
+        Assert.IsNull(home.BoundRuntime, "The home worker must not acquire the room scheduler.");
+        Assert.IsNotNull(home.BoundBeltBody);
+        Assert.IsNull(home.BoundSceneSession);
 
         host.EnterLocalRoom();
         Assert.IsTrue(homeWindow.IsVisible, "Entering must retain the source before the first healthy room frame.");
-        Assert.IsTrue(host.LocalHandoffPending);
+        Assert.IsTrue(home.RoomEntryPending || host.LocalHandoffPending);
         WaitForHandoff(host, "porch to window");
         Assert.AreEqual(LocalRoomPresentation.Window, host.LocalPresentation, host.LocalRoomFailure);
         var room = host.LocalWindow!;
@@ -327,7 +332,11 @@ public sealed class LocalRoomWallpaperProductTests
         Assert.IsTrue(room.Scene.HasHealthyFrame);
         Assert.IsFalse(homeWindow.IsVisible);
         AssertSingleRoomOwner(runtime, driver, owner, homeWindow);
-        Assert.AreEqual(entity, runtime.EntityIds.Single());
+        Assert.AreSame(homeOwner, home.BoundBeltBody);
+        Assert.IsTrue(runtime.LastPhysicsFrame!.Succeeded);
+        Assert.AreEqual(0, runtime.LastBeltRoomFrame!.Fault);
+        var nativeIdentity = runtime.LastBeltRoomFrame!;
+        var entity = (nativeIdentity.OwnerEpoch, nativeIdentity.Generation, nativeIdentity.BodyId);
         var roomSnapshot = session.Snapshot;
         var healthyAttempts = new List<long>();
         driver.HealthyFrameReady += healthyAttempts.Add;
@@ -386,9 +395,11 @@ public sealed class LocalRoomWallpaperProductTests
         Assert.IsTrue(wallpaper.Scene.HasHealthyFrame);
         Assert.IsFalse(room.IsVisible);
         Assert.IsTrue(Field<bool>(wallpaper, "ready"));
-        Assert.AreEqual(entity, runtime.EntityIds.Single());
-        Assert.AreSame(runtime, home.BoundRuntime);
-        Assert.AreSame(session, home.BoundSceneSession);
+        Assert.AreEqual(entity, (runtime.LastBeltRoomFrame!.OwnerEpoch, runtime.LastBeltRoomFrame.Generation, runtime.LastBeltRoomFrame.BodyId),
+            "A display switch must keep the actual native owner, world generation and body.");
+        Assert.IsNull(home.BoundRuntime, "The home worker must not acquire the room scheduler.");
+        Assert.IsNotNull(home.BoundBeltBody);
+        Assert.IsNull(home.BoundSceneSession);
         Assert.AreSame(roomSnapshot, session.Snapshot, "Changing presentation must not reattach or reset the room world.");
         Assert.HasCount(1, healthyAttempts);
         Assert.AreEqual(generation, healthyAttempts[0]);
@@ -422,7 +433,8 @@ public sealed class LocalRoomWallpaperProductTests
         Assert.IsFalse(NativeMethods.IsValidWindow(sourceHandle), "The old HwndSource must be released after the healthy target frame.");
         Assert.IsFalse(NativeMethods.IsValidWindow(nativeHandle), "The old native wallpaper host must be released.");
         Assert.IsFalse(wheel.IsHookReleasePending, "Normal disposal must release the native observer.");
-        Assert.AreEqual(entity, runtime.EntityIds.Single());
+        Assert.AreEqual(entity, (runtime.LastBeltRoomFrame!.OwnerEpoch, runtime.LastBeltRoomFrame.Generation, runtime.LastBeltRoomFrame.BodyId),
+            "A display switch must keep the actual native owner, world generation and body.");
         Assert.AreSame(roomSnapshot, session.Snapshot);
         Assert.HasCount(2, healthyAttempts);
         Assert.IsTrue(healthyAttempts[1] > healthyAttempts[0]);
@@ -444,13 +456,13 @@ public sealed class LocalRoomWallpaperProductTests
     {
         var output = Path.Combine(TestRepository.Root, "artifacts", "local-room", "wallpaper-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(output);
-        var module = Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName);
+        var module = Path.Combine(AppContext.BaseDirectory, "dango_belt_room.dll");
         Assert.IsTrue(File.Exists(module), "The real isolated native module must be present.");
         using var host = new DangoApplicationHost(settingsFile: Path.Combine(output, "settings.json"),
-            nativeLibraryPath: module, isolatedLocalRoomReview: true);
+            roomModulePath: module);
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
-        Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
-        host.ShowControlCenter(); Pump(350);
+        Assert.IsTrue(runtime.UsesBeltRoom);
+        host.ShowControlCenter(); ProductHostTestSupport.WaitForHome(host);
         host.EnterLocalRoom(); WaitForHandoff(host, "classification room window");
         Assert.AreEqual(LocalRoomPresentation.Window, host.LocalPresentation, host.LocalRoomFailure);
         var wallpaper = Field<LocalRoomWallpaperHost>(host, "localRoomWallpaper");
@@ -466,14 +478,23 @@ public sealed class LocalRoomWallpaperProductTests
     {
         Assert.IsTrue(driver.OwnsRuntime);
         Assert.AreSame(owner, runtime.FrameDriver, "Exactly the local-room scheduler must own the shared runtime.");
-        Assert.IsFalse(home.ProductHome.OwnsLiveFrameDriver, "A visible suspended porch cannot drive a second frame owner.");
+        Assert.IsFalse(home.ProductHome.OwnsLiveFrameDriver);
+        Assert.IsNull(home.ProductHome.BoundRuntime);
+        Assert.IsNotNull(home.ProductHome.BoundBeltBody);
+        Assert.IsFalse(home.ProductHome.BoundBeltBody.Metrics.Running,
+            "The acknowledged home pause must persist throughout room presentation handoffs.");
+        Assert.IsTrue(runtime.UsesBeltRoom);
+        Assert.IsTrue(runtime.LastPhysicsFrame!.Succeeded);
+        Assert.AreEqual(0, runtime.LastBeltRoomFrame!.Fault);
     }
 
     private static void WaitForHandoff(DangoApplicationHost host, string operation)
     {
         var watch = Stopwatch.StartNew();
-        while (host.LocalHandoffPending && watch.Elapsed < TimeSpan.FromSeconds(2)) Pump(25);
+        while ((host.LocalHandoffPending || Field<bool>(host, "catalogEntryLoading")) && watch.Elapsed < TimeSpan.FromSeconds(8)) Pump(25);
+        Assert.IsFalse(Field<bool>(host, "catalogEntryLoading"), operation + " did not finish catalog preparation: " + host.LocalRoomFailure);
         Assert.IsFalse(host.LocalHandoffPending, operation + " did not produce its real healthy frame: " + host.LocalRoomFailure);
+        Assert.IsNull(host.LocalRoomFailure, operation + " must not silently retain a failed presentation.");
     }
 
     private static T Field<T>(object instance, string name) =>

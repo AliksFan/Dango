@@ -24,6 +24,15 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
     private readonly Dictionary<DangoEntityId, int> colorSlots = [];
     private readonly Dictionary<DangoEntityId, LogicalRect> pendingSpawns = [];
     private DesktopPhysicsScene? scene;
+    private bool beltRoom;
+    internal bool UsesBeltRoom => beltRoom;
+    internal DangoBeltRoomFrame? LastBeltRoomFrame => scene?.BeltRoomFrame;
+    internal bool HasBodySnapshot => !beltRoom || scene is not null;
+    internal BodySupportEnvelope? SupportEnvelope => scene?.SupportEnvelope ?? (beltRoom ? null : new BodySupportEnvelope(-80, 80, 120));
+    internal bool HasFloorSupport => scene?.HasFloorSupport == true;
+    internal bool SupportsStretchControl => beltRoom;
+    internal bool SupportsFurnitureCollection => scene?.SupportsFurnitureCollection == true;
+    internal void ConfigureBeltSleepPresentationScale(double? scale) => scene?.ConfigureBeltSleepPresentationScale(scale);
     private LogicalPoint? hostOrigin;
     private LogicalRect? viewport;
     private (double Left, double Right)? localHorizontalBounds;
@@ -64,6 +73,8 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
     {
         VerifyAccess();
         ArgumentNullException.ThrowIfNull(configuration);
+        if (beltRoom && scene is not null && configuration.Body != EffectiveAppearance.Body)
+            throw new InvalidOperationException("请在房间交接暂停后应用新的身体参数。");
         EffectiveAppearance = configuration;
         BodyPreviewFill = AppearanceBrush(configuration.BodyColor);
         EyePreviewFill = AppearanceBrush(configuration.EyeColor);
@@ -230,7 +241,7 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
         lightFeedback.Clear();
     }
 
-    private bool HasDirectionalInput => directionalIntent.Left != directionalIntent.Right || directionalIntent.Jump || directionalIntent.Squash;
+    private bool HasDirectionalInput => directionalIntent.Left != directionalIntent.Right || directionalIntent.Jump || directionalIntent.Squash || directionalIntent.Stretch;
 
     private void BeforeLightFeedbackStep()
     {
@@ -268,6 +279,33 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
     public static StackedDangoSceneRuntime CreateProduct(string? nativeLibraryPath = null) =>
         new(nativeLibraryPath) { requiresAttachments = true, RequiresInitialization = true, LightInteractionsEnabled = true };
 
+    internal static StackedDangoSceneRuntime CreateBeltRoom(string nativeLibraryPath) =>
+        new(nativeLibraryPath) { beltRoom = true, requiresAttachments = true, RequiresInitialization = true, LightInteractionsEnabled = true };
+
+    // This is an explicit stopped lifecycle handoff, never a live parameter edit.
+    internal void ConfigureBeltRoomAppearance(DangoAppearanceConfiguration saved, bool beginRoom = false)
+    {
+        VerifyAccess();
+        ArgumentNullException.ThrowIfNull(saved);
+        if (!beltRoom || running || FrameDriver is not null)
+            throw new InvalidOperationException("身体模型只能在房间交接暂停时配置。");
+        if (scene is not null && (beginRoom || saved.Body != EffectiveAppearance.Body))
+        {
+            if (!TryDetachOrdinaryFurniture())
+                throw new InvalidOperationException("家具状态尚未核清，不能更换身体配置。");
+            Furniture?.Dispose(); Furniture = null;
+            ClearPhysicalInput();
+            scene.Dispose(); scene = null;
+            attachments?.Dispose(); attachments = null;
+            colorSlots.Clear(); pendingSpawns.Clear();
+            hostOrigin = null; LastFrame = null;
+            InitializationState = SceneInitializationState.NotStarted;
+            NeutralBodyVisibleWidth = null; NeutralBodyGroundOffset = 0;
+            QuietIdle.Reset(); Doze.Reset(); Gait.Reset(); accessoryScene?.Reset();
+        }
+        SetAppearance(saved);
+    }
+
     public static StackedDangoSceneRuntime CreateEyeHatReview(string? nativeLibraryPath = null, bool deferInitialization = false)
     {
         var runtime = new StackedDangoSceneRuntime(nativeLibraryPath) { requiresAttachments = true, RequiresInitialization = true };
@@ -301,7 +339,9 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
             {
                 CalibrationStepCount = 0;
                 PhysicsPresentationFrame baseline;
-                using (var calibration = new DesktopPhysicsScene(nativeLibraryPath, new(0, 0, 160, 120)))
+                using (var calibration = beltRoom
+                    ? new DesktopPhysicsScene(nativeLibraryPath, new(0, 0, 160, 120), EffectiveAppearance.Body)
+                    : new DesktopPhysicsScene(nativeLibraryPath, new(0, 0, 160, 120)))
                 {
                     for (var i = 0; i < 240; i++)
                     {
@@ -312,10 +352,11 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
                                 "眼帽标定失败。", frame.Physics.ErrorCode);
                     }
                     baseline = calibration.LastFrame!.Bodies.Single().Presentation;
-                    var geometry = DangoStreamGeometryFactory.TryCreate(baseline.Contour, 160, 120);
+                    var geometry = beltRoom ? DangoStreamGeometryFactory.TryCreateBelt(baseline.Contour, 160, 120)
+                        : DangoStreamGeometryFactory.TryCreate(baseline.Contour, 160, 120);
                     if (!geometry.Succeeded) throw new InvalidOperationException("中性身体轮廓不可用。");
                     NeutralBodyVisibleWidth = geometry.Geometry!.Bounds.Width;
-                    NeutralBodyGroundOffset = calibration.GroundY -
+                    NeutralBodyGroundOffset = beltRoom ? 0 : calibration.GroundY -
                         (calibration.LastFrame.Bodies.Single().Bounds.Y + geometry.Geometry.Bounds.Bottom);
                 }
                 // The calibration world has been released before the live world is created.
@@ -329,7 +370,7 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
             InitializationState = SceneInitializationState.Ready;
             return true;
         }
-        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException or
+        catch (Exception exception) when (exception is InvalidOperationException or ArgumentException or NotSupportedException or
             DllNotFoundException or BadImageFormatException or EntryPointNotFoundException)
         {
             Furniture?.Dispose();
@@ -469,8 +510,8 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
         if (enabled) localHorizontalBounds = null;
         layoutPending = true;
     }
-    internal LogicalPoint? CurrentSelectedCenter => scene?.LastFrame?.Bodies
-        .FirstOrDefault(body => body.EntityId == scene.SelectedEntity)?.Bounds.Center;
+    internal LogicalPoint? CurrentSelectedCenter => scene?.LastFrame is not null
+        ? scene.SelectedCoreHost : null;
 
     internal bool TryGetHorizontalPlacement(LogicalPoint requestedCenter, double left, double right,
         out LogicalPoint safeCenter)
@@ -672,6 +713,12 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
             var autonomousHorizontal = Wander.Input(fixedStep.TotalSeconds);
             if (!ProcessOrdinaryFurnitureBoundary(fixedStep)) return LastFrame ?? CreateUnavailable(primary);
             var frame = scene.Step(fixedStep, autonomousHorizontal);
+            if (scene.LastErrorCode != 0)
+            {
+                LastError = $"物理故障已锁存：{scene.LastErrorCode}；请显式重置或退出。";
+                ClearPhysicalInput();
+                return LastFrame ?? CreateUnavailable(primary);
+            }
             Furniture?.OnFrame();
             if (Furniture is { IsAttached: true, CanStep: false })
             {
@@ -742,7 +789,7 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
             var attachmentFrames = attachments?.Advance(motionFrame, fixedStep.TotalSeconds, scene.SelectedEntity,
                 directionalIntent.Left == directionalIntent.Right ?
                     (autonomousHorizontal < 0 ? DangoFacingDirection.Left : autonomousHorizontal > 0 ? DangoFacingDirection.Right : DangoFacingDirection.Center) :
-                directionalIntent.Left ? DangoFacingDirection.Left : DangoFacingDirection.Right);
+                directionalIntent.Left ? DangoFacingDirection.Left : DangoFacingDirection.Right, directionalIntent);
             if (attachmentFrames is not null && Doze.Sleeping)
                 attachmentFrames = attachmentFrames.Select(body => body with { DozeSeconds = Doze.SleepSeconds }).ToArray();
             if (frame.Physics.Succeeded) AfterLightFeedbackStep(fixedStep.TotalSeconds);
@@ -761,6 +808,7 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
             {
                 EntityIds = frame.Bodies.Select(body => body.EntityId).ToArray(),
                 ColorSlots = frame.Bodies.Select(body => colorSlots[body.EntityId]).ToArray(),
+                BeltRoom = scene.BeltRoomFrame,
             };
             if (frame.Physics.Succeeded) AdvanceWander(fixedStep.TotalSeconds);
             if (frame.Physics.Succeeded) UpdateGait(frame, autonomousHorizontal, fixedStep.TotalSeconds);
@@ -801,7 +849,7 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
                 body.IsGrounded, shape.Width * 160, shape.Height * 160, body.SignedArea,
                 direction, (quietIdleHostEnabled || unboundedHorizontalPreview) && LayoutWarning is null && QuietIdleError is null &&
                     LightInteractionError is null && !Doze.Active && !pressed,
-                IsDragging || directionalIntent.Jump || directionalIntent.Squash || !body.IsGrounded,
+                IsDragging || directionalIntent.Jump || directionalIntent.Squash || directionalIntent.Stretch || !body.IsGrounded,
                 pressed, !manual), seconds);
             var bodyBounds = DangoHostFrameBinding.Bounds(LastFrame, 0);
             // The preview camera moves through world coordinates. A fixed
@@ -861,7 +909,8 @@ public sealed partial class StackedDangoSceneRuntime : IDisposable
     private void EnsureScene(LogicalRect bounds)
     {
         if (scene is not null) return;
-        scene = new DesktopPhysicsScene(nativeLibraryPath, bounds);
+        scene = beltRoom ? new DesktopPhysicsScene(nativeLibraryPath, bounds, EffectiveAppearance.Body)
+            : new DesktopPhysicsScene(nativeLibraryPath, bounds);
         if (previewJumpSpeedScale != 1) scene.SetPreviewJumpSpeedScale(previewJumpSpeedScale);
         if (unboundedHorizontalPreview) scene.SetUnboundedHorizontalPreview(true);
         colorSlots.Add(scene.SelectedEntity, 0);

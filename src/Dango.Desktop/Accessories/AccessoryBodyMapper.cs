@@ -13,7 +13,7 @@ public static class AccessoryBodyMapper
     {
         if (!double.IsFinite(x) || !double.IsFinite(y) || x is < 0 or > 1 || y is < 0 or > 1)
             throw new ArgumentOutOfRangeException(nameof(x));
-        var shape = body.Attachments?.SourceShape ?? AttachmentShapeGeometry.Create(body.Contour);
+        var shape = AttachmentShapeGeometry.FromFrame(body);
         var level = shape.Top - y * shape.Height;
         var interval = Section(shape, level);
         var point = new Point(80 + (interval.Left + (interval.Right - interval.Left) * x) * 160, 66 - level * 160);
@@ -24,7 +24,7 @@ public static class AccessoryBodyMapper
     {
         var transform = DeformableDangoVisual.CreateGaitTransform(body, gait);
         var point = transform.Inverse?.Transform(displayedPoint) ?? displayedPoint;
-        var shape = body.Attachments?.SourceShape ?? AttachmentShapeGeometry.Create(body.Contour);
+        var shape = AttachmentShapeGeometry.FromFrame(body);
         var level = Math.Clamp((66 - point.Y) / 160, shape.Bottom, shape.Top);
         var interval = Section(shape, level);
         var x = (point.X - 80) / 160;

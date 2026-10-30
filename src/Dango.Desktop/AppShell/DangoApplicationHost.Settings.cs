@@ -6,10 +6,22 @@ namespace Dango.Desktop.AppShell;
 
 internal sealed partial class DangoApplicationHost
 {
+    private DesktopPetDisplaySettingsSession? desktopPetDisplaySettings;
+
+    private bool ApplyDesktopPetDisplayPercent(int percent)
+    {
+        if (desktopPetDisplaySettings is null || desktopPetRoom is null || disposed) return false;
+        desktopPetDisplaySettings.SetPercent(percent);
+        desktopPetRoom.SetDisplayPercent(percent);
+        return desktopPetDisplaySettings.TrySave();
+    }
+
     internal ProductSettingsSceneSnapshot ReadProductSettingsScene()
     {
         var pending = LocalHandoffPending;
         var room = localRoomSelected;
+        if (!room && !pending) return controlCenterWindow?.ProductHome.ReadBeltBodySettingsScene()
+            ?? new("我的团子", "等待窗口启动");
         var presentation = roomHandoff.Pending ? roomHandoff.Target
             : catalogEntryLoading ? LocalRoomPresentation.Window : preferredRoomPresentation;
         var name = room || pending ? presentation switch
@@ -25,11 +37,13 @@ internal sealed partial class DangoApplicationHost
             ?? stackedRuntime.LightInteractionError ?? stackedRuntime.GaitError
             ?? (!room ? controlCenterWindow?.ProductHome.CurrentSurfaceFailure : null);
         var hidden = room && roomHandoff.Current == LocalRoomPresentation.Hidden;
+        var desktopSuspended = room && presentation == LocalRoomPresentation.DesktopPet && desktopPetRoom?.IsDesktopSuspended == true;
         var surfaceReady = room && (presentation == LocalRoomPresentation.DesktopPet
             ? desktopPetRoom?.IsReady == true && desktopPetRoom.IsVisible
             : localRoomDriver?.IsReady == true && ActiveRoomScene()?.HasHealthyFrame == true);
         var status = pending ? "正在切换场景，请稍候" : busy ? "正在保存家具，请稍候"
             : error is not null ? "需要恢复" : hidden ? "暂时隐藏，保留本次房间状态"
+            : desktopSuspended ? "团子在另一个桌面，切回后继续"
             : !ready ? "团子尚未启动" : room ? surfaceReady ? "正在运行" : "等待房间画面就绪" : "场景已就绪";
         var canAct = !disposed && !pending && !busy;
         return new(name, status, error,
@@ -49,20 +63,7 @@ internal sealed partial class DangoApplicationHost
     {
         if (!ReadProductSettingsScene().CanReinitialize) return;
         if (localRoomSelected) { RecoverLocalRoom(); return; }
-        // A home/porch failure must not enter the remembered room as a side effect.
-        if (!stackedRuntime.TryDetachOrdinaryFurniture())
-        {
-            localRoomFailure = "家具状态尚未核对，请完成当前操作后重试。";
-            return;
-        }
-        controlCenterWindow!.ProductHome.SuspendForRoom();
-        if (!stackedRuntime.TryInitialize())
-        {
-            localRoomFailure = stackedRuntime.LastError ?? "团子初始化失败，请重试。";
-            return;
-        }
-        stackedRuntime.RegenerateDango();
-        localRoomFailure = null;
-        controlCenterWindow.ProductHome.ResumeAfterSettingsRecovery();
+        // Recover the home worker without entering or advancing the remembered room.
+        controlCenterWindow?.ProductHome.RecoverBeltBody();
     }
 }

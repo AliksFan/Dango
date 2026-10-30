@@ -9,6 +9,7 @@ public enum PhysicsPresentationBackend
     DeterministicFake,
     Box2D,
     AuthoredFallback,
+    ContinuousBelt,
 }
 
 public enum PhysicsPresentationFallbackReason
@@ -36,6 +37,7 @@ public enum PhysicsPresentationDiagnosticCode
     Box2DContractProbe,
     SoftBodyActive,
     Fallback,
+    ContinuousBeltActive,
 }
 
 public readonly record struct SoftBodyConfiguration
@@ -94,6 +96,16 @@ public readonly record struct PresentationPoint
         X = x;
         Y = y;
     }
+
+    // Exact sampled belt contours may extend outside the legacy normalized template.
+    // Preserve the public constructor's normalized contract for existing consumers.
+    internal static PresentationPoint FromSampledBoundary(double x, double y)
+    {
+        if (!double.IsFinite(x) || !double.IsFinite(y)) throw new ArgumentOutOfRangeException(nameof(x));
+        return new PresentationPoint(x, y, true);
+    }
+
+    private PresentationPoint(double x, double y, bool sampledBoundary) { X = x; Y = y; }
 
     public double X { get; }
 

@@ -13,33 +13,27 @@ public sealed class DesktopPetRoomDrawingRevisionTests
     private static readonly Rect WorkArea = new(48, 32, 1920 - 48 - 60, 1080 - 32 - 40);
 
     [STATestMethod]
-    public void DesktopPetActualDrawingOmitsFullHeightDashedWallsAndDiagonalExcludedTiles()
+    public void DesktopPetActualDrawingPaintsNoEnvironment()
     {
         var scene = OwnScene(desktopPet: true);
         var drawing = ActualEnvironmentDrawing(scene);
-        var geometry = Geometry(drawing, Matrix.Identity).ToArray();
-        Assert.IsFalse(geometry.Any(item => FullHeightDashedWall(item, scene.ActualHeight)),
-            "The desktop-pet environment must not paint either full-height dashed side boundary.");
-        Assert.IsFalse(geometry.Any(UsesDiagonalExcludedTile),
-            "An actual painted fill must not use the diagonal excluded-space hatch.");
-        AssertRetainsRealWallAndFloor(scene, geometry);
+        Assert.HasCount(0, drawing.Children,
+            "Desktop-pet mode must omit all environment drawing commands, including walls, floor and excluded tiles.");
+        Assert.IsTrue(scene.Background is null || scene.Background is SolidColorBrush { Color.A: 0 },
+            "The Grid background must also expose the real desktop.");
     }
 
     [STATestMethod]
-    public void DesktopPetActualFloorCoversUsableHorizontalEdgesAndMeetsNativeWorkAreaBottom()
+    public void DesktopPetInvisibleCollisionFloorStillMeetsNativeWorkAreaBottom()
     {
         var scene = OwnScene(desktopPet: true);
-        var geometry = Geometry(ActualEnvironmentDrawing(scene), Matrix.Identity).ToArray();
-        var floor = PaintedFloor(scene, geometry);
-        Assert.AreEqual(WorkArea.Left, floor.Left, 1e-9);
-        Assert.AreEqual(WorkArea.Right, floor.Right, 1e-9,
-            "The actual opaque floor must span the whole usable work area instead of the old cropped room walls.");
-        Assert.IsTrue(floor.Contains(new Point(WorkArea.Left + 1, WorkArea.Bottom - 1)) &&
-            floor.Contains(new Point(WorkArea.Right - 1, WorkArea.Bottom - 1)),
-            "Both usable bottom corners must be part of the real painted floor.");
+        Assert.AreEqual(WorkArea.Left, scene.EnvironmentEdges.Left, 1e-9);
+        Assert.AreEqual(WorkArea.Right, scene.EnvironmentEdges.Right, 1e-9,
+            "Removing floor paint must preserve the full usable work-area mapping.");
         Assert.AreEqual(WorkArea.Bottom, scene.EnvironmentEdges.CollisionY, 1e-9,
             "The collision floor must map to the work-area bottom; the old forty-eight-DIP gap is removed.");
-        AssertRetainsRealWallAndFloor(scene, geometry);
+        Assert.HasCount(0, ActualEnvironmentDrawing(scene).Children,
+            "The physical floor must remain invisible.");
     }
 
     [STATestMethod]
@@ -73,7 +67,8 @@ public sealed class DesktopPetRoomDrawingRevisionTests
             BindingFlags.DeclaredOnly) ?? throw new AssertFailedException("The scene must provide its real environment render callback.");
         var drawing = new DrawingGroup();
         using (var context = drawing.Open()) render.Invoke(scene, [context]);
-        Assert.IsTrue(drawing.Children.Count > 0, "An empty scene cannot pass absence-of-boundary assertions.");
+        if (!scene.DesktopPetPresentationEnabled)
+            Assert.IsTrue(drawing.Children.Count > 0, "The ordinary room must retain its real environment drawing.");
         return drawing;
     }
 

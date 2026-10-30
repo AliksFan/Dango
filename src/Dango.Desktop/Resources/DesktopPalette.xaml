@@ -1,0 +1,11 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="HomeBackground" Color="#FDFCF9" />
+    <SolidColorBrush x:Key="HomeInk" Color="#443D34" />
+    <SolidColorBrush x:Key="HomePrimaryInk" Color="#443D34" />
+    <SolidColorBrush x:Key="HomeMuted" Color="#807568" />
+    <SolidColorBrush x:Key="HomeLine" Color="#E9E4DA" />
+    <SolidColorBrush x:Key="HomeSoft" Color="#F3EFE8" />
+    <SolidColorBrush x:Key="HomeAccent" Color="#885E3E" />
+    <SolidColorBrush x:Key="HomeSelected" Color="#EFE3D4" />
+</ResourceDictionary>

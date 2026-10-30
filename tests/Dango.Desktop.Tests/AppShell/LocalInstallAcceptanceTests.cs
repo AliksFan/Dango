@@ -19,6 +19,12 @@ public sealed class LocalInstallAcceptanceTests
         Assert.AreEqual(Path.Combine(root, "settings.json"), App.ResolveLocalInstallAcceptanceSettingsFile(
             ["--local-install-acceptance-settings", root]));
         Assert.IsNull(App.ResolveLocalInstallAcceptanceSettingsFile([]));
+        Assert.AreNotEqual(App.ResolveSingleInstanceName([]),
+            App.ResolveSingleInstanceName(["--local-install-acceptance-settings", root]),
+            "Owned acceptance must never activate the daily product instance.");
+        Assert.AreEqual(App.ResolveSingleInstanceName(["--data-root", root]),
+            App.ResolveSingleInstanceName(["--local-install-acceptance-settings", root]),
+            "The same resolved data directory has one instance identity regardless of its entry option.");
     }
 
     [TestMethod]
@@ -80,7 +86,7 @@ public sealed class LocalInstallAcceptanceTests
         var path = Path.Combine(NewRoot(), "settings.json");
         new ControlCenterWindowSettingsStore().Save(path, new(1010, 690));
         File.WriteAllText(ControlCenterWindowSettingsStore.GetPresetPath(path), "fictional broken preset");
-        using var host = new DangoApplicationHost(settingsFile: path, nativeLibraryPath: path + ".missing.dll");
+        using var host = new DangoApplicationHost(settingsFile: path, roomModulePath: path + ".missing.dll");
         var window = (ControlCenterWindow)typeof(DangoApplicationHost)
             .GetMethod("GetOrCreateControlCenter", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(host, null)!;
         window.ShowOverview();

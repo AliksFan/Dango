@@ -16,6 +16,10 @@
         Closing="OnClosing"
         Loaded="OnLoaded">
     <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/Dango.Desktop;component/Resources/ProductWindowChromeResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
         <SolidColorBrush x:Key="PrimaryBrush" Color="#F28C52" />
         <SolidColorBrush x:Key="TextBrush" Color="#3F342D" />
         <SolidColorBrush x:Key="MutedTextBrush" Color="#6B625C" />
@@ -70,38 +74,8 @@
             <Setter Property="CornerRadius" Value="12" />
             <Setter Property="Padding" Value="20" />
         </Style>
-        <Style x:Key="ProductWindowButton" TargetType="Button">
-            <Setter Property="Width" Value="34" />
-            <Setter Property="Height" Value="30" />
-            <Setter Property="MinHeight" Value="30" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Foreground" Value="#655B52" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Surface" CornerRadius="11" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Surface" Property="Background" Value="#F1ECE5" />
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Surface" Property="Background" Value="#E8DED3" />
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Surface" Property="BorderBrush" Value="#885E3E" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+
+        </ResourceDictionary>
     </Window.Resources>
 
     <Grid>
@@ -361,7 +335,7 @@
                                           Unchecked="OnKeyboardControlChanged" />
                                 <TextBlock Margin="24,6,0,14"
                                            Foreground="{StaticResource MutedTextBrush}"
-                                           Text="仅进入房间且玩法输入已激活时生效。A 左、S 轻压、D 右、空格跳；W 交互。"
+                                           Text="仅进入房间且玩法输入已激活时生效。A/D 移动、W 上看／拉伸、S 下看／轻压、空格跳。"
                                            TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>

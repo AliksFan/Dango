@@ -1,5 +1,19 @@
 # Box2D native 依赖
 
+## 正式桌面构建：独立 belt 模块
+
+普通 `dotnet build src/Dango.Desktop/Dango.Desktop.csproj` 和 `dotnet publish` 自动通过
+`eng/build-belt-native.ps1` 构建、检查并携带 `dango_belt_product.dll`、`dango_belt_room.dll`
+及 `belt-native-manifest.json`。需要 Windows x64、CMake 和 Visual Studio C++ 工具链；脚本优先使用 PATH
+中的 CMake，也可定位 Visual Studio 自带的 CMake。`DANGO_BELT_ONLY=ON` 不下载或构建 Box2D。
+原生中间文件放在已忽略的 `obj/belt-native/<Configuration>`，避免较深发布目录触发 MSVC 路径长度限制。
+
+清单记录当前原生源文件哈希、两个 DLL 的 SHA-256、ABI、模型、调参版本及能力；正式发布还重新验证实际导出与身份。
+需要显式覆盖已构建测试模块时，可使用 `DangoBeltModulePath`、`DangoBeltRoomModulePath` MSBuild 属性；未覆盖的模块仍自动构建，
+清单将标记 `explicit-override`。正式 `eng/publish-desktop-entry.ps1 -RunName <name>` 只接受默认源码构建产物。
+发布脚本默认无需旧模块路径；其可选 `PhysicsModulePath` 参数只接受下述历史已批准模块。
+新 belt-default 包合同要求两个 belt DLL 及清单，旧包合同继续要求原 `dango_physics_module.dll`，保持历史包检查和回滚兼容。
+
 > 2026-09-17 整理：本地检查点仅收纳已验收模块和基础原生验证 target；下文联合求解、休眠/接触诊断属于保留的历史实验，相关源码和额外 CMake target 仍在原工作树未提交。不要把历史诊断命令当作干净 checkout 的必需构建步骤。正式旧 DLL 原样保存；本轮只在新目录构建模块，未运行会替换正式 DLL 的脚本。
 
 当前统一使用 `dango_physics_module` target：正式 `dango_box2d.dll` 与模块共同编译 `dango_box2d_bridge.c` 的 self rig/约束/施力原语，模块提供容量 1/2/3（默认 3）的世界、稳定实体 ID、真实添加/移除、固定步、重置和所有权释放。单/双体与三体已经分别人工验收。独立三体预览 target 已归并，旧二进制仅留作对照。构建与 .NET API 见[可复用物理模块说明](../../../docs/phase-1-physics-module.md)，使用新的 `physics-module-unified-build` 目录。它不替换正式 DLL。
@@ -19,9 +33,9 @@
 
 ## 交付选择
 
-仓库提交固定的 `dango_box2d.dll`、小型 C17 bridge、构建脚本、许可证和哈希清单，不提交 Box2D 的 233 个上游源文件。普通 `dotnet build` 和 self-contained 运行不联网；只有显式重新构建 native 依赖且本机没有缓存归档时，脚本才从官方 GitHub commit URL 下载源码。
+仓库提交固定的 `dango_box2d.dll`、小型 C17 bridge、构建脚本、许可证和哈希清单，不提交 Box2D 的 233 个上游源文件。上述 belt 原生构建和 self-contained 运行不联网（首次 .NET 包还原可能联网）；只有显式重新构建 Box2D 依赖且本机没有缓存归档时，下述脚本才从官方 GitHub commit URL 下载源码。
 
-旧 DLL 随仓库保存，托管项目可直接构建；当前统一模块的运行还要求按模块说明另行构建或提供 `dango_physics_module.dll`，并显式传给消费项目。仓库保留从固定 commit 重建的审查路径；若后续需要修改 Box2D 本体或供应链策略，再单独评估 vendored source，不在应用启动时下载 DLL。
+旧 DLL 随仓库保存；旧统一模块诊断仍要求按模块说明另行构建或提供 `dango_physics_module.dll`，并显式传给消费项目。仓库保留从固定 commit 重建的审查路径；若后续需要修改 Box2D 本体或供应链策略，再单独评估 vendored source，不在应用启动时下载 DLL。
 
 ## 从固定来源重建
 

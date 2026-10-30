@@ -32,6 +32,7 @@ public sealed record ProductSettingsState(
 public partial class ProductHomeView : UserControl
 {
     private int transitionVersion;
+    private (bool Editing, HomeEditor Editor, bool Porch, bool Away)? transitionState;
     private bool reduceMotion;
     private bool highContrast;
     private double minimumStageHeight = 330;
@@ -67,7 +68,9 @@ public partial class ProductHomeView : UserControl
         IsVisibleChanged += (_, _) => { if (!IsVisible) CancelAppearancePreview(); RefreshLiveSceneOwnership(); };
         IsKeyboardFocusWithinChanged += (_, e) =>
         {
-            if (e.NewValue is false) ClearLiveDirectionalInput();
+            // Belt input belongs to the active window, including its chrome controls.
+            // Its window focus handlers clear input when leaving that owner or entering text.
+            if (e.NewValue is false && beltRuntime is null) ClearLiveDirectionalInput();
         };
         LiveDangoVisual.BodyFill = new SolidColorBrush(PreviewColor);
         LiveDangoVisual.Visibility = LiveDangoHat.Visibility = Visibility.Collapsed;
@@ -85,7 +88,9 @@ public partial class ProductHomeView : UserControl
 
     public void ShowEditor(HomeEditor editor)
     {
-        if (IsInPorch || IsDangoAway) return;
+        if (IsCreatingDango && IsEditing) { CloseEditor(); return; }
+        if (dangoSlots is not null && (slotsBlocked || slotPreviewPending) && !IsCreatingDango) return;
+        if (IsInPorch || IsDangoAway || dangoSlots is not null && !selectedDangoId.HasValue && !IsCreatingDango) return;
         ClearLiveDirectionalInput();
         if (IsEditing && SelectedEditor == HomeEditor.Face) CancelAppearancePreview();
         if (IsEditing && SelectedEditor == HomeEditor.Wardrobe) CancelAccessoryPreview();
@@ -116,6 +121,7 @@ public partial class ProductHomeView : UserControl
     private void CloseEditor(bool focusStage)
     {
         if (!IsEditing) return;
+        if (IsCreatingDango && slotsBlocked) return;
         CancelAppearancePreview();
         if (focusStage) Stage.Focus();
         IsEditing = false;
@@ -130,6 +136,7 @@ public partial class ProductHomeView : UserControl
         if (IsEditing) CloseEditor(focusStage: false);
         if (!IsSettingsOpen) SettingsPage.ScrollToTop();
         IsSettingsOpen = true;
+        RefreshDangoSlots();
         HomeContent.Visibility = Visibility.Collapsed;
         HomeFooter.Visibility = Visibility.Collapsed;
         SettingsPage.Visibility = Visibility.Visible;
@@ -148,7 +155,7 @@ public partial class ProductHomeView : UserControl
         }
         else Dispatcher.BeginInvoke(() =>
         {
-            if (IsSettingsOpen) BackFromSettingsButton.Focus();
+            if (IsSettingsOpen) SettingsPage.Focus();
         }, System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
@@ -166,12 +173,25 @@ public partial class ProductHomeView : UserControl
         Stage.Focus();
         RefreshLiveSceneOwnership();
         UpdateRoomAwayPresentation();
+        RefreshDangoSlots();
     }
 
-    public void RestoreKeyboardFocus()
+    public void RestoreKeyboardFocus() => TryRestoreControlFocus();
+
+    internal bool TryRestoreControlFocus()
     {
-        if (IsSettingsOpen) Keyboard.Focus(BackFromSettingsButton);
-        else Keyboard.Focus(Stage);
+        if (Window.GetWindow(this) is not { IsActive: true, IsVisible: true, IsEnabled: true,
+            WindowState: not WindowState.Minimized }) return false;
+        if (!IsVisible || !IsEnabled || IsRoomDialogOpen || beltWindowMenuOpen || Mouse.Captured is not null)
+            return false;
+        if (IsSettingsOpen)
+        {
+            if (IsBeltTextEntry(Keyboard.FocusedElement)) return false;
+            return SettingsPage.Focus();
+        }
+        if (Keyboard.FocusedElement is not Button && IsAppearanceInputFocused())
+            return false;
+        return Stage.Focus();
     }
 
     public void UpdateSettings(ProductSettingsState state)
@@ -320,6 +340,10 @@ public partial class ProductHomeView : UserControl
     }
     private void OnPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        if (IsDangoInputBlocked) { ClearLiveDirectionalInput(); return; }
+        if (TryCancelAccessoryAnchorPick(e)) return;
+        if (HandleBeltKey(e, true)) return;
+        var key = NavigationKey(e);
         if (IsRoomDialogOpen)
         {
             ClearLiveDirectionalInput();
@@ -335,7 +359,7 @@ public partial class ProductHomeView : UserControl
         if (!IsKeyboardFocusWithin || Keyboard.Modifiers != ModifierKeys.None ||
             Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase or System.Windows.Controls.ComboBox or PasswordBox)
             return;
-        if (IsInPorch && PorchScene.IsCatalogEntryFocused && e.Key is (Key.A or Key.D or Key.S or Key.W or Key.E)) Stage.Focus();
+        if (IsInPorch && PorchScene.IsCatalogEntryFocused && key is (Key.A or Key.D or Key.S or Key.W or Key.E or Key.F)) Stage.Focus();
         if (IsInPorch && IsAppearanceInputFocused())
             return;
         if (e.Key == Key.Escape)
@@ -352,41 +376,52 @@ public partial class ProductHomeView : UserControl
             e.Handled = true;
             return;
         }
+        if (TryHandleNavigationKey(key, e.IsRepeat))
+        {
+            e.Handled = true;
+            return;
+        }
         if (IsAccessoryPreview && !IsSettingsOpen && !IsDangoAway)
         {
-            e.Handled = SetLiveDirectionalKey(e.Key, true, e.IsRepeat);
+            e.Handled = SetLiveDirectionalKey(key, true, e.IsRepeat);
             return;
         }
         if (IsSettingsOpen || IsDangoAway || IsAppearanceInputFocused())
             return;
-        if (!IsInPorch && e.Key is (Key.A or Key.D))
-        {
-            if (!e.IsRepeat) ShowEditor(e.Key == Key.D ? HomeEditor.Face : HomeEditor.Wardrobe);
-            e.Handled = true;
-            return;
-        }
         if (IsEditing && e.Key is not (Key.S or Key.Space)) return;
-        if (IsInPorch && e.Key == Key.E)
+        e.Handled = SetLiveDirectionalKey(key, true, e.IsRepeat);
+    }
+
+    private static Key NavigationKey(System.Windows.Input.KeyEventArgs e) =>
+        e.Key == Key.ImeProcessed ? e.ImeProcessedKey : e.Key == Key.System ? e.SystemKey : e.Key;
+
+    internal bool TryHandleNavigationKey(Key key, bool repeat)
+    {
+        if (IsSettingsOpen || IsDangoAway || IsRoomDialogOpen || IsDangoInputBlocked || beltWindowMenuOpen ||
+            Keyboard.Modifiers != ModifierKeys.None || IsAppearanceInputFocused()) return false;
+        if (IsInPorch)
         {
-            if (!e.IsRepeat) PorchScene.RequestNearbyFurniture();
-            e.Handled = true;
-            return;
-        }
-        if (e.Key == Key.W)
-        {
-            if (!e.IsRepeat)
+            if (key is not (Key.F or Key.E)) return false;
+            if (!repeat)
             {
-                if (IsInPorch) PorchScene.InteractNearestDoor();
-                else EnterPorch();
+                if (key == Key.F) PorchScene.InteractNearestDoor();
+                else PorchScene.RequestNearbyFurniture();
             }
-            e.Handled = true;
-            return;
+            return true;
         }
-        e.Handled = SetLiveDirectionalKey(e.Key, true, e.IsRepeat);
+        if (key is Key.Q or Key.E)
+        {
+            if (!repeat) ShowEditor(key == Key.Q ? HomeEditor.Wardrobe : HomeEditor.Face);
+            return true;
+        }
+        if (key != Key.F || IsEditing) return false;
+        if (!repeat) EnterPorch();
+        return true;
     }
 
     private void OnPreviewKeyUp(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        if (HandleBeltKey(e, false)) return;
         if (IsRoomDialogOpen) { ClearLiveDirectionalInput(); return; }
         if (IsAccessoryPreview)
         {
@@ -394,19 +429,22 @@ public partial class ProductHomeView : UserControl
             return;
         }
         if (IsSettingsOpen || IsDangoAway || IsAppearanceInputFocused()) { ClearLiveDirectionalInput(); return; }
-        if (!IsInPorch && e.Key is (Key.A or Key.D)) { e.Handled = true; return; }
-        e.Handled = SetLiveDirectionalKey(e.Key, false, false);
+        e.Handled = SetLiveDirectionalKey(NavigationKey(e), false, false);
     }
 
     private void OnBackFromPorchClick(object sender, RoutedEventArgs e) => LeavePorch();
 
-    private void EnterPorch()
+    private void EnterPorch(bool returningFromRoom = false)
     {
+        // A room return must keep identity changes locked until the porch's
+        // healthy frame completes the handoff. That lock cannot block its own return.
+        if (dangoSlots is not null && (!selectedDangoId.HasValue || (!returningFromRoom && slotsBlocked) || slotPreviewPending || IsCreatingDango)) return;
         if (IsInPorch || IsDangoAway) return;
         ClearLiveDirectionalInput();
         if (IsEditing) CloseEditor(focusStage: false);
         CancelAppearancePreview();
         IsInPorch = true;
+        if (beltRuntime is not null) EnterBeltPorch();
         roomNavigation.ShowPorch();
         ChangeLiveSurface();
         UpdateLiveMovementMode();
@@ -419,6 +457,7 @@ public partial class ProductHomeView : UserControl
         if (!IsInPorch) return;
         porchResumeX = PorchScene.PetWorldX;
         IsInPorch = false;
+        if (beltRuntime is not null) LeaveBeltPorch();
         roomNavigation.ShowHome();
         ClearLiveDirectionalInput();
         ChangeLiveSurface();
@@ -467,16 +506,9 @@ public partial class ProductHomeView : UserControl
     internal void ApplyTheme(bool contrast)
     {
         highContrast = contrast;
-        Background = contrast ? System.Windows.SystemColors.WindowBrush : Brush("#FDFCF9");
-        Foreground = contrast ? System.Windows.SystemColors.WindowTextBrush : Brush("#443D34");
-        Resources["HomeBackground"] = Background;
-        Resources["HomeInk"] = Foreground;
-        Resources["HomePrimaryInk"] = contrast ? System.Windows.SystemColors.HighlightTextBrush : Foreground;
-        Resources["HomeMuted"] = contrast ? Foreground : Brush("#807568");
-        Resources["HomeLine"] = contrast ? Foreground : Brush("#E9E4DA");
-        Resources["HomeSoft"] = contrast ? Background : Brush("#F3EFE8");
-        Resources["HomeAccent"] = contrast ? System.Windows.SystemColors.HighlightBrush : Brush("#885E3E");
-        Resources["HomeSelected"] = contrast ? System.Windows.SystemColors.HighlightBrush : Brush("#EFE3D4");
+        Dango.Desktop.Resources.DesktopTheme.ApplyPalette(Resources, contrast);
+        Background = (System.Windows.Media.Brush)Resources["HomeBackground"];
+        Foreground = (System.Windows.Media.Brush)Resources["HomeInk"];
         Resources["SettingsScrollGrip"] = contrast ? Foreground : Brush("#B7A28E");
         PorchScene.InvalidateVisual();
         UpdateLauncherSelection();
@@ -489,7 +521,7 @@ public partial class ProductHomeView : UserControl
     {
         if (!IsEditing || SelectedEditor != HomeEditor.Face || sender is not Button { Tag: string color }) return;
         var value = Dango.Desktop.Rendering.Visuals.OpaqueSrgbColor.Parse(color);
-        StageAppearance(new(value, DraftAppearance.EyeColor, DraftAppearance.EyeLayout));
+        StageAppearance(DraftAppearance.WithBodyColor(value));
         Stage.Focus();
     }
 
@@ -563,6 +595,7 @@ public partial class ProductHomeView : UserControl
         ToolsNavigation.HorizontalAlignment = System.Windows.HorizontalAlignment.Right;
         Stage.Margin = portrait ? new Thickness(16, 4, 16, 8)
             : compactLandscape ? new Thickness(18, 8, 18, 8) : new Thickness(24, 10, 24, 10);
+        if (beltRuntime is not null && portrait) Stage.Margin = new Thickness(4, 4, 4, 8);
         minimumStageHeight = compactPortrait ? 520 : portrait ? 560 : shortLandscape ? 260 : compactLandscape ? 330 : ActualWidth >= 1150 ? 430 : 340;
         GapColumn.Width = new GridLength(portrait ? 0 : compactLandscape ? 18 : 36);
         var previewWidth = BasePreviewWidth;
@@ -605,12 +638,24 @@ public partial class ProductHomeView : UserControl
     private void UpdateStageSizing()
     {
         if (Stage is null || HomeContent is null) return;
-        var commonHeight = CommonPreviewTop + BasePreviewWidth * .75 + HomeLauncherSpace;
+        var available = Math.Max(0, HomeContent.ActualHeight - Stage.Margin.Top - Stage.Margin.Bottom);
+        var previewFits = dangoSlots is null ? available >= BasePreviewWidth * .75 + PreviewBottomSpace + 8
+            : available >= CommonPreviewTop + BasePreviewWidth * .75 + PreviewBottomSpace;
+        if (!IsPortraitLayout && !IsInPorch &&
+            (previewFits || dangoSlots is null && IsEditing && SelectedEditor == HomeEditor.Face))
+        {
+            // Home and landscape editors share the visible stage. Parameters scroll
+            // inside their own viewport; preview actions stay inside this fixed height.
+            // Keep the existing overflow fallback when a genuinely short home cannot fit.
+            Stage.MinHeight = 0;
+            if (double.IsNaN(Stage.Height) || Math.Abs(Stage.Height - available) > .5) Stage.Height = available;
+            return;
+        }
+        var commonHeight = CommonPreviewTop + BasePreviewWidth * .75 + (dangoSlots is null ? HomeLauncherSpace : PreviewBottomSpace);
         Stage.MinHeight = Math.Max(minimumStageHeight, IsPortraitLayout ? PortraitPreviewHeight : commonHeight);
         if (IsEditing && !IsPortraitLayout)
             Stage.MinHeight = Math.Max(Stage.MinHeight, CommonPreviewTop + BasePreviewWidth * .75 + ShadowHeight +
                 EditorSaveActionsHeight + 16);
-        var available = HomeContent.ActualHeight - Stage.Margin.Top - Stage.Margin.Bottom;
         var height = Math.Max(Stage.MinHeight, available);
         if (double.IsNaN(Stage.Height) || Math.Abs(Stage.Height - height) > .5) Stage.Height = height;
     }
@@ -632,8 +677,15 @@ public partial class ProductHomeView : UserControl
     private double HomeLauncherSpace => ShadowHeight + 4 + 60;
     private double EditorSaveActionsHeight => SelectedEditor == HomeEditor.Face
         ? FaceEditorSaveActions.DesiredSize.Height : AccessorySaveActionsSlot.DesiredSize.Height;
+    // Reserve the same space in all three pages so switching the selected editor
+    // cannot change the preview baseline when its footer has a different height.
+    // The 74-DIP identity row replaces the home's lower free space; it is not
+    // an additional launcher row. Feedback has its own fixed row above the stage.
+    private double PreviewBottomSpace => Math.Max(Math.Max(HomeLauncherSpace, dangoSlots is null ? 0 : ShadowHeight + 74),
+        ShadowHeight + Math.Max(FaceEditorSaveActions.DesiredSize.Height,
+            AccessorySaveActionsSlot.DesiredSize.Height) + 16);
     private double PortraitPreviewHeight => CommonPreviewTop + BasePreviewWidth * .75 + ShadowHeight +
-        (IsEditing ? Math.Max(64, EditorSaveActionsHeight + 20) : 64);
+        (dangoSlots is null ? IsEditing ? Math.Max(64, EditorSaveActionsHeight + 20) : 64 : PreviewBottomSpace - ShadowHeight);
     // Use the visible home area, not the editor's variable content height. The
     // projected native jump can rise 42 canvas units. Keep a further 20 DIP
     // above that arc; the native jump gate also measures the rendered hats.
@@ -646,8 +698,11 @@ public partial class ProductHomeView : UserControl
             // Lower the resting Dango a little further wherever the actual
             // viewport still fits both entry rows; short views keep headroom.
             var lowerBy = Math.Clamp(available - safeTop - BasePreviewWidth * .75 - HomeLauncherSpace, 0, 8);
-            return Math.Max(safeTop + lowerBy, IsPortraitLayout ? 0 :
+            var preferred = Math.Max(safeTop + lowerBy, IsPortraitLayout ? 0 :
                 (Math.Max(minimumStageHeight, available) - BasePreviewWidth * .75 - HomeLauncherSpace) / 2);
+            if (!IsPortraitLayout && !IsInPorch)
+                return Math.Max(8, Math.Min(preferred, available - BasePreviewWidth * .75 - PreviewBottomSpace));
+            return preferred;
         }
     }
 
@@ -660,7 +715,19 @@ public partial class ProductHomeView : UserControl
         // Hidden tools still measure. Entering/leaving face mode must refresh the
         // stage even when the preview slot itself does not raise SizeChanged.
         UpdateStageSizing();
-        var version = ++transitionVersion;
+        var state = (IsEditing, SelectedEditor, IsInPorch, IsDangoAway);
+        var sameState = transitionState == state;
+        if (!sameState) { transitionState = state; transitionVersion++; }
+        if (!sameState && IsLoaded && !ReduceMotion && SystemParameters.ClientAreaAnimation)
+        {
+            slotsTransitionUntil = DateTime.UtcNow.AddMilliseconds(450);
+            var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(460) };
+            timer.Tick += (_, _) => { timer.Stop(); RefreshDangoSlots(); };
+            timer.Start();
+        }
+        var version = transitionVersion;
+        var motionEnabled = IsLoaded && !ReduceMotion && SystemParameters.ClientAreaAnimation;
+        var preserveAnimation = sameState && motionEnabled;
         var width = Math.Max(0, Stage.ActualWidth);
         var height = Math.Max(0, Stage.ActualHeight);
         var portrait = IsPortraitLayout;
@@ -683,13 +750,14 @@ public partial class ProductHomeView : UserControl
         EditorHeading.Visibility = EditorTitle.Visibility = Visibility.Collapsed;
         EditorHeadingRow.Height = new GridLength(0);
         OptionsBody.Margin = new Thickness(0);
-        EditorPanel.MinHeight = portrait ? 0 : shortLandscape ? 245 : compactLandscape ? 300 : 340;
+        EditorPanel.MinHeight = portrait || faceEditing || accessoryEditing ? 0 : shortLandscape ? 245 : compactLandscape ? 300 : 340;
         EditorPanel.Margin = portrait ? new Thickness(12, 4, 12, 8)
             : shortLandscape ? new Thickness(4) : new Thickness(4, 8, 4, 8);
         Grid.SetColumn(FaceEditorTools, 0);
         Grid.SetColumnSpan(FaceEditorTools, portrait ? 3 : 1);
         Grid.SetRowSpan(FaceEditorTools, portrait ? 1 : 2);
         FaceEditorTools.Margin = portrait ? new Thickness(12, 4, 12, 8) : EditorPanel.Margin;
+        if (beltRuntime is not null && portrait) FaceEditorTools.Margin = new Thickness(2, 4, 2, 8);
         FaceEditorTools.VerticalAlignment = portrait ? System.Windows.VerticalAlignment.Top : System.Windows.VerticalAlignment.Center;
         FaceEditorPreviewRegion.Width = BasePreviewWidth + 76;
         FacePreviewRow.Height = new GridLength(1, GridUnitType.Star);
@@ -727,7 +795,7 @@ public partial class ProductHomeView : UserControl
         var offsetX = portrait ? 0 : IsEditing ? panelOnLeft ? (width - right) / 2 : -(width - left) / 2
             : IsInPorch ? -48 : 0;
         const double offsetY = 0;
-        animate &= IsLoaded && !ReduceMotion && SystemParameters.ClientAreaAnimation;
+        animate &= motionEnabled;
         UpdateLauncherSelection();
         var horizontalPanelHeight = Math.Max(EditorPanel.MinHeight,
             IsEditing ? height - EditorPanel.Margin.Top - EditorPanel.Margin.Bottom
@@ -761,31 +829,35 @@ public partial class ProductHomeView : UserControl
         PorchContent.IsEnabled = IsInPorch;
         PorchContent.IsHitTestVisible = IsInPorch;
         if (IsInPorch) PorchContent.Visibility = Visibility.Visible;
-        Animate(PresenceTranslation, TranslateTransform.XProperty, offsetX, animate);
-        Animate(PresenceTranslation, TranslateTransform.YProperty, offsetY, animate);
-        Animate(Presence, OpacityProperty, IsInPorch ? 0 : 1, animate);
-        Animate(PanelTranslation, TranslateTransform.XProperty, IsEditing ? 0 : EditorRestingOffset(SelectedEditor), animate);
-        Animate(PorchTranslation, TranslateTransform.XProperty, IsInPorch ? 0 : portrait ? 120 : 46, animate);
-        Animate(Launchers, OpacityProperty, IsInPorch ? 0 : 1, animate);
-        Animate(TopNavigation, OpacityProperty, IsInPorch ? 0 : 1, animate);
-        Animate(HomeFooter, OpacityProperty, IsInPorch ? 0 : 1, animate);
+        // Content measurement can raise SizeChanged before the first painted
+        // frame. Keep clocks whose target did not change, including completion
+        // callbacks for the same semantic state.
+        Animate(PresenceTranslation, TranslateTransform.XProperty, offsetX, animate, preserveAnimation);
+        Animate(PresenceTranslation, TranslateTransform.YProperty, offsetY, animate, preserveAnimation);
+        Animate(Presence, OpacityProperty, IsInPorch ? 0 : 1, animate, preserveAnimation);
+        Animate(PanelTranslation, TranslateTransform.XProperty, IsEditing ? 0 : EditorRestingOffset(SelectedEditor), animate, preserveAnimation);
+        Animate(PorchTranslation, TranslateTransform.XProperty, IsInPorch ? 0 : portrait ? 120 : 46, animate, preserveAnimation);
+        Animate(Launchers, OpacityProperty, IsInPorch ? 0 : 1, animate, preserveAnimation);
+        Animate(TopNavigation, OpacityProperty, IsInPorch ? 0 : 1, animate, preserveAnimation);
+        Animate(HomeFooter, OpacityProperty, IsInPorch ? 0 : 1, animate, preserveAnimation);
         Animate(EditorPanel, OpacityProperty, IsEditing ? 1 : 0, animate, () =>
         {
             if (version == transitionVersion && !IsEditing && !IsDangoAway) EditorPanel.Visibility = Visibility.Hidden;
-        });
+        }, preserveAnimation);
         Animate(FaceEditorTools, OpacityProperty, faceEditing ? 1 : 0, animate, () =>
         {
             if (version == transitionVersion && !faceEditing && !IsDangoAway) FaceEditorTools.Visibility = Visibility.Hidden;
-        });
+        }, preserveAnimation);
         Animate(AccessoryEditorTools, OpacityProperty, accessoryEditing ? 1 : 0, animate, () =>
         {
             if (version == transitionVersion && !accessoryEditing && !IsDangoAway) AccessoryEditorTools.Visibility = Visibility.Hidden;
-        });
+        }, preserveAnimation);
         Animate(PorchContent, OpacityProperty, IsInPorch ? 1 : 0, animate, () =>
         {
             if (version == transitionVersion && !IsInPorch && !IsDangoAway) PorchContent.Visibility = Visibility.Hidden;
-        });
+        }, preserveAnimation);
         UpdateRoomAwayPresentation();
+        RefreshDangoSlots();
     }
 
     private void UpdateHomeEntryPositions(double width, double previewWidth)
@@ -804,19 +876,23 @@ public partial class ProductHomeView : UserControl
         Canvas.SetTop(WardrobeButton, top);
     }
 
-    private static void Animate(Animatable target, DependencyProperty property, double destination, bool animate)
+    private static void Animate(Animatable target, DependencyProperty property, double destination, bool animate, bool preserveAnimation)
     {
+        if (preserveAnimation && target.HasAnimatedProperties &&
+            (double)target.GetAnimationBaseValue(property) == destination) return;
         var from = (double)target.GetValue(property);
         target.BeginAnimation(property, null);
         target.SetValue(property, destination);
         if (animate) target.BeginAnimation(property, CreateAnimation(from, destination), HandoffBehavior.SnapshotAndReplace);
     }
 
-    private static void Animate(UIElement target, DependencyProperty property, double destination, bool animate) =>
-        Animate(target, property, destination, animate, static () => { });
+    private static void Animate(UIElement target, DependencyProperty property, double destination, bool animate, bool preserveAnimation) =>
+        Animate(target, property, destination, animate, static () => { }, preserveAnimation);
 
-    private static void Animate(UIElement target, DependencyProperty property, double destination, bool animate, Action completed)
+    private static void Animate(UIElement target, DependencyProperty property, double destination, bool animate, Action completed, bool preserveAnimation)
     {
+        if (preserveAnimation && target.HasAnimatedProperties &&
+            (double)target.GetAnimationBaseValue(property) == destination) return;
         var from = (double)target.GetValue(property);
         target.BeginAnimation(property, null);
         target.SetValue(property, destination);

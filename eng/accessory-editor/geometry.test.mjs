@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {validateGeometry,transformGeometry} from './geometry.js';
+const g=validateGeometry({pivotX:.2,pivotY:.3,nodes:[{x:.2,y:.3},{x:.8,y:.9}]});
+assert.equal(transformGeometry(g,'flipX',100,50).pivotX,.8);
+assert.deepEqual(transformGeometry(g,'left',100,50).nodes[1],{x:.9,y:1-.8});
+const cropped=transformGeometry(g,'crop',100,50,{x:40,y:0,width:50,height:40});
+assert.equal(cropped.pivotX,-.4);assert.equal(cropped.requiresRebind,true);
+assert.throws(()=>validateGeometry({...g,nodes:[g.nodes[0],g.nodes[0]]}));
+assert.throws(()=>validateGeometry({...g,nodes:Array.from({length:18},(_,i)=>({x:i/20,y:0}))}));
+assert.equal(g.pivotX,.2);console.log('PASS geometry transforms, invalid chains, no crop clamping.');

@@ -34,6 +34,7 @@ public partial class ProductHomeView
 
     internal void CancelAppearancePreview()
     {
+        if (IsCreatingDango) { CancelDangoCreation(); return; }
         CancelAccessoryPreview();
         appearanceGeneration++;
         ClearAppearanceComparison();
@@ -41,14 +42,17 @@ public partial class ProductHomeView
         standaloneDraft = BoundRuntime?.EffectiveAppearance ?? DangoAppearanceConfiguration.Default;
         if (appearanceSession is not null) BoundRuntime?.SetAppearance(appearanceSession.SavedAppearance);
         else standaloneDraft = DangoAppearanceConfiguration.Default;
+        RestoreBeltBodyDraft();
         RefreshAppearanceControls();
     }
 
     private void StageAppearance(DangoAppearanceConfiguration draft)
     {
+        var previousBody = DraftAppearance.Body;
         if (appearanceSession is not null) appearanceSession.StagePreview(draft);
         else standaloneDraft = draft;
         BoundRuntime?.SetAppearance(draft);
+        UpdateBeltAppearance(previousBody != draft.Body);
         RefreshAppearanceControls();
     }
 
@@ -77,15 +81,26 @@ public partial class ProductHomeView
             EyeHeightValue.Text = height == 0 ? "高度 · 默认" : $"高度 · {(height < 0 ? "上移" : "下移")} {Math.Abs(height):0.#}";
             var spacing = draft.EyeLayout.SpacingControlPercent - 24.5;
             EyeSpacingValue.Text = spacing == 0 ? "眼距 · 默认" : $"眼距 · {(spacing < 0 ? "靠近" : "分开")} {Math.Abs(spacing):0.#}";
+            BodySizeSlider.Value = draft.Body.SizePercent;
+            BodySoftnessSlider.Value = draft.Body.Softness;
+            BodyLandingBuildSlider.Value = draft.Body.LandingBuild;
+            BodySizeValue.Text = $"大小 · {draft.Body.SizePercent:0.#}%";
+            BodySoftnessValue.Text = $"柔软度 · {draft.Body.Softness:0.#}";
+            BodyLandingBuildValue.Text = $"落地体型 · {draft.Body.LandingBuild:0.#}";
+            AppearanceBodyTab.Visibility = beltRuntime is null ? Visibility.Collapsed : Visibility.Visible;
             DefaultAppearanceButton.IsEnabled = IsEditing && SelectedEditor == HomeEditor.Face;
-            var canApply = IsEditing && SelectedEditor == HomeEditor.Face && appearanceSession?.HasPendingSave == true && !appearanceSession.IsWriteProtected;
+            var canApply = IsEditing && SelectedEditor == HomeEditor.Face && appearanceSession?.HasPendingSave == true &&
+                !appearanceSession.IsWriteProtected && !appearanceSession.RequiresBodyPreview && beltError is null;
+            if (IsCreatingDango) canApply = CanApplyDangoCreation;
             ApplyButton.IsEnabled = canApply;
             ApplyButton.Foreground = highContrast && canApply ? System.Windows.SystemColors.HighlightTextBrush
                 : (System.Windows.Media.Brush)Resources["HomeInk"];
-            AppearanceStatus.Text = appearanceSession?.StatusMessage ?? "应用后保存到本机。";
-            RecoverAppearanceButton.Visibility = appearanceSession?.IsWriteProtected == true ? Visibility.Visible : Visibility.Collapsed;
+            AppearanceStatus.Text = beltError ?? (appearanceSession?.RequiresBodyPreview == true ? "身体更新中…" : appearanceSession?.StatusMessage) ?? "应用后保存到本机。";
+            if (IsCreatingDango && beltError is null && appearanceSession?.RequiresBodyPreview == false)
+                AppearanceStatus.Text = "应用后起名，确认后创建。";
+            RecoverAppearanceButton.Visibility = !IsCreatingDango && appearanceSession?.IsWriteProtected == true ? Visibility.Visible : Visibility.Collapsed;
             AppearancePreviewNotice.Text = appearanceSession?.IsDirty == true ? "预览中 · 应用后保存" : "拖动即时预览 · 应用后保存";
-            var compare = IsEditing && SelectedEditor == HomeEditor.Face && BoundRuntime?.InitializationState == SceneInitializationState.Ready;
+            var compare = IsEditing && SelectedEditor == HomeEditor.Face && (beltPresenter is not null && beltError is null || BoundRuntime?.InitializationState == SceneInitializationState.Ready);
             PreviewBlinkButton.IsEnabled = PreviewSleepButton.IsEnabled = compare;
             var sleepAction = appearanceSleeping ? "醒来" : "预览睡眠";
             PreviewSleepButton.ToolTip = sleepAction;
@@ -95,6 +110,7 @@ public partial class ProductHomeView
             Select(PreviewSleepButton, appearanceSleeping);
             Select(AppearanceColorsTab, AppearanceColorsPanel.Visibility == Visibility.Visible);
             Select(AppearanceEyesTab, AppearanceEyesPanel.Visibility == Visibility.Visible);
+            Select(AppearanceBodyTab, AppearanceBodyPanel.Visibility == Visibility.Visible);
             UpdateColorSelection();
         }
         finally { updatingAppearance = false; }
@@ -103,10 +119,13 @@ public partial class ProductHomeView
     private void OnAppearanceTabClick(object sender, RoutedEventArgs e)
     {
         var eyes = ReferenceEquals(sender, AppearanceEyesTab);
-        AppearanceColorsPanel.Visibility = eyes ? Visibility.Collapsed : Visibility.Visible;
+        var body = ReferenceEquals(sender, AppearanceBodyTab);
+        AppearanceColorsPanel.Visibility = eyes || body ? Visibility.Collapsed : Visibility.Visible;
         AppearanceEyesPanel.Visibility = eyes ? Visibility.Visible : Visibility.Collapsed;
-        Select(AppearanceColorsTab, !eyes);
+        AppearanceBodyPanel.Visibility = body ? Visibility.Visible : Visibility.Collapsed;
+        Select(AppearanceColorsTab, !eyes && !body);
         Select(AppearanceEyesTab, eyes);
+        Select(AppearanceBodyTab, body);
         OptionsBody.ScrollToTop();
     }
 
@@ -114,7 +133,7 @@ public partial class ProductHomeView
     {
         if (updatingAppearance || EyeSpacingSlider is null || !IsEditing || SelectedEditor != HomeEditor.Face) return;
         var eyes = new EyeLayoutParameters(EyeSizeSlider.Value, EyeOvalSlider.Value, EyeHeightSlider.Value, EyeSpacingSlider.Value);
-        StageAppearance(new(DraftAppearance.BodyColor, DraftAppearance.EyeColor, eyes));
+        StageAppearance(DraftAppearance.WithEyeLayout(eyes));
     }
 
     private void OnBodyColorPickerClick(object sender, RoutedEventArgs e) => PickAppearanceColor(false);
@@ -126,7 +145,7 @@ public partial class ProductHomeView
         var generation = appearanceGeneration;
         var selected = AppearanceColorPicker(eye ? DraftAppearance.EyeColor : DraftAppearance.BodyColor);
         if (generation != appearanceGeneration || !IsEditing || SelectedEditor != HomeEditor.Face || selected is not { } color) return;
-        StageAppearance(new(eye ? DraftAppearance.BodyColor : color, eye ? color : DraftAppearance.EyeColor, DraftAppearance.EyeLayout));
+        StageAppearance(eye ? DraftAppearance.WithEyeColor(color) : DraftAppearance.WithBodyColor(color));
     }
 
     private OpaqueSrgbColor? ShowAppearanceColorPicker(OpaqueSrgbColor current)
@@ -160,6 +179,11 @@ public partial class ProductHomeView
     }
     private bool TryAppearanceComparison(AttachmentIntent intent)
     {
+        if (beltPresenter is not null && IsEditing && SelectedEditor == HomeEditor.Face)
+        {
+            ClearLiveDirectionalInput();
+            return beltPresenter.SubmitAttachment(intent);
+        }
         if (!IsEditing || SelectedEditor != HomeEditor.Face || BoundRuntime?.InitializationState != SceneInitializationState.Ready) return false;
         ClearLiveDirectionalInput();
         try
@@ -175,6 +199,7 @@ public partial class ProductHomeView
     }
     private void ClearAppearanceComparison()
     {
+        beltPresenter?.ClearAttachmentComparison();
         if (appearanceComparisonChannels != AttachmentChannel.None && BoundRuntime?.InitializationState == SceneInitializationState.Ready)
         {
             try { BoundRuntime.SubmitAttachment(new Release(appearanceComparisonChannels)); }
@@ -186,11 +211,17 @@ public partial class ProductHomeView
 
     private void OnApplyAppearanceClick(object sender, RoutedEventArgs e)
     {
+        if (IsCreatingDango)
+        {
+            ApplyDangoCreation();
+            return;
+        }
         appearanceSession?.TrySave();
         RefreshAppearanceControls();
     }
     private void OnRecoverAppearanceClick(object sender, RoutedEventArgs e)
     {
+        if (IsCreatingDango) return;
         appearanceSession?.TryRecoverAndSave();
         RefreshAppearanceControls();
     }

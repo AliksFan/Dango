@@ -94,7 +94,10 @@ public sealed partial class DangoPhysicsWorld
             if (candidate is not null) throw new ArgumentException("删除请求不能携带家具定义。", nameof(candidate));
             return default;
         }
-        ArgumentNullException.ThrowIfNull(candidate); candidate.Validate(); return NativeCollectionDefinition.From(candidate);
+        ArgumentNullException.ThrowIfNull(candidate); candidate.Validate();
+        if (candidate.CoordinateSpace != DangoFurnitureCoordinateSpace.LegacyPAndQ)
+            throw new ArgumentException("Legacy furniture requires legacy p/q coordinates.", nameof(candidate));
+        return NativeCollectionDefinition.From(candidate);
     }
     private sealed partial class NativeApi
     {

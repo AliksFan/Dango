@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Dango.Desktop.Accessories;
+using Dango.Desktop.Accessories.Editing;
 using Dango.Desktop.Verification;
 
 namespace Dango.Desktop.Tests.Accessories;
@@ -54,8 +55,8 @@ public sealed class AccessoryStorageTests
         Assert.AreEqual(imported.AssetId, copy.AssetId);
         Assert.AreNotEqual(imported.Id, copy.Id);
         session.Stage(new AccessoryConfiguration(session.DraftConfiguration.Items.Select(item =>
-            item.Id == copy.Id ? item with { BaseAngleDegrees = 71, Softness = 85, ImagePivotX = .2 } : item)));
-        Assert.AreEqual(0, session.DraftConfiguration.Items.Single(item => item.Id == imported.Id).Softness);
+            item.Id == copy.Id ? item with { BaseAngleDegrees = 71, ConnectionStrength = 85, ImagePivotX = .2 } : item)));
+        Assert.AreEqual(100, session.DraftConfiguration.Items.Single(item => item.Id == imported.Id).ConnectionStrength);
         Assert.IsNotNull(session.TryGetImage(imported.AssetId));
         Assert.IsFalse(Directory.Exists(Path.Combine(root, "settings")));
         CollectionAssert.AreEqual(sourceBytes, File.ReadAllBytes(source));
@@ -83,9 +84,8 @@ public sealed class AccessoryStorageTests
             ImagePivotY = .9,
             BodyAnchorX = .6,
             BodyAnchorY = .75,
-            Softness = 87,
-            AllowFolding = true,
-            MaxDeformationPercent = 175,
+            DeformationMode = AccessoryDeformationMode.SingleChain,
+            Rig = new AccessoryRigConfiguration([new(.17, .9), new(.45, .55), new(.6, .2)], .25, 7, 8),
             MaxConnectionTravelPercent = 150,
             ConnectionStrength = 34,
             RotationDamping = 29,
@@ -106,11 +106,14 @@ public sealed class AccessoryStorageTests
         Assert.IsNotNull(image);
         Assert.AreEqual(3, image.PixelWidth);
         Assert.AreEqual(2, image.PixelHeight);
-        var manifest = File.ReadAllText(Path.Combine(settingsRoot, "accessories.json"));
+        var manifest = File.ReadAllText(AccessorySettingsStore.GetManifestPath(settingsRoot));
         Assert.IsFalse(manifest.Contains(source, StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(manifest.Contains("private-source", StringComparison.Ordinal));
         Assert.IsFalse(manifest.Contains("category", StringComparison.OrdinalIgnoreCase));
         Assert.IsFalse(manifest.Contains("velocity", StringComparison.OrdinalIgnoreCase));
+        Assert.IsTrue(manifest.Contains("\"accessorySchemaVersion\": 3", StringComparison.Ordinal));
+        Assert.IsTrue(manifest.Contains("\"rig\"", StringComparison.Ordinal));
+        Assert.IsTrue(manifest.Contains("\"connectionStrength\"", StringComparison.Ordinal));
         Assert.AreEqual(1, Directory.GetFiles(Path.Combine(settingsRoot, "accessory-assets"), "*.png").Length);
     }
 
@@ -119,7 +122,8 @@ public sealed class AccessoryStorageTests
     {
         var settingsRoot = Path.Combine(root, "settings");
         new AccessorySettingsSession(settingsRoot).TrySave();
-        var original = File.ReadAllBytes(Path.Combine(settingsRoot, "accessories.json"));
+        var manifestPath = AccessorySettingsStore.GetManifestPath(settingsRoot);
+        var original = File.ReadAllBytes(manifestPath);
         var fail = true;
         var store = new AccessorySettingsStore(assetWriter: (path, bytes) =>
         {
@@ -131,7 +135,7 @@ public sealed class AccessoryStorageTests
         Assert.IsFalse(session.TrySave());
         Assert.IsTrue(session.IsDirty);
         Assert.IsFalse(session.SavedConfiguration.Items.Any(item => item.Id == imported.Id));
-        CollectionAssert.AreEqual(original, File.ReadAllBytes(Path.Combine(settingsRoot, "accessories.json")));
+        CollectionAssert.AreEqual(original, File.ReadAllBytes(manifestPath));
         Assert.IsNotNull(session.TryGetImage(imported.AssetId));
         fail = false;
         Assert.IsTrue(session.TrySave());
@@ -143,13 +147,14 @@ public sealed class AccessoryStorageTests
     {
         var settingsRoot = Path.Combine(root, "settings");
         Assert.IsTrue(new AccessorySettingsSession(settingsRoot).TrySave());
-        var original = File.ReadAllBytes(Path.Combine(settingsRoot, "accessories.json"));
+        var manifestPath = AccessorySettingsStore.GetManifestPath(settingsRoot);
+        var original = File.ReadAllBytes(manifestPath);
         var writer = new ToggleWriter { Fail = true };
         var session = new AccessorySettingsSession(settingsRoot, store: new AccessorySettingsStore(writer));
         var imported = session.ImportPng(WriteSource("image.png"));
         Assert.IsFalse(session.TrySave());
         Assert.IsTrue(session.IsDirty);
-        CollectionAssert.AreEqual(original, File.ReadAllBytes(Path.Combine(settingsRoot, "accessories.json")));
+        CollectionAssert.AreEqual(original, File.ReadAllBytes(manifestPath));
         Assert.IsTrue(File.Exists(Path.Combine(settingsRoot, "accessory-assets", imported.AssetId + ".png")));
         Assert.AreEqual(session.SavedConfiguration, new AccessorySettingsSession(settingsRoot).SavedConfiguration);
         session.CancelPreview();
@@ -165,18 +170,19 @@ public sealed class AccessoryStorageTests
     public void CorruptedOrFutureManifestIsProtectedAndNeverFallsBackToLegacyHat()
     {
         Directory.CreateDirectory(root);
+        var manifestPath = AccessorySettingsStore.GetManifestPath(root);
         foreach (var original in new[] { "{broken", "{\"accessorySchemaVersion\":999,\"items\":[]}",
-            "{\"accessorySchemaVersion\":1,\"items\":[],\"unknown\":true}",
-            "{\"accessorySchemaVersion\":1,\"accessorySchemaVersion\":1,\"items\":[]}" })
+            "{\"accessorySchemaVersion\":2,\"items\":[],\"unknown\":true}",
+            "{\"accessorySchemaVersion\":2,\"accessorySchemaVersion\":2,\"items\":[]}" })
         {
-            File.WriteAllText(Path.Combine(root, "accessories.json"), original);
+            File.WriteAllText(manifestPath, original);
             var session = new AccessorySettingsSession(root, "bowler");
             Assert.IsTrue(session.IsWriteProtected);
             Assert.IsFalse(session.IsCompatibilityMode);
             Assert.AreEqual(0, session.SavedConfiguration.Items.Count);
             session.Stage(AccessoryConfiguration.FromLegacyHat("top-hat"));
             Assert.IsFalse(session.TrySave());
-            Assert.AreEqual(original, File.ReadAllText(Path.Combine(root, "accessories.json")));
+            Assert.AreEqual(original, File.ReadAllText(manifestPath));
         }
     }
 
@@ -211,7 +217,8 @@ public sealed class AccessoryStorageTests
         {
             baseline with { AssetId = "../source" }, baseline with { ImagePivotX = double.NaN },
             baseline with { BodyAnchorY = 1.01 }, baseline with { SizePercent = 401 },
-            baseline with { Softness = -1 }, baseline with { MaxSwingDegrees = 181 },
+            baseline with { ConnectionStrength = -1 }, baseline with { MaxSwingDegrees = 181 },
+            baseline with { MaxConnectionTravelPercent = 201 },
             baseline with { PixelWidth = 2049 }, baseline with { Order = -1 },
         })
             Assert.ThrowsExactly<InvalidDataException>(() => new AccessoryConfiguration([invalid]));
@@ -226,11 +233,12 @@ public sealed class AccessoryStorageTests
         var session = new AccessorySettingsSession(root);
         Directory.CreateDirectory(root);
         const string future = "{\"accessorySchemaVersion\":12,\"items\":[]}";
-        File.WriteAllText(Path.Combine(root, "accessories.json"), future);
+        var manifestPath = AccessorySettingsStore.GetManifestPath(root);
+        File.WriteAllText(manifestPath, future);
         session.Stage(AccessoryConfiguration.Empty);
         Assert.IsFalse(session.TrySave());
         Assert.IsTrue(session.IsWriteProtected);
-        Assert.AreEqual(future, File.ReadAllText(Path.Combine(root, "accessories.json")));
+        Assert.AreEqual(future, File.ReadAllText(manifestPath));
     }
 
     [TestMethod]
@@ -238,7 +246,7 @@ public sealed class AccessoryStorageTests
     {
         var session = new AccessorySettingsSession(root);
         Assert.IsTrue(session.TrySave());
-        var path = Path.Combine(root, "accessories.json");
+        var path = AccessorySettingsStore.GetManifestPath(root);
         var original = File.ReadAllBytes(path);
         session.Stage(AccessoryConfiguration.Empty);
         using (var fileLock = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))

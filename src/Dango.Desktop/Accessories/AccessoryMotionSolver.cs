@@ -1,5 +1,7 @@
 using System.Windows;
 using Dango.Desktop.Physics.Presentation.Attachments;
+using Dango.Desktop.Accessories.Rig;
+using Dango.Desktop.Accessories.Editing;
 using Point = System.Windows.Point;
 
 namespace Dango.Desktop.Accessories;
@@ -24,29 +26,29 @@ public sealed record AccessoryMeshFrame(
     }
 }
 
-/// <summary>
-/// A single display-only attachment, with independent connection, angular and material states.
-/// The owner supplies the actual body anchor after a successful body step; rendering never advances it.
-/// Uniform material parameters drive a continuous bend/strain field sampled into a texture mesh.
-/// No node in this mesh is a collision object and only the image pivot is connected to the body.
-/// </summary>
+/// <summary>Display-only root connection, overall rotation, and one shared skeleton per equipped item.
+/// Successful owner frames advance motion; paints only project immutable current geometry.</summary>
 public sealed class AccessoryMotionSolver
 {
     public const int GridDivisions = 8;
     private const double GravityAcceleration = 300;
     private const double MaximumAcceleration = 3000;
-    private static readonly IReadOnlyList<Point> Uvs = CreateUvs();
-    private static readonly IReadOnlyList<int> Triangles = CreateTriangles();
-    private IReadOnlyList<Point> materialUvs = Uvs;
-    private IReadOnlyList<int> materialTriangles = Triangles;
-    private double meshPivotX = double.NaN, meshPivotY = double.NaN;
-    private SpringState connectionX, connectionY, bendX, bendY, strainX, strainY;
+    private SpringState connectionX, connectionY;
     private Point? previousAnchor;
     private Vector velocity, acceleration;
-    private bool velocityReady, paused;
+    private bool velocityReady, paused, needsRebase = true;
     private double angle, angularVelocity;
     private long stepIndex = -1;
+    private AccessoryItem? activeItem;
+    private AccessoryItem? displayedItem;
+    private double activeWidth, activeHeight;
+    private double displayedWidth, displayedHeight;
+    private AccessoryRigSolver? rig;
+    private AccessoryRigSkin? skin;
+    private AccessorySkeletonSolver? skeleton;
+    private Dictionary<string, AccessorySkeletonSkin> skeletonSkins = new(StringComparer.Ordinal);
     public AccessoryMeshFrame? Current { get; private set; }
+    public IReadOnlyList<AccessoryMeshFrame> CurrentPieces { get; private set; } = [];
 
     public bool Paused
     {
@@ -54,147 +56,245 @@ public sealed class AccessoryMotionSolver
         set
         {
             if (paused == value) return;
-            paused = value;
+            paused = value; needsRebase = true;
             ClearSignals();
+            if (value) { rig?.Pause(); skeleton?.Pause(); }
         }
     }
 
     public void Reset()
     {
-        ClearSignals(); connectionX = connectionY = bendX = bendY = strainX = strainY = default;
-        angle = angularVelocity = 0; stepIndex = -1; Current = null;
+        ClearDynamics(); activeItem = null; rig = null; skin = null; skeleton = null; skeletonSkins.Clear();
+        stepIndex = -1; Current = null; CurrentPieces = []; displayedItem = null; needsRebase = true;
     }
 
     public AccessoryMeshFrame Update(long nextStepIndex, double seconds, Point anchorPoint,
-        double displayWidth, double displayHeight, AccessoryItem item)
+        double displayWidth, double displayHeight, AccessoryItem item, AccessoryEditorProject? project = null)
     {
         Validate(anchorPoint, displayWidth, displayHeight, item);
-        if (nextStepIndex < 0 || !double.IsFinite(seconds) || seconds is <= 0 or > 0.1)
+        ValidateProject(item, project);
+        if (nextStepIndex < 0 || !double.IsFinite(seconds) || seconds < AccessoryRigLimits.MinimumElapsedSeconds || seconds > .1)
             throw new ArgumentOutOfRangeException(nameof(seconds));
-        if ((paused || nextStepIndex <= stepIndex) && Current is not null) return Current;
-        if (paused) return Refresh(anchorPoint, displayWidth, displayHeight, item);
+        if (paused || nextStepIndex <= stepIndex)
+            return Current is not null && SameConfiguration(displayedItem, item) && displayedWidth == displayWidth && displayedHeight == displayHeight
+                ? Current : Refresh(anchorPoint, displayWidth, displayHeight, item, project);
+
+        var changed = !Matches(item, displayWidth, displayHeight);
+        var teleport = previousAnchor is { } prior &&
+            (anchorPoint - prior).Length > 2 * Math.Sqrt(displayWidth * displayWidth + displayHeight * displayHeight);
+        var rebase = changed || needsRebase || teleport || seconds > AccessoryRigLimits.MaximumElapsedSeconds;
+        if (rebase)
+        {
+            ClearDynamics();
+            if (changed)
+            {
+                activeItem = item with { Skeleton = item.Skeleton?.Snapshot() }; activeWidth = displayWidth; activeHeight = displayHeight;
+                skeleton = null; skeletonSkins.Clear();
+                if (item.DeformationMode == AccessoryDeformationMode.SingleChain)
+                {
+                    var definition = Definition(item, displayWidth, displayHeight);
+                    skin = new(definition); rig = new(definition, item.Rig!.CreateParameters(item.GravityInfluence));
+                }
+                else { rig = null; skin = null; }
+                if (item.DeformationMode == AccessoryDeformationMode.Skeleton)
+                {
+                    skeleton = new(item.Skeleton!, item.PixelWidth, item.PixelHeight);
+                    skeletonSkins = CreateSkins(item, project!);
+                }
+            }
+            needsRebase = false;
+        }
         Observe(anchorPoint, seconds);
         stepIndex = nextStepIndex;
-        var length = Math.Sqrt(displayWidth * displayWidth + displayHeight * displayHeight);
-        var softness = item.Softness / 100;
-        var gravity = item.GravityInfluence / 100;
-        var strength = item.ConnectionStrength / 100;
-        // Extend only the slider extremes: existing middle/default material behavior stays intact.
-        var softExtension = SmoothStep((softness - 0.6) / 0.4);
-        var looseExtension = SmoothStep((0.3 - strength) / 0.3);
-        var inertialForce = new Vector(-acceleration.X, -acceleration.Y + gravity * GravityAcceleration);
-
-        if (strength >= 1) connectionX = connectionY = default;
-        else
+        if (!rebase)
         {
-            var frequency = 0.75 + strength * 4.25 - 0.57 * looseExtension;
-            var stiffness = Math.Pow(2 * Math.PI * frequency, 2);
-            var limit = length * item.MaxConnectionTravelPercent / 100;
-            connectionX = DampedSpring.AdvanceBounded(connectionX, inertialForce.X / stiffness,
-                frequency, 0.8, seconds, -limit, limit);
-            connectionY = DampedSpring.AdvanceBounded(connectionY, inertialForce.Y / stiffness,
-                frequency, 0.8, seconds, -limit, limit);
+            var length = Math.Sqrt(displayWidth * displayWidth + displayHeight * displayHeight);
+            var strength = item.ConnectionStrength / 100;
+            var looseExtension = SmoothStep((.3 - strength) / .3);
+            // Root translation and whole-image angular torque act on their own degrees of freedom.
+            // Local bones receive gravity only through RigParameters, never this root force again.
+            var force = new Vector(-acceleration.X, -acceleration.Y + item.GravityInfluence / 100 * GravityAcceleration);
+            if (strength >= 1) connectionX = connectionY = default;
+            else
+            {
+                var frequency = .75 + strength * 4.25 - .57 * looseExtension;
+                var stiffness = Math.Pow(2 * Math.PI * frequency, 2);
+                var limit = length * item.MaxConnectionTravelPercent / 100;
+                connectionX = DampedSpring.AdvanceBounded(connectionX, force.X / stiffness, frequency, .8, seconds, -limit, limit);
+                connectionY = DampedSpring.AdvanceBounded(connectionY, force.Y / stiffness, frequency, .8, seconds, -limit, limit);
+                LimitConnectionTravel(limit);
+            }
+            AdvanceAngle(item, force, displayWidth, displayHeight, seconds);
         }
-
-        if (softness == 0) bendX = bendY = strainX = strainY = default;
-        else
+        var pose = RootPose(anchorPoint, displayWidth, displayHeight, item, false);
+        if (rig is not null)
         {
-            // The same softness controls all material points. Their spatially varying response
-            // comes from distance to the one pivot, not painted per-region stiffness or extra anchors.
-            var force = inertialForce / length;
-            var materialGain = softness * (1 + 17 * softExtension);
-            var bendLimit = 0.10 + 0.80 * softExtension;
-            var compressionLimit = 0.08 + 0.27 * softExtension;
-            var stretchLimit = 0.08 + 0.67 * softExtension;
-            var targetBend = force * (0.018 * materialGain);
-            if (targetBend.Length > bendLimit) targetBend *= bendLimit / targetBend.Length;
-            var frequency = 4.5 - softness * 2 - 1.6 * softExtension;
-            bendX = DampedSpring.AdvanceBounded(bendX, targetBend.X, frequency, 0.8, seconds, -bendLimit, bendLimit);
-            bendY = DampedSpring.AdvanceBounded(bendY, targetBend.Y, frequency, 0.8, seconds, -bendLimit, bendLimit);
-            strainX = DampedSpring.AdvanceBounded(strainX, Math.Clamp(-Math.Abs(force.X) * 0.006 * materialGain, -compressionLimit, compressionLimit),
-                frequency, 0.8, seconds, -compressionLimit, compressionLimit);
-            strainY = DampedSpring.AdvanceBounded(strainY, Math.Clamp(force.Y * 0.009 * materialGain, -compressionLimit, stretchLimit),
-                frequency, 0.8, seconds, -compressionLimit, stretchLimit);
+            if (rebase) rig.Resume(nextStepIndex, pose);
+            else rig.Advance(nextStepIndex, seconds, pose);
         }
-        AdvanceAngle(item, inertialForce, displayWidth, displayHeight, seconds);
-        return Refresh(anchorPoint, displayWidth, displayHeight, item);
+        if (skeleton is not null)
+        {
+            if (rebase) skeleton.Resume(nextStepIndex, pose);
+            else skeleton.Advance(nextStepIndex, seconds, pose);
+        }
+        return Refresh(anchorPoint, displayWidth, displayHeight, item, project);
     }
 
-    /// <summary>Refreshes configuration or placement without integrating or changing the body step.</summary>
-    public AccessoryMeshFrame Refresh(Point anchorPoint, double displayWidth, double displayHeight, AccessoryItem item)
+    /// <summary>Pure geometry projection: does not change tick, velocities, root state or rig state.
+    /// A changed configuration is shown at rest until the next successful owner update rebases it.</summary>
+    public AccessoryMeshFrame Refresh(Point anchorPoint, double displayWidth, double displayHeight, AccessoryItem item,
+        AccessoryEditorProject? project = null)
     {
         Validate(anchorPoint, displayWidth, displayHeight, item);
-        PrepareMaterialMesh(item.ImagePivotX, item.ImagePivotY);
-        if (item.LockRotation) angle = angularVelocity = 0;
-        if (item.ConnectionStrength >= 100) connectionX = connectionY = default;
-        if (item.Softness == 0) bendX = bendY = strainX = strainY = default;
-        var rotation = item.LockRotation ? 0 : angle;
-        if (item.LimitSwing) rotation = Math.Clamp(rotation, -item.MaxSwingDegrees * Math.PI / 180, item.MaxSwingDegrees * Math.PI / 180);
-        var radians = item.BaseAngleDegrees * Math.PI / 180 + rotation;
-        var cosine = Math.Cos(radians); var sine = Math.Sin(radians);
-        var length = Math.Sqrt(displayWidth * displayWidth + displayHeight * displayHeight);
-        LimitConnectionTravel(length * item.MaxConnectionTravelPercent / 100);
-        var connection = item.ConnectionStrength >= 100 ? new Vector() : new Vector(connectionX.Position, connectionY.Position);
-        var pivot = anchorPoint + connection;
-        var materialBend = item.Softness == 0 ? new Vector() : new Vector(bendX.Position, bendY.Position);
-        var bendMagnitudeLimit = 0.14 + 0.76 * SmoothStep((item.Softness / 100 - 0.6) / 0.4);
-        if (materialBend.Length > bendMagnitudeLimit) materialBend *= bendMagnitudeLimit / materialBend.Length;
-        var sx = item.Softness == 0 ? 0 : strainX.Position;
-        var sy = item.Softness == 0 ? 0 : strainY.Position;
-        if (!item.AllowFolding)
-            materialBend = PreventFolding(materialBend, sx, sy, cosine, sine,
-                displayWidth, displayHeight, length, item.ImagePivotX, item.ImagePivotY);
-        // Limit material displacement relative to the same rotated rigid image. Connection
-        // translation and overall rotation remain independent. One scale preserves the field,
-        // the exact pivot, and the positive determinant of the non-folding map.
-        var maximumDisplacement = 0d;
-        foreach (var uv in materialUvs)
+        ValidateProject(item, project);
+        var same = Matches(item, displayWidth, displayHeight);
+        var pose = RootPose(anchorPoint, displayWidth, displayHeight, item, !same);
+        if (item.DeformationMode == AccessoryDeformationMode.Skeleton)
         {
-            var dx = (uv.X - item.ImagePivotX) * displayWidth;
-            var dy = (uv.Y - item.ImagePivotY) * displayHeight;
-            var radial = (dx * dx + dy * dy) / length;
-            var displacement = new Vector(sx * dx * cosine - sy * dy * sine + materialBend.X * radial,
-                sx * dx * sine + sy * dy * cosine + materialBend.Y * radial);
-            maximumDisplacement = Math.Max(maximumDisplacement, displacement.Length);
+            var snapshot = same && skeleton is not null ? ProjectSnapshot(skeleton.Refresh(), pose) : RestSnapshot(item.Skeleton!, item.PixelHeight, pose);
+            var skins = same && skeleton is not null ? skeletonSkins : CreateSkins(item, project!);
+            var pieces = project!.RenderPieces.Select(piece => skins[piece.GroupId ?? string.Empty].Deform(snapshot)
+                with { ConnectionOffset = pose.Root - anchorPoint }).ToArray();
+            if (pieces.Sum(piece => piece.Vertices.Count) > AccessorySkeletonSkin.MaximumTotalVertices ||
+                pieces.Sum(piece => piece.TriangleIndices.Count / 3) > AccessorySkeletonSkin.MaximumTotalTriangles)
+                throw new InvalidOperationException("Skeleton render pieces exceeded their total mesh budget.");
+            CurrentPieces = Array.AsReadOnly(pieces);
+            displayedItem = item; displayedWidth = displayWidth; displayedHeight = displayHeight;
+            return Current = pieces[0];
         }
-        var deformationLimit = length * item.MaxDeformationPercent / 100;
-        if (maximumDisplacement > deformationLimit)
+        AccessoryMeshFrame frame;
+        if (item.DeformationMode == AccessoryDeformationMode.SingleChain)
         {
-            var ratio = deformationLimit / maximumDisplacement;
-            materialBend *= ratio; sx *= ratio; sy *= ratio;
+            if (same && rig is not null && skin is not null)
+            {
+                var snapshot = rig.Refresh();
+                var prior = snapshot.Pose;
+                var nodes = snapshot.Nodes.Select(node => pose.Root + AccessoryRigDefinition.Rotate(
+                    (node - prior.Root) * (pose.Scale / prior.Scale), pose.Angle - prior.Angle)).ToArray();
+                frame = skin.Deform(new(stepIndex, pose, Array.AsReadOnly(nodes), snapshot.Definition));
+            }
+            else
+            {
+                var definition = Definition(item, displayWidth, displayHeight);
+                var nodes = definition.LocalNodes.Select(node => pose.Transform(node, definition.LocalNodes[0])).ToArray();
+                frame = new AccessoryRigSkin(definition).Deform(new(stepIndex, pose, Array.AsReadOnly(nodes), definition));
+            }
         }
-        var vertices = new Point[materialUvs.Count];
-        for (var i = 0; i < vertices.Length; i++)
+        else
         {
-            var uv = materialUvs[i];
-            var dx = (uv.X - item.ImagePivotX) * displayWidth;
-            var dy = (uv.Y - item.ImagePivotY) * displayHeight;
-            var radial = (dx * dx + dy * dy) / length;
-            // Bend is in scene coordinates: gravity stays downward even when the image rotates.
-            var localX = dx * (1 + sx); var localY = dy * (1 + sy);
-            vertices[i] = new(pivot.X + localX * cosine - localY * sine + materialBend.X * radial,
-                pivot.Y + localX * sine + localY * cosine + materialBend.Y * radial);
+            var xs = Axis(item.ImagePivotX); var ys = Axis(item.ImagePivotY);
+            var uvs = ys.SelectMany(y => xs.Select(x => new Point(x, y))).ToArray();
+            var vertices = uvs.Select(uv => pose.Root + AccessoryRigDefinition.Rotate(
+                new Vector((uv.X - item.ImagePivotX) * displayWidth, (uv.Y - item.ImagePivotY) * displayHeight), pose.Angle)).ToArray();
+            var triangles = new List<int>();
+            for (var y = 0; y < ys.Length - 1; y++)
+            for (var x = 0; x < xs.Length - 1; x++)
+            {
+                var a = y * xs.Length + x; var b = a + 1; var c = a + xs.Length; var d = c + 1;
+                triangles.AddRange([a, b, d, a, d, c]);
+            }
+            var bounds = Rect.Empty;
+            foreach (var vertex in vertices) bounds.Union(vertex);
+            frame = new(stepIndex, Array.AsReadOnly(vertices), Array.AsReadOnly(uvs), triangles.AsReadOnly(), bounds,
+                pose.Root, default, pose.Angle * 180 / Math.PI);
         }
-        var left = vertices.Min(p => p.X); var top = vertices.Min(p => p.Y);
-        var bounds = new Rect(left, top, vertices.Max(p => p.X) - left, vertices.Max(p => p.Y) - top);
-        return Current = new(stepIndex, Array.AsReadOnly(vertices), materialUvs, materialTriangles, bounds, pivot,
-            connection, item.BaseAngleDegrees + rotation * 180 / Math.PI)
-        { AllowFolding = item.AllowFolding };
+        displayedItem = item; displayedWidth = displayWidth; displayedHeight = displayHeight;
+        Current = frame with { ConnectionOffset = pose.Root - anchorPoint };
+        CurrentPieces = Array.AsReadOnly(new[] { Current });
+        return Current;
     }
 
-    private static Vector PreventFolding(Vector bend, double sx, double sy, double cosine, double sine,
-        double width, double height, double length, double pivotX, double pivotY)
+    /// <summary>Advance one item once, then return all its pieces in final drawing order.</summary>
+    public IReadOnlyList<AccessoryMeshFrame> UpdatePieces(long nextStepIndex, double seconds, Point anchorPoint,
+        double displayWidth, double displayHeight, AccessoryItem item, AccessoryEditorProject? project = null)
     {
-        // det(A + bend * gradient^T) = det(A) * (1 + gradient^T * A^-1 * bend),
-        // A = rotation * diag(1+sx, 1+sy). The radial field's continuous gradients and
-        // every rectangular mesh-cell secant lie within the same corner rectangle.
-        // Keep the determinant factor >= .2: strain >= -.35 gives area >= .0845.
-        var x = (cosine * bend.X + sine * bend.Y) / (1 + sx);
-        var y = (-sine * bend.X + cosine * bend.Y) / (1 + sy);
-        var minimumSlope = 2 / length *
-            (x * (x >= 0 ? -pivotX * width : (1 - pivotX) * width) +
-             y * (y >= 0 ? -pivotY * height : (1 - pivotY) * height));
-        return minimumSlope < -.8 ? bend * (-.8 / minimumSlope) : bend;
+        Update(nextStepIndex, seconds, anchorPoint, displayWidth, displayHeight, item, project);
+        return CurrentPieces;
+    }
+
+    /// <summary>Reproject all pieces without observing movement or consuming owner time.</summary>
+    public IReadOnlyList<AccessoryMeshFrame> RefreshPieces(Point anchorPoint, double displayWidth, double displayHeight,
+        AccessoryItem item, AccessoryEditorProject? project = null)
+    {
+        Refresh(anchorPoint, displayWidth, displayHeight, item, project);
+        return CurrentPieces;
+    }
+
+    /// <summary>Immutable physics snapshot at the last successful owner frame; display projections do not replace it.</summary>
+    public AccessorySkeletonSnapshot? ReadSkeletonSnapshot() => skeleton?.Refresh();
+
+    private static Dictionary<string, AccessorySkeletonSkin> CreateSkins(AccessoryItem item, AccessoryEditorProject project) =>
+        project.RenderPieces.Select(piece => piece.GroupId ?? string.Empty).Distinct(StringComparer.Ordinal)
+            .ToDictionary(id => id, id => new AccessorySkeletonSkin(item.Skeleton!, item.PixelWidth, item.PixelHeight,
+                id.Length == 0 ? null : id), StringComparer.Ordinal);
+
+    private AccessorySkeletonSnapshot RestSnapshot(AccessorySkeletonConfiguration configuration, int pixelHeight, AccessoryRigPose pose)
+    {
+        var groups = new Dictionary<string, IReadOnlyList<Point>>(StringComparer.Ordinal);
+        var roots = new Dictionary<string, AccessoryRigPose>(StringComparer.Ordinal);
+        foreach (var group in configuration.Groups)
+        {
+            var nodes = group.Nodes.Select(node => pose.Root + AccessoryRigDefinition.Rotate(new Vector(
+                (node.X - configuration.Pivot.X) / pixelHeight, (node.Y - configuration.Pivot.Y) / pixelHeight) * pose.Scale, pose.Angle)).ToArray();
+            groups.Add(group.Id, Array.AsReadOnly(nodes)); roots.Add(group.Id, new(nodes[0], pose.Angle, pose.Scale));
+        }
+        return new(stepIndex, pose, configuration.Snapshot(), groups, roots);
+    }
+
+    private static AccessorySkeletonSnapshot ProjectSnapshot(AccessorySkeletonSnapshot snapshot, AccessoryRigPose pose)
+    {
+        var scale = pose.Scale / snapshot.Pose.Scale; var angle = pose.Angle - snapshot.Pose.Angle;
+        Point Project(Point point) => pose.Root + AccessoryRigDefinition.Rotate((point - snapshot.Pose.Root) * scale, angle);
+        return new(snapshot.Tick, pose, snapshot.Configuration,
+            snapshot.Groups.ToDictionary(pair => pair.Key,
+                pair => (IReadOnlyList<Point>)Array.AsReadOnly(pair.Value.Select(Project).ToArray()), StringComparer.Ordinal),
+            snapshot.GroupPoses.ToDictionary(pair => pair.Key,
+                pair => new AccessoryRigPose(Project(pair.Value.Root), pair.Value.Angle + angle, pair.Value.Scale * scale), StringComparer.Ordinal));
+    }
+
+    private static void ValidateProject(AccessoryItem item, AccessoryEditorProject? project)
+    {
+        if (item.DeformationMode != AccessoryDeformationMode.Skeleton) return;
+        if (project is null) throw new InvalidOperationException("分组骨架工程不可用，无法独立呈现绘制片。");
+        if (project.ProjectId != item.ProjectId || project.Version != item.ProjectVersion || project.Revision != item.EditRevision ||
+            project.FinalAssetId != item.AssetId || project.PixelWidth != item.PixelWidth || project.PixelHeight != item.PixelHeight ||
+            !AccessoryConfiguration.SkeletonEquals(project.Skeleton, item.Skeleton) ||
+            Math.Abs(item.ImagePivotX - project.Skeleton.Pivot.X / item.PixelWidth) > 1e-10 ||
+            Math.Abs(item.ImagePivotY - project.Skeleton.Pivot.Y / item.PixelHeight) > 1e-10 ||
+            project.RenderPieces.Count is < 1 or > AccessorySkeletonSkin.MaximumRenderPieces)
+            throw new ArgumentException("分组骨架工程与当前配饰修订或绘制片不一致。", nameof(project));
+    }
+
+    private bool Matches(AccessoryItem item, double width, double height) =>
+        SameConfiguration(activeItem, item) && activeWidth == width && activeHeight == height;
+
+    private static bool SameConfiguration(AccessoryItem? a, AccessoryItem b) => a is not null &&
+        a.AssetId == b.AssetId && a.PixelWidth == b.PixelWidth && a.PixelHeight == b.PixelHeight &&
+        a.DeformationMode == b.DeformationMode && Equals(a.Rig, b.Rig) &&
+        a.ProjectId == b.ProjectId && a.ProjectVersion == b.ProjectVersion && a.EditRevision == b.EditRevision &&
+        AccessoryConfiguration.SkeletonEquals(a.Skeleton, b.Skeleton) &&
+        a.ImagePivotX == b.ImagePivotX && a.ImagePivotY == b.ImagePivotY &&
+        a.BodyAnchorX == b.BodyAnchorX && a.BodyAnchorY == b.BodyAnchorY && a.BaseAngleDegrees == b.BaseAngleDegrees &&
+        a.ConnectionStrength == b.ConnectionStrength && a.MaxConnectionTravelPercent == b.MaxConnectionTravelPercent &&
+        a.LockRotation == b.LockRotation && a.RotationDamping == b.RotationDamping && a.ReturnStrength == b.ReturnStrength &&
+        a.LimitSwing == b.LimitSwing && a.MaxSwingDegrees == b.MaxSwingDegrees && a.GravityInfluence == b.GravityInfluence;
+
+    private static AccessoryRigDefinition Definition(AccessoryItem item, double width, double height) =>
+        new(item.Rig!.Nodes.Select(n => new Point(n.X, n.Y)), width / height);
+
+    private AccessoryRigPose RootPose(Point anchor, double width, double height, AccessoryItem item, bool rest)
+    {
+        var rotation = rest || item.LockRotation ? 0 : angle;
+        if (item.LimitSwing) rotation = Math.Clamp(rotation, -item.MaxSwingDegrees * Math.PI / 180, item.MaxSwingDegrees * Math.PI / 180);
+        var connection = rest || item.ConnectionStrength >= 100 ? new Vector() : new Vector(connectionX.Position, connectionY.Position);
+        var limit = Math.Sqrt(width * width + height * height) * item.MaxConnectionTravelPercent / 100;
+        if (connection.Length > limit) connection *= limit / connection.Length;
+        return new(anchor + connection, item.BaseAngleDegrees * Math.PI / 180 + rotation, height);
+    }
+
+    private void ClearDynamics()
+    {
+        ClearSignals(); connectionX = connectionY = default; angle = angularVelocity = 0;
     }
 
     private void LimitConnectionTravel(double limit)
@@ -203,13 +303,12 @@ public sealed class AccessoryMotionSolver
         var position = new Vector(connectionX.Position, connectionY.Position);
         if (position.Length < limit) return;
         var normal = position / position.Length;
-        var velocity = new Vector(connectionX.Velocity, connectionY.Velocity);
-        var outwardSpeed = Vector.Multiply(normal, velocity);
-        if (outwardSpeed > 0) velocity -= normal * outwardSpeed;
+        var speed = new Vector(connectionX.Velocity, connectionY.Velocity);
+        var outward = Vector.Multiply(normal, speed);
+        if (outward > 0) speed -= normal * outward;
         position = normal * limit;
-        connectionX = new(position.X, velocity.X); connectionY = new(position.Y, velocity.Y);
+        connectionX = new(position.X, speed.X); connectionY = new(position.Y, speed.Y);
     }
-
     private void Observe(Point anchor, double seconds)
     {
         if (previousAnchor is null) { previousAnchor = anchor; return; }
@@ -250,60 +349,41 @@ public sealed class AccessoryMotionSolver
     private void ClearSignals()
     { previousAnchor = null; velocity = acceleration = new(); velocityReady = false; }
 
+
     private static double SmoothStep(double value)
     {
-        var t = Math.Clamp(value, 0, 1);
-        return t * t * (3 - 2 * t);
+        var t = Math.Clamp(value, 0, 1); return t * t * (3 - 2 * t);
     }
 
-    private void PrepareMaterialMesh(double pivotX, double pivotY)
-    {
-        if (pivotX == meshPivotX && pivotY == meshPivotY) return;
-        meshPivotX = pivotX; meshPivotY = pivotY;
-        var regular = Enumerable.Range(0, GridDivisions + 1).Select(i => i / (double)GridDivisions).ToArray();
-        var xs = regular.Append(pivotX).Distinct().Order().ToArray();
-        var ys = regular.Append(pivotY).Distinct().Order().ToArray();
-        if (xs.Length == regular.Length && ys.Length == regular.Length)
-        { materialUvs = Uvs; materialTriangles = Triangles; return; }
-        // Include the exact arbitrary pivot as a texture vertex; otherwise linear interpolation of
-        // a curved deformation field would subtly move a pivot lying inside a regular grid cell.
-        materialUvs = Array.AsReadOnly(ys.SelectMany(y => xs.Select(x => new Point(x, y))).ToArray());
-        var indices = new List<int>();
-        for (var y = 0; y < ys.Length - 1; y++)
-            for (var x = 0; x < xs.Length - 1; x++)
-            {
-                var a = y * xs.Length + x; var b = a + 1; var c = a + xs.Length; var d = c + 1;
-                indices.AddRange([a, b, d, a, d, c]);
-            }
-        materialTriangles = Array.AsReadOnly(indices.ToArray());
-    }
+    private static double[] Axis(double pivot) => Enumerable.Range(0, GridDivisions + 1)
+        .Select(i => i / (double)GridDivisions).Append(pivot).Distinct().Order().ToArray();
 
     private static void Validate(Point anchor, double width, double height, AccessoryItem item)
     {
         ArgumentNullException.ThrowIfNull(item);
-        if (!double.IsFinite(anchor.X) || !double.IsFinite(anchor.Y) || Math.Abs(anchor.X) > 1e7 || Math.Abs(anchor.Y) > 1e7 ||
-            !double.IsFinite(width) || !double.IsFinite(height) || width is <= 0 or > 2048 || height is <= 0 or > 2048 ||
+        if (!double.IsFinite(anchor.X) || !double.IsFinite(anchor.Y) || Math.Abs(anchor.X) > 1e6 || Math.Abs(anchor.Y) > 1e6 ||
+            !double.IsFinite(width) || !double.IsFinite(height) || width is < .001 or > 2048 || height is < .001 or > 2048 ||
             !double.IsFinite(item.ImagePivotX) || !double.IsFinite(item.ImagePivotY) || item.ImagePivotX is < 0 or > 1 || item.ImagePivotY is < 0 or > 1 ||
-            !double.IsFinite(item.Softness) || item.Softness is < 0 or > 100 || !double.IsFinite(item.ConnectionStrength) || item.ConnectionStrength is < 0 or > 100 ||
-            !double.IsFinite(item.MaxDeformationPercent) || item.MaxDeformationPercent is < 0 or > 200 ||
+            !Enum.IsDefined(item.DeformationMode) ||
+            !double.IsFinite(item.ConnectionStrength) || item.ConnectionStrength is < 0 or > 100 ||
             !double.IsFinite(item.MaxConnectionTravelPercent) || item.MaxConnectionTravelPercent is < 0 or > 200 ||
             !double.IsFinite(item.GravityInfluence) || item.GravityInfluence is < 0 or > 100 || !double.IsFinite(item.RotationDamping) || item.RotationDamping is < 0 or > 100 ||
             !double.IsFinite(item.ReturnStrength) || item.ReturnStrength is < 0 or > 100 || !double.IsFinite(item.MaxSwingDegrees) || item.MaxSwingDegrees is < 0 or > 180 ||
-            !double.IsFinite(item.BaseAngleDegrees) || item.BaseAngleDegrees is < -180 or > 180)
+            !double.IsFinite(item.BaseAngleDegrees) || item.BaseAngleDegrees is < -180 or > 180 ||
+            item.DeformationMode == AccessoryDeformationMode.SingleChain && item.Rig is null)
             throw new ArgumentOutOfRangeException(nameof(item));
-    }
-
-    private static IReadOnlyList<Point> CreateUvs() => Array.AsReadOnly(Enumerable.Range(0, (GridDivisions + 1) * (GridDivisions + 1))
-        .Select(i => new Point(i % (GridDivisions + 1) / (double)GridDivisions, i / (GridDivisions + 1) / (double)GridDivisions)).ToArray());
-    private static IReadOnlyList<int> CreateTriangles()
-    {
-        var indices = new List<int>();
-        for (var y = 0; y < GridDivisions; y++)
-            for (var x = 0; x < GridDivisions; x++)
-            {
-                var a = y * (GridDivisions + 1) + x; var b = a + 1; var c = a + GridDivisions + 1; var d = c + 1;
-                indices.AddRange([a, b, d, a, d, c]);
-            }
-        return Array.AsReadOnly(indices.ToArray());
+        if (item.DeformationMode == AccessoryDeformationMode.SingleChain)
+        {
+            if (item.Rig!.Nodes.Count is < 2 or > AccessoryRigLimits.MaximumNodes || item.Rig.Nodes.Any(node => node is null) ||
+                item.Rig.Nodes[0].X != item.ImagePivotX || item.Rig.Nodes[0].Y != item.ImagePivotY ||
+                item.Rig.BindingVersion != AccessoryRigLimits.BindingAlgorithmVersion)
+                throw new ArgumentException("Rig root must match the image pivot.", nameof(item));
+            item.Rig.CreateParameters(item.GravityInfluence).Validate();
+        }
+        if (item.DeformationMode == AccessoryDeformationMode.Skeleton)
+        {
+            if (item.Skeleton is null) throw new ArgumentException("Skeleton configuration is missing.", nameof(item));
+            item.Skeleton.Validate(item.PixelWidth, item.PixelHeight);
+        }
     }
 }

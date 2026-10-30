@@ -63,10 +63,11 @@ public partial class ProductHomeView
 
     internal void ResumePorch(long generation = 0)
     {
+        if (beltRuntime is not null) { ResumeBeltPorch(generation); return; }
         SetDangoAway(false);
         porchReturnGeneration = generation;
         ShowHomePage();
-        EnterPorch();
+        EnterPorch(returningFromRoom: true);
         ChangeLiveSurface();
         liveSceneSuspended = false;
         RefreshLiveSceneOwnership();
@@ -107,12 +108,28 @@ public partial class ProductHomeView
         if (ReferenceEquals(window, ownerWindow)) return;
         DetachLiveFocusSafety();
         ownerWindow = window;
-        if (window is not null) window.Deactivated += OnOwnerDeactivated;
+        if (window is not null)
+        {
+            window.Deactivated += OnOwnerDeactivated;
+            window.Activated += OnBeltOwnerActivated;
+            window.PreviewKeyDown += OnBeltOwnerPreviewKeyDown;
+            window.PreviewKeyUp += OnBeltOwnerPreviewKeyUp;
+            window.PreviewGotKeyboardFocus += OnBeltOwnerKeyboardFocusChanged;
+            window.PreviewLostKeyboardFocus += OnBeltOwnerKeyboardFocusChanged;
+        }
     }
 
     private void DetachLiveFocusSafety()
     {
-        if (ownerWindow is not null) ownerWindow.Deactivated -= OnOwnerDeactivated;
+        if (ownerWindow is not null)
+        {
+            ownerWindow.Deactivated -= OnOwnerDeactivated;
+            ownerWindow.Activated -= OnBeltOwnerActivated;
+            ownerWindow.PreviewKeyDown -= OnBeltOwnerPreviewKeyDown;
+            ownerWindow.PreviewKeyUp -= OnBeltOwnerPreviewKeyUp;
+            ownerWindow.PreviewGotKeyboardFocus -= OnBeltOwnerKeyboardFocusChanged;
+            ownerWindow.PreviewLostKeyboardFocus -= OnBeltOwnerKeyboardFocusChanged;
+        }
         ownerWindow = null;
     }
 
@@ -120,6 +137,7 @@ public partial class ProductHomeView
 
     private void RefreshLiveSceneOwnership()
     {
+        if (beltRuntime is not null) { RefreshBeltVisibility(); return; }
         if (liveSceneSuspended || IsDangoAway || BoundRuntime is null || !IsLoaded || !IsVisible || IsSettingsOpen)
         {
             StopLiveScene();
@@ -159,6 +177,7 @@ public partial class ProductHomeView
 
     private void StopLiveScene()
     {
+        PauseBeltBody();
         var mayStopRuntime = liveScheduler?.OwnsRuntime == true || BoundRuntime?.FrameDriver is null;
         if (mayStopRuntime && BoundRuntime is { PreviewJumpSpeedScale: not 1 })
         {
@@ -313,7 +332,8 @@ public partial class ProductHomeView
 
     private bool SetLiveDirectionalKey(Key key, bool down, bool repeat)
     {
-        if (IsRoomDialogOpen) { ClearLiveDirectionalInput(); return false; }
+        if (beltRuntime is not null) return SetBeltDirectionalKey(key, down, repeat);
+        if (IsRoomDialogOpen || IsDangoInputBlocked) { ClearLiveDirectionalInput(); return false; }
         if (liveScheduler?.OwnsRuntime != true) return false;
         if (!IsInPorch && !IsAccessoryPreview && key is (Key.A or Key.D)) return false;
         // W is reserved inside the accessory preview; it must not navigate or
@@ -336,6 +356,7 @@ public partial class ProductHomeView
 
     private void ClearLiveDirectionalInput()
     {
+        ClearBeltInput();
         liveIntent = DirectionalControlIntent.None;
         if (OwnsLiveFrameDriver) BoundRuntime!.SetDirectionalControl(liveIntent);
     }
@@ -354,6 +375,7 @@ public partial class ProductHomeView
 
     private void OnStageMouseDown(object sender, MouseButtonEventArgs e)
     {
+        if (beltRuntime is not null && TryBeginBeltDrag(e)) return;
         if (IsRoomDialogOpen) return;
         if (!IsSettingsOpen && (ReferenceEquals(e.OriginalSource, Stage) || IsInPorch ||
             IsAccessoryPreview && e.OriginalSource is DependencyObject source && Presence.IsAncestorOf(source))) Stage.Focus();

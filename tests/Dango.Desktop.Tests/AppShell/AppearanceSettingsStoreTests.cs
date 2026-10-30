@@ -38,13 +38,17 @@ public sealed class AppearanceSettingsStoreTests
         Assert.AreEqual(new DangoAppearanceConfiguration(color, color, eyes), store.Load(path).Configuration);
         Assert.AreEqual(string.Join(Environment.NewLine,
             "{",
-            "  \"appearanceSchemaVersion\": 3,",
+            "  \"appearanceSchemaVersion\": 5,",
             "  \"bodyColorHex\": \"#000000\",",
             "  \"eyeColorHex\": \"#000000\",",
             "  \"eyeSizePercent\": 139.75,",
             "  \"eyeOvalityPercent\": -67.125,",
             "  \"eyeHeightControlPercent\": 40.25,",
-            "  \"eyeSpacingControlPercent\": 33.875",
+            "  \"eyeSpacingControlPercent\": 33.875,",
+            "  \"bodySizePercent\": 100,",
+            "  \"bodySoftness\": 50,",
+            "  \"bodyLandingBuild\": 50,",
+            "  \"bodyPhysicsModel\": \"continuous-belt-v1\"",
             "}"), File.ReadAllText(path));
     }
 

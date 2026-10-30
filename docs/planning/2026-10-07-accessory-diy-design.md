@@ -1,5 +1,7 @@
 # DIY 配饰：已批准设计
 
+> 2026-10-23 后续修订：用户确认[统一编辑器与骨架形变设计](2026-10-23-accessory-editor-and-rig-design.md)，使用本地 miniPaint 编辑图片、连接点和全套参数，以刚性／骨架柔性替代旧整图柔性，不承担已有柔性效果继承。新设计与[实施计划](2026-10-23-accessory-editor-and-rig-implementation-plan.md)当前仅文档准备，生产实现未开始；本文件保留第一版合同与历史证据，冲突范围以新设计第 2 节为准。
+
 日期：2026-10-07。状态：**用户已回复“通过，开始实施”，A0–A4 首版本地候选已实现；配饰功能与宿主显示接线专项已有自动／实时证据，性能波动和完整 Wallpaper 回归差异见[实施验证](../verification/2026-10-07-accessory-diy-implementation.md)，人工验收待用户确认。第 11 节的第二轮界面与操作候选已实现，本轮自动／实时证据见[第二轮验证](../verification/2026-10-08-accessory-ui-refinement.md)，待用户人工验收；既有证据不作为第二轮通过证据**。
 
 工作分支：`codex/accessory-diy`，起点 `8ff78e03d6695d90cd1d9d5e9c5eaad9883fc491`，创建前工作区干净。该分支位于本次独立 Worktree；不合并 main、不推送、不更新日常安装、不替换正式物理 DLL。

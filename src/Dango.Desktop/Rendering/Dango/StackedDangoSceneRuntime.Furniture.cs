@@ -4,6 +4,7 @@ using Dango.Core.Furniture;
 using Dango.Desktop.Furniture;
 using Dango.Physics.Configuration;
 using Dango.Desktop.AppShell.Rooms.Storage;
+using Dango.Desktop.Physics.Presentation;
 
 namespace Dango.Desktop.Rendering.Visuals;
 
@@ -78,14 +79,19 @@ public sealed partial class StackedDangoSceneRuntime
         if (scene is null || Furniture is not { CanEdit: true } || LastPhysicsFrame?.Bodies.SingleOrDefault() is not { } body)
             return false;
         gloveRequestedNative = ToGloveNative(roomX, height);
-        // Begin at the actual highest node, then move the requested target at
+        // Begin at the actual attachment, then move the requested target at
         // the accepted rate. A far pointer cannot inject an initial target jump.
-        var node = Enumerable.Range(0, body.PointCount).MaxBy(index => body.Contour[index * 2 + 1]);
-        var x = (double)body.Contour[node * 2];
-        var y = (double)body.Contour[node * 2 + 1];
-        var length = Math.Sqrt(x * x + y * y);
-        var ratio = length > DangoPhysicsDefaults.Current.NodeRadius ? 1 - DangoPhysicsDefaults.Current.NodeRadius / length : 1;
-        gloveTargetNative = new(body.CoreX + x * ratio, body.CoreY + y * ratio);
+        if (scene.BeltRoomFrame is { } belt)
+            gloveTargetNative = BeltRoomBodyGeometry.DragAttachment(belt);
+        else
+        {
+            var node = Enumerable.Range(0, body.PointCount).MaxBy(index => body.Contour[index * 2 + 1]);
+            var x = (double)body.Contour[node * 2];
+            var y = (double)body.Contour[node * 2 + 1];
+            var length = Math.Sqrt(x * x + y * y);
+            var ratio = length > DangoPhysicsDefaults.Current.NodeRadius ? 1 - DangoPhysicsDefaults.Current.NodeRadius / length : 1;
+            gloveTargetNative = new(body.CoreX + x * ratio, body.CoreY + y * ratio);
+        }
         BeginPhysicalDrag(scene.SelectedEntity, scene.ToHost(gloveTargetNative));
         ordinaryFurnitureGlove = true;
         return true;

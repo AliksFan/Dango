@@ -14,7 +14,7 @@ internal static class AccessoryHostBinding
     {
         public readonly Canvas Behind = new() { Width = 160, Height = 120, IsHitTestVisible = false, ClipToBounds = false };
         public readonly Canvas Front = new() { Width = 160, Height = 120, IsHitTestVisible = false, ClipToBounds = false };
-        public readonly Dictionary<string, AccessoryMeshVisual> Visuals = [];
+        public readonly Dictionary<(string ItemId, int PieceIndex), AccessoryMeshVisual> Visuals = [];
     }
     private static readonly ConditionalWeakTable<DeformableDangoVisual, Layers> Hosts = new();
 
@@ -34,10 +34,7 @@ internal static class AccessoryHostBinding
             runtime.ReportAccessoryRenderError(null);
             return;
         }
-        var layers = Hosts.GetValue(body, _ =>
-        {
-            var value = new Layers(); parent.Children.Add(value.Behind); parent.Children.Add(value.Front); return value;
-        });
+        var layers = GetLayers(body, parent);
         var active = index < frame.Bodies.Count;
         Canvas.SetZIndex(body, enabled ? index * 4 + 1 : 0);
         Canvas.SetZIndex(hat, enabled ? index * 4 + 2 : 0);
@@ -49,22 +46,33 @@ internal static class AccessoryHostBinding
         if (enabled && customized) hat.Visibility = Visibility.Collapsed;
         var outputs = customized && enabled ? runtime.GetAccessoryFrames(frame, index) : [];
         if (customized) runtime.ReportAccessoryRenderError(null);
-        var ids = outputs.Select(output => output.Item.Id).ToHashSet(StringComparer.Ordinal);
+        ApplyFrames(body, outputs, DangoHostFrameBinding.Bounds(frame, index), translation, runtime.ReportAccessoryRenderError);
+    }
+
+    /// <summary>Shared final projection for every host. Piece identity, alpha order and raster work are independent of simulation.</summary>
+    internal static void ApplyFrames(DeformableDangoVisual body, IReadOnlyList<AccessoryVisualFrame> outputs,
+        LogicalRect bounds, LogicalVector translation, Action<string?> reportError)
+    {
+        if (body.Parent is not Canvas parent) return;
+        var ids = outputs.Select(output => (output.Item.Id, output.PieceIndex)).ToHashSet();
+        if (ids.Count != outputs.Count || outputs.Any(output => output.PieceIndex is < 0 or >= Rig.AccessorySkeletonSkin.MaximumRenderPieces))
+            throw new ArgumentException("Accessory render pieces require unique bounded identities.", nameof(outputs));
+        var layers = GetLayers(body, parent);
         foreach (var id in layers.Visuals.Keys.Where(id => !ids.Contains(id)).ToArray())
         {
             var visual = layers.Visuals[id];
             if (visual.Parent is Canvas owner) owner.Children.Remove(visual);
             layers.Visuals.Remove(id);
         }
-        var bounds = DangoHostFrameBinding.Bounds(frame, index);
         var requests = new List<(AccessoryMeshVisual Visual, AccessoryMeshFrame Frame)>();
         var names = new Dictionary<AccessoryMeshVisual, string>();
         var behind = new List<AccessoryMeshVisual>();
         var front = new List<AccessoryMeshVisual>();
         foreach (var output in outputs)
         {
-            if (!layers.Visuals.TryGetValue(output.Item.Id, out var visual))
-                layers.Visuals[output.Item.Id] = visual = new() { Width = 160, Height = 120, IsHitTestVisible = false };
+            var key = (output.Item.Id, output.PieceIndex);
+            if (!layers.Visuals.TryGetValue(key, out var visual))
+                layers.Visuals[key] = visual = new() { Width = 160, Height = 120, IsHitTestVisible = false };
             var target = output.Item.Layer == AccessoryLayer.Behind ? layers.Behind : layers.Front;
             if (!ReferenceEquals(visual.Parent, target))
             {
@@ -82,17 +90,22 @@ internal static class AccessoryHostBinding
             catch (Exception error) when (error is ArgumentException or InvalidOperationException or ArithmeticException or System.Runtime.InteropServices.ExternalException)
             {
                 visual.ClearFrame();
-                runtime.ReportAccessoryRenderError($"配饰“{output.Item.Name}”画面暂不可用（{error.GetType().Name}）；可重试或取消。");
+                reportError($"配饰“{output.Item.Name}”画面暂不可用（{error.GetType().Name}）；可重试或取消。");
             }
         }
         Reorder(layers.Behind, behind);
         Reorder(layers.Front, front);
         foreach (var (visual, error) in AccessoryMeshVisual.ApplyBatch(requests).Errors)
-            runtime.ReportAccessoryRenderError($"配饰“{names[visual]}”画面暂不可用（{error.GetType().Name}）；可重试或取消。");
+            reportError($"配饰“{names[visual]}”画面暂不可用（{error.GetType().Name}）；可重试或取消。");
         layers.Behind.Visibility = layers.Behind.Children.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         layers.Front.Visibility = layers.Front.Children.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         Position(body, bounds.X + translation.X, bounds.Y + translation.Y);
     }
+
+    private static Layers GetLayers(DeformableDangoVisual body, Canvas parent) => Hosts.GetValue(body, _ =>
+    {
+        var value = new Layers(); parent.Children.Add(value.Behind); parent.Children.Add(value.Front); return value;
+    });
 
     private static void Reorder(Canvas layer, IReadOnlyList<AccessoryMeshVisual> expected)
     {

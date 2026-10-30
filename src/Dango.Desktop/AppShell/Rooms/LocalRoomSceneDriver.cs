@@ -34,12 +34,17 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     private DirectionalControlIntent intent;
     private bool furnitureEnabled;
     private RoomSafePosition? safeCheckpoint;
+    private RoomSafePosition? pendingResumePosition;
+    private Dango.Core.Furniture.FurnitureLayout? pendingResumeLayout;
     private RoomCameraSnapshot? pendingRoomCamera;
     internal string? ResumeWarning { get; private set; }
     private bool furnitureGloveActive;
     internal OrdinaryRoomFurnitureSession? Furniture => runtime.Furniture;
     private bool alignmentPending;
     private bool readySent;
+    private bool desktopPaused;
+    private bool desktopProjectionPending;
+    private long confirmationRevision;
     private long generation;
     private EventHandler? confirmation;
     private double resumeX = LocalRoomSceneView.WorldWidth / 2;
@@ -50,6 +55,7 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     internal bool IsReady => readySent && scheduler.OwnsRuntime;
     internal HostFrameDiagnostics FrameDiagnostics => scheduler.Snapshot;
     internal bool RuntimeRunning => runtime.IsRunning;
+    internal bool UsesBeltRoom => runtime.UsesBeltRoom;
     internal bool RuntimeHealthy => runtime.LastError is null && runtime.LastFrame is not null;
     internal bool IsPointerActive => pointer.IsActive;
     internal string DesktopPetPointerDiagnostics => $"Pointer={pointer.IsActive}; PhysicalDrag={runtime.IsDragging}; " +
@@ -62,12 +68,15 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     internal void BindRoom(LocalRoomCatalogStore catalog, LocalRoomRecord room, RoomResumeDocument? resume)
     {
         if (OwnsRuntime) throw new InvalidOperationException("请先回到门廊再切换房间。");
+        resume?.Validate(catalog.ReadCurrent().ProfileId, room.RoomId);
         var layout = catalog.ReadLayout(room.RoomId);
         runtime.ConfigureOrdinaryRoom(catalog, room);
         furnitureEnabled = true;
-        safeCheckpoint = resume?.Position is { SupportHeight: 0 } point && RoomResumeSafety.CanRestore(point, layout) ? point : null;
-        resumeX = safeCheckpoint?.X ?? LocalRoomSceneView.WorldWidth / 2;
-        ResumeWarning = resume?.Position is not null && safeCheckpoint is null ? "位置已回安全出生点，原落点无法安全恢复。" : null;
+        safeCheckpoint = null;
+        pendingResumePosition = resume?.Position;
+        pendingResumeLayout = layout;
+        ResumeWarning = null;
+        if (runtime.HasBodySnapshot) ResolveEntryPosition();
         pendingRoomCamera = resume?.Camera ?? new(RoomCameraMode.Follow, RoomViewPreset.Standard, 100, 0, 0);
     }
     internal (RoomSafePosition? Position, RoomCameraSnapshot Camera, long LayoutVersion)? CaptureCheckpoint()
@@ -77,13 +86,47 @@ internal sealed class LocalRoomSceneDriver : IDisposable
             return null;
         // The accepted handoff API relocates horizontally without injecting a vertical pose or velocity.
         // Keep the last verified ground checkpoint while jumping or standing on a dynamic support.
-        if (runtime.LastPhysicsFrame?.Bodies.SingleOrDefault() is { IsGrounded: true, GroundContactCount: > 0 } &&
-            runtime.CurrentSelectedCenter is { } center)
+        var envelope = runtime.SupportEnvelope;
+        if (envelope is null) return null;
+        if (safeCheckpoint is { } previous && !RoomResumeSafety.CanRestore(previous, furniture.PersistedLayout, envelope.Value))
+            safeCheckpoint = null;
+        if (runtime.HasFloorSupport && runtime.CurrentSelectedCenter is { } center)
         {
             var point = new RoomSafePosition(center.X, 0);
-            if (RoomResumeSafety.CanRestore(point, furniture.PersistedLayout)) safeCheckpoint = point;
+            if (RoomResumeSafety.CanRestore(point, furniture.PersistedLayout, envelope.Value)) safeCheckpoint = point;
         }
         return (safeCheckpoint, view.Camera.CaptureState(), furniture.PersistedLayout.LayoutVersion);
+    }
+
+    private void ResolveEntryPosition()
+    {
+        if (pendingResumeLayout is not { } layout) return;
+        var envelope = runtime.SupportEnvelope;
+        if (envelope is null) throw new InvalidOperationException("房间身体几何尚未就绪，无法安全恢复位置。");
+        safeCheckpoint = pendingResumePosition is { SupportHeight: 0 } point &&
+            RoomResumeSafety.CanRestore(point, layout, envelope.Value) ? point : null;
+        ResumeWarning = pendingResumePosition is not null && safeCheckpoint is null ? "位置已回安全出生点，原落点无法安全恢复。" : null;
+        var requested = safeCheckpoint?.X ?? LocalRoomSceneView.WorldWidth / 2;
+        if (!RoomResumeSafety.CanRestore(new(requested, 0), layout, envelope.Value))
+        {
+            // Find a legal ground gap without moving the body through furniture or changing the layout.
+            // Include every obstacle edge: a fixed scan could miss a narrow legal gap.
+            var room = Dango.Core.Furniture.FurnitureLayoutContract.OrdinaryRoom;
+            var candidates = new List<double> { room.Left - envelope.Value.Left, room.Right - envelope.Value.Right };
+            foreach (var item in layout.Items)
+            {
+                var half = item.Kind == Dango.Core.Furniture.FurnitureItemKind.StaticPlatform ? room.PlatformWidth / 2 : room.BallRadius;
+                candidates.Add(item.Anchor.X - half - envelope.Value.Right - .01);
+                candidates.Add(item.Anchor.X + half - envelope.Value.Left + .01);
+            }
+            var legal = candidates.OrderBy(x => Math.Abs(x - requested)).Select(x => (double?)x)
+                .FirstOrDefault(x => RoomResumeSafety.CanRestore(new(x!.Value, 0), layout, envelope.Value));
+            if (legal is null) throw new InvalidOperationException("当前体型没有安全地面出生位置；家具布局已保留。");
+            requested = legal.Value;
+        }
+        resumeX = requested;
+        pendingResumeLayout = null;
+        pendingResumePosition = null;
     }
     internal LocalRoomSceneDriver(DesktopSceneSession session, StackedDangoSceneRuntime runtime,
         IHostFrameSource? frameSource = null, Func<long>? timestamp = null, long frequency = 0, string? furnitureDataRoot = null)
@@ -101,6 +144,7 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     internal void Start(LocalRoomSceneView target, long attempt, bool enterWorld)
     {
         scheduler.VerifyCanStart();
+        ResolveEntryPosition();
         ClearInput();
         pointer = new(runtime, allowPhysicalDrag: target.DesktopPetPresentationEnabled,
             constrainPhysicalTarget: target.DesktopPetPresentationEnabled ? ClampPhysicalDragTarget : null);
@@ -109,6 +153,9 @@ internal sealed class LocalRoomSceneDriver : IDisposable
         view = target;
         target.InputInvalidated += CancelRoomPointers;
         generation = attempt;
+        desktopPaused = false;
+        desktopProjectionPending = target.DesktopPetPresentationEnabled && !enterWorld;
+        ++confirmationRevision;
         readySent = false;
         intent = DirectionalControlIntent.None;
         target.BeginPresentation();
@@ -132,6 +179,8 @@ internal sealed class LocalRoomSceneDriver : IDisposable
 
     internal void Stop()
     {
+        desktopPaused = false;
+        ++confirmationRevision;
         if (runtime.CurrentSelectedCenter is { } center && scheduler.OwnsRuntime) resumeX = center.X;
         ClearInput();
         if (view is not null) view.InputInvalidated -= CancelRoomPointers;
@@ -144,6 +193,41 @@ internal sealed class LocalRoomSceneDriver : IDisposable
         confirmation = null;
         ++generation;
         if (runtime.FrameDriver is null && runtime.IsRunning) runtime.Stop();
+    }
+
+    internal void PauseDesktopPresentation()
+    {
+        if (desktopPaused || view?.DesktopPetPresentationEnabled != true) return;
+        desktopPaused = true;
+        ++confirmationRevision;
+        readySent = false;
+        ClearInput();
+        if (confirmation is not null) CompositionTarget.Rendering -= confirmation;
+        confirmation = null;
+        scheduler.Stop();
+        if (runtime.FrameDriver is null) runtime.Stop();
+        positions.Clear();
+        hasPositionSample = false;
+        previousPresentationTicks = null;
+    }
+
+    internal void ResumeDesktopPresentation()
+    {
+        if (!desktopPaused || view?.DesktopPetPresentationEnabled != true) return;
+        scheduler.VerifyCanStart();
+        desktopPaused = false;
+        runtime.Start();
+        runtime.AttachQuietIdleHost(this, true);
+        runtime.UpdateWanderScreenWidth(this, activeSurface.Width);
+        scheduler.Start();
+        presentationSnapshot = scheduler.Snapshot;
+    }
+
+    internal void RefreshDesktopProjection()
+    {
+        if (view?.DesktopPetPresentationEnabled != true) return;
+        ClearInput();
+        desktopProjectionPending = true;
     }
 
     internal void ClearInput()
@@ -256,6 +340,8 @@ internal sealed class LocalRoomSceneDriver : IDisposable
 
     private LogicalVector DesktopPetDragAnchor()
     {
+        if (runtime.UsesBeltRoom && view?.LastAppliedFrame?.BeltRoom is { } belt)
+            return BeltDragAnchor(belt);
         if (runtime.LastPhysicsFrame?.Bodies.FirstOrDefault(body => body.EntityId == runtime.SelectedEntity) is not { } physical ||
             physical.PointCount == 0) return default;
         var node = physical.SelectedDragNode;
@@ -269,6 +355,12 @@ internal sealed class LocalRoomSceneDriver : IDisposable
         return new(x * contraction * 80, -y * contraction * 60);
     }
 
+    internal static LogicalVector BeltDragAnchor(Dango.Physics.DangoBeltRoomFrame frame)
+    {
+        var attachment = BeltRoomBodyGeometry.DragAttachment(frame);
+        return new((attachment.X - frame.BodySnapshot[36]) * 72,
+            -(attachment.Y - frame.BodySnapshot[37]) * 72);
+    }
     // Pure snapshot for the gesture hook's constant comparisons. Reuse the exact
     // anchor and clamp that PointerMove will apply; do not step or move the body.
     internal bool TryCaptureDesktopPetPointerClamp(out LogicalRect clamp)
@@ -302,16 +394,17 @@ internal sealed class LocalRoomSceneDriver : IDisposable
     internal bool Key(System.Windows.Input.Key key, bool down, bool repeat)
     {
         if (!scheduler.OwnsRuntime || view?.InputBlocked == true || view?.DesktopPetPresentationEnabled == true || !readySent) return false;
-        if (down && repeat) return key is System.Windows.Input.Key.A or System.Windows.Input.Key.D or System.Windows.Input.Key.S or System.Windows.Input.Key.Space;
+        if (down && repeat) return key is System.Windows.Input.Key.A or System.Windows.Input.Key.D or System.Windows.Input.Key.S or System.Windows.Input.Key.Space || runtime.SupportsStretchControl && key == System.Windows.Input.Key.W;
         intent = key switch
         {
             System.Windows.Input.Key.A => intent with { Left = down },
             System.Windows.Input.Key.D => intent with { Right = down },
             System.Windows.Input.Key.S => intent with { Squash = down },
+            System.Windows.Input.Key.W when runtime.SupportsStretchControl => intent with { Stretch = down },
             System.Windows.Input.Key.Space => intent with { Jump = down },
             _ => intent,
         };
-        return key is System.Windows.Input.Key.A or System.Windows.Input.Key.D or System.Windows.Input.Key.S or System.Windows.Input.Key.Space;
+        return key is System.Windows.Input.Key.A or System.Windows.Input.Key.D or System.Windows.Input.Key.S or System.Windows.Input.Key.Space || runtime.SupportsStretchControl && key == System.Windows.Input.Key.W;
     }
 
     private bool Prepare()
@@ -321,6 +414,24 @@ internal sealed class LocalRoomSceneDriver : IDisposable
         if (runtime.LastError is not null) { ReportFailure("团子暂不可用，请返回设置重试。"); return false; }
         try
         {
+            if (desktopProjectionPending && view.DesktopPetPresentationEnabled && runtime.CurrentSelectedCenter is { } center)
+            {
+                var surface = view.DesktopPetWorldSurface;
+                if (!runtime.TryGetHorizontalPlacement(center, surface.X, surface.Right, out var safe))
+                { ReportFailure("此显示大小无法安全放置团子，请缩小后重试。"); return false; }
+                if (safe.X != center.X)
+                {
+                    var bounds = session.Controller!.Snapshot.Dango.VisualBounds;
+                    // Rehost's Y is the stable floor reference, not an airborne body's Y.
+                    session.Controller.MoveTo(new(safe.X - bounds.Width / 2, bounds.Y));
+                    if (!runtime.RehostSelectedEntityAt(session.Controller.Snapshot.Dango.VisualBounds.Center)) return false;
+                }
+                activeSurface = surface;
+                runtime.SetViewport(surface);
+                runtime.SetHorizontalBounds(surface.X, surface.Right);
+                runtime.UpdateWanderScreenWidth(this, surface.Width);
+                desktopProjectionPending = false;
+            }
             if (alignmentPending)
             {
                 if (runtime.LastFrame is null)
@@ -363,8 +474,9 @@ internal sealed class LocalRoomSceneDriver : IDisposable
             view.Camera.RestoreRoomState(camera);
             pendingRoomCamera = null;
         }
-        if (readySent || confirmation is not null) return;
+        if (desktopPaused || !scheduler.OwnsRuntime || readySent || confirmation is not null) return;
         var attempt = generation;
+        var revision = confirmationRevision;
         var target = view;
         // Wait one subsequent composition callback after the healthy body/hat were applied.
         confirmation = (_, _) =>
@@ -373,7 +485,7 @@ internal sealed class LocalRoomSceneDriver : IDisposable
             confirmation = null;
             target.Dispatcher.BeginInvoke(() =>
             {
-                if (generation != attempt || !scheduler.OwnsRuntime || !ReferenceEquals(target, view) ||
+                if (generation != attempt || revision != confirmationRevision || desktopPaused || !scheduler.OwnsRuntime || !ReferenceEquals(target, view) ||
                     !target.HasHealthyFrame || !target.IsVisible || PresentationSource.FromVisual(target) is null || runtime.LastError is not null) return;
                 readySent = true;
                 HealthyFrameReady?.Invoke(attempt);

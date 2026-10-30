@@ -1,0 +1,74 @@
+name: Windows single-player preview checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    env:
+      # The native build uses the VS 2022 C++ tools already on this runner.
+      CMAKE_GENERATOR: Visual Studio 17 2022
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      # Official actions release tags checked 2026-10-30; pin immutable commits.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          # global.json uses latestPatch within the 10.0.3xx feature band.
+          dotnet-version: '10.0.3xx'
+          dotnet-quality: ga
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Verify source and distribution legal contracts
+        run: |
+          python -m unittest discover -s eng -p test_public_source_audit.py
+          if ($LASTEXITCODE -ne 0) { throw 'Source audit behavior tests failed.' }
+          ./eng/test-preview-distribution.ps1
+          ./eng/test-public-source-export.ps1
+          ./eng/test-desktop-publish-inputs.ps1
+      - name: Reproduce the checked-in accessory editor bundle
+        working-directory: eng/accessory-editor
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw 'Locked editor restore failed.' }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { throw 'Editor build failed.' }
+          npm run verify
+          if ($LASTEXITCODE -ne 0) { throw 'Editor inventory verification failed.' }
+          git diff --exit-code -- bundle-inputs.json ../../src/Dango.Desktop/Accessories/Editing/Web
+          if ($LASTEXITCODE -ne 0) { throw 'Editor bundle is not reproducible.' }
+      - name: Build Windows desktop preview and native modules
+        run: |
+          dotnet build src/Dango.Desktop/Dango.Desktop.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Desktop Release build failed.' }
+          ./eng/test-belt-native-package.ps1 -NativeDirectory obj/belt-native/Release
+      - name: Run the explicit no-window test allowlist
+        # Core and Protocol have no desktop host, external server or real input.
+        # Desktop/LocalRooms suites contain window tests: never run the solution
+        # test set implicitly. Server and multiplayer are outside this preview.
+        run: |
+          dotnet test tests/Dango.Core.Tests/Dango.Core.Tests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Core tests failed.' }
+          dotnet test tests/Dango.Protocol.Tests/Dango.Protocol.Tests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Protocol tests failed.' }
+      - name: Verify local package and ZIP contracts without launching the app
+        run: |
+          ./eng/publish-desktop-entry.ps1 -RunName ci-preview
+          ./eng/package-desktop-preview.ps1 -RunName ci-preview -PackagePath artifacts/desktop-entry/ci-preview/package -Version 0.1.0-preview.2
+          ./eng/export-public-source.ps1 -RunName ci-source
+        # Deliberately no upload, release, tag, installation or application launch.

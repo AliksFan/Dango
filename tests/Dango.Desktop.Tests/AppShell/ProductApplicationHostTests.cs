@@ -63,7 +63,7 @@ public sealed class ProductApplicationHostTests
         var path = NewPath();
         const string original = """{"schemaVersion":999,"futureSetting":"fictional"}""";
         File.WriteAllText(path, original);
-        using (var host = new DangoApplicationHost(settingsFile: path, nativeLibraryPath: path + ".missing.dll"))
+        using (var host = new DangoApplicationHost(settingsFile: path, roomModulePath: path + ".missing.dll"))
         {
             var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
             Assert.IsFalse(runtime.TryInitialize());
@@ -82,7 +82,7 @@ public sealed class ProductApplicationHostTests
     {
         var path = NewPath();
         var writer = new FailOnceWriter();
-        using var host = new DangoApplicationHost(settingsFile: path, nativeLibraryPath: path + ".missing.dll",
+        using var host = new DangoApplicationHost(settingsFile: path, roomModulePath: path + ".missing.dll",
             settingsStore: new ControlCenterWindowSettingsStore(writer));
         // Exercise the runtime event/save path without starting a tray or requiring the native module.
         typeof(DangoApplicationHost).GetField("started", BindingFlags.Instance | BindingFlags.NonPublic)!
@@ -109,7 +109,7 @@ public sealed class ProductApplicationHostTests
     public void HatChangeOutsideControlCenterStillSavesAfterDebounce()
     {
         var path = NewPath();
-        using var host = new DangoApplicationHost(settingsFile: path, nativeLibraryPath: path + ".missing.dll");
+        using var host = new DangoApplicationHost(settingsFile: path, roomModulePath: path + ".missing.dll");
         typeof(DangoApplicationHost).GetField("started", BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(host, true);
         var commands = Field<ApplicationCommandController>(host, "commandController");

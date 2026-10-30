@@ -1,4 +1,4 @@
-using System.Globalization;
+using Dango.Desktop.Accessories.Editing;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Automation.Peers;
@@ -19,6 +19,39 @@ public sealed class AccessoryEditorTests
     private static string NewRoot() => Path.Combine(TestRepository.Root, "artifacts", "accessory-ui-editor-harness", "editor-data", Guid.NewGuid().ToString("N"));
 
     [STATestMethod]
+    public void PlacementShowsOnlyTheCurrentSelectionAndTracksItsNameAndImage()
+    {
+        var session = new AccessorySettingsSession(NewRoot());
+        var first = new AccessoryItem("fictional-placement-first", "Fictional first", "builtin-sprout", 64, 64);
+        var second = new AccessoryItem("fictional-placement-second", "Fictional second", "builtin-top-hat", 64, 64);
+        session.Stage(new([first, second]));
+        var panel = new AccessoryEditorPanel(); panel.Bind(session); panel.SelectSection(AccessoryEditorSection.Placement);
+        WithWindow(panel, 360, 900, () =>
+        {
+            var list = Descendants(panel).OfType<ListBox>().Single(control => AutomationProperties.GetName(control) == "当前已选配饰");
+            Assert.HasCount(1, list.Items);
+            Assert.AreEqual(first.Id, ((ListBoxItem)list.Items[0]).Tag);
+            var firstPixels = Pixels((BitmapSource)Descendants(list).OfType<System.Windows.Controls.Image>().Single().Source);
+            var viewport = (ScrollViewer)list.Parent;
+            var currentRow = (ListBoxItem)list.Items[0];
+            var preview = new RenderTargetBitmap((int)Math.Ceiling(currentRow.ActualWidth), (int)Math.Ceiling(currentRow.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+            preview.Render(currentRow);
+            Assert.AreEqual((byte)0, Pixels(preview)[(5 * preview.PixelWidth + 5) * 4 + 3], "Current accessory preview has no selected-card fill or frame.");
+            var rowBounds = ((ListBoxItem)list.Items[0]).TransformToAncestor(viewport).TransformBounds(new Rect(((ListBoxItem)list.Items[0]).RenderSize));
+            Assert.IsTrue(rowBounds.Top >= 0 && rowBounds.Bottom <= viewport.ActualHeight + 1, "Single named thumbnail must fit without clipping.");
+            panel.SelectItem(second.Id); Pump();
+            Assert.HasCount(1, list.Items);
+            Assert.AreEqual(second.Id, ((ListBoxItem)list.Items[0]).Tag);
+            Assert.IsFalse(firstPixels.SequenceEqual(Pixels((BitmapSource)Descendants(list).OfType<System.Windows.Controls.Image>().Single().Source)), "Thumbnail follows the selected accessory image.");
+            panel.Edit(item => item with { Name = "Fictional renamed" }); Pump();
+            Assert.IsTrue(Descendants(list).OfType<TextBlock>().Any(text => text.Text == "Fictional renamed"));
+            session.Stage(new([first])); panel.Refresh(); Pump();
+            Assert.HasCount(1, list.Items); Assert.AreEqual(first.Id, ((ListBoxItem)list.Items[0]).Tag);
+            session.Stage(new([])); panel.Refresh(); Pump(); Assert.HasCount(0, list.Items);
+        }, showActivated: false);
+    }
+
+    [STATestMethod]
     public void UnchangedPreviewErrorStillReportsANewImageLoadWarning()
     {
         var session = new AccessorySettingsSession(NewRoot());
@@ -33,7 +66,7 @@ public sealed class AccessoryEditorTests
     }
 
     [STATestMethod]
-    public void LayerActionsAreFourFaceIconsAndParameterSectionsHaveNoVisibleHeadings()
+    public void LayerActionsStayOnOneRowWithCorrectEdgeDisablingAndNoDuplicateSectionHeading()
     {
         var root = NewRoot(); var session = new AccessorySettingsSession(root);
         var item = new AccessoryItem("fictional-layer-icons", "Fictional layer icons", "builtin-sprout", 64, 64);
@@ -46,8 +79,9 @@ public sealed class AccessoryEditorTests
             Assert.IsFalse(Descendants(panel).OfType<ComboBox>().Any(), "Layer selection must use reachable icons instead of a dropdown.");
             var buttons = Descendants(panel).OfType<Button>().Where(button => names.Contains(AutomationProperties.GetName(button))).ToArray();
             CollectionAssert.AreEqual(names, buttons.Select(AutomationProperties.GetName).ToArray());
-            AssertFaceIcons(buttons);
-            foreach (var button in buttons) Assert.IsTrue(button.IsVisible && button.IsEnabled && button.ToolTip is string);
+            Assert.IsTrue(buttons.All(button => button.MinHeight == 40));
+            foreach (var button in buttons) Assert.IsTrue(button.IsVisible && button.ToolTip is string);
+            Assert.IsFalse(buttons[2].IsEnabled); Assert.IsFalse(buttons[3].IsEnabled);
             var before = buttons[0]; var behind = buttons[1];
             Assert.AreEqual("已选", AutomationProperties.GetItemStatus(before));
             Assert.AreEqual("未选", AutomationProperties.GetItemStatus(behind));
@@ -58,7 +92,7 @@ public sealed class AccessoryEditorTests
             Assert.AreEqual(item, new AccessorySettingsSession(root).SavedConfiguration.Items.Single(), "Changing the layer must remain a draft until Apply.");
             panel.ApplyDraft();
             Assert.AreEqual(AccessoryLayer.Behind, new AccessorySettingsSession(root).SavedConfiguration.Items.Single().Layer);
-            foreach (var section in new[] { AccessoryEditorSection.Placement, AccessoryEditorSection.Connection, AccessoryEditorSection.Rotation })
+            foreach (var section in new[] { AccessoryEditorSection.Placement })
             {
                 Assert.IsTrue(panel.SelectSection(section)); Pump();
                 Assert.IsFalse(Descendants(panel).OfType<TextBlock>().Any(text => text.IsVisible && text.Text is "图像与位置" or "柔性与连接" or "旋转与重力" or "图层"),
@@ -73,9 +107,9 @@ public sealed class AccessoryEditorTests
         var root = NewRoot(); var session = new AccessorySettingsSession(root);
         var saved = session.SavedConfiguration;
         var panel = new AccessoryEditorPanel(); panel.Bind(session);
-        var previewCount = 0; var applyCount = 0;
-        panel.PreviewChanged += _ => previewCount++; panel.Applied += _ => applyCount++;
-        panel.ImageEditor = (item, _) => item with { SizePercent = 185, BaseAngleDegrees = -45, ImagePivotX = .18, ImagePivotY = .72 };
+        var previews = new List<AccessoryConfiguration>(); var applyCount = 0;
+        panel.PreviewChanged += configuration => previews.Add(configuration); panel.Applied += _ => applyCount++;
+        panel.UnifiedEditor = (draft, _, _, _) => Complete(draft, draft.Original with { SizePercent = 185, BaseAngleDegrees = -45, ImagePivotX = .18, ImagePivotY = .72 });
         panel.EditSelectedImage();
 
         Assert.AreEqual(185, panel.SelectedItem!.SizePercent);
@@ -83,7 +117,9 @@ public sealed class AccessoryEditorTests
         Assert.AreEqual(.18, panel.SelectedItem.ImagePivotX);
         Assert.AreEqual(saved, session.SavedConfiguration);
         Assert.AreEqual(saved, new AccessorySettingsSession(root).SavedConfiguration);
-        Assert.AreEqual(1, previewCount); Assert.AreEqual(0, applyCount);
+        Assert.IsTrue(previews.Count > 0);
+        foreach (var preview in previews) Assert.AreEqual(session.DraftConfiguration, preview, "Confirmation and modal cleanup must both project the complete staged result.");
+        Assert.IsNull(panel.ModalPreviewResult); Assert.AreEqual(0, applyCount);
 
         panel.ApplyDraft();
         Assert.AreEqual(1, applyCount);
@@ -96,14 +132,14 @@ public sealed class AccessoryEditorTests
     {
         var session = new AccessorySettingsSession(NewRoot()); var panel = new AccessoryEditorPanel(); panel.Bind(session);
         panel.SetBodyAnchor(new(.2, .6)); var priorDraft = session.DraftConfiguration;
-        panel.ImageEditor = (_, _) => null;
+        panel.UnifiedEditor = (_, _, _, _) => null;
         panel.EditSelectedImage();
         Assert.AreEqual(priorDraft, session.DraftConfiguration);
 
-        panel.ImageEditor = (item, _) =>
+        panel.UnifiedEditor = (draft, _, _, _) =>
         {
             panel.CancelDraft();
-            return item with { SizePercent = 340, Softness = 100 };
+            return Complete(draft, draft.Original with { SizePercent = 340 });
         };
         panel.EditSelectedImage();
         Assert.AreEqual(session.SavedConfiguration, session.DraftConfiguration);
@@ -111,12 +147,12 @@ public sealed class AccessoryEditorTests
     }
 
     [STATestMethod]
-    public void RebindingWhileImageEditorIsOpenCannotWriteResultIntoAnotherSession()
+    public void RebindingWhileUnifiedEditorIsOpenCannotWriteResultIntoAnotherSession()
     {
         var original = new AccessorySettingsSession(NewRoot());
         var replacement = new AccessorySettingsSession(NewRoot(), "bowler");
         var panel = new AccessoryEditorPanel(); panel.Bind(original);
-        panel.ImageEditor = (item, _) => { panel.Bind(replacement); return item with { SizePercent = 350 }; };
+        panel.UnifiedEditor = (draft, _, _, _) => { panel.Bind(replacement); return Complete(draft, draft.Original with { SizePercent = 350 }); };
         panel.EditSelectedImage();
         Assert.AreEqual(replacement.SavedConfiguration, replacement.DraftConfiguration);
         Assert.AreEqual(original.SavedConfiguration, original.DraftConfiguration);
@@ -141,24 +177,6 @@ public sealed class AccessoryEditorTests
         Assert.IsTrue(session.DraftConfiguration.Items.Single(item => item.Id == "a").Order > session.DraftConfiguration.Items.Single(item => item.Id == "b").Order);
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => panel.SetBodyAnchor(new(double.NaN, .5)));
         Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => panel.SetBodyAnchor(new(1.1, .5)));
-    }
-
-    [STATestMethod]
-    public void ViewZoomChangesNoAccessoryOrOriginalPixelAndCancelHasNoResult()
-    {
-        var image = BuiltinAccessoryImages.Get("builtin-sprout")!;
-        var originalPixels = Pixels(image);
-        var item = new AccessoryItem("image", "Image", "builtin-sprout", 64, 64) { BaseAngleDegrees = 35, ImagePivotX = .1, ImagePivotY = .8 };
-        var editor = new AccessoryImageEditorWindow(item, image);
-        editor.SetViewZoom(4); editor.SetViewZoom(.25);
-        Assert.AreEqual(item, editor.Draft);
-        Assert.IsNull(editor.Result);
-        CollectionAssert.AreEqual(originalPixels, Pixels(image));
-        editor.SetImagePivot(new(.9, .2));
-        Assert.AreEqual(item with { ImagePivotX = .9, ImagePivotY = .2 }, editor.Draft);
-        Assert.IsNull(editor.Result);
-        CollectionAssert.AreEqual(originalPixels, Pixels(image));
-        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => editor.SetViewZoom(0));
     }
 
     [STATestMethod]
@@ -195,9 +213,9 @@ public sealed class AccessoryEditorTests
         WithWindow(panel, 220, 640, () =>
         {
             var actions = Descendants(panel.SaveActions).OfType<Button>().ToArray();
-            CollectionAssert.AreEqual(new[] { "复位当前配饰", "取消", "应用" }, actions.Select(AutomationProperties.GetName).ToArray());
+            CollectionAssert.AreEqual(new[] { "取消", "应用" }, actions.Select(AutomationProperties.GetName).ToArray());
             AssertFaceIcons(actions);
-            var apply = actions[2]; Assert.IsFalse(apply.IsEnabled); Assert.AreEqual("Primary", apply.Tag);
+            var apply = actions[1]; Assert.IsFalse(apply.IsEnabled); Assert.AreEqual("Primary", apply.Tag);
             Assert.AreSame(panel.FindResource("HomeMuted"), apply.Foreground);
             var status = Descendants(panel.SaveActions).OfType<TextBlock>().Single();
             Assert.AreEqual(11d, status.FontSize); Assert.AreSame(panel.FindResource("HomeMuted"), status.Foreground);
@@ -245,396 +263,135 @@ public sealed class AccessoryEditorTests
         });
     }
 
-    [STATestMethod]
-    public void SingleSectionsPreserveEverySliderAndCompactDirectNumberEntry()
+[STATestMethod]
+    public void FocusedWearingNumberCanApplyBeforeBlurWithoutChangingUntouchedParameters()
     {
         var root = NewRoot(); var session = new AccessorySettingsSession(root);
-        var panel = new AccessoryEditorPanel { Width = 125 }; panel.Bind(session);
-        WithWindow(new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled }, 185, 640, () =>
-        {
-            Assert.AreEqual(AccessoryEditorSection.Library, panel.SelectedSection);
-            Assert.HasCount(0, Descendants(panel).OfType<Expander>());
-            Capture(panel, "compact-face-aligned-groups");
-            var labels = new HashSet<string>();
-            foreach (var section in new[] { AccessoryEditorSection.Placement, AccessoryEditorSection.Connection, AccessoryEditorSection.Rotation })
-            {
-                Assert.IsTrue(panel.SelectSection(section)); Pump();
-                var groups = Descendants(panel).OfType<StackPanel>().Where(group => AutomationProperties.GetName(group).StartsWith("配饰参数：", StringComparison.Ordinal)).ToArray();
-                Assert.HasCount(1, groups.Where(group => group.IsVisible), "Only the selected parameter section can be visible.");
-                foreach (var slider in Descendants(panel).OfType<Slider>().Where(slider => slider.IsVisible))
-                {
-                    labels.Add(AutomationProperties.GetName(slider));
-                    Assert.IsFalse(string.IsNullOrWhiteSpace(AutomationProperties.GetName(slider)));
-                    var row = (StackPanel)slider.Parent; Assert.AreEqual(2, row.Children.Count);
-                    var heading = (Grid)row.Children[0]; var input = heading.Children.OfType<TextBox>().Single();
-                    Assert.AreEqual(44d, input.Width); Assert.AreEqual(new Thickness(0, 0, 0, 1), input.BorderThickness);
-                    Assert.AreEqual(AutomationProperties.GetName(slider) + " 数值", AutomationProperties.GetName(input));
-                    var label = heading.Children.OfType<TextBlock>().Single();
-                    var labelBounds = label.TransformToAncestor(heading).TransformBounds(new Rect(0, 0, label.ActualWidth, label.ActualHeight));
-                    var inputBounds = input.TransformToAncestor(heading).TransformBounds(new Rect(0, 0, input.ActualWidth, input.ActualHeight));
-                    Assert.IsTrue(labelBounds.Right <= inputBounds.Left + .01, "Compact current value must not overlap its label.");
-                }
-            }
-            Assert.HasCount(12, labels); Assert.IsTrue(labels.Contains("最高允许形变量 %"));
-            Assert.IsTrue(labels.Contains("连接最大行程 %"));
-            Assert.IsTrue(panel.SelectSection(AccessoryEditorSection.Placement)); Pump();
-            var bodyX = Descendants(panel).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "身体附着 X 数值");
-            bodyX.Text = "0.73";
-            var key = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(bodyX)!, 0, Key.Enter) { RoutedEvent = Keyboard.PreviewKeyDownEvent };
-            bodyX.RaiseEvent(key);
-            Assert.IsTrue(key.Handled); Assert.AreEqual(.73, panel.SelectedItem!.BodyAnchorX);
-            Assert.IsTrue(session.IsDirty); Assert.IsFalse(File.Exists(AccessorySettingsStore.GetManifestPath(root)));
-        });
-    }
-
-    [STATestMethod]
-    public void ImageWindowUsesFaceThemeAndKeepsActionsFixedAtMinimumSize()
-    {
-        var panel = new AccessoryEditorPanel();
-        var item = new AccessoryItem("image", "Fictional image", "builtin-sprout", 64, 64);
-        var editor = new AccessoryImageEditorWindow(item, BuiltinAccessoryImages.Get(item.AssetId)!);
-        AccessoryEditorTheme.CopyFrom(panel, editor);
-        editor.Width = 560; editor.Height = 440; editor.Left = -10000; editor.Top = -10000; editor.ShowInTaskbar = false;
-        try
-        {
-            editor.Show(); Pump();
-            Assert.AreEqual("Segoe UI, Microsoft YaHei", editor.FontFamily.Source);
-            foreach (var key in new[] { "HomeInk", "HomeMuted", "HomeLine", "HomeSoft", "HomeAccent", "HomeSelected", "HomePrimaryInk", "FaceIconButton" })
-                Assert.AreSame(panel.FindResource(key), editor.FindResource(key));
-            var actions = Descendants(editor).OfType<Button>().Where(button => AutomationProperties.GetName(button) is "复位图片变换" or "取消" or "确认").ToArray();
-            AssertFaceIcons(actions); Assert.HasCount(3, actions);
-            var parameterScroll = Descendants(editor).OfType<ScrollViewer>().Single(scroll => scroll.Content is StackPanel);
-            var accept = actions.Single(button => AutomationProperties.GetName(button) == "确认");
-            var before = accept.TransformToAncestor((Visual)editor.Content).TransformBounds(new Rect(0, 0, accept.ActualWidth, accept.ActualHeight));
-            parameterScroll.ScrollToBottom(); Pump();
-            var after = accept.TransformToAncestor((Visual)editor.Content).TransformBounds(new Rect(0, 0, accept.ActualWidth, accept.ActualHeight));
-            Assert.AreEqual(before, after, "Image confirmation must remain fixed outside parameter scrolling.");
-            Assert.HasCount(5, Descendants(editor).OfType<Slider>());
-            editor.SetViewZoom(1.5); Pump(); Assert.AreEqual(item, editor.Draft); Assert.IsNull(editor.Result);
-            Capture((FrameworkElement)editor.Content, "face-aligned-image-editor-minimum");
-        }
-        finally { editor.Close(); }
-    }
-
-    [STATestMethod]
-    [DataRow("name")]
-    [DataRow("bodyX")]
-    public void FocusedDirectInputCanApplyBeforeBlur(string field)
-    {
-        var root = NewRoot(); var session = new AccessorySettingsSession(root); Assert.IsTrue(session.TrySave());
-        var precise = session.SavedConfiguration.Items[0] with { BodyAnchorX = .731234, BodyAnchorY = .287654, BaseAngleDegrees = 12.123456 };
-        session.Stage(new(session.SavedConfiguration.Items.Select(item => item.Id == precise.Id ? precise : item)));
+        var precise = session.DraftConfiguration.Items[0] with { BodyAnchorX = .731234, BodyAnchorY = .287654, BaseAngleDegrees = 12.123456 };
+        session.Stage(new(session.DraftConfiguration.Items.Select(item => item.Id == precise.Id ? precise : item)));
         Assert.IsTrue(session.TrySave());
-        var panel = new AccessoryEditorPanel(); panel.Bind(session);
-        panel.SelectSection(AccessoryEditorSection.Placement);
+        var panel = new AccessoryEditorPanel(); panel.Bind(session); panel.SelectSection(AccessoryEditorSection.Placement);
         WithWindow(panel, 280, 900, () =>
         {
-            var name = field == "name" ? "配饰名称" : "身体附着 X 数值";
-            var input = Descendants(panel).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == name);
+            var input = Descendants(panel).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "尺寸 % 数值");
             var apply = Descendants(panel.SaveActions).OfType<Button>().Single(button => AutomationProperties.GetName(button) == "应用");
-            Assert.IsFalse(apply.IsEnabled);
-            Assert.IsTrue(input.Focus(), "The regression must have a real focused WPF text control."); Pump();
-            input.Text = field == "name" ? "Fictional focused rename" : .73.ToString(CultureInfo.CurrentCulture);
-            Pump(); Assert.AreSame(input, Keyboard.FocusedElement);
-            Assert.IsTrue(apply.IsEnabled, "Typing valid unsaved input must make Apply usable before focus leaves the text control.");
-            ((IInvokeProvider)new ButtonAutomationPeer(apply).GetPattern(PatternInterface.Invoke)!).Invoke();
-            Pump();
-            var loaded = new AccessorySettingsSession(root).SavedConfiguration.Items.Single(item => item.Id == panel.SelectedItem!.Id);
-            if (field == "name") Assert.AreEqual("Fictional focused rename", loaded.Name);
-            else Assert.AreEqual(.73, loaded.BodyAnchorX);
-            if (field == "name") Assert.AreEqual(precise.BodyAnchorX, loaded.BodyAnchorX, "Untouched rounded text must not truncate the saved double.");
-            Assert.AreEqual(precise.BodyAnchorY, loaded.BodyAnchorY);
-            Assert.AreEqual(precise.BaseAngleDegrees, loaded.BaseAngleDegrees);
+            Assert.IsFalse(apply.IsEnabled); Assert.IsTrue(input.Focus()); Pump();
+            input.Text = "137"; Pump(); Assert.AreSame(input, Keyboard.FocusedElement);
+            Assert.IsTrue(apply.IsEnabled, "Valid buffered wearing numbers must enable Apply before blur.");
+            ((IInvokeProvider)new ButtonAutomationPeer(apply).GetPattern(PatternInterface.Invoke)!).Invoke(); Pump();
+            var loaded = new AccessorySettingsSession(root).SavedConfiguration.Items.Single(item => item.Id == precise.Id);
+            Assert.AreEqual(precise with { SizePercent = 137 }, loaded);
             Assert.IsFalse(session.IsDirty); Assert.IsFalse(apply.IsEnabled);
         });
     }
 
-    [STATestMethod]
-    public void ApplyRejectsInvalidBufferedBatchWithoutWritingOrDiscardingText()
+[STATestMethod]
+    [DataRow("")]
+    [DataRow(" ")]
+    [DataRow("too-long")]
+    public void ApplyRejectsInvalidBufferedWearingNumberWithoutWritingOrDiscardingText(string value)
     {
         var root = NewRoot(); var session = new AccessorySettingsSession(root); Assert.IsTrue(session.TrySave());
-        var saved = session.SavedConfiguration;
-        var original = File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root));
-        var panel = new AccessoryEditorPanel(); panel.Bind(session);
-        panel.SelectSection(AccessoryEditorSection.Placement);
+        var saved = session.SavedConfiguration; var bytes = File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root));
+        var panel = new AccessoryEditorPanel(); panel.Bind(session); panel.SelectSection(AccessoryEditorSection.Placement);
         WithWindow(panel, 280, 900, () =>
         {
-            var inputs = Descendants(panel).OfType<TextBox>().ToDictionary(AutomationProperties.GetName);
-            Assert.IsTrue(inputs["身体附着 X 数值"].Focus()); Pump();
-            inputs["身体附着 X 数值"].Text = "2";
-            inputs["身体附着 Y 数值"].Text = .73.ToString(CultureInfo.CurrentCulture);
-            inputs["配饰名称"].Text = "Fictional buffered rename";
-            panel.ApplyDraft();
-            Assert.AreEqual(saved, session.DraftConfiguration, "An invalid number must not partially stage other buffered values.");
-            CollectionAssert.AreEqual(original, File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root)));
-            Assert.AreEqual("2", inputs["身体附着 X 数值"].Text, "Invalid text must remain available for correction.");
-            Assert.AreEqual(.73.ToString(CultureInfo.CurrentCulture), inputs["身体附着 Y 数值"].Text);
-            Assert.AreEqual("Fictional buffered rename", inputs["配饰名称"].Text);
-            StringAssert.Contains(panel.StatusMessage, "身体附着 X");
-            panel.CancelDraft();
+            var input = Descendants(panel).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "尺寸 % 数值");
+            Assert.IsTrue(input.Focus()); Pump(); var invalid = value == "too-long" ? new string('x', 129) : value;
+            input.Text = invalid; panel.ApplyDraft();
             Assert.AreEqual(saved, session.DraftConfiguration);
-            Assert.AreEqual(saved.Items[0].Name, inputs["配饰名称"].Text);
-            CollectionAssert.AreEqual(original, File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root)));
+            CollectionAssert.AreEqual(bytes, File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root)));
+            Assert.AreEqual(invalid, input.Text); StringAssert.Contains(panel.StatusMessage, "尺寸");
+            panel.CancelDraft(); Assert.AreEqual(saved, session.DraftConfiguration);
+            Assert.AreEqual(saved.Items[0].SizePercent.ToString("0.###", System.Globalization.CultureInfo.CurrentCulture), input.Text);
         });
     }
 
-    [STATestMethod]
-    public void ImageWindowCopiesBackgroundAndInkAsOneTheme()
-    {
-        var home = new ProductHomeView { ReduceMotion = true };
-        home.Resources["HomeBackground"] = Brushes.Black;
-        home.Resources["HomeInk"] = Brushes.White;
-        home.Resources["HomePrimaryInk"] = Brushes.White;
-        var item = new AccessoryItem("image", "Fictional contrast image", "builtin-sprout", 64, 64);
-        var editor = new AccessoryImageEditorWindow(item, BuiltinAccessoryImages.Get(item.AssetId)!);
-        AccessoryEditorTheme.CopyFrom(home, editor);
-        try
-        {
-            Assert.AreSame(Brushes.White, editor.Foreground);
-            Assert.AreSame(Brushes.Black, editor.Background, "A copied light Ink must keep its dark Home background.");
-            Assert.AreSame(home.FindResource("HomeBackground"), editor.FindResource("HomeBackground"));
-        }
-        finally { editor.Close(); }
-    }
-
-    [STATestMethod]
-    [DataRow(true, false)]
-    [DataRow(false, false)]
-    [DataRow(false, true)]
-    public void ActualModalConfirmationValidatesFocusedInputAndPreservesUntouchedPrecision(bool valid, bool mixedBatch)
-    {
-        var item = new AccessoryItem("modal-input", "Fictional modal input", "builtin-sprout", 64, 64)
-        {
-            BaseAngleDegrees = 12.123456,
-            ImagePivotX = .731234,
-            ImagePivotY = .287654,
-        };
-        var editor = new AccessoryImageEditorWindow(item, BuiltinAccessoryImages.Get(item.AssetId)!)
-        { Left = -10000, Top = -10000, ShowInTaskbar = false, WindowStartupLocation = WindowStartupLocation.Manual };
-        Exception? failure = null;
-        editor.Loaded += (_, _) => editor.Dispatcher.BeginInvoke(new Action(() =>
-        {
-            try
-            {
-                var input = Descendants(editor).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "配饰尺寸 % 数值");
-                Assert.IsTrue(input.Focus()); Pump();
-                input.Text = valid || mixedBatch ? "185" : "500";
-                var pivot = Descendants(editor).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "图片支点 Y 数值");
-                if (mixedBatch) pivot.Text = "2";
-                Pump();
-                Assert.AreSame(input, Keyboard.FocusedElement);
-                var confirm = Descendants(editor).OfType<Button>().Single(button => AutomationProperties.GetName(button) == "确认");
-                ((IInvokeProvider)new ButtonAutomationPeer(confirm).GetPattern(PatternInterface.Invoke)!).Invoke();
-                Pump();
-                if (!valid)
-                {
-                    Assert.IsTrue(editor.IsVisible, "Invalid focused input must leave the actual modal open for correction.");
-                    Assert.IsNull(editor.Result); Assert.AreEqual(item, editor.Draft);
-                    Assert.AreEqual(mixedBatch ? "185" : "500", input.Text);
-                    if (mixedBatch) Assert.AreEqual("2", pivot.Text);
-                }
-            }
-            catch (Exception error) { failure = error; }
-            finally { editor.Close(); }
-        }));
-        editor.ShowDialog();
-        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
-        if (valid)
-        {
-            Assert.IsNotNull(editor.Result); Assert.AreEqual(185d, editor.Result.SizePercent);
-            Assert.AreEqual(item.BaseAngleDegrees, editor.Result.BaseAngleDegrees);
-            Assert.AreEqual(item.ImagePivotX, editor.Result.ImagePivotX);
-            Assert.AreEqual(item.ImagePivotY, editor.Result.ImagePivotY);
-        }
-        else Assert.IsNull(editor.Result);
-    }
-
-    [STATestMethod]
+[STATestMethod]
     [DataRow("select", true)]
     [DataRow("select", false)]
     [DataRow("duplicate", true)]
     [DataRow("duplicate", false)]
     [DataRow("image", true)]
     [DataRow("image", false)]
-    public void BufferedInputsStayWithTheirAccessoryAcrossDependentActions(string action, bool valid)
+    public void BufferedWearingNumberStaysWithItsAccessoryAcrossDependentActions(string action, bool valid)
     {
         var root = NewRoot(); var session = new AccessorySettingsSession(root);
         var a = new AccessoryItem("a", "Fictional A", "builtin-sprout", 64, 64) { BodyAnchorX = .27, BodyAnchorY = .18 };
         var b = a with { Id = "b", Name = "Fictional B", BodyAnchorX = .81, BodyAnchorY = .92 };
         session.Stage(new([a, b])); Assert.IsTrue(session.TrySave());
-        var original = File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root));
-        var panel = new AccessoryEditorPanel(); panel.Bind(session);
-        panel.SelectSection(AccessoryEditorSection.Placement);
-        AccessoryItem? imageInput = null;
-        panel.ImageEditor = (item, _) => { imageInput = item; return item with { SizePercent = 185 }; };
+        var bytes = File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root));
+        var panel = new AccessoryEditorPanel(); panel.Bind(session); panel.SelectSection(AccessoryEditorSection.Placement);
+        AccessoryItem? editorInput = null;
+        panel.UnifiedEditor = (draft, _, _, _) => { editorInput = draft.Original; return Complete(draft, draft.Original with { SizePercent = 185 }); };
         WithWindow(panel, 280, 900, () =>
         {
-            var inputs = Descendants(panel).OfType<TextBox>().ToDictionary(AutomationProperties.GetName);
-            var input = inputs["身体附着 X 数值"];
-            Assert.IsTrue(input.Focus()); Pump();
-            input.Text = valid ? .73.ToString(CultureInfo.CurrentCulture) : "2";
-            inputs["配饰名称"].Text = "Fictional buffered A";
-            Assert.AreSame(input, Keyboard.FocusedElement);
-            if (action == "select")
-            {
-                var list = Library(panel, true);
-                list.SelectedItem = list.Items.Cast<ListBoxItem>().Single(row => (string)row.Tag == "b");
-            }
+            var input = Descendants(panel).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "尺寸 % 数值");
+            Assert.IsTrue(input.Focus()); Pump(); input.Text = valid ? "137" : " ";
+            if (action == "select") Library(panel, true).SelectedItem = Library(panel, true).Items.Cast<ListBoxItem>().Single(row => (string)row.Tag == b.Id);
             else
             {
                 var button = Descendants(action == "duplicate" ? panel.ActionTools : panel).OfType<Button>().Single(candidate =>
-                    AutomationProperties.GetName(candidate) == (action == "duplicate" ? "复制配饰" : "图片／支点"));
+                    AutomationProperties.GetName(candidate) == (action == "duplicate" ? "复制配饰" : "编辑配饰"));
                 ((IInvokeProvider)new ButtonAutomationPeer(button).GetPattern(PatternInterface.Invoke)!).Invoke();
             }
-            Pump();
-            Assert.AreEqual(b, session.DraftConfiguration.Items.Single(item => item.Id == b.Id), "Buffered A inputs must never overwrite B.");
-            CollectionAssert.AreEqual(original, File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root)), "Dependent actions only stage; they must not save.");
-            if (valid)
+            Pump(); Assert.AreEqual(b, session.DraftConfiguration.Items.Single(item => item.Id == b.Id));
+            CollectionAssert.AreEqual(bytes, File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root)));
+            if (!valid)
             {
-                var committedA = session.DraftConfiguration.Items.Single(item => item.Id == a.Id);
-                Assert.AreEqual(.73, committedA.BodyAnchorX); Assert.AreEqual("Fictional buffered A", committedA.Name);
-                Assert.AreEqual(a.BodyAnchorY, committedA.BodyAnchorY);
-                if (action == "select")
-                {
-                    Assert.AreEqual(b.Id, panel.SelectedItem!.Id);
-                    Assert.AreEqual(b.Name, inputs["配饰名称"].Text);
-                    Assert.AreEqual(b.BodyAnchorX.ToString("0.###", CultureInfo.CurrentCulture), input.Text);
-                }
-                else if (action == "duplicate")
-                {
-                    Assert.HasCount(3, session.DraftConfiguration.Items);
-                    Assert.AreNotEqual(a.Id, panel.SelectedItem!.Id); Assert.AreNotEqual(b.Id, panel.SelectedItem.Id);
-                    Assert.AreEqual(.73, panel.SelectedItem.BodyAnchorX);
-                    Assert.AreEqual(a.BodyAnchorY, panel.SelectedItem.BodyAnchorY);
-                    StringAssert.StartsWith(panel.SelectedItem.Name, "Fictional buffered A");
-                }
-                else
-                {
-                    Assert.IsNotNull(imageInput); Assert.AreEqual(.73, imageInput.BodyAnchorX);
-                    Assert.AreEqual("Fictional buffered A", imageInput.Name);
-                    Assert.AreEqual(185d, panel.SelectedItem!.SizePercent);
-                }
+                Assert.AreEqual(session.SavedConfiguration, session.DraftConfiguration); Assert.AreEqual(a.Id, panel.SelectedItem!.Id);
+                Assert.HasCount(2, session.DraftConfiguration.Items); Assert.IsNull(editorInput); Assert.AreEqual(" ", input.Text);
+                StringAssert.Contains(panel.StatusMessage, "尺寸"); return;
             }
-            else
+            var committedA = session.DraftConfiguration.Items.Single(item => item.Id == a.Id);
+            Assert.AreEqual(action == "image" ? 185d : 137d, committedA.SizePercent); Assert.AreEqual(a.BodyAnchorX, committedA.BodyAnchorX);
+            Assert.AreEqual(a.BodyAnchorY, committedA.BodyAnchorY);
+            if (action == "select") { Assert.AreEqual(b.Id, panel.SelectedItem!.Id); Assert.AreEqual(b.SizePercent.ToString("0.###", System.Globalization.CultureInfo.CurrentCulture), input.Text); }
+            else if (action == "duplicate")
             {
-                Assert.AreEqual(session.SavedConfiguration, session.DraftConfiguration, "Invalid input must block the whole dependent action.");
-                Assert.AreEqual(a.Id, panel.SelectedItem!.Id); Assert.HasCount(2, session.DraftConfiguration.Items);
-                Assert.IsNull(imageInput); Assert.AreEqual("2", input.Text);
-                Assert.AreEqual("Fictional buffered A", inputs["配饰名称"].Text);
-                StringAssert.Contains(panel.StatusMessage, "身体附着 X");
+                Assert.HasCount(3, session.DraftConfiguration.Items); Assert.AreNotEqual(a.Id, panel.SelectedItem!.Id); Assert.AreNotEqual(b.Id, panel.SelectedItem.Id);
+                Assert.AreEqual(137d, panel.SelectedItem.SizePercent);
+                panel.Edit(item => item with { SizePercent = 199 });
+                Assert.AreEqual(committedA, session.DraftConfiguration.Items.Single(item => item.Id == a.Id), "Copy edits cannot mutate their source.");
             }
+            else { Assert.IsNotNull(editorInput); Assert.AreEqual(137d, editorInput.SizePercent); Assert.AreEqual(185d, panel.SelectedItem!.SizePercent); }
         });
     }
 
-    [STATestMethod]
+[STATestMethod]
     [DataRow("layer", true)]
     [DataRow("layer", false)]
     [DataRow("equipped", true)]
     [DataRow("equipped", false)]
-    [DataRow("lock", true)]
-    [DataRow("lock", false)]
-    [DataRow("limit", true)]
-    [DataRow("limit", false)]
-    public void BufferedInputDoesNotOverwriteTheFollowingChoice(string choice, bool valid)
+    public void BufferedWearingNumberDoesNotOverwriteTheFollowingChoice(string choice, bool valid)
     {
         var root = NewRoot(); var session = new AccessorySettingsSession(root);
-        var item = new AccessoryItem("choice", "Fictional choice", "builtin-sprout", 64, 64) { BodyAnchorX = .27, LockRotation = false };
+        var item = new AccessoryItem("choice", "Fictional choice", "builtin-sprout", 64, 64) { BodyAnchorX = .27 };
         session.Stage(new([item])); Assert.IsTrue(session.TrySave());
-        var panel = new AccessoryEditorPanel(); panel.Bind(session);
-        panel.SelectSection(AccessoryEditorSection.Placement);
+        var panel = new AccessoryEditorPanel(); panel.Bind(session); panel.SelectSection(AccessoryEditorSection.Placement);
         WithWindow(panel, 280, 1000, () =>
         {
-            Pump();
-            var input = Descendants(panel).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "身体附着 X 数值");
-            Assert.IsTrue(input.Focus()); Pump(); input.Text = valid ? .73.ToString(CultureInfo.CurrentCulture) : "2";
+            var input = Descendants(panel).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "尺寸 % 数值");
+            Assert.IsTrue(input.Focus()); Pump(); input.Text = valid ? "137" : " ";
             if (choice == "layer")
             {
                 var behind = Descendants(panel).OfType<Button>().Single(button => AutomationProperties.GetName(button) == "团子后");
                 ((IInvokeProvider)new ButtonAutomationPeer(behind).GetPattern(PatternInterface.Invoke)!).Invoke();
             }
-            else if (choice == "equipped") panel.ToggleWear(item.Id);
-            else
-            {
-                var label = choice == "lock" ? "锁定朝向" : "限制摆角";
-                var control = Descendants(panel).OfType<CheckBox>().Single(candidate => (string)candidate.Content == label);
-                control.IsChecked = choice == "lock";
-                control.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
-            }
+            else panel.ToggleWear(item.Id);
             Pump();
-            if (valid)
-            {
-                Assert.AreEqual(.73, panel.SelectedItem!.BodyAnchorX);
-                var expected = item with { BodyAnchorX = .73 };
-                expected = choice switch
-                {
-                    "layer" => expected with { Layer = AccessoryLayer.Behind },
-                    "equipped" => expected with { IsEquipped = false },
-                    "lock" => expected with { LockRotation = true },
-                    _ => expected with { LimitSwing = false },
-                };
-                Assert.AreEqual(expected, panel.SelectedItem, "Committing buffered text must not reset the choice that triggered it.");
-            }
-            else
-            {
-                Assert.AreEqual(item, panel.SelectedItem); Assert.AreEqual("2", input.Text);
-                StringAssert.Contains(panel.StatusMessage, "身体附着 X");
-            }
-            Assert.AreEqual(item, session.SavedConfiguration.Items.Single(), "Changing a choice only stages the draft.");
+            var expected = item with { SizePercent = 137 };
+            expected = choice == "layer" ? expected with { Layer = AccessoryLayer.Behind } : expected with { IsEquipped = false };
+            Assert.AreEqual(valid ? expected : item, panel.SelectedItem);
+            if (!valid) { Assert.AreEqual(" ", input.Text); StringAssert.Contains(panel.StatusMessage, "尺寸"); }
+            Assert.AreEqual(item, session.SavedConfiguration.Items.Single());
         });
-    }
-
-    [STATestMethod]
-    [DataRow(false, false)]
-    [DataRow(false, true)]
-    [DataRow(true, false)]
-    [DataRow(true, true)]
-    public void SliderCanCorrectItsOwnInputButCannotDiscardAnotherInvalidField(bool modal, bool sameField)
-    {
-        var item = new AccessoryItem("slider-input", "Fictional slider input", "builtin-sprout", 64, 64) { BaseAngleDegrees = 17 };
-        AccessorySettingsSession? session = null;
-        AccessoryEditorPanel? panel = null;
-        AccessoryImageEditorWindow? editor = null;
-        FrameworkElement content;
-        if (modal)
-        {
-            editor = new AccessoryImageEditorWindow(item, BuiltinAccessoryImages.Get(item.AssetId)!);
-            content = (FrameworkElement)editor.Content; editor.Content = null;
-        }
-        else
-        {
-            session = new AccessorySettingsSession(NewRoot()); session.Stage(new([item])); Assert.IsTrue(session.TrySave());
-            panel = new AccessoryEditorPanel(); panel.Bind(session); panel.SelectSection(AccessoryEditorSection.Placement); content = panel;
-        }
-        try
-        {
-            WithWindow(content, 850, 620, () =>
-            {
-                var input = Descendants(content).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "配饰尺寸 % 数值");
-                Assert.IsTrue(input.Focus()); Pump(); input.Text = "500";
-                var slider = Descendants(content).OfType<Slider>().Single(candidate => AutomationProperties.GetName(candidate) == (sameField ? "配饰尺寸 %" : "基础角度 °"));
-                slider.Value = sameField ? 185 : 42; Pump();
-                var draft = modal ? editor!.Draft : panel!.SelectedItem!;
-                if (sameField)
-                {
-                    Assert.AreEqual(185d, draft.SizePercent);
-                    Assert.AreEqual("185", input.Text);
-                }
-                else
-                {
-                    Assert.AreEqual(item, draft); Assert.AreEqual("500", input.Text);
-                    StringAssert.Contains(modal ? editor!.StatusMessage : panel!.StatusMessage, "配饰尺寸 %");
-                }
-                if (session is not null) Assert.AreEqual(item, session.SavedConfiguration.Items.Single());
-                Assert.IsNull(editor?.Result);
-            });
-        }
-        finally { editor?.Close(); }
     }
 
     [STATestMethod]
     [DataRow(true)]
     [DataRow(false)]
-    public void FourSectionIconsValidateBufferedInputBeforeHidingItsSection(bool valid)
+    public void TwoSectionIconsValidateBufferedInputBeforeHidingItsSection(bool valid)
     {
         var root = NewRoot(); var session = new AccessorySettingsSession(root); Assert.IsTrue(session.TrySave());
         var saved = session.SavedConfiguration;
@@ -645,7 +402,7 @@ public sealed class AccessoryEditorTests
         WithWindow(host, 400, 850, () =>
         {
             var tabs = Descendants(panel.SectionTabs).OfType<Button>().ToArray();
-            CollectionAssert.AreEqual(new[] { "配饰：配饰库", "配饰：图像与位置", "配饰：柔性与连接", "配饰：旋转与重力" }, tabs.Select(AutomationProperties.GetName).ToArray());
+            CollectionAssert.AreEqual(new[] { "配饰：配饰库", "配饰：配饰" }, tabs.Select(AutomationProperties.GetName).ToArray());
             AssertFaceIcons(tabs); Assert.AreEqual(AccessoryEditorSection.Library, panel.SelectedSection);
             Assert.HasCount(1, tabs.Where(tab => Equals(tab.Tag, "Selected")));
             for (var i = 1; i < tabs.Length; i++)
@@ -656,24 +413,22 @@ public sealed class AccessoryEditorTests
             }
             ((IInvokeProvider)new ButtonAutomationPeer(tabs[1]).GetPattern(PatternInterface.Invoke)!).Invoke(); Pump();
             Assert.AreEqual(AccessoryEditorSection.Placement, panel.SelectedSection);
-            var input = Descendants(panel).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "身体附着 X 数值");
-            var name = Descendants(panel).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "配饰名称");
-            Assert.IsTrue(input.Focus()); Pump(); input.Text = valid ? .73.ToString(CultureInfo.CurrentCulture) : "2";
-            name.Text = "Fictional section draft";
+            var input = Descendants(panel).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "尺寸 % 数值");
+            Assert.IsTrue(input.Focus()); Pump(); input.Text = valid ? "137" : " ";
             var changes = 0; panel.SectionChanged += () => changes++;
-            ((IInvokeProvider)new ButtonAutomationPeer(tabs[2]).GetPattern(PatternInterface.Invoke)!).Invoke(); Pump();
-            Assert.AreEqual(valid ? AccessoryEditorSection.Connection : AccessoryEditorSection.Placement, panel.SelectedSection);
+            ((IInvokeProvider)new ButtonAutomationPeer(tabs[0]).GetPattern(PatternInterface.Invoke)!).Invoke(); Pump();
+            Assert.AreEqual(valid ? AccessoryEditorSection.Library : AccessoryEditorSection.Placement, panel.SelectedSection);
             Assert.AreEqual(valid ? 1 : 0, changes); Assert.HasCount(1, tabs.Where(tab => Equals(tab.Tag, "Selected")));
             if (valid)
             {
-                Assert.AreEqual(.73, panel.SelectedItem!.BodyAnchorX); Assert.AreEqual("Fictional section draft", panel.SelectedItem.Name);
+                Assert.AreEqual(137d, panel.SelectedItem!.SizePercent);
                 Assert.IsFalse(input.IsVisible);
             }
             else
             {
                 Assert.AreEqual(saved, session.DraftConfiguration); Assert.IsTrue(input.IsVisible);
-                Assert.AreEqual("2", input.Text); Assert.AreEqual("Fictional section draft", name.Text);
-                StringAssert.Contains(panel.StatusMessage, "身体附着 X");
+                Assert.AreEqual(" ", input.Text);
+                StringAssert.Contains(panel.StatusMessage, "尺寸");
             }
             CollectionAssert.AreEqual(bytes, File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root)));
         });
@@ -793,7 +548,6 @@ public sealed class AccessoryEditorTests
             ImagePivotY = .74,
             BodyAnchorX = .63,
             BodyAnchorY = .22,
-            Softness = 69,
             ConnectionStrength = 41,
             LockRotation = false,
             RotationDamping = 23,
@@ -878,34 +632,24 @@ public sealed class AccessoryEditorTests
     }
 
     [STATestMethod]
-    [DataRow("picker-cancel")]
     [DataRow("image-cancel")]
     [DataRow("image-confirm")]
-    public void CreateAccessoryStartsWithTransparentPngAndKeepsConfirmationInTheDraft(string outcome)
+    public void CreateAccessoryStartsWithEmptyCanvasAndKeepsConfirmationInTheDraft(string outcome)
     {
         var root = NewRoot(); var session = new AccessorySettingsSession(root); Assert.IsTrue(session.TrySave());
         var saved = session.SavedConfiguration; var bytes = File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root));
         var panel = new AccessoryEditorPanel(); panel.Bind(session);
-        var source = WriteFictionalTransparentPng(root, 100);
         var imageOpened = false;
-        panel.ImagePicker = () => outcome == "picker-cancel" ? null : source;
-        panel.ImageEditor = (item, _) => { imageOpened = true; return outcome == "image-cancel" ? null : item with { SizePercent = 185 }; };
+        panel.UnifiedEditor = (draft, _, _, _) => { imageOpened = true; return outcome == "image-cancel" ? null : Complete(draft, draft.Original with { SizePercent = 185 }); };
         WithWindow(panel, 320, 700, () =>
         {
             var create = Descendants(panel.ActionTools).OfType<Button>().Single(button => AutomationProperties.GetName(button) == "创建新配饰");
             ((IInvokeProvider)new ButtonAutomationPeer(create).GetPattern(PatternInterface.Invoke)!).Invoke(); Pump();
-            Assert.AreEqual(outcome != "picker-cancel", imageOpened);
-            if (outcome == "picker-cancel")
-            {
-                Assert.AreEqual(saved, session.DraftConfiguration); Assert.AreEqual(AccessoryEditorSection.Library, panel.SelectedSection);
-            }
-            else
-            {
-                Assert.AreEqual(saved.Items.Count + 1, session.DraftConfiguration.Items.Count);
-                Assert.AreEqual(AccessoryEditorSection.Placement, panel.SelectedSection);
-                Assert.AreEqual(outcome == "image-confirm" ? 185d : 100d, panel.SelectedItem!.SizePercent);
-                Assert.IsTrue(session.IsDirty);
-            }
+            Assert.IsTrue(imageOpened);
+            Assert.AreEqual(saved.Items.Count + 1, session.DraftConfiguration.Items.Count);
+            Assert.AreEqual(AccessoryEditorSection.Placement, panel.SelectedSection);
+            Assert.AreEqual(outcome == "image-confirm" ? 185d : 100d, panel.SelectedItem!.SizePercent);
+            Assert.IsTrue(session.IsDirty);
             Assert.AreEqual(saved, session.SavedConfiguration);
             CollectionAssert.AreEqual(bytes, File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root)));
             panel.CancelDraft(); Assert.AreEqual(saved, session.DraftConfiguration);
@@ -926,98 +670,34 @@ public sealed class AccessoryEditorTests
         WithWindow(host, 320, 850, () =>
         {
             panel.Edit(item => item with { SizePercent = 140 });
-            var input = Descendants(panel).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "身体附着 X 数值");
-            Assert.IsTrue(input.Focus()); Pump(); input.Text = valid ? .73.ToString(CultureInfo.CurrentCulture) : "2";
+            var input = Descendants(panel).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "尺寸 % 数值");
+            Assert.IsTrue(input.Focus()); Pump(); input.Text = valid ? "137" : " ";
             session.CancelPreview(); panel.DiscardInputsAndRefresh();
             Assert.IsTrue(sink.Focus()); Pump();
             Assert.AreEqual(saved, session.DraftConfiguration); Assert.IsFalse(session.IsDirty);
-            Assert.AreEqual(saved.Items[0].BodyAnchorX.ToString("0.###", CultureInfo.CurrentCulture), input.Text);
+            Assert.AreEqual(saved.Items[0].SizePercent.ToString("0.###", System.Globalization.CultureInfo.CurrentCulture), input.Text);
             CollectionAssert.AreEqual(bytes, File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root)));
         });
     }
 
-    [STATestMethod]
-    [DataRow(true, true)]
-    [DataRow(true, false)]
-    [DataRow(false, true)]
-    [DataRow(false, false)]
-    public void BindingAndRefreshingUnderADisabledParentPreservesExplicitEditability(bool locked, bool limited)
+[STATestMethod]
+    public void BindingAndRefreshingUnderADisabledParentPreservesWearingFieldAndEditorEditability()
     {
-        var session = new AccessorySettingsSession(NewRoot());
-        var item = new AccessoryItem("enabled-input", "Fictional enabled input", "builtin-sprout", 64, 64)
-        { LockRotation = locked, LimitSwing = limited };
-        session.Stage(new([item]));
-        var panel = new AccessoryEditorPanel();
+        var session = new AccessorySettingsSession(NewRoot()); var panel = new AccessoryEditorPanel();
         var host = new StackPanel { IsEnabled = false }; host.Children.Add(panel);
         panel.Bind(session); panel.Refresh(); panel.SelectSection(AccessoryEditorSection.Placement);
         WithWindow(host, 320, 900, () =>
         {
-            var numbers = Descendants(panel).OfType<TextBox>().ToDictionary(AutomationProperties.GetName);
-            var sliders = Descendants(panel).OfType<Slider>().ToDictionary(AutomationProperties.GetName);
-            var reset = Descendants(panel.SaveActions).OfType<Button>().Single(button => AutomationProperties.GetName(button) == "复位当前配饰");
-            var anchor = numbers["身体附着 X 数值"];
-            Assert.IsFalse(anchor.IsEnabled); Assert.IsFalse(reset.IsEnabled);
+            var input = Descendants(panel).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "尺寸 % 数值");
+            var edit = Descendants(panel).OfType<Button>().Single(button => AutomationProperties.GetName(button) == "编辑配饰");
+            Assert.IsFalse(input.IsEnabled); Assert.IsFalse(edit.IsEnabled);
             for (var pass = 0; pass < 2; pass++)
             {
-                host.IsEnabled = true; Pump();
-                Assert.IsTrue(anchor.IsEnabled, "Parent initialization must not write its effective disabled value into the numeric input.");
-                Assert.IsTrue(reset.IsEnabled, "A writable selected accessory must restore its reset action with its parent.");
-                Assert.IsTrue(anchor.Focus()); Pump(); Assert.AreSame(anchor, Keyboard.FocusedElement);
-                foreach (var (label, slider) in sliders)
-                {
-                    var expected = label switch
-                    {
-                        "旋转阻尼" or "回正强度" => !locked,
-                        "最大摆角 °" => !locked && limited,
-                        _ => true,
-                    };
-                    Assert.AreEqual(expected, slider.IsEnabled, label + " slider must keep its semantic enabled state.");
-                    Assert.AreEqual(expected, numbers[label + " 数值"].IsEnabled, label + " numeric input must share that semantic state.");
-                }
+                host.IsEnabled = true; Pump(); Assert.IsTrue(input.IsEnabled); Assert.IsTrue(edit.IsEnabled);
+                Assert.IsFalse(input.IsReadOnly); Assert.IsTrue(input.Focusable);
                 if (pass == 0) { host.IsEnabled = false; panel.Refresh(); Pump(); }
             }
         });
-    }
-
-    [STATestMethod]
-    public void CompactEditorActuallyScrollsAndRendersControlsWithoutHorizontalOverflow()
-    {
-        var session = new AccessorySettingsSession(NewRoot());
-        var panel = new AccessoryEditorPanel { Width = 125, HorizontalAlignment = HorizontalAlignment.Left }; panel.Bind(session);
-        panel.SelectSection(AccessoryEditorSection.Placement);
-        panel.Resources["HomeInk"] = Brushes.Black; panel.Resources["HomeSoft"] = Brushes.WhiteSmoke; panel.Resources["HomeLine"] = Brushes.LightGray;
-        panel.SetPreviewError("虚构预览错误；应用仅保存配置，显示恢复后此提示才消失。");
-        var scroll = new ScrollViewer { Content = panel, Background = Brushes.White, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
-        var window = new Window
-        {
-            Content = scroll,
-            Width = 185,
-            Height = 360,
-            Left = -10000,
-            Top = -10000,
-            ShowInTaskbar = false,
-            Title = "Fictional compact accessory editor verification",
-        };
-        try
-        {
-            window.Show(); Pump();
-            Pump();
-            var dpi = VisualTreeHelper.GetDpi(panel);
-            var roundedWidth = Math.Round(125 * dpi.DpiScaleX) / dpi.DpiScaleX;
-            Assert.AreEqual(roundedWidth, panel.ActualWidth, .01, "Face-style layout rounding must resolve to the nearest physical pixel.");
-            Assert.AreEqual(Visibility.Visible, scroll.ComputedVerticalScrollBarVisibility);
-            Assert.IsTrue(scroll.ScrollableHeight > 0);
-            foreach (var control in Descendants(panel).OfType<Control>())
-            {
-                if (control is not System.Windows.Controls.Button and not TextBox and not Slider and not ComboBox) continue;
-                var bounds = control.TransformToAncestor(panel).TransformBounds(new Rect(0, 0, control.ActualWidth, control.ActualHeight));
-                Assert.IsTrue(bounds.Left >= -.01 && bounds.Right <= panel.ActualWidth + .01, $"{control.GetType().Name} escaped the compact editor width: {bounds}.");
-            }
-            Capture(scroll, "compact-wardrobe-top");
-            scroll.ScrollToBottom(); Pump(); Assert.IsTrue(scroll.VerticalOffset > 0);
-            Capture(scroll, "compact-wardrobe-actions");
-        }
-        finally { window.Close(); }
     }
 
     private static byte[] Pixels(BitmapSource image)
@@ -1042,7 +722,7 @@ public sealed class AccessoryEditorTests
         {
             Assert.HasCount(8, Library(panel, true).Items); Assert.HasCount(1, Library(panel, false).Items);
             Assert.IsFalse(Descendants(panel).OfType<TextBlock>().Any(text => text.Text == "配饰库"));
-            Assert.IsFalse(Descendants(panel).OfType<CheckBox>().Any(control => Equals(control.Content, "佩戴")));
+            Assert.IsFalse(Descendants(panel).OfType<CheckBox>().Any(control => control.IsVisible && Equals(control.Content, "佩戴")));
             void WearAction(string id)
             {
                 var row = LibraryCards(panel).Single(card => (string)card.Tag == id);
@@ -1082,7 +762,7 @@ public sealed class AccessoryEditorTests
     {
         var root = NewRoot(); var session = new AccessorySettingsSession(root);
         var a = new AccessoryItem("drag-a", "Fictional drag A", "builtin-sprout", 64, 64) { Layer = AccessoryLayer.Behind, Order = 0, SizePercent = 141 };
-        var b = a with { Id = "drag-b", Name = "Fictional drag B", Order = 9, Softness = 42 };
+        var b = a with { Id = "drag-b", Name = "Fictional drag B", Order = 9, ConnectionStrength = 42 };
         var front = a with { Id = "drag-front", Name = "Fictional drag front", Layer = AccessoryLayer.Front, Order = 3 };
         var uA = a with { Id = "drag-ua", Name = "Fictional drag unworn A", IsEquipped = false, Order = 7 };
         var uB = front with { Id = "drag-ub", Name = "Fictional drag unworn B", IsEquipped = false, Order = 8 };
@@ -1136,12 +816,12 @@ public sealed class AccessoryEditorTests
     [DataRow(true, -1)]
     [DataRow(false, 1)]
     [DataRow(false, -1)]
-    public void ActualOrderButtonsUseTheSameMixedLibraryCandidatesAsDragging(bool equipped, int direction)
+    public void ActualOrderButtonsStayWithinTheCurrentLayerForWornAndUnwornItems(bool equipped, int direction)
     {
         var root = NewRoot(); var session = new AccessorySettingsSession(root);
         var a = new AccessoryItem("arrow-a", "Fictional arrow A", "builtin-sprout", 64, 64) { Layer = AccessoryLayer.Behind, Order = 0 };
         var u = a with { Id = "arrow-u", Name = "Fictional arrow unworn U", IsEquipped = false, Order = 1, SizePercent = 147 };
-        var b = a with { Id = "arrow-b", Name = "Fictional arrow B", Order = 2, Softness = 59 };
+        var b = a with { Id = "arrow-b", Name = "Fictional arrow B", Order = 2, ConnectionStrength = 59 };
         var v = u with { Id = "arrow-v", Name = "Fictional arrow unworn V", Layer = AccessoryLayer.Front, Order = 8 };
         session.Stage(new([a, u, b, v])); Assert.IsTrue(session.TrySave());
         var saved = session.SavedConfiguration; var bytes = File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root));
@@ -1150,7 +830,9 @@ public sealed class AccessoryEditorTests
         WithWindow(panel, 320, 1000, () =>
         {
             var button = Descendants(panel).OfType<Button>().Single(control => AutomationProperties.GetName(control) == (direction == 1 ? "上移" : "下移"));
-            ((IInvokeProvider)new ButtonAutomationPeer(button).GetPattern(PatternInterface.Invoke)!).Invoke(); Pump();
+            if (equipped) ((IInvokeProvider)new ButtonAutomationPeer(button).GetPattern(PatternInterface.Invoke)!).Invoke();
+            else { Assert.IsFalse(button.IsEnabled); panel.MoveSelected(direction); }
+            Pump();
             Assert.AreEqual(selected.Id, panel.SelectedItem!.Id);
             var reordered = session.DraftConfiguration;
             if (equipped)
@@ -1163,8 +845,7 @@ public sealed class AccessoryEditorTests
             }
             else
             {
-                CollectionAssert.AreEqual(new[] { v.Id, u.Id }, Library(panel, false).Items.Cast<ListBoxItem>().Select(row => (string)row.Tag).ToArray());
-                CollectionAssert.AreEqual(new[] { a.Id, v.Id, b.Id, u.Id }, reordered.Items.Select(item => item.Id).ToArray());
+                Assert.AreEqual(saved, reordered, "Order buttons must not cross front/behind boundaries even for unworn items.");
                 foreach (var item in saved.Items) Assert.AreEqual(item, reordered.Items.Single(candidate => candidate.Id == item.Id));
             }
             CollectionAssert.AreEqual(bytes, File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root)));
@@ -1196,9 +877,8 @@ public sealed class AccessoryEditorTests
         {
             WithWindow(host, 320, 1000, () =>
             {
-                var input = Descendants(panel).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "身体附着 X 数值");
-                var name = Descendants(panel).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "配饰名称");
-                Assert.IsTrue(input.Focus()); Pump(); input.Text = "2"; name.Text = "Fictional unsaved deletion name";
+                var input = Descendants(panel).OfType<TextBox>().Single(text => AutomationProperties.GetName(text) == "尺寸 % 数值");
+                Assert.IsTrue(input.Focus()); Pump(); input.Text = "137";
                 var calls = new List<int>();
                 panel.DeleteConfirmation = (_, step) =>
                 {
@@ -1216,7 +896,7 @@ public sealed class AccessoryEditorTests
                 delete.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.PreviewMouseLeftButtonDownEvent });
                 Assert.IsTrue(delete.Focus()); Pump();
                 Assert.AreEqual(draft, session.DraftConfiguration, "Mouse-down before the delete button gains real focus must suppress the input's blur commit.");
-                Assert.AreEqual("2", input.Text); Assert.AreEqual("Fictional unsaved deletion name", name.Text);
+                Assert.AreEqual("137", input.Text);
                 ((IInvokeProvider)new ButtonAutomationPeer(delete).GetPattern(PatternInterface.Invoke)!).Invoke(); Pump();
                 locked?.Dispose(); locked = null;
                 CollectionAssert.AreEqual(outcome == "first-cancel" ? new[] { 1 } : new[] { 1, 2 }, calls.ToArray());
@@ -1229,7 +909,7 @@ public sealed class AccessoryEditorTests
                 else
                 {
                     Assert.AreEqual(saved, session.SavedConfiguration); Assert.AreEqual(draft, session.DraftConfiguration);
-                    Assert.AreEqual("2", input.Text); Assert.AreEqual("Fictional unsaved deletion name", name.Text);
+                    Assert.AreEqual("137", input.Text);
                     Assert.AreEqual(a.Id, panel.SelectedItem!.Id);
                     CollectionAssert.AreEqual(expectedDiskBytes, File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root)));
                     if (outcome.StartsWith("protected-", StringComparison.Ordinal))
@@ -1238,13 +918,21 @@ public sealed class AccessoryEditorTests
                         foreach (var tool in Descendants(panel.ActionTools).OfType<Button>()) Assert.IsFalse(tool.IsEnabled, "A newly protected manifest must disable every library action.");
                         foreach (var control in Descendants(panel).OfType<Control>().Where(control => control is TextBox or Slider or ComboBox or CheckBox))
                             Assert.IsFalse(control.IsEnabled, "A newly protected manifest must disable every editor input while retaining its buffer.");
-                        Assert.IsFalse(Descendants(panel.SaveActions).OfType<Button>().Single(button => AutomationProperties.GetName(button) == "复位当前配饰").IsEnabled);
                         Assert.IsFalse(Descendants(panel.SaveActions).OfType<Button>().Single(button => AutomationProperties.GetName(button) == "应用").IsEnabled);
                     }
                 }
             });
         }
         finally { locked?.Dispose(); }
+    }
+
+    private static AccessoryEditResult Complete(AccessoryEditDraft draft, AccessoryItem item)
+    {
+        var source = AccessoryEditorSourceAsset.FromBitmap(BuiltinAccessoryImages.Get("builtin-sprout")!);
+        var image = AccessoryImageAsset.FromRenderedPng(source.CopyPngBytes());
+        var project = AccessoryEditorProject.FromImage(image, draft.Revision);
+        return new(project, image, item with { AssetId = image.AssetId, PixelWidth = image.PixelWidth, PixelHeight = image.PixelHeight,
+            ProjectId = project.ProjectId, ProjectVersion = project.Version, EditRevision = draft.Revision, IsPendingCompletion = false });
     }
 
     private static string WriteFictionalTransparentPng(string root, int color)
@@ -1339,7 +1027,7 @@ public sealed class AccessoryEditorTests
         }
     }
 
-    private static void WithWindow(FrameworkElement content, double width, double height, Action verify)
+    private static void WithWindow(FrameworkElement content, double width, double height, Action verify, bool showActivated = true)
     {
         var window = new Window
         {
@@ -1350,6 +1038,7 @@ public sealed class AccessoryEditorTests
             Top = -10000,
             Background = new SolidColorBrush(Color.FromRgb(253, 252, 249)),
             ShowInTaskbar = false,
+            ShowActivated = showActivated,
             Title = "Fictional accessory editor UI verification",
         };
         try { window.Show(); Pump(); verify(); }

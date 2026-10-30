@@ -1,15 +1,11 @@
 param(
     [Parameter(Mandatory)][ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$')][string]$RunName,
-    [Parameter(Mandatory)][string]$NativeModule,
     [switch]$Show
 )
 $ErrorActionPreference = 'Stop'
 $taskRepo = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-$taskModule = (Resolve-Path -LiteralPath $NativeModule).Path
-$taskExpected = 'BA6E92D57CAFBD5CC806F709890AA1E8ED784F97CF42A09F4168EE08065E97A0'
 $taskProtected = Join-Path $taskRepo 'src/Dango.Desktop/runtimes/win-x64/native/dango_box2d.dll'
 $taskProtectedHash = '6712D66ECEF9588123CAFCD868455080598B5B58711A698FB8AF022A0CDA191A'
-if ((Get-FileHash -LiteralPath $taskModule).Hash -ne $taskExpected) { throw 'Use the admitted furniture ABI candidate.' }
 if ((Get-FileHash -LiteralPath $taskProtected).Hash -ne $taskProtectedHash) { throw 'Protected source DLL differs.' }
 $taskBuild = Join-Path $taskRepo "artifacts/local-room-catalog/review-$RunName"
 $taskRoot = Join-Path $taskRepo "artifacts/local-room-catalog/runs/$RunName"
@@ -17,6 +13,9 @@ $taskImportRoot = "$taskRoot-import"
 $taskUiRoot = "$taskRoot-ui"
 foreach ($taskTarget in @($taskBuild, $taskRoot, $taskImportRoot, $taskUiRoot)) {
     if (Test-Path -LiteralPath $taskTarget) { throw 'Use a fresh RunName; existing artifacts and data are preserved.' }
+    for ($taskCursor = $taskTarget; $taskCursor; $taskCursor = Split-Path -Parent $taskCursor) {
+        if ((Test-Path -LiteralPath $taskCursor) -and ((Get-Item -LiteralPath $taskCursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Acceptance paths cannot traverse links.' }
+    }
 }
 $taskHead = (& git -C $taskRepo rev-parse HEAD).Trim()
 function Get-TaskSourceStamp {
@@ -32,11 +31,10 @@ function Get-TaskSourceStamp {
     [ordered]@{ files=$taskInventory; sha256=[Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData([System.Text.Encoding]::UTF8.GetBytes($taskCanonical))) }
 }
 $taskSourceBefore = Get-TaskSourceStamp
-$taskModuleLock = [System.IO.File]::Open($taskModule, 'Open', 'Read', 'Read')
-try {
-    & dotnet build (Join-Path $taskRepo 'eng/tools/Dango.LocalRoomProbe/Dango.LocalRoomProbe.csproj') -c Release --artifacts-path $taskBuild "-p:DangoPhysicsModulePath=$taskModule"
-    if ($LASTEXITCODE -ne 0) { throw 'Candidate build failed.' }
-} finally { $taskModuleLock.Dispose() }
+& dotnet build (Join-Path $taskRepo 'eng/tools/Dango.LocalRoomProbe/Dango.LocalRoomProbe.csproj') -c Release --artifacts-path $taskBuild
+if ($LASTEXITCODE -ne 0) { throw 'Default product probe build failed.' }
+$taskModule = Join-Path $taskBuild 'bin/Dango.LocalRoomProbe/release/dango_belt_room.dll'
+$taskExpected = (Get-FileHash -LiteralPath $taskModule).Hash
 $taskSourceAfter = Get-TaskSourceStamp
 if ($taskSourceBefore.sha256 -ne $taskSourceAfter.sha256) { throw 'Source changed during candidate build; this run is not acceptance evidence.' }
 $taskSourceBefore | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $taskBuild 'source-snapshot.json') -Encoding utf8

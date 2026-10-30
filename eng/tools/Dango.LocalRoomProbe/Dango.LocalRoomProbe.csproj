@@ -4,7 +4,15 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
   </PropertyGroup>
-  <ItemGroup>
+  <ItemGroup Condition="'$(DangoProductPackage)' == ''">
     <ProjectReference Include="../../../src/Dango.Desktop/Dango.Desktop.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(DangoProductPackage)' != ''">
+    <Reference Include="Dango.Desktop"><HintPath>$(DangoProductPackage)/Dango.Desktop.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Dango.Core"><HintPath>$(DangoProductPackage)/Dango.Core.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Dango.Physics"><HintPath>$(DangoProductPackage)/Dango.Physics.dll</HintPath><Private>true</Private></Reference>
+    <Reference Include="Dango.Protocol"><HintPath>$(DangoProductPackage)/Dango.Protocol.dll</HintPath><Private>true</Private></Reference>
+    <Content Include="$(DangoProductPackage)/dango_belt_product.dll;$(DangoProductPackage)/dango_belt_room.dll;$(DangoProductPackage)/belt-native-manifest.json"
+             CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

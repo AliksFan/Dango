@@ -8,3 +8,25 @@ TestResults/
 *.suo
 *.nupkg
 *.snupkg
+
+# Local configuration and credentials. Use fictitious values in example files.
+.env
+.env.*
+!.env.example
+*.local.json
+*.local.yaml
+*.local.yml
+*.pfx
+*.p12
+*.key
+*.pem
+
+# Local tooling, diagnostics and review output.
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+*.log
+*.dmp
+*.etl
+.archify/

@@ -1,0 +1,24 @@
+Dango accessory image editor: audited local E0 miniPaint subset
+
+miniPaint 4.14.3 by Vilius L. (MIT)
+https://github.com/viliusle/miniPaint
+Pinned source: a79733eb803fc97084ef0ee4faa96b031e69e1c0
+Full license: licenses/MIT-minipaint.txt
+
+jQuery slim 3.7.1, OpenJS Foundation and other contributors (MIT)
+https://jquery.com/
+Full license: licenses/MIT-jquery.txt
+
+Local Dango adaptations replace module discovery, menus, font loading/search,
+translation, persisted preferences and undo image storage. View transforms,
+the credited brush stabilizer, color conversions and throttle are replaced
+with Dango implementations; the upstream third-party snippets are excluded.
+Uncertain upstream SVG icons and all image/font assets are excluded.
+
+This subset excludes upstream imagefilters (including the Huxtable header),
+vintage, glfx, color-thief, GIF, Hermite, pica, file imports/exports, remote
+services, web fonts, service workers, telemetry, print and cloud operations.
+Only the files listed in manifest.json form the shipped resource set.
+AlertifyJS is replaced by Dango notifications; none of its code is shipped.
+The esbuild build tool and its platform binary are build-time only (MIT).
+Playwright-core is test-time only (Apache-2.0); no browser binaries downloaded.

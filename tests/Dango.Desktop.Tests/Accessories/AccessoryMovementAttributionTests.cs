@@ -104,7 +104,8 @@ public sealed class AccessoryMovementAttributionTests
         {
             BodyAnchorX = .228,
             BodyAnchorY = .756,
-            Softness = 84.46,
+            DeformationMode = AccessoryDeformationMode.SingleChain,
+            Rig = new([new(.5, .5), new(.7, .7), new(.8, .9)], .8446),
             ConnectionStrength = 0,
             RotationDamping = 0,
             LockRotation = false,

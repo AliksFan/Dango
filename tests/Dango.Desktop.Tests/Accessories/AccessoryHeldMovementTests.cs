@@ -21,6 +21,7 @@ using ShapePath = System.Windows.Shapes.Path;
 namespace Dango.Desktop.Tests.Accessories;
 
 [TestClass]
+[TestCategory("LegacyModuleIntegration")]
 [DoNotParallelize]
 public sealed class AccessoryHeldMovementTests
 {
@@ -284,11 +285,11 @@ public sealed class AccessoryHeldMovementTests
 
     private sealed class Rig : IDisposable
     {
-        private readonly DangoApplicationHost host;
+        private readonly LegacyProductPreviewFixture fixture;
         internal string RunRoot { get; }
         internal string NativeSha256 { get; }
-        internal ControlCenterWindow Window { get; }
-        internal ProductHomeView Home => Window.ProductHome;
+        internal Window Window { get; }
+        internal ProductHomeView Home => fixture.Home;
         internal StackedDangoSceneRuntime Runtime { get; }
         internal HostFrameScheduler Scheduler { get; }
         internal DeformableDangoVisual Body { get; }
@@ -301,36 +302,29 @@ public sealed class AccessoryHeldMovementTests
             RunRoot = Path.Combine(TestRepository.Root, "artifacts", "accessory-held-movement-v4", Guid.NewGuid().ToString("N"));
             var settings = Path.Combine(RunRoot, "settings");
             Directory.CreateDirectory(settings);
-            var source = Environment.GetEnvironmentVariable("DANGO_ACCESSORY_MOVEMENT_FIXTURE_ROOT");
-            if (!string.IsNullOrWhiteSpace(source))
-            {
-                foreach (var name in new[] { "settings.json", "appearance.json", "accessories.json" })
-                    File.Copy(Path.Combine(source, name), Path.Combine(settings, name), overwrite: false);
-            }
-            else
-            {
-                new ControlCenterWindowSettingsStore().Save(Path.Combine(settings, "settings.json"),
-                    ControlCenterWindowSettings.CreateDefault() with { IntroSeen = true, DisplayMode = DesktopDisplayMode.Window });
-                var session = new AccessorySettingsSession(settings);
-                session.Stage(new([
-                    new("fictional-held-leaf", "虚构持续移动叶芽", "builtin-sprout", 64, 64)
-                    {
-                        BodyAnchorX = .228, BodyAnchorY = .756, Softness = 84.46,
-                        ConnectionStrength = 0, RotationDamping = 0, LockRotation = false,
-                        ReturnStrength = 60, MaxSwingDegrees = 178, LimitSwing = true, GravityInfluence = 20,
-                    },
-                ]));
-                Assert.IsTrue(session.TrySave());
-            }
+            new ControlCenterWindowSettingsStore().Save(Path.Combine(settings, "settings.json"),
+                ControlCenterWindowSettings.CreateDefault() with { IntroSeen = true, DisplayMode = DesktopDisplayMode.Window });
+            var session = new AccessorySettingsSession(settings);
+            session.Stage(new([
+                new("fictional-held-leaf", "虚构持续移动叶芽", "builtin-sprout", 64, 64)
+                {
+                    BodyAnchorX = .228, BodyAnchorY = .756,
+                    DeformationMode = AccessoryDeformationMode.SingleChain,
+                    Rig = new([new(.5, .5), new(.7, .7), new(.8, .9)], .8446),
+                    ConnectionStrength = 0, RotationDamping = 0, LockRotation = false,
+                    ReturnStrength = 60, MaxSwingDegrees = 178, LimitSwing = true, GravityInfluence = 20,
+                },
+            ]));
+            Assert.IsTrue(session.TrySave());
             var native = Environment.GetEnvironmentVariable("DANGO_PHYSICS_MODULE_PATH") ??
                 Path.Combine(AppContext.BaseDirectory, DangoPhysicsWorld.NativeLibraryFileName);
             Assert.IsTrue(File.Exists(native), "The low-jump native candidate must be supplied to the actual Home fixture.");
             NativeSha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(native)));
-            host = new(settingsFile: Path.Combine(settings, "settings.json"), nativeLibraryPath: native);
-            Runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
+            fixture = new(settings, native);
+            Runtime = fixture.Runtime;
             Assert.IsTrue(Runtime.TryInitialize(), Runtime.LastError);
-            host.ShowControlCenter();
-            Window = Field<ControlCenterWindow>(host, "controlCenterWindow");
+            fixture.Show();
+            Window = fixture.Window;
             Home.ShowEditor(HomeEditor.Wardrobe);
             Pump(1200);
             Assert.IsTrue(Home.OwnsLiveFrameDriver && Runtime.IsRunning);
@@ -370,7 +364,7 @@ public sealed class AccessoryHeldMovementTests
             return path;
         }
 
-        public void Dispose() { Window.Close(); host.Dispose(); }
+        public void Dispose() { fixture.Dispose(); }
     }
 
     private static void Pump(int milliseconds)

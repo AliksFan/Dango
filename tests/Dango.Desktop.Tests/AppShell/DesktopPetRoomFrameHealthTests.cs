@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using Dango.Core.Coordinates;
 using Dango.Desktop.AppShell.Rooms;
 using Dango.Desktop.Rendering.Visuals;
@@ -44,7 +43,7 @@ public sealed class DesktopPetRoomFrameHealthTests
         Assert.IsTrue(rig.Pet.IsReady, rig.Pet.LastSurfaceFailure);
         // Do not pump: no new scene frame is applied between these timer-path checks.
         rig.Pet.CheckSurfaceHealth();
-        Assert.IsFalse(rig.Pet.IsReady, "A runtime record that never reaches either surface must not get unlimited grace.");
+        Assert.IsFalse(rig.Pet.IsReady, "A runtime record that never reaches the scene and pet on their shared surface must not get unlimited grace.");
         StringAssert.Contains(rig.Pet.LastFailureReason, "not reconciled");
         Assert.IsFalse(window.InteractionEnabled);
         Assert.IsFalse(rig.Driver.IsPointerActive);
@@ -61,8 +60,8 @@ public sealed class DesktopPetRoomFrameHealthTests
         var before = AssertCurrentGuardProjection(rig);
         var frame = rig.Window.LastAppliedFrame;
         var center = rig.Runtime.CurrentSelectedCenter!.Value;
-        var down = rig.ToScene(new(center.X, center.Y + rig.Runtime.NeutralBodyGroundOffset));
-        var lifted = rig.ToScene(new(center.X + 80, center.Y - 130 + rig.Runtime.NeutralBodyGroundOffset));
+        var down = rig.ToDisplayedScene(new(center.X, center.Y + rig.Runtime.NeutralBodyGroundOffset));
+        var lifted = rig.ToDisplayedScene(new(center.X + 80, center.Y - 130 + rig.Runtime.NeutralBodyGroundOffset));
         Assert.IsTrue(rig.Driver.PointerDown(down));
         Assert.IsTrue(rig.Driver.PointerMove(lifted));
         Assert.IsTrue(rig.Runtime.IsDragging);
@@ -87,7 +86,7 @@ public sealed class DesktopPetRoomFrameHealthTests
         var guard = AssertCurrentGuardProjection(rig);
         Assert.IsNull(guard.PointerClampBounds, "Petting qualification must use actual contact, not the native top-node drag target.");
         var center = rig.Runtime.CurrentSelectedCenter!.Value;
-        Assert.IsTrue(rig.Driver.PointerDown(rig.ToScene(new(center.X, center.Y + rig.Runtime.NeutralBodyGroundOffset)), true));
+        Assert.IsTrue(rig.Driver.PointerDown(rig.ToDisplayedScene(new(center.X, center.Y + rig.Runtime.NeutralBodyGroundOffset)), true));
         var rawScreen = new Point(x, y);
         Assert.IsTrue(rig.Driver.PointerMove(rig.Pet.Scene.PointFromScreen(rawScreen), true));
         var actual = DesktopPetRoomFixture.Field<LogicalPoint>(rig.Driver, "lastClampedPointerWorld");
@@ -120,26 +119,16 @@ public sealed class DesktopPetRoomFrameHealthTests
     {
         var scenePoint = rig.ToScene(new(point.X + rig.Pet.Scene.PresentationOffset.X,
             point.Y + rig.Runtime.NeutralBodyGroundOffset + rig.Pet.Scene.PresentationOffset.Y));
-        var source = rig.Pet.WallpaperSource ?? throw new AssertFailedException("The owned wallpaper HWND is unavailable.");
-        Assert.AreSame(rig.Pet.Scene, source.RootVisual);
-        var origin = new NativeClientPoint();
-        Assert.IsTrue(ClientToScreen(source.Handle, ref origin), "Read only the owned wallpaper's actual native client origin.");
+        var source = System.Windows.PresentationSource.FromVisual(rig.Window) as System.Windows.Interop.HwndSource
+            ?? throw new AssertFailedException("The owned pet HWND is unavailable.");
+        Assert.AreSame(source, System.Windows.PresentationSource.FromVisual(rig.Pet.Scene));
+        Assert.AreEqual(rig.Window.Handle, source.Handle);
         // Visual.PointToScreen rounds its native POINT to integer pixels. Keep the
         // independent HWND-origin/DPI oracle continuous, matching gesture precision.
         var pixels = source.CompositionTarget.TransformToDevice.Transform(scenePoint);
+        var origin = rig.Pet.SceneOriginPixels;
         return new(origin.X + pixels.X, origin.Y + pixels.Y);
     }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativeClientPoint
-    {
-        public int X;
-        public int Y;
-    }
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool ClientToScreen(nint window, ref NativeClientPoint point);
 
     private static void WakeSleepingEntityBeforeNextApply(DesktopPetRoomFixture rig)
     {
@@ -158,7 +147,7 @@ public sealed class DesktopPetRoomFrameHealthTests
             ReferenceEquals(rig.Runtime.LastFrame, rig.Window.LastAppliedFrame), rig.Runtime);
         var presented = rig.Pet.Scene.LastAppliedFrame;
         var center = rig.Runtime.CurrentSelectedCenter!.Value;
-        var point = rig.ToScene(new LogicalPoint(center.X, center.Y + rig.Runtime.NeutralBodyGroundOffset));
+        var point = rig.ToDisplayedScene(new LogicalPoint(center.X, center.Y + rig.Runtime.NeutralBodyGroundOffset));
         Assert.IsTrue(rig.Driver.PointerDown(point, false));
         Assert.IsFalse(rig.Runtime.Doze.Active);
         Assert.IsNull(rig.Runtime.LastFrame!.Bodies.Single().DozeSeconds);

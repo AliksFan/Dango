@@ -18,7 +18,7 @@ public sealed class DesktopPetRoomNativeInputTests
     [TestCategory("NativeWindowInput")]
     [DataRow(false)]
     [DataRow(true)]
-    public void FixedViewportUpdatesItsNativeRegionWithoutBlockingOldBodyOrDistantBlankSpace(bool maximized)
+    public void FixedViewportFollowsPaintedAlphaWithoutBlockingOldBodyOrDistantBlankSpace(bool maximized)
     {
         using var rig = new DesktopPetRoomFixture();
         rig.Enter();
@@ -26,22 +26,26 @@ public sealed class DesktopPetRoomNativeInputTests
         { IsGrounded: true, MaximumSpeed: < .05f }, rig.Runtime);
         using var application = new OwnedForegroundApplication(maximized);
         var initial = rig.Runtime.CurrentSelectedCenter!.Value;
-        var oldPoint = rig.ToScene(new(initial.X, initial.Y + rig.Runtime.NeutralBodyGroundOffset));
+        var oldPoint = rig.ToDisplayedScene(new(initial.X, initial.Y + rig.Runtime.NeutralBodyGroundOffset));
         var oldScreen = rig.Pet.Scene.PointToScreen(oldPoint);
         nint At(Point screen) => GetAncestor(WindowFromPoint(new((int)Math.Round(screen.X), (int)Math.Round(screen.Y))), 2);
         Assert.AreEqual(rig.Window.Handle, At(oldScreen));
         var work = System.Windows.Forms.Screen.PrimaryScreen!.WorkingArea;
         var distant = new Point(work.Left + 60, work.Top + 60);
         Assert.AreEqual(application.Handle, At(distant), "The fixed large HWND must exclude distant transparent space.");
-        var target = rig.ToScene(new(initial.X + 120, initial.Y - 180 + rig.Runtime.NeutralBodyGroundOffset));
+        var target = rig.ToDisplayedScene(new(initial.X + 120, initial.Y - 180 + rig.Runtime.NeutralBodyGroundOffset));
         SendPointer(rig, application, 0x0201, oldPoint, 1);
         SendPointer(rig, application, 0x0200, target, 1);
-        application.WaitUntil(rig, () => rig.Runtime.CurrentSelectedCenter!.Value.Y < initial.Y - 100);
+        // Alpha belongs to the presented image, so wait for the visible old
+        // contact to be vacated. A fixed core lift assumes a particular spring
+        // overshoot and does not establish that the old screen pixel is clear.
+        application.WaitUntil(rig, () => !rig.Window.HitTestScenePoint(oldPoint) && At(oldScreen) == application.Handle);
+        Assert.IsTrue(rig.Runtime.IsDragging && rig.Driver.IsPointerActive);
         Assert.IsFalse(rig.Window.HitTestScenePoint(oldPoint), "The old contact must actually be outside the moved body.");
         Assert.AreEqual(application.Handle, At(oldScreen), "The previous body's native region must not remain behind.");
         Assert.AreEqual(application.Handle, At(distant));
         var current = DangoHostFrameBinding.Bounds(rig.Window.LastAppliedFrame!, 0).Center;
-        var currentPoint = rig.ToScene(new(current.X, current.Y + rig.Runtime.NeutralBodyGroundOffset));
+        var currentPoint = rig.ToDisplayedScene(new(current.X, current.Y + rig.Runtime.NeutralBodyGroundOffset));
         Assert.IsTrue(rig.Window.HitTestScenePoint(currentPoint));
         Assert.AreEqual(rig.Window.Handle, At(rig.Pet.Scene.PointToScreen(currentPoint)),
             "The current actual body must still have an interactive native region.");
@@ -76,7 +80,7 @@ public sealed class DesktopPetRoomNativeInputTests
         Assert.AreEqual((nint)3, SendMessage(window.Handle, 0x0021, application.Handle, 0), "Mouse activation returns MA_NOACTIVATE.");
         var bodyBounds = DangoHostFrameBinding.Bounds(rig.Runtime.LastFrame!, 0)
             .Translate(new LogicalVector(0, rig.Runtime.NeutralBodyGroundOffset));
-        var center = rig.ToScene(bodyBounds.Center);
+        var center = rig.ToDisplayedScene(bodyBounds.Center);
         Assert.IsTrue(window.HitTestScenePoint(center));
         var centerScreen = rig.Pet.Scene.PointToScreen(center);
         Assert.AreEqual((nint)1, SendMessage(window.Handle, 0x0084, 0, Pack(centerScreen)));
@@ -116,10 +120,10 @@ public sealed class DesktopPetRoomNativeInputTests
         rig.Enter();
         using var application = new OwnedForegroundApplication(maximized);
         var center = rig.Runtime.CurrentSelectedCenter!.Value;
-        var sceneCenter = rig.ToScene(new(center.X, center.Y + rig.Runtime.NeutralBodyGroundOffset));
+        var sceneCenter = rig.ToDisplayedScene(new(center.X, center.Y + rig.Runtime.NeutralBodyGroundOffset));
         // The production light controller needs >=16 world horizontal motion, <=8 vertical motion within 600 ms.
         // A real 24-world stroke satisfies that contract without inventing timestamps or relaxing its thresholds.
-        var stroke = rig.ToScene(new(center.X + 24, center.Y + rig.Runtime.NeutralBodyGroundOffset));
+        var stroke = rig.ToDisplayedScene(new(center.X + 24, center.Y + rig.Runtime.NeutralBodyGroundOffset));
         var owner = rig.Runtime.FrameDriver;
         var entity = rig.Runtime.EntityIds.Single();
         var strokeTime = Stopwatch.StartNew();
@@ -133,8 +137,8 @@ public sealed class DesktopPetRoomNativeInputTests
             () => $"StrokeWorldDx=24; StrokeWorldDy=0; StrokeElapsedMs={strokeTime.ElapsedMilliseconds}; {NativeDiagnostic(rig)}");
         application.WaitUntil(rig, () => !rig.Runtime.HasLightFeedback, 1500);
         center = rig.Runtime.CurrentSelectedCenter!.Value;
-        sceneCenter = rig.ToScene(new(center.X, center.Y + rig.Runtime.NeutralBodyGroundOffset));
-        var lifted = rig.ToScene(new(center.X + 110, center.Y - 180 + rig.Runtime.NeutralBodyGroundOffset));
+        sceneCenter = rig.ToDisplayedScene(new(center.X, center.Y + rig.Runtime.NeutralBodyGroundOffset));
+        var lifted = rig.ToDisplayedScene(new(center.X + 110, center.Y - 180 + rig.Runtime.NeutralBodyGroundOffset));
         SendPointer(rig, application, 0x0201, sceneCenter, 1);
         SendPointer(rig, application, 0x0200, lifted, 1);
         Assert.IsTrue(rig.Runtime.IsDragging);
@@ -157,7 +161,7 @@ public sealed class DesktopPetRoomNativeInputTests
             foreach (var y in new[] { .025, .975 })
             {
                 var world = new LogicalPoint(bounds.X + bounds.Width * x, bounds.Y + bounds.Height * y);
-                var point = rig.ToScene(world);
+                var point = rig.ToDisplayedScene(world);
                 if (!rig.Window.HitTestScenePoint(point)) return point;
             }
         Assert.Fail("The real contour must have transparent corners inside its bounding box; rectangle-only hit testing is insufficient.");

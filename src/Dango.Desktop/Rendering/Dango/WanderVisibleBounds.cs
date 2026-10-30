@@ -11,7 +11,13 @@ internal static class WanderVisibleBounds
         if (frame.FallbackReason != PhysicsPresentationFallbackReason.None || !frame.IsVisible ||
             frame.Contour.Count < 8 || frame.Attachments?.Hat?.Pose is not { } pose) return null;
         // The rendered quadratic body curve stays inside its control-point hull.
-        var points = frame.Contour.Select(p => AttachmentShapeGeometry.MapToCanvas(p, body.Width, body.Height)).ToList();
+        var points = frame.Diagnostics.Backend == PhysicsPresentationBackend.ContinuousBelt
+            ? frame.Contour.Select(point =>
+            {
+                var mapped = DangoStreamGeometryFactory.MapBelt(point, body.Width, body.Height);
+                return new AttachmentPoint(mapped.X, mapped.Y);
+            }).ToList()
+            : frame.Contour.Select(p => AttachmentShapeGeometry.MapToCanvas(p, body.Width, body.Height)).ToList();
         // Conservative hull of every supported hat's Bezier control points, expanded
         // for maximum material bend/stretch (23 * .06), before the actual pose transform.
         // Thus no WPF visual or additional geometry allocation is needed on each tick.

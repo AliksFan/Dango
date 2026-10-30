@@ -75,7 +75,7 @@ public sealed class AttachmentSceneController(PhysicsPresentationFrame baseline)
     }
 
     public IReadOnlyList<PhysicsPresentationFrame> Advance(DesktopPhysicsSceneFrame frame, double seconds,
-        DangoEntityId selected, DangoFacingDirection facing)
+        DangoEntityId selected, DangoFacingDirection facing, DirectionalControlIntent input = default)
     {
         Synchronize(frame.Bodies.Select(b => b.EntityId).ToArray());
         var advance = frame.Physics.Succeeded && !paused;
@@ -87,9 +87,14 @@ public sealed class AttachmentSceneController(PhysicsPresentationFrame baseline)
                 var physical = frame.Physics.Bodies.Single(p => p.EntityId == body.EntityId);
                 try
                 {
-                    entry.Motion.Update(body.Presentation, step, seconds,
-                        body.EntityId == selected ? facing : DangoFacingDirection.Center,
-                        new(physical.CoreX, physical.CoreY));
+                    if (body.Presentation.Diagnostics.Backend == PhysicsPresentationBackend.ContinuousBelt)
+                        entry.Motion.UpdateBoundary(body.Presentation, AttachmentShapeGeometry.FromFrame(body.Presentation),
+                            step, seconds, body.EntityId == selected ? facing : DangoFacingDirection.Center,
+                            new(physical.CoreX, physical.CoreY), body.EntityId == selected ? input.VerticalDeformationAxis : 0);
+                    else
+                        entry.Motion.Update(body.Presentation, step, seconds,
+                            body.EntityId == selected ? facing : DangoFacingDirection.Center,
+                            new(physical.CoreX, physical.CoreY), verticalDeformationAxis: body.EntityId == selected ? input.VerticalDeformationAxis : 0);
                     router.ConsumeResults(entry.Target);
                 }
                 catch (Exception error) when (error is ArgumentException or InvalidOperationException or ArithmeticException)

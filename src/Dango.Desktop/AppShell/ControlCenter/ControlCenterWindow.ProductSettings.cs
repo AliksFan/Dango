@@ -9,6 +9,35 @@ public partial class ControlCenterWindow
     private Action? restoreSettingsSceneDisplay;
     private Action? reinitializeSettingsScene;
     internal Func<bool> ConfirmSceneReinitialization { get; set; }
+    private Func<int>? readDesktopPetPercent;
+    private Func<int, bool>? applyDesktopPetPercent;
+    private Func<string?>? readDesktopPetDisplayStatus;
+
+    internal void BindDesktopPetDisplaySettings(Func<int> readPercent, Func<int, bool> applyPercent, Func<string?> readStatus)
+    {
+        readDesktopPetPercent = readPercent;
+        applyDesktopPetPercent = applyPercent;
+        readDesktopPetDisplayStatus = readStatus;
+        ProductHome.DesktopPetSizeRequested -= ApplyDesktopPetDisplaySettings;
+        ProductHome.DesktopPetSizeRequested += ApplyDesktopPetDisplaySettings;
+        RefreshProductSettings();
+    }
+
+    private void ApplyDesktopPetDisplaySettings(int percent)
+    {
+        string? failure = null;
+        try
+        {
+            if (applyDesktopPetPercent?.Invoke(percent) != true)
+                failure = readDesktopPetDisplayStatus?.Invoke() ?? "桌宠大小未能保存，请重试。";
+        }
+        catch (Exception error) when (error is not OutOfMemoryException)
+        {
+            failure = $"桌宠大小调整未完成（{error.GetType().Name}），请重试。";
+        }
+        ProductHome.UpdateDesktopPetDisplaySettings(readDesktopPetPercent?.Invoke() ?? 100,
+            failure ?? readDesktopPetDisplayStatus?.Invoke(), readDesktopPetPercent is not null);
+    }
 
     internal void BindSettingsScene(Func<ProductSettingsSceneSnapshot> read, Action restoreDisplay, Action reinitialize)
     {
@@ -27,6 +56,8 @@ public partial class ControlCenterWindow
         var scene = ReadSettingsScene();
         ProductHome.UpdateSettings(new(scene, settingsSession?.HasWarning == true,
             settingsSession is { IsWriteProtected: true } or { IsPresetWriteProtected: true }, settingsSession?.StatusMessage ?? string.Empty));
+        ProductHome.UpdateDesktopPetDisplaySettings(readDesktopPetPercent?.Invoke() ?? 100,
+            readDesktopPetDisplayStatus?.Invoke(), readDesktopPetPercent is not null);
         if (ProductHome.IsSettingsDiagnosticsOpen) ProductHome.SetDiagnosticsText(CreateProductSettingsDiagnostics(scene));
     }
 

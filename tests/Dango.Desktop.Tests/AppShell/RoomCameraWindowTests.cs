@@ -244,12 +244,12 @@ public sealed class RoomCameraWindowTests
         {
             var root = Path.Combine(TestRepository.Root, "artifacts", "local-room", "camera-window", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(root);
-            Host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"), isolatedLocalRoomReview: true);
+            Host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"));
             try
             {
                 Runtime = Field<StackedDangoSceneRuntime>(Host, "stackedRuntime");
-                Assert.IsTrue(Runtime.TryInitialize(), Runtime.LastError);
-                Host.ShowControlCenter(); Host.EnterLocalRoom();
+                Assert.IsTrue(Runtime.UsesBeltRoom, "Product rooms must use the continuous body module.");
+        Host.ShowControlCenter(); ProductHostTestSupport.WaitForHome(Host); Host.EnterLocalRoom();
                 Driver = Field<LocalRoomSceneDriver>(Host, "localRoomDriver");
                 WaitReady();
             }

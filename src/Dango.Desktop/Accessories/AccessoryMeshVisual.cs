@@ -4,6 +4,7 @@ using System.Runtime.ExceptionServices;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Dango.Desktop.Accessories.Editing;
 using Point = System.Windows.Point;
 
 namespace Dango.Desktop.Accessories;
@@ -20,6 +21,8 @@ public sealed record AccessoryBatchRenderResult(
 public sealed class AccessoryMeshVisual : FrameworkElement
 {
     public const int MaximumRasterWorkers = 8;
+    public const int MaximumBatchPieces = AccessoryConfiguration.MaximumEquippedItems * AccessoryEditorProject.MaximumLayers;
+    private const int MaximumPreparedPieces = 8;
     private sealed class TextureSnapshot(int[] pixels)
     {
         public readonly int[] Pixels = pixels;
@@ -129,20 +132,43 @@ public sealed class AccessoryMeshVisual : FrameworkElement
 
     /// <summary>
     /// Prepares/uploads on the visual owner thread; calculates independent complete-source textures
-    /// in one bounded parallel batch. Each ordinary accessory fault is isolated and returned.
+    /// in bounded eight-piece batches. Each ordinary accessory fault is isolated and returned.
     /// </summary>
     public static AccessoryBatchRenderResult ApplyBatch(
         IReadOnlyList<(AccessoryMeshVisual Visual, AccessoryMeshFrame Frame)> requests, DpiScale? rasterDpi = null)
     {
         ArgumentNullException.ThrowIfNull(requests);
-        if (requests.Count > 8) throw new ArgumentOutOfRangeException(nameof(requests));
-        var failures = new List<(AccessoryMeshVisual Visual, Exception Error)>();
-        var work = new List<RasterWork>(); var unique = new HashSet<AccessoryMeshVisual>();
-        var prepareStart = Stopwatch.GetTimestamp();
-        foreach (var (visual, value) in requests)
+        if (requests.Count > MaximumBatchPieces) throw new ArgumentOutOfRangeException(nameof(requests));
+        var validationStart = Stopwatch.GetTimestamp();
+        var unique = new HashSet<AccessoryMeshVisual>();
+        foreach (var (visual, _) in requests)
         {
             ArgumentNullException.ThrowIfNull(visual); visual.VerifyAccess();
             if (!unique.Add(visual)) throw new ArgumentException("配饰批量画面不能重复包含同一 Visual。", nameof(requests));
+        }
+        var failures = new List<(AccessoryMeshVisual Visual, Exception Error)>();
+        var preparationMs = Stopwatch.GetElapsedTime(validationStart).TotalMilliseconds;
+        double rasterMs = 0, uploadMs = 0;
+        // A batch counts render pieces, while wearing admission counts items.
+        // Keep the previous eight-piece preparation/worker bound: a project can
+        // add pieces without multiplying simultaneous raster-work snapshots.
+        for (var offset = 0; offset < requests.Count; offset += MaximumPreparedPieces)
+        {
+            var result = ApplyPreparedBatch(requests.Skip(offset).Take(MaximumPreparedPieces).ToArray(), rasterDpi);
+            failures.AddRange(result.Errors); preparationMs += result.PreparationMilliseconds;
+            rasterMs += result.RasterMilliseconds; uploadMs += result.UploadMilliseconds;
+        }
+        return new(failures.AsReadOnly(), preparationMs, rasterMs, uploadMs);
+    }
+
+    private static AccessoryBatchRenderResult ApplyPreparedBatch(
+        IReadOnlyList<(AccessoryMeshVisual Visual, AccessoryMeshFrame Frame)> requests, DpiScale? rasterDpi)
+    {
+        var failures = new List<(AccessoryMeshVisual Visual, Exception Error)>();
+        var work = new List<RasterWork>();
+        var prepareStart = Stopwatch.GetTimestamp();
+        foreach (var (visual, value) in requests)
+        {
             try
             {
                 visual.AssignFrame(value, rasterDpi);

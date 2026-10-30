@@ -16,6 +16,45 @@ namespace Dango.Desktop.Tests.AppShell;
 public sealed class ProductHomeInteractionTests
 {
     [STATestMethod]
+    [DataRow(640, 360)]
+    [DataRow(960, 540)]
+    [DataRow(960, 640)]
+    [DataRow(1280, 720)]
+    public void LandscapeFaceEditorFitsViewportAndKeepsActionsReachable(int width, int height)
+    {
+        var home = new ProductHomeView { ReduceMotion = true };
+        var window = new Window { Content = home, Width = width, Height = height, Left = -10000, Top = 0,
+            ShowActivated = false, ShowInTaskbar = false, WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize };
+        try
+        {
+            window.Show(); Arrange(); home.ShowEditor(HomeEditor.Face); Arrange();
+            foreach (var tab in new[] { "AppearanceColorsTab", "AppearanceEyesTab" })
+            {
+                Click(home, tab); Arrange();
+                var viewport = Element<ScrollViewer>(home, "HomeContent");
+                Assert.IsLessThanOrEqualTo(.5, viewport.ScrollableHeight,
+                    $"{width}x{height} {tab}: stage={Element<Grid>(home, "Stage").ActualHeight}, viewport={viewport.ViewportHeight}; the whole editor must fit without page scrolling.");
+                foreach (var name in new[] { "ApplyButton", "CancelAppearanceButton", "DefaultAppearanceButton" })
+                {
+                    var bounds = Bounds(home, name);
+                    Assert.IsTrue(bounds.Top >= 0 && bounds.Bottom <= height && bounds.Left >= 0 && bounds.Right <= width, $"{name}: {bounds}");
+                    var button = Element<Button>(home, name);
+                    var point = new Point(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2);
+                    var hit = home.InputHitTest(point) as DependencyObject;
+                    // Apply is intentionally disabled until a valid draft exists; the other actions must be clickable.
+                    if (button.IsEnabled) Assert.IsTrue(ReferenceEquals(button, hit) || hit is not null && button.IsAncestorOf(hit), $"{name} must not be clipped by a scroll ancestor.");
+                }
+            }
+        }
+        finally { window.Close(); }
+
+        void Arrange()
+        {
+            window.UpdateLayout(); Pump(20); window.UpdateLayout();
+        }
+    }
+
+    [STATestMethod]
     [DataRow(1024)]
     [DataRow(736)]
     [DataRow(640)]
@@ -250,10 +289,10 @@ public sealed class ProductHomeInteractionTests
         {
             window.Show();
             Pump(50);
-            Assert.IsTrue(RaiseKey(home, window, Key.D, Keyboard.PreviewKeyDownEvent).Handled);
-            Assert.AreEqual(HomeEditor.Face, home.SelectedEditor, "Closed home retains D as the face shortcut.");
-            Assert.IsTrue(RaiseKey(home, window, Key.A, Keyboard.PreviewKeyDownEvent).Handled);
-            Assert.AreEqual(HomeEditor.Wardrobe, home.SelectedEditor, "A outside wardrobe retains the wardrobe shortcut.");
+            Assert.IsTrue(RaiseKey(home, window, Key.E, Keyboard.PreviewKeyDownEvent).Handled);
+            Assert.AreEqual(HomeEditor.Face, home.SelectedEditor, "Closed home retains E as the face shortcut.");
+            Assert.IsTrue(RaiseKey(home, window, Key.Q, Keyboard.PreviewKeyDownEvent).Handled);
+            Assert.AreEqual(HomeEditor.Wardrobe, home.SelectedEditor, "Q outside wardrobe retains the wardrobe shortcut.");
             var panel = Element<StackPanel>(home, "WardrobeOptions").Children.OfType<AccessoryEditorPanel>().Single();
             panel.SetBodyAnchor(new Point(.34, .59));
             var draft = session.DraftConfiguration;
@@ -270,31 +309,31 @@ public sealed class ProductHomeInteractionTests
 
             Assert.IsTrue(panel.SelectSection(AccessoryEditorSection.Placement));
             Pump(20);
-            var name = Descendants<TextBox>(panel).Single(input => AutomationProperties.GetName(input) == "配饰名称");
-            Assert.IsTrue(name.Focus(), "The editable field must own actual WPF focus.");
+            var sizeInput = Descendants<TextBox>(panel).Single(input => AutomationProperties.GetName(input) == "尺寸 % 数值");
+            Assert.IsTrue(sizeInput.Focus(), "The editable field must own actual WPF focus.");
             foreach (var key in new[] { Key.A, Key.D, Key.W, Key.S, Key.Space })
             {
                 RaiseKey(home, window, key, Keyboard.PreviewKeyDownEvent);
                 RaiseKey(home, window, key, Keyboard.PreviewKeyUpEvent);
-                Assert.IsTrue(name.IsKeyboardFocused, "Editor input must preserve field focus rather than route into gameplay or navigation.");
+                Assert.IsTrue(sizeInput.IsKeyboardFocused, "Editor input must preserve field focus rather than route into gameplay or navigation.");
                 Assert.IsTrue(home.IsEditing);
                 Assert.AreEqual(HomeEditor.Wardrobe, home.SelectedEditor);
                 Assert.IsFalse(home.IsInPorch);
                 Assert.AreEqual(draft, session.DraftConfiguration);
             }
 
-            name.Text = "虚构未保存名称";
+            sizeInput.Text = "137";
             Assert.IsTrue(RaiseKey(home, window, Key.Escape, Keyboard.PreviewKeyDownEvent).Handled);
             Assert.IsFalse(home.IsEditing);
             Assert.AreEqual(saved, session.DraftConfiguration, "Esc must cancel all unsaved accessory parameters and buffered field text.");
             CollectionAssert.AreEqual(savedBytes, File.ReadAllBytes(AccessorySettingsStore.GetManifestPath(root)));
             Assert.IsTrue(Element<FrameworkElement>(home, "Stage").IsKeyboardFocused);
-            Assert.IsTrue(RaiseKey(home, window, Key.D, Keyboard.PreviewKeyDownEvent).Handled);
-            Assert.AreEqual(HomeEditor.Face, home.SelectedEditor, "Closing wardrobe must restore the home D shortcut.");
-            Assert.IsTrue(RaiseKey(home, window, Key.A, Keyboard.PreviewKeyDownEvent).Handled);
+            Assert.IsTrue(RaiseKey(home, window, Key.E, Keyboard.PreviewKeyDownEvent).Handled);
+            Assert.AreEqual(HomeEditor.Face, home.SelectedEditor, "Closing wardrobe must restore the home E shortcut.");
+            Assert.IsTrue(RaiseKey(home, window, Key.Q, Keyboard.PreviewKeyDownEvent).Handled);
             Assert.AreEqual(HomeEditor.Wardrobe, home.SelectedEditor);
             Assert.IsTrue(panel.SelectSection(AccessoryEditorSection.Placement));
-            Assert.AreEqual(saved.Items.Single(item => item.Id == panel.SelectedItem!.Id).Name, name.Text,
+            Assert.AreEqual(saved.Items.Single(item => item.Id == panel.SelectedItem!.Id).SizePercent.ToString("0.###", System.Globalization.CultureInfo.CurrentCulture), sizeInput.Text,
                 "Reopening the editor must not resurrect canceled buffered text.");
             Assert.AreEqual(saved, session.DraftConfiguration);
         }

@@ -1,0 +1,162 @@
+{
+  "project": {
+    "schemaVersion": 1,
+    "width": 2,
+    "height": 2,
+    "layers": [
+      {
+        "id": 8,
+        "name": "Fictional 8",
+        "type": "image",
+        "x": 0,
+        "y": 0,
+        "width": 2,
+        "height": 2,
+        "width_original": null,
+        "height_original": null,
+        "visible": true,
+        "is_vector": false,
+        "opacity": 37.5,
+        "order": 8,
+        "composition": "source-over",
+        "rotate": 0,
+        "data": null,
+        "params": {},
+        "status": null,
+        "color": "#112233",
+        "render_function": null,
+        "parent_id": 0,
+        "hide_selection_if_active": false,
+        "assetId": "asset-1"
+      },
+      {
+        "id": 2,
+        "name": "Fictional 2",
+        "type": "brush",
+        "x": 0,
+        "y": 0,
+        "width": 2,
+        "height": 2,
+        "width_original": null,
+        "height_original": null,
+        "visible": true,
+        "is_vector": true,
+        "opacity": 37.5,
+        "order": 2,
+        "composition": "source-over",
+        "rotate": null,
+        "data": [
+          [
+            [
+              0,
+              0,
+              1
+            ],
+            [
+              1,
+              1,
+              0.5
+            ]
+          ]
+        ],
+        "params": {
+          "size": 3,
+          "pressure": true
+        },
+        "status": null,
+        "color": "#112233",
+        "render_function": [
+          "brush",
+          "render"
+        ],
+        "parent_id": 0,
+        "hide_selection_if_active": false
+      },
+      {
+        "id": 6,
+        "name": "Fictional 6",
+        "type": "text",
+        "x": 0,
+        "y": 0,
+        "width": 2,
+        "height": 2,
+        "width_original": null,
+        "height_original": null,
+        "visible": true,
+        "is_vector": true,
+        "opacity": 37.5,
+        "order": 6,
+        "composition": "source-over",
+        "rotate": 0,
+        "data": [
+          [
+            {
+              "text": "Fictional text",
+              "meta": {}
+            },
+            {
+              "text": " styled",
+              "meta": {
+                "size": 18,
+                "bold": true,
+                "fill_color": "#334455"
+              }
+            }
+          ]
+        ],
+        "params": {
+          "boundary": "box",
+          "kerning": "metrics",
+          "text_direction": "ltr",
+          "wrap_direction": "ttb",
+          "halign": "center",
+          "valign": "middle",
+          "wrap": "word"
+        },
+        "status": null,
+        "color": "#112233",
+        "render_function": [
+          "text",
+          "render"
+        ],
+        "parent_id": 0,
+        "hide_selection_if_active": false
+      },
+      {
+        "id": 11,
+        "name": "Fictional 11",
+        "type": null,
+        "x": 0,
+        "y": 0,
+        "width": 0,
+        "height": 0,
+        "width_original": null,
+        "height_original": null,
+        "visible": true,
+        "is_vector": false,
+        "opacity": 37.5,
+        "order": 11,
+        "composition": "source-over",
+        "rotate": 0,
+        "data": null,
+        "params": {},
+        "status": null,
+        "color": "#112233",
+        "render_function": null,
+        "parent_id": 0,
+        "hide_selection_if_active": false
+      }
+    ],
+    "assets": [
+      {
+        "id": "asset-1",
+        "pngBase64": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAE0lEQVR4nGP4z8DwHwhB4D8YAAA/0gj4ZYml3QAAAABJRU5ErkJggg=="
+      }
+    ]
+  },
+  "png": {
+    "width": 2,
+    "height": 2,
+    "pngBase64": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAE0lEQVR4nGP4z8DwHwhB4D8YAAA/0gj4ZYml3QAAAABJRU5ErkJggg=="
+  }
+}

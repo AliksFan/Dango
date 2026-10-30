@@ -112,7 +112,9 @@ public partial class DeformableDangoVisual : System.Windows.Controls.UserControl
             return;
         }
 
-        var geometry = DangoStreamGeometryFactory.TryCreate(frame.Contour, Width, Height);
+        var geometry = frame.Diagnostics.Backend == PhysicsPresentationBackend.ContinuousBelt
+            ? DangoStreamGeometryFactory.TryCreateBelt(frame.Contour, Width, Height)
+            : DangoStreamGeometryFactory.TryCreate(frame.Contour, Width, Height);
         var useFallback = frame.FallbackReason != PhysicsPresentationFallbackReason.None || !geometry.Succeeded;
         LastContourFailure = geometry.Failure;
         BodyPath.Visibility = useFallback ? Visibility.Collapsed : Visibility.Visible;

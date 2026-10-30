@@ -73,7 +73,7 @@ public sealed class ProductSettingsPageTests
     }
 
     [STATestMethod]
-    public void EnteringSettingsFromEditorMovesFocusToVisibleReturnAction()
+    public void EnteringSettingsFromEditorMovesFocusToSettingsViewport()
     {
         using var rig = new SettingsRig();
         rig.ShowOffscreen();
@@ -83,7 +83,7 @@ public sealed class ProductSettingsPageTests
         rig.Click("SettingsButton");
         Pump(100);
         Assert.IsFalse(rig.Home.IsEditing);
-        Assert.IsTrue(rig.Button("BackFromSettingsButton").IsKeyboardFocused);
+        Assert.IsTrue(((FrameworkElement)rig.Home.FindName("SettingsPage")).IsKeyboardFocused);
     }
 
     [STATestMethod]

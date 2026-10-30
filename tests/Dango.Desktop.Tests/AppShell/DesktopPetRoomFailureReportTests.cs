@@ -16,7 +16,7 @@ public sealed class DesktopPetRoomFailureReportTests
     private const string ReportName = "desktop-pet-last-failure.json";
     private static readonly string[] HealthFields =
     [
-        "WallpaperDisposed", "WallpaperRootMatches", "SceneVisible", "SceneHealthy", "RuntimeFrameCurrent",
+        "SurfaceAttached", "DesktopCurrent", "DesktopSuspended", "SceneVisible", "SceneHealthy", "RuntimeFrameCurrent",
         "PetVisible", "PetHealthy", "PetFrameMatches", "RuntimeOwnerPresent", "RuntimeRunning", "RuntimeHealthy",
         "PointerCaptured", "PointerActive", "PhysicalDragActive",
     ];
@@ -36,11 +36,10 @@ public sealed class DesktopPetRoomFailureReportTests
         var entity = rig.Runtime.EntityIds.Single();
         var window = rig.Window;
         var pet = window.Handle;
-        var wallpaper = rig.Pet.WallpaperSource!.Handle;
         EstablishOwnCapture(rig, window);
         var before = DateTimeOffset.UtcNow;
         InvalidateOwnSurface(rig, pet);
-        AssertFullyStopped(rig, window, pet, wallpaper);
+        AssertFullyStopped(rig, window, pet);
         var occurred = AssertReport(rig, before, DateTimeOffset.UtcNow);
         Assert.AreEqual(rig.Pet.LastFailureSnapshot!.OccurredAtUtc, occurred,
             "The persisted report must retain the actual loss snapshot, rather than a later synthetic record.");
@@ -61,20 +60,18 @@ public sealed class DesktopPetRoomFailureReportTests
         var path = ReportPath(rig);
         var firstWindow = rig.Window;
         var firstPet = firstWindow.Handle;
-        var firstWallpaper = rig.Pet.WallpaperSource!.Handle;
         var firstBefore = DateTimeOffset.UtcNow;
         InvalidateOwnSurface(rig, firstPet);
-        AssertFullyStopped(rig, firstWindow, firstPet, firstWallpaper);
+        AssertFullyStopped(rig, firstWindow, firstPet);
         var first = AssertReport(rig, firstBefore, DateTimeOffset.UtcNow);
         var firstText = File.ReadAllText(path);
         RestoreThroughTrayAction(rig);
         DesktopPetRoomFixture.WaitUntil(() => DateTimeOffset.UtcNow > first, rig.Runtime);
         var secondWindow = rig.Window;
         var secondPet = secondWindow.Handle;
-        var secondWallpaper = rig.Pet.WallpaperSource!.Handle;
         var secondBefore = DateTimeOffset.UtcNow;
         InvalidateOwnSurface(rig, secondPet);
-        AssertFullyStopped(rig, secondWindow, secondPet, secondWallpaper);
+        AssertFullyStopped(rig, secondWindow, secondPet);
         var second = AssertReport(rig, secondBefore, DateTimeOffset.UtcNow);
         Assert.IsTrue(second > first, "A second real failure must replace the first UTC snapshot.");
         Assert.AreEqual(path, ReportPath(rig));
@@ -83,7 +80,7 @@ public sealed class DesktopPetRoomFailureReportTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
-    public void ReportWriteFailureCannotPreventDualSurfaceShutdownOrTrayRecovery()
+    public void ReportWriteFailureCannotPreventSharedSurfaceShutdownOrTrayRecovery()
     {
         using var rig = new DesktopPetRoomFixture();
         var path = ReportPath(rig);
@@ -96,9 +93,8 @@ public sealed class DesktopPetRoomFailureReportTests
             var entity = rig.Runtime.EntityIds.Single();
             var window = rig.Window;
             var pet = window.Handle;
-            var wallpaper = rig.Pet.WallpaperSource!.Handle;
             InvalidateOwnSurface(rig, pet);
-            AssertFullyStopped(rig, window, pet, wallpaper);
+            AssertFullyStopped(rig, window, pet);
             Assert.IsFalse(File.Exists(path));
             Assert.IsTrue(Directory.Exists(path));
             Assert.AreEqual(0, Directory.EnumerateFileSystemEntries(path).Count(),
@@ -118,8 +114,8 @@ public sealed class DesktopPetRoomFailureReportTests
     private static void EstablishOwnCapture(DesktopPetRoomFixture rig, DesktopPetDangoWindow window)
     {
         var center = rig.Runtime.CurrentSelectedCenter!.Value;
-        var start = rig.ToScene(new(center.X, center.Y + rig.Runtime.NeutralBodyGroundOffset));
-        var move = rig.ToScene(new(center.X + 9, center.Y + rig.Runtime.NeutralBodyGroundOffset));
+        var start = rig.ToDisplayedScene(new(center.X, center.Y + rig.Runtime.NeutralBodyGroundOffset));
+        var move = rig.ToDisplayedScene(new(center.X + 9, center.Y + rig.Runtime.NeutralBodyGroundOffset));
         nint ClientParameter(Point scenePoint)
         {
             var screen = rig.Pet.Scene.PointToScreen(scenePoint);
@@ -148,7 +144,7 @@ public sealed class DesktopPetRoomFailureReportTests
             diagnostic: () => rig.Pet.LastSurfaceFailure);
     }
 
-    private static void AssertFullyStopped(DesktopPetRoomFixture rig, DesktopPetDangoWindow window, nint pet, nint wallpaper)
+    private static void AssertFullyStopped(DesktopPetRoomFixture rig, DesktopPetDangoWindow window, nint pet)
     {
         Assert.AreEqual(LocalRoomPresentation.Hidden, rig.Host.LocalPresentation);
         Assert.IsFalse(rig.Host.LocalHandoffPending);
@@ -162,7 +158,7 @@ public sealed class DesktopPetRoomFailureReportTests
         Assert.IsNull(rig.Runtime.FrameDriver);
         Assert.IsFalse(rig.Driver.OwnsRuntime);
         Assert.IsFalse(IsWindow(pet));
-        Assert.IsFalse(IsWindow(wallpaper));
+        Assert.IsNull(System.Windows.PresentationSource.FromVisual(rig.Pet.Scene));
         Assert.IsTrue(DesktopPetRoomFixture.Field<bool>(rig.Host, "localRoomSelected"));
         Assert.IsFalse(string.IsNullOrWhiteSpace(rig.Host.LocalRoomFailure));
         var snapshot = rig.Pet.LastFailureSnapshot ?? throw new AssertFailedException("The actual loss snapshot must survive shutdown.");
@@ -178,7 +174,7 @@ public sealed class DesktopPetRoomFailureReportTests
         Assert.IsFalse(actions.IsVisible());
         Assert.IsTrue(actions.IsDesktopPet?.Invoke() == true);
         actions.Restore();
-        Assert.IsTrue(rig.Host.LocalHandoffPending, "Recovery must require fresh joint-surface readiness.");
+        Assert.IsTrue(rig.Host.LocalHandoffPending, "Recovery must require fresh shared-surface readiness.");
         Assert.IsFalse(rig.Window.InteractionEnabled);
         rig.WaitForEntry();
         Assert.IsTrue(actions.IsVisible());
@@ -210,8 +206,8 @@ public sealed class DesktopPetRoomFailureReportTests
         Assert.AreEqual(string.Empty, root.GetProperty("PetFrameRejection").GetString());
         foreach (var field in HealthFields)
             Assert.IsTrue(root.GetProperty(field).ValueKind is JsonValueKind.True or JsonValueKind.False, field);
-        Assert.IsFalse(root.GetProperty("WallpaperDisposed").GetBoolean());
-        foreach (var field in new[] { "WallpaperRootMatches", "SceneVisible", "SceneHealthy", "PetVisible", "PetHealthy",
+        Assert.IsFalse(root.GetProperty("DesktopSuspended").GetBoolean());
+        foreach (var field in new[] { "SurfaceAttached", "DesktopCurrent", "SceneVisible", "SceneHealthy", "PetVisible", "PetHealthy",
             "PetFrameMatches", "RuntimeOwnerPresent", "RuntimeRunning", "RuntimeHealthy" })
             Assert.IsTrue(root.GetProperty(field).GetBoolean(), $"{field} must describe the actual pre-shutdown snapshot.");
         var scheduler = root.GetProperty("Scheduler");

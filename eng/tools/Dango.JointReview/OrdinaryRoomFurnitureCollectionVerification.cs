@@ -12,6 +12,7 @@ using Dango.Core.Furniture;
 using Dango.Desktop.AppShell;
 using Dango.Desktop.AppShell.ControlCenter;
 using Dango.Desktop.AppShell.Rooms;
+using Dango.Desktop.AppShell.Rooms.Storage;
 using Dango.Desktop.DesktopHost;
 using Dango.Desktop.Furniture;
 using Dango.Desktop.Physics.Presentation;
@@ -23,7 +24,6 @@ namespace Dango.JointReview;
 /// <summary>Drives the actual product host and its existing frame owner; never steps a test world.</summary>
 internal static class OrdinaryRoomFurnitureCollectionVerification
 {
-    private const string CandidateHash = "BA6E92D57CAFBD5CC806F709890AA1E8ED784F97CF42A09F4168EE08065E97A0";
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
     private sealed class Evidence
     {
@@ -31,7 +31,7 @@ internal static class OrdinaryRoomFurnitureCollectionVerification
         public bool Passed { get; set; }
         public string Phase { get; set; } = "initializing";
         public string? Failure { get; set; }
-        public string CandidateSha256 { get; init; } = CandidateHash;
+        public string CandidateSha256 { get; init; } = "";
         public int ProcessId { get; init; } = Environment.ProcessId;
         public int CompletedRoomRoundTrips { get; set; }
         public int CompletedEditRoundTrips { get; set; }
@@ -84,13 +84,13 @@ internal static class OrdinaryRoomFurnitureCollectionVerification
         Require(double.IsFinite(activeSeconds) && activeSeconds >= 0 && activeSeconds <= 3600,
             "Active observation seconds must be finite and within 0..3600.");
         module = Path.GetFullPath(module); dataRoot = Path.GetFullPath(dataRoot); outputRoot = Path.GetFullPath(outputRoot);
-        Require(Hash(module) == CandidateHash, "Ordinary-room verification requires the frozen Furniture ABI candidate.");
+        Require(Path.GetFileName(module) == "dango_belt_room.dll" && File.Exists(module), "Specify the built default Belt room module.");
         Require(!Directory.Exists(outputRoot), "Use a fresh evidence directory; existing evidence is preserved.");
         PrepareOwnedData(dataRoot);
-        var layoutPath = FurnitureLayoutStore.GetLayoutPath(dataRoot, FurnitureLayoutContract.OrdinaryRoom);
-        Require(!File.Exists(layoutPath), "Full verification requires a fresh owned room layout.");
+        var layoutPath = CatalogLayoutPath(dataRoot);
+        Require(new LocalRoomCatalogStore(dataRoot).ReadLayout(new LocalRoomCatalogStore(dataRoot).Refresh().Catalog!.Rooms.Single().RoomId) is { LayoutVersion: 0, Items.Count: 0 }, "Full verification requires a fresh empty owned catalog room.");
         Directory.CreateDirectory(outputRoot);
-        var evidence = new Evidence { RequiredActiveSeconds = activeSeconds };
+        var evidence = new Evidence { RequiredActiveSeconds = activeSeconds, CandidateSha256 = Hash(module) };
         var watch = Stopwatch.StartNew();
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         ProductFixture? product = null;
@@ -120,6 +120,8 @@ internal static class OrdinaryRoomFurnitureCollectionVerification
             evidence.EntityId = product.Runtime.EntityIds.Single().Value;
             var initialWorld = product.World;
             FillCollection(product, () => evidence.SavedOperations++);
+            session = product.Furniture; initialWorld = product.World;
+            evidence.WorldGeneration = session.WorldGeneration; evidence.EntityId = product.Runtime.EntityIds.Single().Value;
             evidence.FurnitureCount = session.Layout.Items.Count;
             evidence.PlatformCount = session.Layout.Items.Count(item => item.Kind == FurnitureItemKind.StaticPlatform);
             evidence.BallCount = session.Layout.Items.Count(item => item.Kind == FurnitureItemKind.RoundBall);
@@ -161,6 +163,8 @@ internal static class OrdinaryRoomFurnitureCollectionVerification
                 Require(bytes.AsSpan().SequenceEqual(File.ReadAllBytes(layoutPath)), "Runtime detach changed the saved layout.");
                 CheckIdentity();
                 product.Host.EnterLocalRoomFurniture(); product.UntilHandoff();
+                product.ConfirmNewRoomOwner(); session = product.Furniture;
+                initialWorld = product.World; evidence.WorldGeneration = session.WorldGeneration; evidence.EntityId = product.Runtime.EntityIds.Single().Value;
                 Require(product.Host.LocalPresentation == LocalRoomPresentation.Window && product.Window.IsFurnitureEditing,
                     product.Host.LocalRoomFailure ?? "Furniture entry did not open the actual room editor.");
                 CheckApplied();
@@ -204,7 +208,7 @@ internal static class OrdinaryRoomFurnitureCollectionVerification
             {
                 Require(ReferenceEquals(initialWorld, product.World) && session.WorldGeneration == evidence.WorldGeneration &&
                     product.Runtime.EntityIds.Count == 1 && product.Runtime.EntityIds.Single().Value == evidence.EntityId,
-                    "Product handoff recreated the world or copied/replaced the pet.");
+                    "The active room lost its world generation or selected body identity.");
                 Require(product.Runtime.LastError is null && product.Runtime.AttachmentError is null,
                     product.Runtime.LastError ?? product.Runtime.AttachmentError ?? "Runtime fault.");
             }
@@ -217,8 +221,8 @@ internal static class OrdinaryRoomFurnitureCollectionVerification
                     frame.Items.Select(item => item.InstanceId).Distinct().Count() == 30 &&
                     session.RenderItems.Select(item => item.InstanceId).SequenceEqual(session.Layout.Items.Select(item => item.InstanceId)),
                     "Saved thirty-item room collection is not backed by the complete healthy native/render frames: " + session.Status);
-                var loaded = new FurnitureLayoutStore(contract: FurnitureLayoutContract.OrdinaryRoom).Load(layoutPath);
-                Require(loaded.IsWritable && loaded.Layout == session.Layout, "Product file and live layout disagree.");
+                var catalog = new LocalRoomCatalogStore(dataRoot);
+                Require(catalog.ReadLayout(catalog.Refresh().Catalog!.Rooms.Single().RoomId) == session.Layout, "Product catalog file and live layout disagree.");
             }
             void VerifyLiveBallAndResetEntry()
             {
@@ -247,6 +251,8 @@ internal static class OrdinaryRoomFurnitureCollectionVerification
                 Require(product.Window.EndFurnitureEditing(), "Could not exit furniture editing after pushing the ball.");
                 product.Host.ReturnToPorch(); product.UntilHandoff();
                 product.Host.EnterLocalRoomFurniture(); product.UntilHandoff();
+                product.ConfirmNewRoomOwner(); session = product.Furniture;
+                initialWorld = product.World; evidence.WorldGeneration = session.WorldGeneration; evidence.EntityId = product.Runtime.EntityIds.Single().Value;
                 CheckApplied();
                 Require(session.Layout == savedLayout && savedBytes.AsSpan().SequenceEqual(File.ReadAllBytes(layoutPath)),
                     "Ball reentry changed saved GUIDs, anchors or bytes.");
@@ -403,10 +409,10 @@ internal static class OrdinaryRoomFurnitureCollectionVerification
     internal static void RunRestart(string mode, string module, string dataRoot, string outputFile)
     {
         Require(mode is "save" or "load", "Restart mode must be save or load.");
-        Require(Hash(module) == CandidateHash && !File.Exists(outputFile), "Restart module/evidence is not the expected fresh target.");
+        Require(Path.GetFileName(module) == "dango_belt_room.dll" && File.Exists(module) && !File.Exists(outputFile), "Restart module/evidence is not the expected fresh target.");
         RequireOwnedData(dataRoot);
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        var layoutPath = FurnitureLayoutStore.GetLayoutPath(dataRoot, FurnitureLayoutContract.OrdinaryRoom);
+        var layoutPath = CatalogLayoutPath(dataRoot);
         var bytesBefore = mode == "load" ? File.ReadAllBytes(layoutPath) : null;
         var product = new ProductFixture(module, dataRoot);
         long version = 0; Guid? operation = null; IReadOnlyList<FurnitureItemInstance> items = []; var loaded = false;
@@ -417,7 +423,7 @@ internal static class OrdinaryRoomFurnitureCollectionVerification
             if (mode == "save")
             {
                 Require(session.Layout.LayoutVersion == 0 && session.Layout.Items.Count == 0, "Restart save target must be empty.");
-                FillCollection(product);
+                FillCollection(product); session = product.Furniture;
             }
             else Require(bytesBefore!.AsSpan().SequenceEqual(File.ReadAllBytes(layoutPath)), "Restart load rewrote the saved file.");
             loaded = session.NativeFrame is { Items.Count: 30 } frame && frame.Items.All(item => item.InstanceId > 0) && frame.Physics.Succeeded;
@@ -443,7 +449,8 @@ internal static class OrdinaryRoomFurnitureCollectionVerification
         internal LocalRoomSceneDriver Driver => Field<LocalRoomSceneDriver>(Host, "localRoomDriver");
         internal OrdinaryRoomFurnitureSession Furniture => Runtime.Furniture ?? throw new InvalidOperationException("Missing product furniture session.");
         internal DesktopPhysicsScene Scene => Field<DesktopPhysicsScene>(Runtime, "scene");
-        internal DangoPhysicsWorld World { get; }
+        internal DesktopPhysicsScene World => Field<DesktopPhysicsScene>(Runtime, "scene");
+        private readonly List<(DesktopPhysicsScene Scene, DangoBeltRoomWorld Native, ulong Epoch)> roomOwners = [];
         private readonly Window[] ownedWindows;
         internal bool ReleasedFrameOwner { get; private set; }
         internal bool ReleasedNativeWorld { get; private set; }
@@ -451,16 +458,16 @@ internal static class OrdinaryRoomFurnitureCollectionVerification
         internal ProductFixture(string module, string dataRoot)
         {
             var prior = Application.Current.Windows.Cast<Window>().ToHashSet();
-            Host = new(settingsFile: Path.Combine(dataRoot, "settings.json"), nativeLibraryPath: module, isolatedLocalRoomReview: true);
+            Host = new(settingsFile: Dango.Desktop.App.ResolveLocalInstallAcceptanceSettingsFile(["--local-install-acceptance-settings", dataRoot]), roomModulePath: module);
             Runtime = Field<StackedDangoSceneRuntime>(Host, "stackedRuntime");
             try
             {
                 Host.Start();
-                Require(Runtime.LastError is null && Runtime.EntityIds.Count == 1, Runtime.LastError ?? "Product runtime did not initialize.");
+                Require(Runtime.UsesBeltRoom && Runtime.EntityIds.Count == 0, "Default room runtime must remain deferred until actual entry.");
                 Pump(250);
                 var home = Field<ControlCenterWindow>(Host, "controlCenterWindow").ProductHome;
-                home.ResumePorch(); Pump(300);
-                World = Field<DangoPhysicsWorld>(Field<DesktopPhysicsScene>(Runtime, "scene"), "world");
+                home.ResumePorch();
+                Until(() => home.DisplayedBeltSnapshot is { Error: null, Frame: not null } && home.CatalogSnapshot is not null, 10000, "Default Belt porch did not present a healthy frame.");
                 ownedWindows = Application.Current.Windows.Cast<Window>().Where(window => !prior.Contains(window)).ToArray();
             }
             catch { Host.Dispose(); throw; }
@@ -470,15 +477,32 @@ internal static class OrdinaryRoomFurnitureCollectionVerification
             var home = Field<ControlCenterWindow>(Host, "controlCenterWindow").ProductHome;
             Require(home.PorchScene.RequestNearbyFurniture(), "Actual product porch could not request nearby ordinary-room furniture.");
             UntilHandoff();
+            ConfirmNewRoomOwner();
             Require(Host.LocalPresentation == LocalRoomPresentation.Window && Window.IsFurnitureEditing && Furniture.CanEdit,
                 Host.LocalRoomFailure ?? "Actual furniture room did not become ready.");
+        }
+        internal void ConfirmNewRoomOwner()
+        {
+            if (roomOwners.Any(owner => ReferenceEquals(owner.Scene, World))) return;
+            foreach (var owner in roomOwners)
+                Require(Field<bool>(owner.Scene, "disposed") && Field<nint>(owner.Native, "handle") == 0 && Field<nint>(owner.Native, "library") == 0,
+                    "Entering from the porch retained an earlier room owner or native handle.");
+            Require(Runtime.LastBeltRoomFrame is { } frame && frame.Fault == 0 && Runtime.EntityIds.Count == 1,
+                "New default room owner has no healthy native body frame.");
+            Require(Runtime.EffectiveAppearance == Field<AppearanceSettingsSession>(Host, "appearance").SavedAppearance,
+                "Room reentry did not restore the actual saved appearance.");
+            var native = Field<DangoBeltRoomWorld>(Field<BeltRoomSceneAdapter>(World, "beltRoom"), "world");
+            Require(roomOwners.All(owner => owner.Epoch != native.Read().OwnerEpoch),
+                "A rebuilt room reused a released physical owner identity.");
+            roomOwners.Add((World, native, native.Read().OwnerEpoch));
         }
         internal void UntilHandoff() => Until(() => !Host.LocalHandoffPending, 4500, "Actual product handoff timed out.");
         public void Dispose()
         {
             Host.Dispose(); Pump(40);
             ReleasedFrameOwner = Runtime.FrameDriver is null && !Runtime.IsRunning;
-            ReleasedNativeWorld = Field<nint>(World, "world") == 0 && Field<bool>(World, "disposed") && World.Count == 0;
+            ReleasedNativeWorld = roomOwners.Count > 0 && roomOwners.All(owner => Field<bool>(owner.Scene, "disposed") &&
+                Field<nint>(owner.Native, "handle") == 0 && Field<nint>(owner.Native, "library") == 0);
             ClosedOwnedWindows = ownedWindows.All(window => !Application.Current.Windows.Cast<Window>().Contains(window));
         }
         internal int VisibleOwnedWindows => ownedWindows.Count(window => window.IsVisible);
@@ -503,16 +527,18 @@ internal static class OrdinaryRoomFurnitureCollectionVerification
             // Real idle wandering remains enabled in the editor, so a slow setup
             // cannot assume the Dango still occupies its initial spawn. Use the
             // actual product return/entry before each ball, without pausing or
-            // changing the solver, input rules, saved anchors or frame owner.
+            // changing the solver, input rules or saved anchors. Default porch entry creates a new owned room.
             var savedLayout = session.Layout;
             Require(product.Window.EndFurnitureEditing(), "Mixed setup could not leave the actual editor.");
             product.Host.ReturnToPorch(); product.UntilHandoff();
             product.Host.EnterLocalRoomFurniture(); product.UntilHandoff();
+            product.ConfirmNewRoomOwner(); session = product.Furniture;
+            world = product.World; generation = session.WorldGeneration; entity = product.Runtime.EntityIds.Single();
             Require(ReferenceEquals(session, product.Furniture) && ReferenceEquals(world, product.World) &&
                 session.WorldGeneration == generation && product.Runtime.EntityIds.Single() == entity &&
                 product.Window.IsFurnitureEditing && session.CanEdit && session.Layout == savedLayout &&
                 session.NativeFrame is { Physics.Succeeded: true } frame && frame.Items.Count == savedLayout.Items.Count,
-                "Mixed setup did not restore the same actual furniture session.");
+                "Mixed setup did not restore the saved collection in the healthy new room session.");
             var center = product.Runtime.CurrentSelectedCenter;
             var contract = FurnitureLayoutContract.OrdinaryRoom;
             Require(center is { } point && point.X >= contract.SpawnProtectionLeft && point.X <= contract.SpawnProtectionRight &&
@@ -606,8 +632,18 @@ internal static class OrdinaryRoomFurnitureCollectionVerification
         var temporary = path + ".tmp";
         File.WriteAllText(temporary, JsonSerializer.Serialize(value, Json)); File.Move(temporary, path, overwrite: true);
     }
+    private static string CatalogLayoutPath(string root)
+    {
+        var store = new LocalRoomCatalogStore(root);
+        var result = store.Refresh();
+        Require(result.Success && result.Catalog!.Rooms.Length == 1, "Expected one owned catalog room.");
+        return store.LayoutPath(result.Catalog!.Rooms.Single().RoomId);
+    }
     private static void PrepareOwnedData(string root)
     {
+        Require(Path.IsPathFullyQualified(root), "Owned data root must be absolute.");
+        for (var cursor = new DirectoryInfo(root); cursor is not null; cursor = cursor.Parent)
+            Require(!cursor.Exists || (cursor.Attributes & FileAttributes.ReparsePoint) == 0, "Owned data roots cannot traverse links.");
         if (Directory.Exists(root))
         {
             var files = Directory.EnumerateFileSystemEntries(root).ToArray();
@@ -618,10 +654,18 @@ internal static class OrdinaryRoomFurnitureCollectionVerification
         if (!File.Exists(marker))
             File.WriteAllText(marker, JsonSerializer.Serialize(new { purpose = "ordinary-furniture-collection-acceptance", schema = 1, owner = Guid.NewGuid() }, Json));
         RequireOwnedData(root);
+        var acceptanceOwner = Path.Combine(root, ".dango-local-install-acceptance.json");
+        if (!Directory.EnumerateFileSystemEntries(root).Any(path => path.Equals(acceptanceOwner, StringComparison.OrdinalIgnoreCase)))
+            File.WriteAllText(acceptanceOwner, "{\"application\":\"Dango\",\"acceptanceFormat\":1,\"fictional\":true}");
+        _ = Dango.Desktop.App.ResolveLocalInstallAcceptanceSettingsFile(["--local-install-acceptance-settings", root]);
+        RequireOwnedData(root);
     }
     private static void RequireOwnedData(string root)
     {
-        using var marker = JsonDocument.Parse(File.ReadAllText(Path.Combine(root, "owner.json")));
+        var markerPath = Path.Combine(root, "owner.json");
+        Require((File.GetAttributes(markerPath) & (FileAttributes.ReparsePoint | FileAttributes.Directory)) == 0,
+            "Owner marker must be an ordinary owned file.");
+        using var marker = JsonDocument.Parse(File.ReadAllText(markerPath));
         Require(marker.RootElement.GetProperty("purpose").GetString() == "ordinary-furniture-collection-acceptance",
             "Furniture verification data is not explicitly owned by this isolated review.");
     }

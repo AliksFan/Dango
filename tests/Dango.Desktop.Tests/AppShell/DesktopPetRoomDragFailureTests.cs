@@ -258,7 +258,7 @@ public sealed class DesktopPetRoomDragFailureTests
     [TestCategory("NativeIntegration")]
     [DataRow(false)]
     [DataRow(true)]
-    public void OwnNativeModifierChangeDuringCapturedGestureCannotInvalidateHealthySurfaces(bool beginsWithShift)
+    public void OwnNativeModifierChangeDuringCapturedGestureCannotInvalidateHealthySharedSurface(bool beginsWithShift)
     {
         using var rig = new DragFixture();
         var center = rig.Runtime.CurrentSelectedCenter!.Value;
@@ -299,7 +299,7 @@ public sealed class DesktopPetRoomDragFailureTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
-    public void FailedHookUninstallRejectsOnlyNewGesturesThenRecoversWithoutClosingEitherSurface()
+    public void FailedHookUninstallRejectsOnlyNewGesturesThenRecoversWithoutClosingTheSharedSurface()
     {
         using var rig = new DragFixture();
         var center = rig.Runtime.CurrentSelectedCenter!.Value;
@@ -330,9 +330,7 @@ public sealed class DesktopPetRoomDragFailureTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
-    [DataRow(false)]
-    [DataRow(true)]
-    public void OwnNativeDisplayFailureRetainsBoundedPreShutdownHealthAndActualMessage(bool wallpaper)
+    public void OwnNativeDisplayFailureRetainsBoundedPreShutdownHealthAndActualMessage()
     {
         using var rig = new DragFixture();
         var owner = rig.Runtime.FrameDriver;
@@ -340,7 +338,7 @@ public sealed class DesktopPetRoomDragFailureTests
         rig.SendWorld(Down, center, 1);
         rig.SendWorld(Move, new(center.X + 70, center.Y - 150), 1);
         Assert.IsTrue(rig.Runtime.IsDragging, rig.Diagnostic());
-        var target = wallpaper ? rig.Pet.WallpaperSource!.Handle : rig.Window.Handle;
+        var target = rig.Window.Handle;
         _ = SendMessage(target, 0x007E, 0, 0);
         DesktopPetRoomFixture.WaitUntil(() => !rig.Pet.IsVisible && rig.Runtime.FrameDriver is null,
             rig.Runtime, diagnostic: rig.Diagnostic);
@@ -350,7 +348,9 @@ public sealed class DesktopPetRoomDragFailureTests
         Assert.IsTrue(snapshot.PetFrameMatches);
         Assert.IsTrue(snapshot.Scheduler is { IsRunning: true, AppliedFrames: > 0 });
         Assert.IsNull(snapshot.NativeErrorCode, "A native display message must not invent an exception error code.");
-        StringAssert.Contains(snapshot.Reason, wallpaper ? "wallpaper native display message" : "pet native display message");
+        StringAssert.Contains(snapshot.Reason, "pet native display message");
+        Assert.IsTrue(snapshot.SurfaceAttached && snapshot.DesktopCurrent);
+        Assert.IsFalse(snapshot.DesktopSuspended);
         Assert.IsNotNull(owner);
         rig.AssertReleased();
         Assert.IsFalse(rig.Runtime.IsRunning);
@@ -362,7 +362,7 @@ public sealed class DesktopPetRoomDragFailureTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
-    public void RecordingDriverFailurePreservesTheRealOwnerCaptureAndSurfacesUntilApplicationShutdown()
+    public void RecordingDriverFailurePreservesTheRealOwnerCaptureAndSharedSurfaceUntilApplicationShutdown()
     {
         using var rig = new DragFixture();
         var center = rig.Runtime.CurrentSelectedCenter!.Value;
@@ -478,7 +478,9 @@ public sealed class DesktopPetRoomDragFailureTests
 
         private Point ScreenPoint(LogicalPoint physical)
         {
-            var dip = Pet.Scene.RoomToScene(new(physical.X, physical.Y + Runtime.NeutralBodyGroundOffset));
+            var offset = Pet.Scene.PresentationOffset;
+            var dip = Pet.Scene.RoomToScene(new(physical.X + offset.X,
+                physical.Y + Runtime.NeutralBodyGroundOffset + offset.Y));
             return Pet.Scene.PointToScreen(new(dip.X, dip.Y));
         }
 

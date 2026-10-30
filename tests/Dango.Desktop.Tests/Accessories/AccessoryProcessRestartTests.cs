@@ -15,13 +15,14 @@ namespace Dango.Desktop.Tests.Accessories;
 [DoNotParallelize]
 public sealed class AccessoryProcessRestartTests
 {
-    private const string MarkerName = ".dango-accessory-review.json";
-    private const string Marker = "{\"application\":\"Dango\",\"accessoryReviewFormat\":1,\"fictional\":true}";
+    private const string MarkerName = ".dango-local-install-acceptance.json";
+    private const string Marker = "{\"application\":\"Dango\",\"acceptanceFormat\":1,\"fictional\":true}";
     public TestContext TestContext { get; set; } = null!;
 
     [TestMethod]
     [TestCategory("NativeIntegration")]
     [TestCategory("ProcessIntegration")]
+    [TestCategory("ForegroundInteraction")]
     public void RealExecutableAppliesThroughUiAndSecondProcessRestoresAfterSourceMove()
     {
         var runRoot = NewRunRoot("restart");
@@ -36,7 +37,7 @@ public sealed class AccessoryProcessRestartTests
         try
         {
             AssertRuntimeFiles();
-            AssertReviewMutexIsFree();
+            AssertReviewMutexIsFree(reviewRoot);
             var mainSettings = ControlCenterWindowSettings.CreateDefault() with
             {
                 IntroSeen = true,
@@ -64,9 +65,11 @@ public sealed class AccessoryProcessRestartTests
 
             first = ReviewProcess.Start(reviewRoot, "first", runRoot, log);
             var firstWindow = WaitForMainWindow(first, log);
-            Invoke(WaitForControl(first, firstWindow, "A · 换装", ControlType.Button, log), log, "open-wardrobe-first");
+            Invoke(WaitForControl(first, firstWindow, "Q · 换装", ControlType.Button, log), log, "open-wardrobe-first");
             SelectLibraryItem(first, firstWindow, imported.Name, log);
             OpenPlacementSection(first, firstWindow, log, "open-placement-first");
+            Invoke(WaitForControl(first, firstWindow, "编辑配饰", ControlType.Button, log), log, "open-unified-first");
+            var firstEditor = WaitForEditor(first, log);
             var initialRange = GetRange(WaitForControl(first, firstWindow, "身体附着 X", ControlType.Slider, log));
             Assert.AreEqual(.27, initialRange.Current.Value, 1e-9);
             log.Write("first-process-restored-source-independent", new { first.Process.Id, bodyAnchorX = initialRange.Current.Value });
@@ -78,41 +81,37 @@ public sealed class AccessoryProcessRestartTests
             log.Write("duplicate-review-rejected", new { primaryPid = first.Process.Id, duplicatePid = duplicate.Process.Id, duplicate.Process.ExitCode });
 
             const double changedAnchor = .73;
-            var anchorInput = WaitForControl(first, firstWindow, "身体附着 X 数值", ControlType.Edit, log);
+            var anchorInput = WaitForControl(first, firstEditor, "身体附着 X 数值", ControlType.Edit, log);
+            WaitUntil(first, () => anchorInput.Current.IsEnabled, "unified editor ready", log);
             anchorInput.SetFocus();
             Assert.IsTrue(anchorInput.TryGetCurrentPattern(ValuePattern.Pattern, out var inputPattern), "The actual numeric input must expose ValuePattern.");
             ((ValuePattern)inputPattern).SetValue("0.73");
             WaitUntil(first, () => ((ValuePattern)anchorInput.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == "0.73",
                 "focused numeric input update", log);
             log.Write("first-process-focused-numeric-input", new { first.Process.Id, text = "0.73" });
-            Invoke(WaitForControl(first, firstWindow, "配饰：柔性与连接", ControlType.Button, log), log, "open-material-first");
-            foreach (var (name, text) in new[] { ("最高允许形变量 % 数值", "175"), ("连接最大行程 % 数值", "150") })
+            foreach (var (name, text) in new[] { ("重力影响 数值", "37"), ("连接最大行程 % 数值", "150") })
             {
-                var input = WaitForControl(first, firstWindow, name, ControlType.Edit, log);
+                var input = WaitForControl(first, firstEditor, name, ControlType.Edit, log);
                 input.SetFocus();
                 ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).SetValue(text);
             }
-            var folding = WaitForControl(first, firstWindow, "允许翻折", ControlType.CheckBox, log);
-            ((TogglePattern)folding.GetCurrentPattern(TogglePattern.Pattern)).Toggle();
-            WaitUntil(first, () => ((TogglePattern)folding.GetCurrentPattern(TogglePattern.Pattern)).Current.ToggleState == ToggleState.On,
-                "folding option checked", log);
+            Invoke(WaitForControl(first, firstEditor, "确认", ControlType.Button, log), log, "confirm-unified-first");
+            WaitUntil(first, () => FindEditor(first) is null, "unified result returned to outer draft", log);
             LogOwnedWardrobeState(first, firstWindow, log, "before-apply");
             Invoke(WaitForControl(first, firstWindow, "应用", ControlType.Button, log), log, "apply-first-process");
             LogOwnedWardrobeState(first, firstWindow, log, "after-apply-invocation");
             // Do not open the target while the asynchronous UIA click is replacing it:
             // a FileShare.Read poll can itself block the Windows atomic overwrite.
             WaitUntil(first, () => FindControl(firstWindow, "配饰已保存到本机。", ControlType.Text) is not null &&
-                FindControl(firstWindow, "应用", ControlType.Button) is { Current.IsEnabled: false } &&
-                FindControl(firstWindow, "连接最大行程 %", ControlType.Slider) is { } slider &&
-                Math.Abs(GetRange(slider).Current.Value - 150) < 1e-9,
+                FindControl(firstWindow, "应用", ControlType.Button) is { Current.IsEnabled: false },
                 "first process UI save completion", log);
             var committed = new AccessorySettingsStore().Load(reviewRoot);
             Assert.AreEqual(AccessorySettingsLoadState.Valid, committed.State);
             Assert.AreEqual(changedAnchor, committed.Configuration.Items.Single(item => item.Id == imported.Id).BodyAnchorX, 1e-9,
                 "The UI save result must be independently confirmed on disk.");
             var committedItem = committed.Configuration.Items.Single(item => item.Id == imported.Id);
-            Assert.IsTrue(committedItem.AllowFolding);
-            Assert.AreEqual(175d, committedItem.MaxDeformationPercent);
+            Assert.IsNotNull(committedItem.ProjectId);
+            Assert.AreEqual(37d, committedItem.GravityInfluence);
             Assert.AreEqual(150d, committedItem.MaxConnectionTravelPercent);
             Assert.AreEqual("sprout", new ControlCenterWindowSettingsStore().LoadOrDefault(Path.Combine(reviewRoot, "settings.json")).Settings.HatPresetId);
             log.Write("first-process-ui-commit-confirmed", new { first.Process.Id, bodyAnchorX = changedAnchor });
@@ -124,16 +123,19 @@ public sealed class AccessoryProcessRestartTests
             second = ReviewProcess.Start(reviewRoot, "second", runRoot, log);
             Assert.AreNotEqual(firstPid, second.Process.Id, "Restart must create an actual different app process.");
             var secondWindow = WaitForMainWindow(second, log);
-            Invoke(WaitForControl(second, secondWindow, "A · 换装", ControlType.Button, log), log, "open-wardrobe-second");
+            Invoke(WaitForControl(second, secondWindow, "Q · 换装", ControlType.Button, log), log, "open-wardrobe-second");
             SelectLibraryItem(second, secondWindow, imported.Name, log);
             OpenPlacementSection(second, secondWindow, log, "open-placement-second");
-            var restored = GetRange(WaitForControl(second, secondWindow, "身体附着 X", ControlType.Slider, log)).Current.Value;
+            Invoke(WaitForControl(second, secondWindow, "编辑配饰", ControlType.Button, log), log, "open-unified-second");
+            var secondEditor = WaitForEditor(second, log);
+            var restoredAnchor = WaitForControl(second, secondEditor, "身体附着 X", ControlType.Slider, log);
+            WaitUntil(second, () => restoredAnchor.Current.IsEnabled, "restored editor ready", log);
+            var restored = GetRange(restoredAnchor).Current.Value;
             Assert.AreEqual(changedAnchor, restored, 1e-9);
-            Invoke(WaitForControl(second, secondWindow, "配饰：柔性与连接", ControlType.Button, log), log, "open-material-second");
-            Assert.AreEqual(175d, GetRange(WaitForControl(second, secondWindow, "最高允许形变量 %", ControlType.Slider, log)).Current.Value);
-            Assert.AreEqual(150d, GetRange(WaitForControl(second, secondWindow, "连接最大行程 %", ControlType.Slider, log)).Current.Value);
-            Assert.AreEqual(ToggleState.On, ((TogglePattern)WaitForControl(second, secondWindow, "允许翻折", ControlType.CheckBox, log)
-                .GetCurrentPattern(TogglePattern.Pattern)).Current.ToggleState);
+            Assert.AreEqual(37d, GetRange(WaitForControl(second, secondEditor, "重力影响", ControlType.Slider, log)).Current.Value);
+            Assert.AreEqual(150d, GetRange(WaitForControl(second, secondEditor, "连接最大行程 %", ControlType.Slider, log)).Current.Value);
+            Invoke(WaitForControl(second, secondEditor, "取消", ControlType.Button, log), log, "cancel-unified-second");
+            WaitUntil(second, () => FindEditor(second) is null, "restored editor closed", log);
             Assert.IsFalse(File.Exists(source));
             Assert.IsTrue(File.Exists(AccessorySettingsStore.GetAssetPath(reviewRoot, imported.AssetId)));
             log.Write("second-process-ui-restored", new { second.Process.Id, bodyAnchorX = restored, imported.Name });
@@ -156,21 +158,21 @@ public sealed class AccessoryProcessRestartTests
     }
 
     [TestMethod]
-    public void ReviewRequiresExactArgumentsAndHasAnIndependentMutex()
+    public void OwnedProductAcceptanceUsesAnIndependentDirectoryMutexAndRejectsRetiredArguments()
     {
-        App.ValidateIsolatedReviewSelection(["--accessory-review"]);
-        foreach (var other in new[] { "--home-ui-review", "--settings-ui-review", "--physics-host-review", "--eye-hat-review",
-            "--unified-live-home-review", "--porch-scene-review", "--local-room-review", "--face-review", "--desktop-pet-room-review" })
+        var root = NewRunRoot("owned-instance");
+        File.WriteAllText(Path.Combine(root, MarkerName), Marker);
+        var args = new[] { "--local-install-acceptance-settings", root };
+        App.ValidateStartupArguments(args);
+        Assert.AreNotEqual(App.ResolveSingleInstanceName([]), App.ResolveSingleInstanceName(args));
+        Assert.AreEqual(Path.Combine(root, "settings.json"), Resolve(root));
+        foreach (var retired in new[] { "--accessory-review", "--accessory-review-settings" })
         {
-            Assert.ThrowsExactly<ArgumentException>(() => App.ValidateIsolatedReviewSelection(["--accessory-review", other]));
-            Assert.AreNotEqual(App.ResolveSingleInstanceName([other]), App.ResolveSingleInstanceName(["--accessory-review"]));
+            Assert.ThrowsExactly<ArgumentException>(() => App.ValidateStartupArguments([retired]));
+            Assert.ThrowsExactly<ArgumentException>(() => App.ResolveSingleInstanceName([retired]));
         }
-        Assert.AreNotEqual(App.ResolveSingleInstanceName([]), App.ResolveSingleInstanceName(["--accessory-review"]));
-        Assert.IsNull(App.ResolveAccessoryReviewSettingsFile([]));
-        Assert.ThrowsExactly<ArgumentException>(() => App.ResolveAccessoryReviewSettingsFile(["--accessory-review"]));
-        Assert.ThrowsExactly<ArgumentException>(() => App.ResolveAccessoryReviewSettingsFile(["--accessory-review-settings", "fictional-root"]));
-        Assert.ThrowsExactly<ArgumentException>(() => App.ResolveAccessoryReviewSettingsFile(
-            ["--accessory-review", "--accessory-review-settings", "fictional-root", "--smoke-test"]));
+        Assert.ThrowsExactly<ArgumentException>(() => App.ResolveLocalInstallAcceptanceSettingsFile(
+            ["--local-install-acceptance-settings", root, "--eye-hat-review"]));
     }
 
     [TestMethod]
@@ -187,10 +189,10 @@ public sealed class AccessoryProcessRestartTests
     }
 
     [TestMethod]
-    [DataRow("{\"application\":\"Other\",\"accessoryReviewFormat\":1,\"fictional\":true}")]
-    [DataRow("{\"application\":\"Dango\",\"accessoryReviewFormat\":2,\"fictional\":true}")]
-    [DataRow("{\"application\":\"Dango\",\"accessoryReviewFormat\":1,\"fictional\":false}")]
-    [DataRow("{\"application\":\"Dango\",\"accessoryReviewFormat\":1,\"fictional\":true,\"extra\":true}")]
+    [DataRow("{\"application\":\"Other\",\"acceptanceFormat\":1,\"fictional\":true}")]
+    [DataRow("{\"application\":\"Dango\",\"acceptanceFormat\":2,\"fictional\":true}")]
+    [DataRow("{\"application\":\"Dango\",\"acceptanceFormat\":1,\"fictional\":false}")]
+    [DataRow("{\"application\":\"Dango\",\"acceptanceFormat\":1,\"fictional\":true,\"extra\":true}")]
     public void ReviewRejectsWrongOwnershipMarkers(string marker)
     {
         var root = NewRunRoot("wrong-marker");
@@ -204,6 +206,7 @@ public sealed class AccessoryProcessRestartTests
     [DataRow("settings.window-preset.json")]
     [DataRow("appearance.json")]
     [DataRow("accessories.json")]
+    [DataRow("accessories-v2.json")]
     [DataRow(MarkerName)]
     public void ReviewRejectsDirectoryAtASettingsOrMarkerFile(string fileName)
     {
@@ -213,7 +216,20 @@ public sealed class AccessoryProcessRestartTests
         Assert.ThrowsExactly<InvalidDataException>(() => Resolve(root));
     }
 
-    private static string? Resolve(string root) => App.ResolveAccessoryReviewSettingsFile(["--accessory-review", "--accessory-review-settings", root]);
+    private static string? Resolve(string root) => App.ResolveLocalInstallAcceptanceSettingsFile(["--local-install-acceptance-settings", root]);
+
+    [TestMethod]
+    [DataRow("accessory-assets")]
+    [DataRow("accessory-projects")]
+    public void ReviewRejectsFilesAtOwnedAssetDirectoriesWithoutChangingThem(string directoryName)
+    {
+        var root = NewRunRoot("asset-directory-rejection");
+        File.WriteAllText(Path.Combine(root, MarkerName), Marker);
+        var path = Path.Combine(root, directoryName);
+        File.WriteAllText(path, "fictional preserved bytes");
+        Assert.ThrowsExactly<InvalidDataException>(() => Resolve(root));
+        Assert.AreEqual("fictional preserved bytes", File.ReadAllText(path));
+    }
 
     private static string NewRunRoot(string label)
     {
@@ -240,18 +256,30 @@ public sealed class AccessoryProcessRestartTests
         return path;
     }
 
-    private static void AssertRuntimeFiles()
+    private static string ProductPackageDirectory
     {
-        foreach (var name in new[] { "Dango.Desktop.exe", "Dango.Desktop.runtimeconfig.json", "dango_physics_module.dll", "dango_box2d.dll" })
-            Assert.IsTrue(File.Exists(Path.Combine(AppContext.BaseDirectory, name)), "The real process acceptance requires output file " + name);
+        get
+        {
+            var configured = Environment.GetEnvironmentVariable("DANGO_PRODUCT_PACKAGE");
+            if (string.IsNullOrWhiteSpace(configured)) return AppContext.BaseDirectory;
+            Assert.IsTrue(Path.IsPathFullyQualified(configured), "DANGO_PRODUCT_PACKAGE must identify an absolute product package directory.");
+            return Path.GetFullPath(configured);
+        }
     }
 
-    private static void AssertReviewMutexIsFree()
+    private static void AssertRuntimeFiles()
+    {
+        var package = ProductPackageDirectory;
+        foreach (var name in new[] { "Dango.Desktop.exe", "Dango.Desktop.runtimeconfig.json", "dango_belt_product.dll", "dango_belt_room.dll", "dango_box2d.dll" })
+            Assert.IsTrue(File.Exists(Path.Combine(package, name)), "The real process acceptance requires output file " + name);
+    }
+
+    private static void AssertReviewMutexIsFree(string root)
     {
         try
         {
-            using var existing = Mutex.OpenExisting(App.ResolveSingleInstanceName(["--accessory-review"]) + ".Mutex");
-            Assert.Fail("An accessory review instance is already active. This test must not activate or automate an unrelated review window.");
+            using var existing = Mutex.OpenExisting(App.ResolveSingleInstanceName(["--local-install-acceptance-settings", root]) + ".Mutex");
+            Assert.Fail("An owned product acceptance instance is already active. This test must not activate or automate an unrelated review window.");
         }
         catch (WaitHandleCannotBeOpenedException) { }
     }
@@ -313,9 +341,21 @@ public sealed class AccessoryProcessRestartTests
 
     private static void OpenPlacementSection(ReviewProcess child, AutomationElement window, VerificationLog log, string action)
     {
-        var button = WaitForControl(child, window, "配饰：图像与位置", ControlType.Button, log);
+        var button = WaitForControl(child, window, "配饰：配饰", ControlType.Button, log);
         Invoke(button, log, action);
         WaitUntil(child, () => button.Current.ItemStatus == "已选", "actual placement section selected", log);
+    }
+
+    private static AutomationElement? FindEditor(ReviewProcess child) => AutomationElement.RootElement.FindFirst(
+        TreeScope.Descendants, new AndCondition(
+            new PropertyCondition(AutomationElement.ProcessIdProperty, child.Process.Id),
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Window),
+            new PropertyCondition(AutomationElement.NameProperty, "编辑配饰")));
+
+    private static AutomationElement WaitForEditor(ReviewProcess child, VerificationLog log)
+    {
+        WaitUntil(child, () => FindEditor(child) is not null, "owned unified editor window", log);
+        return FindEditor(child)!;
     }
 
     private static RangeValuePattern GetRange(AutomationElement element)
@@ -400,17 +440,18 @@ public sealed class AccessoryProcessRestartTests
         }
         public static ReviewProcess Start(string reviewRoot, string label, string evidenceRoot, VerificationLog log)
         {
-            var info = new ProcessStartInfo(Path.Combine(AppContext.BaseDirectory, "Dango.Desktop.exe"))
+            var package = ProductPackageDirectory;
+            var info = new ProcessStartInfo(Path.Combine(package, "Dango.Desktop.exe"))
             {
-                WorkingDirectory = AppContext.BaseDirectory,
+                WorkingDirectory = package,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
             };
-            info.ArgumentList.Add("--accessory-review"); info.ArgumentList.Add("--accessory-review-settings"); info.ArgumentList.Add(reviewRoot);
+            info.ArgumentList.Add("--local-install-acceptance-settings"); info.ArgumentList.Add(reviewRoot);
             var process = System.Diagnostics.Process.Start(info) ?? throw new InvalidOperationException("The owned review process could not start.");
-            log.Write("owned-process-started", new { label, process.Id });
+            log.Write("owned-process-started", new { label, process.Id, package });
             try { return new(process, label, evidenceRoot, log); }
             catch
             {

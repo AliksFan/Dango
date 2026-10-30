@@ -1,0 +1,29 @@
+{
+  "name": "dango-accessory-editor",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "verify": "node verify.mjs",
+    "fixture:skeleton": "node s0/server.mjs",
+    "test:skeleton-input": "node --test skeleton-commands.test.mjs skeleton-input.test.mjs",
+    "test:unified": "node --test unified-skeleton.test.mjs",
+    "test:layout": "node --test canvas-layout.test.mjs",
+    "test:raster": "node --test raster-tools.test.mjs",
+    "test:inspector": "node --test group-inspector.test.mjs",
+    "test:view": "node --test canvas-view.test.mjs",
+    "test:pages": "node --test inspector-pages.test.mjs",
+    "test:rename": "node --test list-rename.test.mjs",
+    "test:clipboard": "node --test clipboard-image.test.mjs editable-clipboard.test.mjs clipboard-transport.test.mjs",
+    "test:multi-layer": "node --test layer-operations.test.mjs multi-layer-selection.test.mjs",
+    "test:preview": "node --test view-transport.test.mjs dynamic-preview.test.mjs wear-history.test.mjs"
+  },
+  "dependencies": {
+    "jquery": "3.7.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.11",
+    "playwright-core": "1.56.1"
+  }
+}

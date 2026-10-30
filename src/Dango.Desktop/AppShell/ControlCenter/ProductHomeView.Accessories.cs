@@ -29,37 +29,39 @@ public partial class ProductHomeView
     private bool accessoryProjectionRefreshQueued;
     private bool IsAccessoryPreview => IsEditing && SelectedEditor == HomeEditor.Wardrobe;
     internal AccessorySettingsSession? BoundAccessories => accessorySession;
+    internal bool IsPickingAccessoryAnchor => pickingAccessoryAnchor;
 
     private void InitializeAccessories()
     {
+        accessoryPanel.SimulationAppearanceFactory = () => DraftAppearance;
+        accessoryPanel.ModalOpenChanged += RefreshBeltVisibility;
         WardrobeOptions.Children.Clear(); WardrobeOptions.Children.Add(accessoryPanel);
         accessoryPanel.Children.Remove(accessoryPanel.SaveActions);
         AccessorySaveActionsSlot.Content = accessoryPanel.SaveActions;
         AccessorySectionTabsSlot.Content = accessoryPanel.SectionTabs;
         AccessoryActionToolsSlot.Content = accessoryPanel.ActionTools;
-        accessoryPanel.SectionChanged += () => { OptionsBody.ScrollToTop(); Stage.Focus(); };
+        accessoryPanel.SectionChanged += () => { CancelAccessoryAnchorPick(); OptionsBody.ScrollToTop(); Stage.Focus(); };
         AccessoryPreviewNotice.Text = AccessoryNotice;
         accessoryPanel.PresentationChanged += () => AccessoryPreviewNotice.Text = AccessoryNotice;
         accessoryPanel.PreviewChanged += configuration =>
         {
             if (!IsEditing || SelectedEditor != HomeEditor.Wardrobe) return;
             ClearLiveDirectionalInput();
-            BoundRuntime?.SetAccessories(configuration);
+            SetAccessoryPresentation(configuration);
             RefreshAccessoryFrame();
         };
         accessoryPanel.Applied += configuration =>
         {
-            BoundRuntime?.SetAccessories(configuration, !(accessorySession?.IsCompatibilityMode ?? true));
+            SetAccessoryPresentation(configuration, !(accessorySession?.IsCompatibilityMode ?? true));
             RefreshAccessoryFrame();
         };
         accessoryPanel.CancelRequested += CloseEditor;
         accessoryPanel.BodyAnchorPickRequested = () =>
         {
             if (!IsEditing || SelectedEditor != HomeEditor.Wardrobe) return;
-            ClearLiveDirectionalInput(); pickingAccessoryAnchor = true;
-            PetPreview.Cursor = Cursors.Cross;
-            PetPreview.ToolTip = "点击团子选择附着位置";
+            BeginAccessoryAnchorPick();
         };
+        InitializeAccessoryAnchorGhost();
         PetPreview.PreviewMouseLeftButtonDown += OnAccessoryBodyAnchorPick;
         PetVisualArea.SizeChanged += (_, _) => QueueAccessoryProjectionRefresh();
         PetPreview.SizeChanged += (_, _) => QueueAccessoryProjectionRefresh();
@@ -70,7 +72,7 @@ public partial class ProductHomeView
         }), true);
     }
 
-    private string AccessoryNotice => accessoryPanel.PreviewNotice + "\nA/D 移动 · S 压扁 · 空格 跳跃 · Esc 退出";
+    private string AccessoryNotice => accessoryPanel.PreviewNotice + "\nA/D 移动 · W 上看／拉伸 · S 下看／轻压 · 空格 跳跃 · Esc 退出";
 
     private void OnAccessorySaveActionsSizeChanged(object sender, SizeChangedEventArgs e)
     {
@@ -83,15 +85,30 @@ public partial class ProductHomeView
     {
         accessorySession = session;
         accessoryPanel.Bind(session);
+        SynchronizeBeltAccessories();
+    }
+
+    internal void SynchronizeBeltAccessories()
+    {
+        if (accessorySession is null || beltPresenter is null) return;
+        beltPresenter.SetAccessories(IsAccessoryPreview ? accessorySession.DraftConfiguration : accessorySession.SavedConfiguration,
+            accessoryPanel.ResolvePreviewImage, accessoryPanel.ResolvePreviewProject);
+        RefreshAccessoryFrame();
+    }
+
+    private void SetAccessoryPresentation(AccessoryConfiguration configuration, bool useNewConfiguration = true)
+    {
+        BoundRuntime?.SetAccessories(configuration, useNewConfiguration, accessoryPanel.ResolvePreviewImage, accessoryPanel.ResolvePreviewProject);
+        if (beltPresenter is not null && accessorySession is not null)
+            beltPresenter.SetAccessories(configuration, accessoryPanel.ResolvePreviewImage, accessoryPanel.ResolvePreviewProject);
     }
 
     internal void CancelAccessoryPreview()
     {
-        pickingAccessoryAnchor = false; PetPreview.Cursor = Cursors.Arrow;
-        PetPreview.ToolTip = "同一只实时物理团子";
+        CancelAccessoryAnchorPick();
         accessorySession?.CancelPreview(); accessoryPanel.DiscardInputsAndRefresh();
         if (accessorySession is not null)
-            BoundRuntime?.SetAccessories(accessorySession.SavedConfiguration, !accessorySession.IsCompatibilityMode);
+            SetAccessoryPresentation(accessorySession.SavedConfiguration, !accessorySession.IsCompatibilityMode);
         RefreshAccessoryFrame();
     }
 
@@ -280,12 +297,12 @@ public partial class ProductHomeView
     private void RefreshAccessoryFrame()
     {
         if (BoundRuntime?.LastFrame is { } frame && OwnsLiveFrameDriver) ApplyLiveFrame(frame);
-        accessoryPanel.SetPreviewError(BoundRuntime?.AccessoryError);
+        accessoryPanel.SetPreviewError(beltPresenter?.AccessoryError ?? BoundRuntime?.AccessoryError);
     }
 
     private void UpdateAccessoryPresentationStatus()
     {
-        var error = BoundRuntime?.AccessoryError;
+        var error = beltPresenter?.AccessoryError ?? BoundRuntime?.AccessoryError;
         accessoryPanel.SetPreviewError(error);
         if (error is not null) LiveSceneStatusText.Text = error;
         LiveSceneStatusText.Visibility = error is null ? Visibility.Collapsed : Visibility.Visible;
@@ -293,17 +310,8 @@ public partial class ProductHomeView
 
     private void OnAccessoryBodyAnchorPick(object sender, MouseButtonEventArgs e)
     {
-        if (!pickingAccessoryAnchor || !IsEditing || SelectedEditor != HomeEditor.Wardrobe ||
-            BoundRuntime?.LastFrame is not { Bodies.Count: > 0 } frame) return;
+        if (!pickingAccessoryAnchor || !IsEditing || SelectedEditor != HomeEditor.Wardrobe) return;
         e.Handled = true; ClearLiveDirectionalInput();
-        var point = e.GetPosition(LiveDangoVisual);
-        try
-        {
-            var uv = AccessoryBodyMapper.Unmap(frame.Bodies[0], frame.Gait, point);
-            accessoryPanel.SetBodyAnchor(new Point(uv.X, uv.Y));
-            pickingAccessoryAnchor = false; PetPreview.Cursor = Cursors.Arrow;
-            PetPreview.ToolTip = "同一只实时物理团子";
-        }
-        catch (ArgumentException) { PetPreview.ToolTip = "等待有效身体画面后重试"; }
+        CommitAccessoryAnchorPick(e.GetPosition(PetPreview));
     }
 }

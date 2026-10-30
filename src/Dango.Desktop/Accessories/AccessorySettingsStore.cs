@@ -1,33 +1,38 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Security.Cryptography;
+using Dango.Desktop.Accessories.Editing;
 using Dango.Desktop.Verification;
 
 namespace Dango.Desktop.Accessories;
 
-public enum AccessorySettingsLoadState { Missing, Valid, Protected }
+public enum AccessorySettingsLoadState { Missing, LegacyNotLoaded, Valid, Protected }
 
 public sealed record AccessorySettingsLoadResult(AccessoryConfiguration Configuration,
-    AccessorySettingsLoadState State, string? Warning = null, bool IsTransientReadFailure = false);
+    AccessorySettingsLoadState State, string? Warning = null, bool IsTransientReadFailure = false, string? ManifestRevision = null);
 
 /// <summary>Images are immutable; the manifest is the sole commit point.</summary>
-public sealed class AccessorySettingsStore
+public sealed class AccessorySettingsStore : IAccessorySettingsPersistence
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 3;
     public const long MaximumManifestBytes = 8L * 1024 * 1024;
     private static readonly string[] ItemFields =
     [
         "id", "name", "assetId", "pixelWidth", "pixelHeight", "isEquipped", "layer", "order",
         "sizePercent", "baseAngleDegrees", "imagePivotX", "imagePivotY", "bodyAnchorX", "bodyAnchorY",
-        "softness", "connectionStrength", "rotationDamping", "lockRotation", "returnStrength",
-        "maxSwingDegrees", "limitSwing", "gravityInfluence",
+        "connectionStrength", "rotationDamping", "lockRotation", "returnStrength",
+        "maxSwingDegrees", "limitSwing", "gravityInfluence", "maxConnectionTravelPercent",
+        "projectId", "projectVersion", "editRevision", "deformationMode", "rig", "skeleton",
     ];
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
-        Converters = { new JsonStringEnumConverter<AccessoryLayer>(JsonNamingPolicy.CamelCase, allowIntegerValues: false) },
+        MaxDepth = 24,
+        Converters = { new JsonStringEnumConverter<AccessoryLayer>(JsonNamingPolicy.CamelCase, allowIntegerValues: false),
+            new JsonStringEnumConverter<AccessoryDeformationMode>(JsonNamingPolicy.CamelCase, allowIntegerValues: false) },
     };
     private readonly IAtomicTextWriter writer;
     private readonly Action<string, byte[]> assetWriter;
@@ -49,24 +54,25 @@ public sealed class AccessorySettingsStore
             using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             if (input.Length < 1 || input.Length > MaximumManifestBytes)
                 return Protected("配饰清单大小无效；原件已保护。");
-            using var document = JsonDocument.Parse(input);
+            using var raw = new MemoryStream(); input.CopyTo(raw);
+            var bytes = raw.ToArray();
+            var revision = Convert.ToHexStringLower(SHA256.HashData(bytes));
+            using var document = JsonDocument.Parse(bytes, new() { MaxDepth = 24 });
             var rootFields = ReadExactObject(document.RootElement, ["accessorySchemaVersion", "items"]);
             if (!rootFields["accessorySchemaVersion"].TryGetInt32(out var version) || version != CurrentSchemaVersion)
                 return Protected("配饰清单版本无法识别；原件已保护。");
             var items = rootFields["items"];
             if (items.ValueKind != JsonValueKind.Array || items.GetArrayLength() > AccessoryConfiguration.MaximumLibraryItems)
                 return Protected("配饰条目列表无效；原件已保护。");
-            var entries = new List<AccessoryItem>();
-            foreach (var item in items.EnumerateArray())
-            {
-                _ = ReadExactObject(item, ItemFields, ["allowFolding", "maxDeformationPercent", "maxConnectionTravelPercent"]);
-                entries.Add(JsonSerializer.Deserialize<AccessoryItem>(item, SerializerOptions) ??
-                    throw new InvalidDataException("配饰条目为空。"));
-            }
-            return new(new AccessoryConfiguration(entries), AccessorySettingsLoadState.Valid);
+            var entries = items.EnumerateArray().Select(ReadPersistedItem).ToArray();
+            return new(new AccessoryConfiguration(entries), AccessorySettingsLoadState.Valid, ManifestRevision: revision);
         }
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
-        { return new(AccessoryConfiguration.Empty, AccessorySettingsLoadState.Missing); }
+        {
+            return File.Exists(GetLegacyManifestPath(settingsRoot)) || Directory.Exists(GetLegacyManifestPath(settingsRoot))
+                ? new(AccessoryConfiguration.Empty, AccessorySettingsLoadState.LegacyNotLoaded, "发现旧版配饰库，本版未载入；原文件及图片保留。可创建并应用独立新库。")
+                : new(AccessoryConfiguration.Empty, AccessorySettingsLoadState.Missing);
+        }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         { return Protected($"配饰清单暂时无法读取；原件已保护（{error.GetType().Name}）。", transient: true); }
         catch (Exception error) when (error is JsonException or InvalidDataException
@@ -74,20 +80,58 @@ public sealed class AccessorySettingsStore
         { return Protected($"配饰清单无法读取；原件已保护（{error.GetType().Name}）。"); }
     }
 
-    public void Save(string settingsRoot, AccessoryConfiguration configuration,
-        IReadOnlyDictionary<string, AccessoryImageAsset>? pendingAssets = null)
+    public string Save(string settingsRoot, AccessoryConfiguration configuration,
+        IReadOnlyDictionary<string, AccessoryImageAsset>? pendingAssets = null,
+        IReadOnlyDictionary<string, AccessoryEditorProject>? pendingProjects = null, string? expectedManifestRevision = null)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         configuration.Validate();
         var previous = Load(settingsRoot);
+        if (expectedManifestRevision is not null && (previous.ManifestRevision ?? "missing") != expectedManifestRevision)
+            throw new InvalidDataException("配饰清单已在外部更改。");
         if (previous.State == AccessorySettingsLoadState.Protected)
         {
             if (previous.IsTransientReadFailure) throw new IOException("旧配饰清单暂时无法读取，可稍后重试。");
             throw new InvalidDataException("配饰原清单受保护，不能普通覆盖。");
         }
-        var oldImages = previous.Configuration.Items.GroupBy(item => item.AssetId, StringComparer.Ordinal)
+        PrepareAssets(settingsRoot, previous.Configuration.Items, configuration, pendingAssets, pendingProjects);
+        var text = JsonSerializer.Serialize(new PersistedSettings(CurrentSchemaVersion, configuration.Items), SerializerOptions);
+        var committedRevision = Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)));
+        if (System.Text.Encoding.UTF8.GetByteCount(text) > MaximumManifestBytes)
+            throw new InvalidDataException("配饰清单超出资源上限。");
+        // Recheck immediately before committing: a future/corrupt file appearing during image writes stays protected.
+        var beforeCommit = Load(settingsRoot);
+        if (beforeCommit.ManifestRevision != previous.ManifestRevision || beforeCommit.State != previous.State)
+            throw new InvalidDataException("配饰清单已在外部更改；草稿保留。");
+        if (beforeCommit.State == AccessorySettingsLoadState.Protected)
+        {
+            if (beforeCommit.IsTransientReadFailure) throw new IOException("旧配饰清单暂时无法读取，可稍后重试。");
+            throw new InvalidDataException("配饰原清单受保护，不能普通覆盖。");
+        }
+        try { writer.Write(GetManifestPath(settingsRoot), text); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException
+            or ArgumentException or InvalidOperationException)
+        {
+            // A writer can throw after an atomic replacement. A confirmed target snapshot is still a successful commit.
+            var committed = Load(settingsRoot);
+            if (committed.State != AccessorySettingsLoadState.Valid || committed.ManifestRevision != committedRevision ||
+                !committed.Configuration.Equals(configuration)) throw;
+        }
+        // Return our exact commit, never a later external snapshot read after this write.
+        return committedRevision;
+    }
+
+    // Both the standalone manifest and roster commit use this preparation boundary. It writes
+    // immutable content only; publication belongs to the caller's single atomic manifest.
+    internal void PrepareAssets(string settingsRoot, IEnumerable<AccessoryItem> previousItems,
+        AccessoryConfiguration configuration, IReadOnlyDictionary<string, AccessoryImageAsset>? pendingAssets = null,
+        IReadOnlyDictionary<string, AccessoryEditorProject>? pendingProjects = null)
+    {
+        configuration.Validate();
+        var oldImages = previousItems.GroupBy(item => item.AssetId, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
         var usedImages = configuration.Items.GroupBy(item => item.AssetId, StringComparer.Ordinal).Select(group => group.First());
+        foreach (var item in configuration.Items) ValidatePersistable(item);
         foreach (var item in usedImages)
         {
             if (AccessoryItem.IsBuiltInAsset(item.AssetId)) continue;
@@ -109,24 +153,46 @@ public sealed class AccessorySettingsStore
             }
             else ValidateImageDimensions(item, LoadImage(settingsRoot, item.AssetId));
         }
-        var text = JsonSerializer.Serialize(new PersistedSettings(CurrentSchemaVersion, configuration.Items), SerializerOptions);
-        if (System.Text.Encoding.UTF8.GetByteCount(text) > MaximumManifestBytes)
-            throw new InvalidDataException("配饰清单超出资源上限。");
-        // Recheck immediately before committing: a future/corrupt file appearing during image writes stays protected.
-        var beforeCommit = Load(settingsRoot);
-        if (beforeCommit.State == AccessorySettingsLoadState.Protected)
+        var oldItems = previousItems.ToArray();
+        foreach (var item in configuration.Items)
         {
-            if (beforeCommit.IsTransientReadFailure) throw new IOException("旧配饰清单暂时无法读取，可稍后重试。");
-            throw new InvalidDataException("配饰原清单受保护，不能普通覆盖。");
+            if (item.ProjectId is null) continue; // Only the built-in catalog may omit a project.
+            if (pendingProjects is not null && pendingProjects.TryGetValue(item.ProjectId, out var project))
+            {
+                var image = pendingAssets is not null && pendingAssets.TryGetValue(item.AssetId, out var pendingImage)
+                    ? pendingImage : LoadImage(settingsRoot, item.AssetId);
+                project.ValidateResult(item, image);
+                EnsureDirectoryIsSafe(settingsRoot, "accessory-projects");
+                Directory.CreateDirectory(Path.Combine(Path.GetFullPath(settingsRoot), "accessory-projects"));
+                var projectPath = GetProjectPath(settingsRoot, item.ProjectId);
+                if (!File.Exists(projectPath)) assetWriter(projectPath, project.CopyBytes());
+                LoadProject(settingsRoot, item.ProjectId).ValidateResult(item, image);
+            }
+            else if (oldItems.Any(old => old.ProjectId == item.ProjectId && old.AssetId == item.AssetId &&
+                old.ProjectVersion == item.ProjectVersion && old.EditRevision == item.EditRevision &&
+                old.PixelWidth == item.PixelWidth && old.PixelHeight == item.PixelHeight &&
+                ((old.Skeleton is null && item.Skeleton is null) || old.Name == item.Name &&
+                    old.ImagePivotX == item.ImagePivotX && old.ImagePivotY == item.ImagePivotY &&
+                    AccessoryConfiguration.SkeletonEquals(old.Skeleton, item.Skeleton))))
+            { /* Keep an isolated saved asset referenced; unrelated edits cannot delete it. */ }
+            else LoadProject(settingsRoot, item.ProjectId).ValidateResult(item, LoadImage(settingsRoot, item.AssetId));
         }
-        try { writer.Write(GetManifestPath(settingsRoot), text); }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException
-            or ArgumentException or InvalidOperationException)
+    }
+
+    internal static AccessoryItem ReadPersistedItem(JsonElement item)
+    {
+        _ = ReadExactObject(item, ItemFields);
+        if (item.GetProperty("rig").ValueKind != JsonValueKind.Null)
         {
-            // A writer can throw after an atomic replacement. A confirmed target snapshot is still a successful commit.
-            var committed = Load(settingsRoot);
-            if (committed.State != AccessorySettingsLoadState.Valid || !committed.Configuration.Equals(configuration)) throw;
+            var rig = ReadExactObject(item.GetProperty("rig"), ["nodes", "softness", "damping", "restoration", "bindingVersion"]);
+            if (rig["nodes"].ValueKind != JsonValueKind.Array) throw new InvalidDataException("骨架节点列表无效。");
+            foreach (var node in rig["nodes"].EnumerateArray()) _ = ReadExactObject(node, ["x", "y"]);
         }
+        var entry = JsonSerializer.Deserialize<AccessoryItem>(item, SerializerOptions) ?? throw new InvalidDataException("配饰条目为空。");
+        if (item.GetProperty("skeleton").ValueKind != JsonValueKind.Null)
+            entry = entry with { Skeleton = AccessoryEditorProject.ReadSkeleton(item.GetProperty("skeleton"), entry.PixelWidth, entry.PixelHeight) };
+        ValidatePersistable(entry);
+        return entry;
     }
 
     public AccessoryImageAsset LoadImage(string settingsRoot, string assetId)
@@ -135,10 +201,36 @@ public sealed class AccessorySettingsStore
         return AccessoryImageAsset.ReadStored(GetAssetPath(settingsRoot, assetId), assetId);
     }
 
+    public AccessoryEditorProject LoadProject(string settingsRoot, string projectId)
+    {
+        EnsureDirectoryIsSafe(settingsRoot, "accessory-projects");
+        var path = GetProjectPath(settingsRoot, projectId);
+        if ((File.GetAttributes(path) & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0)
+            throw new InvalidDataException("内部工程不能是目录或链接。");
+        using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        if (input.Length is < 1 or > AccessoryEditorProject.MaximumEncodedBytes) throw new InvalidDataException("工程大小无效。");
+        using var data = new MemoryStream(); input.CopyTo(data);
+        return AccessoryEditorProject.Read(data.ToArray(), projectId);
+    }
+
     public static string GetManifestPath(string settingsRoot)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(settingsRoot);
-        return Path.Combine(Path.GetFullPath(settingsRoot), "accessories.json");
+        return Path.Combine(Path.GetFullPath(settingsRoot), "accessories-v2.json");
+    }
+
+    public static string GetLegacyManifestPath(string settingsRoot) => Path.Combine(Path.GetFullPath(settingsRoot), "accessories.json");
+    public static string GetProjectPath(string settingsRoot, string projectId)
+    {
+        if (!AccessoryEditorProject.IsHash(projectId)) throw new InvalidDataException("内部工程引用无效。");
+        return Path.Combine(Path.GetFullPath(settingsRoot), "accessory-projects", projectId + ".json");
+    }
+
+    private static void ValidatePersistable(AccessoryItem item)
+    {
+        item.Validate();
+        if (item.IsPendingCompletion || (!AccessoryItem.IsBuiltInAsset(item.AssetId) && item.ProjectId is null))
+            throw new InvalidDataException("配饰待完成：需要有效工程及成品 PNG 才能应用。");
     }
 
     public static string GetAssetPath(string settingsRoot, string assetId)
@@ -175,8 +267,11 @@ public sealed class AccessorySettingsStore
     }
 
     private static void EnsureAssetDirectoryIsSafe(string settingsRoot)
+        => EnsureDirectoryIsSafe(settingsRoot, "accessory-assets");
+
+    private static void EnsureDirectoryIsSafe(string settingsRoot, string name)
     {
-        var directory = Path.Combine(Path.GetFullPath(settingsRoot), "accessory-assets");
+        var directory = Path.Combine(Path.GetFullPath(settingsRoot), name);
         try
         {
             var attributes = File.GetAttributes(directory);

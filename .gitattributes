@@ -6,3 +6,11 @@
 *.gif binary
 *.ico binary
 *.dll binary
+
+# Preserve audited upstream/legal bytes and generated template literals.
+eng/accessory-editor/vendor/** whitespace=-blank-at-eol
+eng/accessory-editor/MINIPAINT-LICENSE.txt -text whitespace=-blank-at-eol
+src/Dango.Desktop/Accessories/Editing/Web/bundle.js whitespace=-blank-at-eol
+src/Dango.Desktop/Accessories/Editing/Web/licenses/* -text whitespace=-blank-at-eol
+src/Dango.Desktop/Accessories/Editing/licenses/LICENSE.txt -text whitespace=-blank-at-eol
+src/Dango.Desktop/Accessories/Editing/licenses/NOTICE.txt -text whitespace=-blank-at-eol

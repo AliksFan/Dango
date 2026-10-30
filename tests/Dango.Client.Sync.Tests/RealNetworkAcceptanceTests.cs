@@ -1,5 +1,5 @@
+using Dango.Tests.Support;
 using System.Diagnostics;
-using System.IO.Pipes;
 using System.Text.Json;
 using System.Threading.Channels;
 using Dango.Protocol;
@@ -17,7 +17,7 @@ public sealed class RealNetworkAcceptanceTests
     [DataRow(300)]
     public async Task RealWebSocketsRepairSilentTailAndLostReceiptAndResumeWithoutOldInput(int injectedRttMs)
     {
-        await using var server = await ServerProcess.StartAsync();
+        await using var server = await ServerProcess.StartAsync(TestContext);
         var fa = new FaultFactory(injectedRttMs);
         var fb = new FaultFactory(injectedRttMs);
         await using var a = new RoomConnection(server.Client("A"), transportFactory: fa);
@@ -148,34 +148,17 @@ public sealed class RealNetworkAcceptanceTests
 
     private sealed class ServerProcess : IAsyncDisposable
     {
-        private readonly Process process;
-        private readonly StreamWriter control;
-        private readonly LocalBootstrap bootstrap;
-        public int Pid => process.Id;
-        private ServerProcess(Process process, StreamWriter control, LocalBootstrap bootstrap)
-        { this.process = process; this.control = control; this.bootstrap = bootstrap; }
-        public LocalClientBootstrap Client(string role) => new(bootstrap.Endpoint, bootstrap.RoomId, bootstrap.RoomEpoch,
-            "real-network-" + role, bootstrap.JoinTickets[role == "A" ? 0 : 1]);
-        public static async Task<ServerProcess> StartAsync()
+        private readonly LocalServerProcess child;
+        public int Pid => child.Pid;
+        private ServerProcess(LocalServerProcess child) => this.child = child;
+        public LocalClientBootstrap Client(string role) => new(child.Bootstrap.Endpoint, child.Bootstrap.RoomId, child.Bootstrap.RoomEpoch,
+            "real-network-" + role, child.Bootstrap.JoinTickets[role == "A" ? 0 : 1]);
+        public static async Task<ServerProcess> StartAsync(TestContext context)
         {
             var path = Environment.GetEnvironmentVariable("DANGO_SYNC_SERVER_PATH");
             Assert.IsTrue(File.Exists(path), "DANGO_SYNC_SERVER_PATH must identify this run's final-build server executable.");
-            using var pipe = new AnonymousPipeServerStream(PipeDirection.In, HandleInheritability.Inheritable);
-            var controlPipe = new AnonymousPipeServerStream(PipeDirection.Out, HandleInheritability.Inheritable);
-            var info = new ProcessStartInfo(path!) { UseShellExecute = false, CreateNoWindow = true };
-            foreach (var value in new[] { "--bootstrap-pipe", pipe.GetClientHandleAsString(), "--control-pipe", controlPipe.GetClientHandleAsString() }) info.ArgumentList.Add(value);
-            var process = Process.Start(info)!;
-            pipe.DisposeLocalCopyOfClientHandle(); controlPipe.DisposeLocalCopyOfClientHandle();
-            using var reader = new StreamReader(pipe);
-            var bootstrap = JsonSerializer.Deserialize<LocalBootstrap>((await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(15)))!, RoomProtocol.Json)!;
-            return new(process, new StreamWriter(controlPipe) { AutoFlush = true }, bootstrap);
+            return new(await LocalServerProcess.StartAsync(new ProcessStartInfo(path!), path!, message => context.WriteLine(message)));
         }
-        public async ValueTask DisposeAsync()
-        {
-            await control.WriteLineAsync("STOP");
-            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
-            Assert.AreEqual(0, process.ExitCode);
-            control.Dispose(); process.Dispose();
-        }
+        public ValueTask DisposeAsync() => child.DisposeAsync();
     }
 }

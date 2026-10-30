@@ -16,10 +16,10 @@
 | 普通房事件不带房间身份，入房重置位置 | [ProductHomeView.Porch](../../src/Dango.Desktop/AppShell/ControlCenter/ProductHomeView.Porch.cs)、[宿主接线](../../src/Dango.Desktop/AppShell/DangoApplicationHost.LocalRoom.cs) |
 | 家具固定存于 `rooms/local-ordinary-room/furniture-layout.json` | [家具合同](../../src/Dango.Core/Furniture/FurnitureLayoutContract.cs) |
 | 运行实例禁止切换家具根目录，不具备逐房绑定 | [运行实例家具接线](../../src/Dango.Desktop/Rendering/Dango/StackedDangoSceneRuntime.Furniture.cs) |
-| 普通房布局 schema 2 可读兼容的 schema 1；`sceneId` 是场景合同身份，没有独立房间ID | [序列化](../../src/Dango.Core/Furniture/FurnitureLayoutSerializer.cs)、[存储测试](../../tests/Dango.Desktop.Tests/Furniture/FurnitureLayoutStoreCollectionTests.cs) |
+| 普通房布局 schema 2 可读兼容的 schema 1；`sceneId` 是场景合同身份，没有独立房间ID | [序列化](../../src/Dango.Core/Furniture/FurnitureLayoutSerializer.cs)、[存储测试](../../tests/Dango.LocalRooms.Tests/Furniture/FurnitureLayoutStoreCollectionTests.cs) |
 | 家具保存已有租约、原子替换、重读确认，以及未提交／已提交／结果不明区分 | [FurnitureLayoutStore](../../src/Dango.Desktop/Furniture/FurnitureLayoutStore.cs) |
 | 团子 `resumeX` 为内存字段；镜头快照也仅在会话内 | [LocalRoomSceneDriver](../../src/Dango.Desktop/AppShell/Rooms/LocalRoomSceneDriver.cs)、[RoomViewController](../../src/Dango.Desktop/AppShell/Rooms/RoomViewController.cs) |
-| 家具忙碌、已保存未应用及结果不明状态已有离开限制 | [家具会话](../../src/Dango.Desktop/Furniture/OrdinaryRoomFurnitureSession.cs)、[交接测试](../../tests/Dango.Desktop.Tests/AppShell/OrdinaryRoomFurnitureHandoffTests.cs) |
+| 家具忙碌、已保存未应用及结果不明状态已有离开限制 | [家具会话](../../src/Dango.Desktop/Furniture/OrdinaryRoomFurnitureSession.cs)、[交接测试](../../tests/Dango.LocalRooms.Tests/Native/OrdinaryRoomFurnitureHandoffTests.cs) |
 
 本批交付本地普通房的稳定目录、逐房布局、新建／解散／恢复、统一额度，以及安全位置和本机镜头的跨进程恢复。桌宠房保留已有入口、隐藏／恢复及同一团子交接合同，不占普通房额度，暂不接家具；本批不新增桌宠房跨进程位置恢复。
 

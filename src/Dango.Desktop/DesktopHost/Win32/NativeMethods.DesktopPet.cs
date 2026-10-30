@@ -41,29 +41,19 @@ internal static partial class NativeMethods
             throw new Win32Exception(Marshal.GetLastPInvokeError(), "无法定位独立团子层。");
     }
 
-    // A real native region excludes transparent corners even over another process.
-    // HTTRANSPARENT alone only searches windows owned by the same thread.
-    internal static void SetDesktopPetRegion(nint window, IReadOnlyList<NativePoint[]> polygons)
+    // A layered window's zero-alpha pixels already pass native input through,
+    // including across processes. A second, UI-thread shape would clip pixels
+    // still being presented by WPF's render thread using a different frame.
+    // Keep the surface empty until preparation succeeds, then use pixel alpha.
+    internal static void SetDesktopPetDisplayReady(nint window, bool ready)
     {
-        var region = DesktopPetCreateRectRgn(0, 0, 0, 0);
-        if (region == 0) throw new Win32Exception(Marshal.GetLastPInvokeError());
+        var region = ready ? 0 : DesktopPetCreateRectRgn(0, 0, 0, 0);
+        if (!ready && region == 0) throw new Win32Exception(Marshal.GetLastPInvokeError());
         try
         {
-            foreach (var polygon in polygons)
-            {
-                if (polygon.Length < 3) continue;
-                var part = DesktopPetCreatePolygonRgn(polygon, polygon.Length, 2);
-                if (part == 0) throw new Win32Exception(Marshal.GetLastPInvokeError());
-                try
-                {
-                    if (DesktopPetCombineRgn(region, region, part, 2) == 0)
-                        throw new Win32Exception(Marshal.GetLastPInvokeError());
-                }
-                finally { _ = DesktopPetDeleteObject(part); }
-            }
             if (DesktopPetSetWindowRgn(window, region, true) == 0)
                 throw new Win32Exception(Marshal.GetLastPInvokeError(), "无法更新团子透明轮廓。");
-            region = 0; // USER owns the region after success.
+            region = 0; // USER owns any nonzero region after success.
         }
         finally { if (region != 0) _ = DesktopPetDeleteObject(region); }
     }
@@ -83,10 +73,6 @@ internal static partial class NativeMethods
 
     [DllImport("gdi32.dll", EntryPoint = "CreateRectRgn", SetLastError = true)]
     private static extern nint DesktopPetCreateRectRgn(int left, int top, int right, int bottom);
-    [DllImport("gdi32.dll", EntryPoint = "CreatePolygonRgn", SetLastError = true)]
-    private static extern nint DesktopPetCreatePolygonRgn([In] NativePoint[] points, int count, int mode);
-    [DllImport("gdi32.dll", EntryPoint = "CombineRgn", SetLastError = true)]
-    private static extern int DesktopPetCombineRgn(nint destination, nint first, nint second, int mode);
     [DllImport("gdi32.dll", EntryPoint = "DeleteObject")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool DesktopPetDeleteObject(nint value);

@@ -21,3 +21,7 @@
 | [0004](0004-lightweight-soft-body-secondary-motion.md) | Superseded | 2026-09-02 | 手工关键姿势与轻量软体二次运动组合方案；由 ADR 0005 取代 |
 | [0005](0005-box2d-visual-soft-body-presentation.md) | Accepted | 2026-09-03 | Box2D 视觉软体表现层与 Core 权威隔离 |
 | [0006](0006-native-round-ball-display-metric.md) | Accepted | 2026-10-09 | 原团子与正圆家具的逻辑度量及 native 圆球边界 |
+| [0007](0007-accessory-editor-and-rig.md) | Accepted | 2026-10-23 | 本地 miniPaint 编辑基础；单链制作与参数安排由ADR 0008后续修订 |
+| [0008](0008-accessory-shared-joints-and-unified-project.md) | Accepted | 2026-10-26 | miniPaint统一工程、多组共享连接点双向求解与明确版本；本版交互观感通过 |
+| [0009](0009-accessory-editor-simulation-mode.md) | Accepted | 2026-10-29 | 中央原生模拟空间、单份佩戴草稿与统一撤销；本版交互观感通过 |
+| [0010](0010-dango-roster-editable-accessory-upgrade.md) | Accepted | 2026-10-29 | 三栏位共享配饰库接入完整可编辑工程，原字节备份与可回滚旧目录升级 |

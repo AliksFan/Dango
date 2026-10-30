@@ -608,7 +608,7 @@ internal sealed class OrdinaryRoomFurnitureSession : IDisposable
     private static bool DefinitionMatches(DangoFurnitureDefinition actual, DangoFurnitureDefinition expected)
     {
         static bool Close(double left, double right) => Math.Abs(left - right) <= 1e-6;
-        if (actual.Kind != expected.Kind) return false;
+        if (actual.Kind != expected.Kind || actual.CoordinateSpace != expected.CoordinateSpace) return false;
         if (actual.Platform is { } platform && expected.Platform is { } wanted)
             return Close(platform.CenterX, wanted.CenterX) && Close(platform.CenterY, wanted.CenterY) &&
                 Close(platform.Width, wanted.Width) && Close(platform.Height, wanted.Height) && Close(platform.Friction, wanted.Friction);

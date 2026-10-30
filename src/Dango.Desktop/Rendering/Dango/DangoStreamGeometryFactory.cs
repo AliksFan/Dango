@@ -11,6 +11,7 @@ public enum DangoContourFailure
     SelfIntersecting,
     FootLikeSpike,
     SharpSpike,
+    InvalidSampledBoundary,
 }
 
 public readonly record struct DangoGeometryResult(
@@ -104,6 +105,37 @@ public static class DangoContourValidator
 
 public static class DangoStreamGeometryFactory
 {
+    // The room's continuous body already passed its native shape guard. Preserve
+    // its sampled boundary and the same 72-unit mapping on both axes; the legacy
+    // spline's 72x58 template is a different geometry.
+    internal static DangoGeometryResult TryCreateBelt(IReadOnlyList<PresentationPoint> contour, double width, double height)
+    {
+        ArgumentNullException.ThrowIfNull(contour);
+        if (!double.IsFinite(width) || width <= 0 || !double.IsFinite(height) || height <= 0)
+            throw new ArgumentOutOfRangeException(nameof(width));
+        if (contour.Count < 8) return new(false, null, DangoContourFailure.TooFewPoints);
+        if (contour.Count > 4096 || contour.Any(point => !double.IsFinite(point.X) || !double.IsFinite(point.Y)))
+            return new(false, null, DangoContourFailure.InvalidSampledBoundary);
+        var area = contour.Select((point, index) =>
+        {
+            var next = contour[(index + 1) % contour.Count];
+            return point.X * next.Y - point.Y * next.X;
+        }).Sum();
+        if (area <= 0) return new(false, null, DangoContourFailure.Reversed);
+        var points = contour.Select(point => MapBelt(point, width, height)).ToArray();
+        var geometry = new StreamGeometry { FillRule = FillRule.Nonzero };
+        using (var context = geometry.Open())
+        {
+            context.BeginFigure(points[0], true, true);
+            context.PolyLineTo(points.Skip(1).ToArray(), true, false);
+        }
+        geometry.Freeze();
+        return new(true, geometry, DangoContourFailure.None);
+    }
+
+    internal static System.Windows.Point MapBelt(PresentationPoint point, double width, double height) =>
+        new(width / 2 + point.X * width * 72 / 160, height * .55 - point.Y * width * 72 / 160);
+
     public static DangoGeometryResult TryCreate(
         IReadOnlyList<PresentationPoint> contour,
         double width,

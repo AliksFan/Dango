@@ -3,6 +3,7 @@ using Dango.Core.Animation;
 using Dango.Core.Assets;
 using Dango.Core.Coordinates;
 using Dango.Core.Scene;
+using Dango.Core.Tests.Scene.Support;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Dango.Core.Tests.Assets;

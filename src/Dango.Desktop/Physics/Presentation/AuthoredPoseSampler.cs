@@ -1,0 +1,75 @@
+namespace Dango.Desktop.Physics.Presentation;
+
+internal static class AuthoredPoseSampler
+{
+    private const int ContourPointCount = 12;
+
+    public static PhysicsPresentationFrame CreateActive(
+        PhysicsPresentationInput input,
+        PhysicsPresentationBackend backend,
+        int simulatedStepCount,
+        PhysicsPresentationDiagnosticCode code) =>
+        new(
+            true,
+            CreateContour(input),
+            new PresentationAttachment(new PresentationPoint(0, -0.05), 0),
+            new PresentationAttachment(new PresentationPoint(0, 0.82), 0),
+            PhysicsPresentationFallbackReason.None,
+            new PhysicsPresentationDiagnostics(backend, simulatedStepCount, code));
+
+    public static PhysicsPresentationFrame CreateFallback(
+        PhysicsPresentationInput input,
+        PhysicsPresentationFallbackReason reason,
+        int nativeErrorCode = 0) =>
+        new(
+            reason != PhysicsPresentationFallbackReason.Hidden,
+            reason == PhysicsPresentationFallbackReason.Hidden ? [] : CreateContour(input),
+            new PresentationAttachment(new PresentationPoint(0, -0.05), 0),
+            new PresentationAttachment(new PresentationPoint(0, 0.82), 0),
+            reason,
+            new PhysicsPresentationDiagnostics(
+                PhysicsPresentationBackend.AuthoredFallback,
+                0,
+                PhysicsPresentationDiagnosticCode.Fallback,
+                NativeErrorCode: nativeErrorCode));
+
+    public static PhysicsPresentationFrame CreateSoftBodyActive(
+        IReadOnlyList<PresentationPoint> contour,
+        PresentationAttachment eyes,
+        PresentationAttachment leftEye,
+        PresentationAttachment rightEye,
+        PresentationAttachment hat,
+        int simulatedStepCount,
+        SoftBodyMetrics metrics) =>
+        new(
+            true,
+            contour,
+            eyes,
+            hat,
+            PhysicsPresentationFallbackReason.None,
+            new PhysicsPresentationDiagnostics(
+                PhysicsPresentationBackend.Box2D,
+                simulatedStepCount,
+                PhysicsPresentationDiagnosticCode.SoftBodyActive,
+                metrics),
+            leftEye,
+            rightEye);
+
+    private static IReadOnlyList<PresentationPoint> CreateContour(PhysicsPresentationInput input)
+    {
+        var points = new PresentationPoint[ContourPointCount];
+        var landingSquash = input.Action == Core.Animation.DangoActionState.Landing
+            ? 0.08 * input.Strength
+            : 0;
+        var seedOffset = (Math.Abs((long)input.DeterministicSeed) % 17) * 0.0005;
+        for (var index = 0; index < points.Length; index++)
+        {
+            var angle = (Math.PI * 2 * index) / points.Length;
+            var x = Math.Cos(angle) * (0.72 + landingSquash + seedOffset);
+            var y = Math.Sin(angle) * (0.82 - landingSquash);
+            points[index] = new PresentationPoint(x, y);
+        }
+
+        return points;
+    }
+}

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; font-src 'none'; base-uri 'none'; form-action 'none'">
+<title>配饰骨架 · S0 输入样板</title><link rel="stylesheet" href="../theme.css"><link rel="stylesheet" href="sample.css"></head>
+<body><main data-skeleton-scope>
+ <header><strong>S0 · 骨架输入样板</strong><span class="muted">仅会话草稿</span><div class="spacer"></div>
+  <button id="undo" title="撤销 Ctrl+Z" aria-label="撤销 Ctrl+Z"><svg viewBox="0 0 20 20"><path d="M7 4 3 8l4 4M3 8h8a5 5 0 0 1 0 10"/></svg>撤销</button>
+  <button id="redo" title="重做 Ctrl+Shift+Z" aria-label="重做 Ctrl+Shift+Z"><svg viewBox="0 0 20 20"><path d="m13 4 4 4-4 4m4-4H9a5 5 0 0 0 0 10"/></svg>重做</button>
+ </header>
+ <section class="workspace"><div class="canvas-region"><svg id="surface" viewBox="0 0 800 540" tabindex="0" role="application" aria-label="骨架交互画布" aria-describedby="hint status"></svg></div>
+ <aside><div class="skeleton-tools">
+  <button id="modify" title="修改骨架 K" aria-label="修改骨架 K"><svg viewBox="0 0 20 20"><path d="m5 15 8-10M3 13l4 4M11 3l4 4m0 6h4m-2-2v4"/></svg>修改 <kbd>K</kbd></button>
+  <button id="draw" title="绘制骨架 Shift+K" aria-label="绘制骨架 Shift+K"><svg viewBox="0 0 20 20"><path d="m4 15 8-10M2 13l4 4M10 3l4 4m1 8h4m-2-2v4"/></svg>绘制 <kbd>⇧K</kbd></button>
+ </div><div class="group-title"><span>图层组</span><button id="new-group" title="创建空组和根" aria-label="创建空组和根"><svg viewBox="0 0 20 20"><path d="M10 3v14M3 10h14"/></svg>新组</button></div>
+ <div id="groups" aria-label="活动图层组"></div>
+ <p class="muted small">斜纹区域为未分组层。图像保持原位，仅编辑骨架。</p>
+ <label class="sample-note">样板备注<input id="note" aria-label="样板备注" placeholder="在此输入不会触发骨架快捷键"></label>
+ <details><summary>操作提示</summary><p id="hint">左击选择；空白拖动框选；Shift 追加。<br>Alt+左击轮选重叠点；挂接中按 Alt 切换候选。<br>绘制时选末端，再点击空白续画。<br>拖单根靠近其他组节点后松手挂接；右键打开命令。<br>方向键微调，Shift 为 10 像素。<br>滚轮缩放；按住 Space 拖动画布。</p></details>
+ <div id="selection" class="small muted"></div>
+ </aside></section>
+ <footer><span id="status" role="status" aria-live="polite"></span><span id="hover" class="muted small"></span></footer>
+ <div id="menu" role="menu" aria-label="骨架上下文命令" hidden></div>
+</main><script type="module" src="sample.js"></script></body></html>

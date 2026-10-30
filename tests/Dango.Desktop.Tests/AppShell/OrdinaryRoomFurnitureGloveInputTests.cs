@@ -21,11 +21,11 @@ public sealed class OrdinaryRoomFurnitureGloveInputTests
         var root = Path.Combine(TestRepository.Root, "artifacts", "furniture-room", "glove-input", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         using var host = new DangoApplicationHost(settingsFile: Path.Combine(root, "settings.json"),
-            nativeLibraryPath: Environment.GetEnvironmentVariable("DANGO_ORDINARY_FURNITURE_TEST_MODULE") ??
-                throw new InvalidOperationException("The real candidate furniture module is required."), isolatedLocalRoomReview: true);
+            roomModulePath: Environment.GetEnvironmentVariable("DANGO_BELT_ROOM_MODULE") ??
+                Path.Combine(AppContext.BaseDirectory, "dango_belt_room.dll"));
         var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime");
-        Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
-        host.ShowControlCenter(); Pump(250);
+        Assert.IsTrue(runtime.UsesBeltRoom, "Product rooms must use the continuous body module.");
+        host.ShowControlCenter(); ProductHostTestSupport.WaitForHome(host); Pump(250);
         host.EnterLocalRoom(); Until(() => !host.LocalHandoffPending, 4500);
         var window = host.LocalWindow!;
         var driver = Field<LocalRoomSceneDriver>(host, "localRoomDriver");

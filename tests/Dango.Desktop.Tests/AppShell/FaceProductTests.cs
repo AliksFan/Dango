@@ -112,7 +112,7 @@ public sealed class FaceProductTests
     {
         var path = NewPath(); var saved = new AppearanceSettingsSession(path); saved.StagePreview(Choice); Assert.IsTrue(saved.TrySave()); var original = File.ReadAllBytes(path);
         var settingsPath = Path.Combine(Path.GetDirectoryName(path)!, "settings.json");
-        using (var host = new DangoApplicationHost(settingsFile: settingsPath, nativeLibraryPath: settingsPath + ".missing.dll", isolatedFaceReview: true))
+        using (var host = new DangoApplicationHost(settingsFile: settingsPath, roomModulePath: settingsPath + ".missing.dll"))
         {
             var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime"); Assert.AreEqual(Choice, runtime.EffectiveAppearance); Assert.AreEqual(0, runtime.EntityIds.Count);
             var home = HomeWindow(host).ProductHome; Assert.AreEqual(Choice, home.DraftAppearance); home.ShowEditor(HomeEditor.Face); Click(home, "DefaultAppearanceButton");
@@ -159,42 +159,59 @@ public sealed class FaceProductTests
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
-    public void SharedNativeEntityKeepsAppearanceAcrossHomePorchAndRegenerationWithoutRoomEntry()
+    public void DefaultContinuousBodyKeepsSavedAppearanceAcrossHomePorchAndPreview()
     {
-        var path = NewPath(); var session = new AppearanceSettingsSession(path); session.StagePreview(Choice); Assert.IsTrue(session.TrySave());
-        using var host = new DangoApplicationHost(settingsFile: Path.Combine(Path.GetDirectoryName(path)!, "settings.json"), isolatedFaceReview: true);
-        var runtime = Field<StackedDangoSceneRuntime>(host, "stackedRuntime"); Assert.IsTrue(runtime.TryInitialize(), runtime.LastError);
-        host.ShowControlCenter(); Pump(350); var window = HomeWindow(host); var home = window.ProductHome; home.ReduceMotion = true;
-        var id = runtime.EntityIds.Single(); var physics = runtime.LastPhysicsFrame; var frame = runtime.LastFrame; var owner = runtime.FrameDriver;
-        var scheduler = Field<HostFrameScheduler>(home, "liveScheduler");
-        Assert.IsTrue(home.OwnsLiveFrameDriver); Assert.AreSame(scheduler, owner);
-        AssertLiveAppearance(runtime, E<DeformableDangoVisual>(home, "LiveDangoVisual"), id);
-        home.ShowEditor(HomeEditor.Face); E<Slider>(home, "EyeSizeSlider").Value = 110;
-        Assert.AreSame(physics, runtime.LastPhysicsFrame); Assert.AreSame(frame, runtime.LastFrame); Assert.AreSame(owner, runtime.FrameDriver); Assert.AreEqual(id, runtime.EntityIds.Single());
-        Click(home, "PreviewSleepButton"); Pump(100);
-        Assert.IsTrue(runtime.LastFrame!.Bodies.Single().Attachments!.Face.Left.Openness <= .03, "The existing eyelid spring must settle into the sleeping threshold.");
-        Click(home, "PreviewSleepButton"); Pump(200);
-        Assert.IsTrue(runtime.LastFrame!.Bodies.Single().Attachments!.Face.Left.Openness > .9);
-        home.CloseEditor(); Assert.AreEqual(Choice, runtime.EffectiveAppearance);
-        var steps = scheduler.Snapshot.SuccessfulSteps;
-        Assert.IsTrue(Press(home, window, Key.W).Handled); Pump(500);
-        Assert.IsTrue(home.IsInPorch); Assert.IsTrue(home.OwnsLiveFrameDriver); Assert.AreSame(owner, runtime.FrameDriver);
-        Assert.IsTrue(scheduler.Snapshot.SuccessfulSteps > steps, "The porch must advance real native frames after the handoff.");
-        var porch = E<PorchSceneView>(home, "PorchScene");
-        Assert.AreEqual(0, porch.DoorCount, "The product porch must retain main's empty room directory.");
-        Assert.IsFalse(porch.CanEnterRoom, "Face integration must not import the unaccepted ordinary-room entry.");
-        Assert.IsNull(home.RoomNavigation.Authority.RoomId); Assert.IsFalse(home.RoomNavigation.CanSendRoomInput);
-        AssertLiveAppearance(runtime, porch.LiveBody, id);
-        Assert.IsTrue(Press(home, window, Key.Escape).Handled); Pump(500);
-        Assert.IsFalse(home.IsInPorch); Assert.IsTrue(home.OwnsLiveFrameDriver); Assert.AreSame(owner, runtime.FrameDriver);
-        AssertLiveAppearance(runtime, E<DeformableDangoVisual>(home, "LiveDangoVisual"), id);
-        runtime.RegenerateDango(); Pump(350);
-        AssertLiveAppearance(runtime, E<DeformableDangoVisual>(home, "LiveDangoVisual"), id);
-        Assert.AreSame(owner, runtime.FrameDriver); Assert.AreEqual(Choice, new AppearanceSettingsSession(path).SavedAppearance);
+        var path = NewPath();
+        var session = new AppearanceSettingsSession(path);
+        session.StagePreview(Choice); Assert.IsTrue(session.TrySave());
+        using var host = new DangoApplicationHost(settingsFile: Path.Combine(Path.GetDirectoryName(path)!, "settings.json"));
+        host.ShowControlCenter();
+        ProductHostTestSupport.WaitForHome(host);
+        var window = HomeWindow(host);
+        var home = window.ProductHome;
+        home.ReduceMotion = true;
+        var owner = home.BoundBeltBody!;
+        var epoch = home.DisplayedBeltSnapshot!.Epoch;
+        var bodyEpoch = home.DisplayedBeltSnapshot.BodyEpoch;
+        Assert.AreEqual(Choice, home.BoundBeltPresenter!.Appearance);
+        Assert.IsNull(home.BoundRuntime, "The home must not start the retired product world.");
+        home.ShowEditor(HomeEditor.Face);
+        E<Slider>(home, "EyeSizeSlider").Value = 110;
+        Assert.AreEqual(110, home.BoundBeltPresenter.Appearance.EyeLayout.SizePercent);
+        Assert.AreEqual(bodyEpoch, home.DisplayedBeltSnapshot.BodyEpoch, "Eye edits cannot replace the physical body.");
+        Click(home, "PreviewSleepButton");
+        Wait(() => home.BoundBeltPresenter.Inspect().Body?.Attachments?.Face.Left.Openness <= .03);
+        Click(home, "PreviewSleepButton");
+        Wait(() => home.BoundBeltPresenter.Inspect().Body?.Attachments?.Face.Left.Openness > .9);
+        home.CloseEditor();
+        Assert.AreEqual(Choice, home.BoundBeltPresenter.Appearance);
+        var steps = owner.Metrics.NativeStepCalls;
+        Assert.IsTrue(Press(home, window, Key.F).Handled);
+        Wait(() => home.IsInPorch && owner.Metrics.NativeStepCalls > steps);
+        Assert.AreSame(owner, home.BoundBeltBody);
+        Assert.AreEqual(epoch, home.DisplayedBeltSnapshot.Epoch);
+        Assert.AreEqual(Choice, home.BoundBeltPresenter.Appearance);
+        Assert.IsFalse(E<PorchSceneView>(home, "PorchScene").CanEnterRoom,
+            "Local catalog entries do not fabricate formal multiplayer admission.");
+        Assert.IsNull(home.RoomNavigation.Authority.RoomId);
+        Assert.IsFalse(home.RoomNavigation.CanSendRoomInput);
+        Assert.IsTrue(Press(home, window, Key.Escape).Handled);
+        Wait(() => !home.IsInPorch && home.BoundBeltPresenter.View.IsVisible);
+        Assert.AreSame(owner, home.BoundBeltBody);
+        Assert.AreEqual(epoch, home.DisplayedBeltSnapshot.Epoch);
+        Assert.AreEqual(Choice, new AppearanceSettingsSession(path).SavedAppearance);
+    }
+
+    private static void Wait(Func<bool> condition)
+    {
+        var until = Environment.TickCount64 + 8000;
+        while (!condition() && Environment.TickCount64 < until) Pump(20);
+        Assert.IsTrue(condition(), "The actual continuous body presentation did not reach its gate.");
     }
 
     [STATestMethod]
     [TestCategory("NativeIntegration")]
+    [TestCategory("LegacyModuleIntegration")]
     public void ExistingWindowAndWallpaperHostsKeepAppearanceAcrossExclusiveFrameHandoffs()
     {
         // Exercise main's existing desktop hosts independently. Product still forbids

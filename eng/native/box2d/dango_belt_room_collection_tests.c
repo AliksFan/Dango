@@ -1,0 +1,258 @@
+#define DANGO_BELT_ROOM_COLLECTION_TESTS 1
+#define DANGO_BELT_ROOM_TRACE 1
+#include "dango_belt_room.c"
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+#include <stdio.h>
+#define CHECK(c) do {if(!(c)){fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#c);return 1;}}while(0)
+static const dango_belt_config cfg={
+ .node_count=16,.substep_count=4,.radial_rest_length=.68f,.radial_minimum_ratio=.65f,.radial_maximum_ratio=1.22f,
+ .perimeter_minimum_ratio=.73f,.perimeter_maximum_ratio=1.07f,.radial_hertz=1.82f,.perimeter_hertz=15.075f,
+ .radial_damping=1.85f,.perimeter_damping=1.85f,.area_strength=4.8f,.local_angle_balance_strength=1.7f,
+ .gravity=9.8f,.core_mass=.12f,.node_mass=.015f,.drop_height=.42f,.ground_height=-.72f,.node_radius=.045f,
+ .friction=.72f,.drag_stiffness=10,.drag_damping=2.2f,.drag_maximum_force=8,.horizontal_force=2.4f,
+ .maximum_horizontal_speed=3.2f,.air_control_ratio=.35f,.downward_force=2.2f,.jump_impulse=.42f,.jump_cooldown_seconds=.45f,
+ .maximum_speed=12,.minimum_area=.42f,.linear_damping=1.8f};
+static const float cal[11]={1.4f,1,1,4,1.4f,1,1,1,1.8f,35,60};
+static int create(float x,void** handle){int rc=dango_belt_room_create(&cfg,cal,11,x,0,-20,20,handle);if(!rc)rc=dango_belt_room_set_solid_walls(*handle,1,0);if(!rc)rc=dango_belt_room_enable_collection(*handle,1);return rc;}
+static dango_belt_room_definition platform(double x,double top,double width){return (dango_belt_room_definition){.kind=1,.x=x,.y=top-.1,.width=width,.height=.2,.friction=.72};}
+static dango_belt_room_definition ball(double x,double y,double r){return (dango_belt_room_definition){.kind=2,.ball={x,y,r,.02,.45,.35,.25,.15}};}
+static int add(void* h,dango_belt_room_definition d){room_world* w=room_lookup(h);dango_belt_room_collection_probe p;dango_belt_room_collection_token t;int rc=dango_belt_room_prepare_furniture_change(h,1,0,w->revision,&d,&p,sizeof p,&t);if(rc||p.rejection){fprintf(stderr,"add rc%d rejection%d gap%.9g\n",rc,p.rejection,p.minimum_gap);return 1;}return dango_belt_room_apply_prepared_furniture_change(h,&t);}
+static int step(void* h,int count){dango_belt_room_input input={.body_id=1};for(int i=0;i<count;++i){int rc=dango_belt_room_step(h,.0166666f,&input,1);if(rc){room_world* w=room_lookup(h);fprintf(stderr,"step fault%d tick%llu geom%.0f residual%.9g KE%.9g/%.9g reason%.0f\n",rc,(unsigned long long)w->tick,w->diag[4],w->diag[9],w->diag[10],w->diag[11],w->diag[7]);return rc;}}return 0;}
+static int api(void){
+ void* h=NULL;CHECK(!create(-8,&h));room_world* w=room_lookup(h);CHECK(sizeof(dango_belt_room_collection_frame)==16968&&dango_belt_room_capabilities()==255);
+ dango_belt_room_definition d=platform(3,2,1);dango_belt_room_collection_probe p;dango_belt_room_collection_token t;
+ CHECK(!dango_belt_room_prepare_furniture_change(h,1,0,w->revision,&d,&p,sizeof p,&t)&&!p.rejection);room_world before=*w;belt_body body=*room_body(w);
+ CHECK(step(h,1)==DANGO_BELT_ROOM_BUSY&&!memcmp(&before,w,sizeof before)&&!memcmp(&body,room_body(w),sizeof body));
+ dango_belt_room_collection_token wrong=t;wrong.config_revision++;CHECK(dango_belt_room_apply_prepared_furniture_change(h,&wrong)==DANGO_BELT_ROOM_REVISION&&!memcmp(&before,w,sizeof before));
+ CHECK(!dango_belt_room_cancel_prepared_furniture_change(h,&t)&&!dango_belt_room_cancel_prepared_furniture_change(h,&t));CHECK(!w->collection_count&&w->tick==0&&w->revision==2);
+ CHECK(!add(h,d));CHECK(w->collection_count==1&&w->revision==3&&w->last_applied_token!=0);CHECK(!add(h,ball(5,3,.4)));
+ dango_belt_room_collection_frame f;memset(&f,0xa5,sizeof f);dango_belt_room_collection_frame copy=f;CHECK(dango_belt_room_read_collection_frame(h,&f,sizeof f-1)==DANGO_BELT_ROOM_ARGUMENT&&!memcmp(&f,&copy,sizeof f));
+ CHECK(!dango_belt_room_read_collection_frame(h,&f,sizeof f)&&f.item_count==2&&f.items[1].ball.scene_revision==f.base.scene_revision&&f.items[1].body_contact.step==f.base.tick);
+ CHECK(dango_belt_room_set_platform(h,NULL,w->revision)==DANGO_BELT_ROOM_REJECTED);CHECK(!dango_belt_room_destroy(h));puts("collection ABI/token/busy/no-write PASS");return 0;
+}
+static int empty_equivalence(void){void *a=NULL,*b=NULL;CHECK(!dango_belt_room_create(&cfg,cal,11,0,0,-20,20,&a));CHECK(!dango_belt_room_create(&cfg,cal,11,0,0,-20,20,&b));CHECK(!dango_belt_room_enable_collection(b,0));
+ for(int i=0;i<240;++i){CHECK(!step(a,1)&&!step(b,1));belt_body* ba=room_body(room_lookup(a));belt_body* bb=room_body(room_lookup(b));CHECK(!memcmp(ba,bb,sizeof *ba));}
+ CHECK(!dango_belt_room_destroy(a)&&!dango_belt_room_destroy(b));puts("empty collection exact private body equivalence 240 ticks PASS");return 0;}
+static int surface(void){void* h=NULL;CHECK(!create(-8,&h));CHECK(!add(h,platform(4,.2,2)));CHECK(!add(h,platform(-4,.4,2)));CHECK(!add(h,ball(4,3,.4)));room_world* w=room_lookup(h);
+ CHECK(!step(h,480));dango_belt_room_collection_item* a=&w->items[2];CHECK(a->ball.integrations==1920&&a->ball.y>=.6-ROOM_PENETRATION&&a->ball.y<.602);CHECK(w->items[0].definition.x==4&&w->items[1].definition.x==-4);
+ dango_belt_room_collection_probe probe;dango_belt_room_collection_token token;dango_ball_state state=a->ball;CHECK(!dango_belt_room_prepare_furniture_change(h,3,w->items[0].instance,w->revision,NULL,&probe,sizeof probe,&token)&&!probe.rejection);CHECK(!dango_belt_room_apply_prepared_furniture_change(h,&token));CHECK(!memcmp(&state,&a->ball,sizeof state)&&!a->surface_contact.touching&&!a->surface_contact.normal_impulse);CHECK(!step(h,30)&&a->ball.y<.5);
+ CHECK(!dango_belt_room_destroy(h));puts("multi-platform physical landing, immediate stale-contact invalidation and support removal fall PASS");return 0;}
+static int pair(void){void* h=NULL;CHECK(!create(-8,&h));CHECK(!add(h,ball(2,-.32,.4)));CHECK(!add(h,ball(4,-.32,.4)));room_world* w=room_lookup(h);w->items[0].ball.vx=2;double max_v=0;
+ for(int i=0;i<180;++i){CHECK(!step(h,1));max_v=fmax(max_v,w->items[1].ball.vx);}CHECK(max_v>.25);CHECK(!dango_belt_room_destroy(h));printf("ball pair real momentum transfer max_v=%.9g PASS\n",max_v);return 0;}
+static int thirty(void){void* h=NULL;CHECK(!create(-18,&h));for(int row=0;row<2;++row)for(int i=0;i<15;++i)CHECK(!add(h,ball(-14+1.9*i,2+2.05*row,66.0/72)));room_world* w=room_lookup(h);CHECK(w->collection_count==30);CHECK(!step(h,240));for(int i=0;i<30;++i)CHECK(w->items[i].ball.integrations==960);CHECK(!dango_belt_room_destroy(h));puts("30 actual-product disks simultaneous two-row drop 240 ticks PASS");return 0;}
+static int body_platform(void){void* h=NULL;CHECK(!dango_belt_room_create(&cfg,cal,11,0,1.5f,-20,20,&h));CHECK(!dango_belt_room_set_solid_walls(h,1,0)&&!dango_belt_room_enable_collection(h,1));
+ dango_belt_room_definition p={.kind=1,.x=0,.y=.4-21.0/144,.width=272.0/72,.height=21.0/72,.friction=.72};CHECK(!add(h,p));p.x=6;CHECK(!add(h,p));p.x=-6;CHECK(!add(h,p));CHECK(!step(h,360));room_world* w=room_lookup(h);belt_body* b=room_body(w);double bounds[4],foot;belt_bounds(b->q,bounds,&foot);CHECK(b->grounded&&w->diag[18]==1&&bounds[1]>=.4-ROOM_PENETRATION);
+ dango_belt_room_collection_probe probe;dango_belt_room_collection_token token;CHECK(!dango_belt_room_prepare_furniture_change(h,3,1,w->revision,NULL,&probe,sizeof probe,&token)&&!probe.rejection);CHECK(!dango_belt_room_apply_prepared_furniture_change(h,&token)&&!b->grounded&&!w->diag[18]);CHECK(!step(h,180));belt_bounds(b->q,bounds,&foot);CHECK(bounds[1]<-.6&&b->grounded);CHECK(!dango_belt_room_destroy(h));puts("actual-size collection platform body landing/support/delete/floor fall PASS");return 0;}
+static int ball_walls(void){void* h=NULL;CHECK(!create(-8,&h));CHECK(!add(h,ball(19,-.32,.4)));room_world* w=room_lookup(h);w->items[0].ball.vx=3;double minimum=0;
+ for(int i=0;i<180;++i){CHECK(!step(h,1));minimum=fmin(minimum,w->items[0].ball.vx);CHECK(w->items[0].ball.x+.4<=20);}CHECK(minimum<-.1);CHECK(!dango_belt_room_destroy(h));
+ CHECK(!create(-8,&h));w=room_lookup(h);CHECK(!dango_belt_room_set_solid_walls(h,0,w->revision));CHECK(!add(h,ball(19,-.32,.4)));w->items[0].ball.vx=3;int rc=0;dango_belt_room_collection_item before[30];belt_body body;
+ for(int i=0;i<180;++i){memcpy(before,w->items,sizeof before);body=*room_body(w);rc=step(h,1);if(rc)break;}CHECK(rc==DANGO_BELT_ROOM_REJECTED&&!memcmp(before,w->items,sizeof before)&&!memcmp(&body,room_body(w),sizeof body));CHECK(!dango_belt_room_destroy(h));puts("disk solid wall bounce and guard-only full atomic refusal PASS");return 0;}
+static int body_ball(double radius,int ticks){void* h=NULL;CHECK(!create(0,&h));CHECK(!step(h,240));CHECK(!add(h,ball(0,3,radius)));room_world* w=room_lookup(h);belt_body* b=room_body(w);double max_impulse=0,max_body_change=0;
+ for(int i=0;i<ticks;++i){double vy=b->v[35];int rc=step(h,1);if(rc){fprintf(stderr,"circle failure: center %.17g %.17g radius %.17g theta %.17g half %.17g time %.17g %.17g depths %d %d\n",collection_failure_ball.ball.x,collection_failure_ball.ball.y,collection_failure_radius,collection_failure_cell.center,collection_failure_cell.half,collection_failure_cell.lo,collection_failure_cell.hi,collection_failure_cell.theta_depth,collection_failure_cell.time_depth);
+   FILE* evidence=NULL;
+#ifdef _WIN32
+   fopen_s(&evidence,"artifacts/belt-room-f7-collection-r3/body-ball-current-failure.bin","wb");
+#else
+   evidence=fopen("artifacts/belt-room-f7-collection-r3/body-ball-current-failure.bin","wb");
+#endif
+   if(evidence){fwrite(&collection_failure_body,sizeof collection_failure_body,1,evidence);fwrite(&collection_failure_ball,sizeof collection_failure_ball,1,evidence);fwrite(&collection_failure_cell,sizeof collection_failure_cell,1,evidence);fwrite(collection_failure_from,sizeof collection_failure_from,1,evidence);fwrite(collection_failure_to,sizeof collection_failure_to,1,evidence);fclose(evidence);}
+   double theta,box[4];belt_v nn;double gap=collection_circle_closest(collection_failure_from,(belt_v){0,0},collection_failure_radius,&theta,&nn);room_cell_bounds(collection_failure_from,collection_failure_to,&collection_failure_cell,box);fprintf(stderr,"actual min gap %.17g at %.17g cell lower distance %.17g threshold %.17g\n",gap,theta,hypot(fmax(0,fmax(box[0],-box[2])),fmax(0,fmax(box[1],-box[3]))),collection_failure_radius-ROOM_PENETRATION);return 1;}
+  max_impulse=fmax(max_impulse,w->items[0].body_contact.normal_impulse);if(w->items[0].body_contact.touching)max_body_change=fmax(max_body_change,fabs(b->v[35]-vy));}
+ CHECK(max_impulse>1e-4&&max_body_change>1e-4);CHECK(!dango_belt_room_destroy(h));printf("Fourier/disk radius %.9g %d ticks double-sided impulse %.9g coreDeltaVy %.9g PASS\n",radius,ticks,max_impulse,max_body_change);return 0;}
+static int geometry(void){void* h=NULL;CHECK(!create(0,&h));room_world* w=room_lookup(h);belt_body* b=room_body(w);double theta=0;belt_v on=belt_eval(b->q,1.2,0);room_world proof=*w;memset(proof.diag,0,sizeof proof.diag);
+ CHECK(collection_circle_certificate(&proof,b->q,b->q,on,on,.2,&theta,0)==0);proof=*w;memset(proof.diag,0,sizeof proof.diag);
+ belt_v left={b->q[34]-3,b->q[35]},right={b->q[34]+3,b->q[35]};CHECK(collection_circle_certificate(&proof,b->q,b->q,left,right,.2,&theta,1)==0);proof=*w;CHECK(!collection_center_outside(&proof,b->q,(belt_v){b->q[34],b->q[35]}));
+ uint32_t random=12345;for(int i=0;i<200;++i){double a[BELT_D],c[BELT_D];memcpy(a,b->q,sizeof a);memcpy(c,b->q,sizeof c);random=random*1664525u+1013904223u;double angle=(double)(random&65535)/65535*2*BELT_PI;random=random*1664525u+1013904223u;double half=.000001+(double)(random&65535)/65535*.15;
+  a[0]-=.9*cos(angle);a[1]-=.9*sin(angle);c[0]-=1.1*cos(angle+.1);c[1]-=1.1*sin(angle+.1);room_cell cell={angle,half,.1,.9,0,0};double lower=collection_radial_lower(a,c,&cell);
+  for(int k=0;k<=32;++k)for(int t=0;t<=8;++t){double q[BELT_D],time=.1+.8*t/8;for(int j=0;j<BELT_D;++j)q[j]=(1-time)*a[j]+time*c[j];belt_v p=belt_eval(q,angle-half+2*half*k/32,0);CHECK(lower<=belt_dot(p,p)+1e-13);}}
+ CHECK(!dango_belt_room_destroy(h));puts("Fourier radial outward-bound samples, intrusion, swept tunnel and containment rejection PASS");return 0;}
+static int contact_reports(void){void* h=NULL;CHECK(!create(-8,&h));CHECK(!add(h,ball(2,-.32,.4))&&!add(h,ball(2.8,-.32,.4)));room_world* w=room_lookup(h);belt_body* b=room_body(w);w->items[0].ball.vx=1;w->items[1].ball.vx=0;w->surface_report_weight[0]=w->surface_report_weight[1]=-1;
+ collection_row rows[2];int n=0;CHECK(collection_add_row(w,b,rows,&n,0,1,0,(belt_v){1,0},0,.35,.15,0,-4,0));rows[0].body.pn=.01;collection_contact_record(w,b,&rows[0]);
+ CHECK(w->items[0].surface_contact.object_id==2&&w->items[1].surface_contact.object_id==1&&w->items[0].surface_contact.nx==-1&&w->items[1].surface_contact.nx==1);
+ CHECK(w->items[0].surface_contact.ball_speed_before==1&&w->items[1].surface_contact.ball_speed_before==0&&w->items[0].surface_contact.normal_speed_before==-1&&fabs(w->items[0].surface_contact.gap)<1e-12);
+ CHECK(collection_add_row(w,b,rows,&n,0,1,-1,(belt_v){0,1},0,.45,.25,0,0,1));rows[1].body.pn=.001;collection_contact_record(w,b,&rows[1]);CHECK(w->items[1].surface_contact.object_id==1&&w->items[1].surface_contact.nx==1&&w->items[1].surface_contact.normal_speed_before==-1);
+ rows[1].body.pn=.02;collection_contact_record(w,b,&rows[1]);CHECK(w->items[1].surface_contact.object_id==0&&w->items[1].surface_contact.nx==0&&w->items[1].surface_contact.ny==1&&w->items[1].surface_contact.normal_speed_before==0&&w->items[1].surface_contact.ball_speed_before==0);
+ CHECK(!dango_belt_room_destroy(h));puts("pair reports both real IDs/opposite normals/own before-speed/gap and coherent floor+pair representative PASS");return 0;}
+static int rollback(void){void* h=NULL;CHECK(!create(-8,&h));CHECK(!add(h,ball(4,3,.4)));CHECK(!step(h,20));room_world* w=room_lookup(h);room_world before=*w;belt_body body=*room_body(w);collection_test_fault=1;CHECK(step(h,1)==DANGO_BELT_ROOM_REJECTED);CHECK(!memcmp(&body,room_body(w),sizeof body));
+ CHECK(!memcmp(before.items,w->items,sizeof before.items)&&!memcmp(before.touches,w->touches,sizeof before.touches)&&!memcmp(before.pair_touch,w->pair_touch,sizeof before.pair_touch)&&before.tick==w->tick&&before.revision==w->revision);CHECK(step(h,1)==DANGO_BELT_ROOM_FAULT);CHECK(!dango_belt_room_destroy(h));puts("fourth-substep whole world rollback/fault latch PASS");return 0;}
+/* Shared replay calls the same ABI for embedded source and a loaded DLL. */
+typedef struct replay_api {
+ int (*create)(const dango_belt_config*,const float*,int,float,float,float,float,void**);
+ int (*set_solid_walls)(void*,int,uint64_t);int (*enable_collection)(void*,uint64_t);
+ int (*set_bounds)(void*,float,float,uint64_t);
+ int (*step)(void*,float,const dango_belt_room_input*,int);
+ int (*read_collection_frame)(void*,dango_belt_room_collection_frame*,int);
+ int (*prepare_furniture_change)(void*,int,uint64_t,uint64_t,const dango_belt_room_definition*,dango_belt_room_collection_probe*,int,dango_belt_room_collection_token*);
+ int (*apply_prepared_furniture_change)(void*,const dango_belt_room_collection_token*);
+ int (*destroy)(void*);
+} replay_api;
+static int combined_replay(int jump,int legacy,float start,int require_top,const replay_api* external,int actual);
+#ifdef _WIN32
+static int actual_dll(const char* path,int saved,int phase){HMODULE module=LoadLibraryA(path);CHECK(module);
+ int (*native_create)(const dango_belt_config*,const float*,int,float,float,float,float,void**)=NULL;
+ int (*native_set_bounds)(void*,float,float,uint64_t)=NULL;
+ int (*native_set_solid_walls)(void*,int,uint64_t)=NULL;int (*native_enable_collection)(void*,uint64_t)=NULL;
+ int (*native_step)(void*,float,const dango_belt_room_input*,int)=NULL;int (*native_read_collection_frame)(void*,dango_belt_room_collection_frame*,int)=NULL;
+ int (*native_prepare_furniture_change)(void*,int,uint64_t,uint64_t,const dango_belt_room_definition*,dango_belt_room_collection_probe*,int,dango_belt_room_collection_token*)=NULL;
+ int (*native_apply_prepared_furniture_change)(void*,const dango_belt_room_collection_token*)=NULL;int (*native_destroy)(void*)=NULL;
+#define LOAD(name) do {FARPROC proc=GetProcAddress(module,"dango_belt_room_" #name);CHECK(proc);memcpy(&native_##name,&proc,sizeof proc);}while(0)
+ LOAD(create);LOAD(set_bounds);LOAD(set_solid_walls);LOAD(enable_collection);LOAD(step);LOAD(read_collection_frame);LOAD(prepare_furniture_change);LOAD(apply_prepared_furniture_change);LOAD(destroy);
+#undef LOAD
+ if(saved==2){replay_api api={native_create,native_set_solid_walls,native_enable_collection,native_set_bounds,native_step,native_read_collection_frame,native_prepare_furniture_change,native_apply_prepared_furniture_change,native_destroy};
+  int rc=phase?combined_replay(phase,0,0,phase==60,&api,1):(combined_replay(60,0,0,1,&api,1)||combined_replay(90,0,0,0,&api,1));FreeLibrary(module);return rc;}
+ if(saved){const float starts[3]={6,5,5};const int jumps[3]={20,90,120};for(int c=0;c<3;++c){void* h=NULL;CHECK(!native_create(&cfg,cal,11,starts[c],0,-15,15,&h));CHECK(!native_set_solid_walls(h,1,0)&&!native_enable_collection(h,1));dango_belt_room_input input={.body_id=1};
+  for(int i=0;i<180;++i)CHECK(!native_step(h,.0166666f,&input,1));dango_belt_room_definition p={.kind=1,.x=(1715.6051461521163-1080)/72,.y=(126.65960390330395-10.5)/72,.width=272.0/72,.height=21.0/72,.friction=.72};dango_belt_room_collection_probe probe;dango_belt_room_collection_token token;CHECK(!native_prepare_furniture_change(h,1,0,2,&p,&probe,sizeof probe,&token)&&!probe.rejection);CHECK(!native_apply_prepared_furniture_change(h,&token));
+  for(int i=0;i<600;++i){input.controls[0]=i<jumps[c]+45?1.f:0;input.controls[2]=i==jumps[c]?1.f:0;CHECK(!native_step(h,.0166666f,&input,1));dango_belt_room_collection_frame f;CHECK(!native_read_collection_frame(h,&f,sizeof f));CHECK(f.base.tick==(uint64_t)i+181&&!f.base.fault&&f.base.scene_revision==3&&f.item_count==1&&f.items[0].instance==1);}
+  CHECK(!native_destroy(h));printf("actual DLL saved x%.0f jump%d 600 successful coherent frames PASS\n",starts[c],jumps[c]);}FreeLibrary(module);return 0;}
+ void* h=NULL;CHECK(!native_create(&cfg,cal,11,0,0,-20,20,&h));CHECK(!native_set_solid_walls(h,1,0)&&!native_enable_collection(h,1));dango_belt_room_input input={.body_id=1};
+ for(int i=0;i<240;++i)CHECK(!native_step(h,.0166666f,&input,1));dango_belt_room_definition d=ball(0,3,66.0/72);dango_belt_room_collection_probe probe;dango_belt_room_collection_token token;CHECK(!native_prepare_furniture_change(h,1,0,2,&d,&probe,sizeof probe,&token)&&!probe.rejection);CHECK(!native_apply_prepared_furniture_change(h,&token));
+ double maximum=0;for(int i=0;i<3600;++i){CHECK(!native_step(h,.0166666f,&input,1));dango_belt_room_collection_frame f;CHECK(!native_read_collection_frame(h,&f,sizeof f));CHECK(f.base.tick==(uint64_t)i+241&&f.base.scene_revision==3&&f.item_count==1&&!f.base.fault);CHECK(f.items[0].ball.step==f.base.tick&&f.items[0].body_contact.step==f.base.tick&&f.items[0].surface_contact.scene_revision==f.base.scene_revision);maximum=fmax(maximum,f.items[0].body_contact.normal_impulse);}
+ CHECK(maximum>1e-4&&!native_destroy(h));FreeLibrary(module);printf("actual DLL default disk 3600 ticks coherent successful frames/real body impulse %.9g PASS\n",maximum);return 0;}
+#endif
+static int saved_platform_case(float x,int jump){
+ void* h=NULL;CHECK(!dango_belt_room_create(&cfg,cal,11,x,0,-15,15,&h));
+ CHECK(!dango_belt_room_set_solid_walls(h,1,0)&&!dango_belt_room_enable_collection(h,1));CHECK(!step(h,180));
+ dango_belt_room_definition p={.kind=1,.x=(1715.6051461521163-1080)/72,.y=(126.65960390330395-10.5)/72,.width=272.0/72,.height=21.0/72,.friction=.72};CHECK(!add(h,p));
+ room_world* w=room_lookup(h);int tick,rc=0;
+ for(tick=0;tick<600;++tick){dango_belt_room_input input={.body_id=1};input.controls[0]=tick<jump+45?1.f:0;input.controls[2]=tick==jump?1.f:0;rc=dango_belt_room_step(h,.0166666f,&input,1);if(rc)break;
+  room_world proof=*w;proof.platform=collection_platform(&w->items[0]);memset(proof.diag,0,sizeof proof.diag);double theta=0;CHECK(room_certificate(&proof,room_body(w)->q,room_body(w)->q,&theta,0)==1&&room_containment(&proof,room_body(w)->q));}
+ if(rc){fprintf(stderr,"refusal line=%d contact=",room_refusal_line);for(int j=0;j<9;++j)fprintf(stderr," %.17g",room_trace_contact[j]);fprintf(stderr,"\n");fprintf(stderr,"saved approach tick=%d accepted=%llu rc=%d body=%.0f reason=%.0f work=%.0f cell=%.17g %.17g %.17g %.17g %.0f %.0f\n",tick,(unsigned long long)w->tick,rc,w->diag[3],w->diag[7],w->diag[4],room_trace_cell[0],room_trace_cell[1],room_trace_cell[2],room_trace_cell[3],room_trace_cell[4],room_trace_cell[5]);
+  for(int endpoint=0;endpoint<2;++endpoint){const double* q=endpoint?room_trace_to:room_trace_from;fprintf(stderr,"%s={",endpoint?"to":"from");for(int j=0;j<BELT_D;++j)fprintf(stderr,"%s%.17g",j?",":"",q[j]);fprintf(stderr,"}\n");}}
+ CHECK(!rc&&tick==600);CHECK(!dango_belt_room_destroy(h));printf("saved x%.0f jump%d platform approach 600 ticks PASS\n",x,jump);return 0;
+}
+/* Exact furniture DTOs from DesktopPhysicsScene.OrdinaryFurnitureDefinition;
+   the world ground offset is already included, unlike the historic elevated
+   platform-only exercise above. No velocity/state injection in this replay. */
+static uint64_t replay_hash(uint64_t hash,const void* data,size_t size){const unsigned char* bytes=data;for(size_t i=0;i<size;++i){hash^=bytes[i];hash*=UINT64_C(1099511628211);}return hash;}
+static int combined_replay(int jump,int legacy,float start,int require_top,const replay_api* external,int actual){
+ const replay_api embedded={dango_belt_room_create,dango_belt_room_set_solid_walls,dango_belt_room_enable_collection,dango_belt_room_set_bounds,dango_belt_room_step,dango_belt_room_read_collection_frame,dango_belt_room_prepare_furniture_change,dango_belt_room_apply_prepared_furniture_change,dango_belt_room_destroy};
+ const replay_api* api=external?external:&embedded;dango_belt_config config=cfg;
+ /* Complete the scalar defaults used by the frozen real product DTO replay. */
+ if(actual){config.repulsion_distance=.09f;config.repulsion_strength=.3f;config.repulsion_maximum_force=3.5f;config.core_exclusion_ratio=.25f;config.angle_strength=10;config.restitution=.02f;config.contact_hertz=28;}
+ void* h=NULL;CHECK(!api->create(&config,cal,11,start,0,actual?-256.f:-15.f,actual?256.f:15.f,&h));CHECK(!api->set_solid_walls(h,1,0)&&!api->enable_collection(h,1));dango_belt_room_input input={.body_id=1};
+ for(int t=0;t<180;++t)CHECK(!api->step(h,.0166666f,&input,1));
+ if(actual)CHECK(!api->set_bounds(h,(float)-16.666666666666668,(float)12.666666666666666,2));
+ dango_belt_room_definition definitions[2]={{.kind=1,.x=8.827849252112726,.y=.8933278319903329,.width=272.0/72,.height=21.0/72,.friction=.72},ball(3.1999147569060984,3.183787110963082,66.0/72)};
+ if(actual){definitions[0].x-=2;definitions[1].ball.x-=2;}
+ uint64_t revision=actual?3:2;for(int i=0;i<2;++i){dango_belt_room_collection_probe probe;dango_belt_room_collection_token token;
+  CHECK(!api->prepare_furniture_change(h,1,0,revision,&definitions[i],&probe,sizeof probe,&token)&&!probe.rejection);CHECK(!api->apply_prepared_furniture_change(h,&token));revision++;}
+ room_world* w=external?NULL:room_lookup(h);collection_test_disable_block=legacy;int initial_blocks=collection_test_block_accepted,rc=0,tick,top_contacts=0;double maximum_ball_x=0;uint64_t digest=UINT64_C(14695981039346656037);
+ for(tick=0;tick<1000;++tick){room_world saved;belt_body body;if(w){saved=*w;body=*room_body(w);}input.controls[0]=tick<600?1.f:0;input.controls[2]=tick>=jump&&(tick-jump)%65==0?1.f:0;
+  rc=api->step(h,.0166666f,&input,1);if(rc){fprintf(stderr,"combined actual%d DLL%d phase%d inputTick%d rc%d\n",actual,external!=NULL,jump,tick,rc);
+   CHECK(legacy&&w&&rc==DANGO_BELT_ROOM_REJECTED&&w->diag[9]>2e-6&&w->diag[17]>=300);
+   CHECK(!memcmp(&body,room_body(w),sizeof body)&&!memcmp(saved.items,w->items,sizeof saved.items)&&saved.tick==w->tick&&saved.revision==w->revision);
+   CHECK(api->step(h,.0166666f,&input,1)==DANGO_BELT_ROOM_FAULT);break;}
+  dango_belt_room_collection_frame frame;CHECK(!api->read_collection_frame(h,&frame,sizeof frame));
+  CHECK(!frame.base.fault&&frame.base.tick==(uint64_t)tick+181&&frame.base.scene_revision==revision&&frame.item_count==2);
+  CHECK(frame.items[0].definition.kind==1&&frame.items[1].definition.kind==2&&frame.items[1].ball.integrations==(uint64_t)(tick+1)*4);
+  CHECK(frame.items[1].ball.step==frame.base.tick&&frame.items[1].body_contact.step==frame.base.tick&&frame.items[1].surface_contact.scene_revision==revision);
+  if(w)CHECK(w->diag[9]<=2e-6&&w->diag[11]<=w->diag[10]+1e-9*(4+w->diag[10])&&w->diag[17]<=1200);
+  /* Hash numerical channels only; structure padding and process identities
+     are deliberately excluded. Every accepted frame contributes. */
+  digest=replay_hash(digest,frame.base.body_snapshot,sizeof frame.base.body_snapshot);digest=replay_hash(digest,frame.base.scaffold,sizeof frame.base.scaffold);digest=replay_hash(digest,frame.base.curve,sizeof frame.base.curve);digest=replay_hash(digest,frame.base.stats,sizeof frame.base.stats);digest=replay_hash(digest,frame.base.diagnostics,sizeof frame.base.diagnostics);
+  for(int i=0;i<2;++i){digest=replay_hash(digest,&frame.items[i].ball.x,6*sizeof(double));digest=replay_hash(digest,&frame.items[i].body_contact.fraction,9*sizeof(double));digest=replay_hash(digest,&frame.items[i].surface_contact.fraction,9*sizeof(double));}
+  dango_belt_room_collection_item* disk=&frame.items[1];dango_belt_room_platform platform=collection_platform(&frame.items[0]);belt_v normal;
+  CHECK(collection_circle_rectangle((belt_v){disk->ball.x,disk->ball.y},disk->definition.ball.radius,&platform,&normal)>=-ROOM_PENETRATION&&disk->ball.y-disk->definition.ball.radius>=config.ground_height-ROOM_PENETRATION);
+  maximum_ball_x=fmax(maximum_ball_x,disk->ball.x);double top=platform.y+.5*platform.height;
+  if(disk->surface_contact.touching&&disk->surface_contact.object_id==(int)frame.items[0].instance&&disk->surface_contact.ny>=.7&&disk->ball.y-disk->definition.ball.radius>=top-ROOM_PENETRATION&&fabs(disk->ball.x-platform.x)<=platform.width*.5)top_contacts++;}
+ collection_test_disable_block=0;CHECK(legacy?(rc&&tick<1000):(!rc&&tick==1000));if(!external)CHECK(legacy||collection_test_block_accepted>initial_blocks);
+ CHECK(!require_top||top_contacts>0);CHECK(!api->destroy(h));printf("combined saved DTO actual%d DLL%d start%.0f phase%d ticks%d topContacts%d maximumBallX%.17g numericalDigest%016llx PASS\n",actual,external!=NULL,start,jump,tick,top_contacts,maximum_ball_x,(unsigned long long)digest);return 0;
+}
+static int combined_ball_platform_case(int jump,int legacy,float start,int require_top){return combined_replay(jump,legacy,start,require_top,NULL,0);}
+/* Frozen first swept disk refusal after the coupled-solver repair: both
+   endpoints satisfy the penetration shell, but interpolation has a witness
+   in a pending cell beyond the first depth-limited uncertain cell. */
+static int ball_wall_shell_projection(void){
+ for(int right=0;right<2;++right){void* h=NULL;CHECK(!create(0,&h)&&!add(h,ball(right?19:-19,0,.4)));room_world* w=room_lookup(h);belt_body* b=room_body(w);dango_belt_room_collection_item* a=&w->items[0];double radius=a->definition.ball.radius;
+  a->ball.x=right?b->right-radius+.00028538138926492707:b->left+radius-.00028538138926492707;a->ball.y=b->cfg.ground_height+radius;
+  a->ball.vx=right?-.7:.7;memcpy(w->old_q,b->q,sizeof w->old_q);w->ball_old[0][0]=a->ball.x+(right?-.01:.01);w->ball_old[0][1]=a->ball.y;
+  /* This post-integration shell overlap was formerly ignored, even though
+     the subsequent strict wall guard refused the already-reflected ball. */
+  CHECK(collection_positions(w,b)&&a->ball.x-radius>=b->left&&a->ball.x+radius<=b->right&&w->diag[14]<=ROOM_POSITION_LIMIT);
+  CHECK(!dango_belt_room_destroy(h));}
+ puts("both solid walls project shell-sized ball overlap before the unchanged strict bounds guard PASS");return 0;
+}
+static int circle_pending_witness(void){
+ static const double from[BELT_D]={-1.571920151511029,-0.30767195617672494,-0.73390269624518234,-0.19326715852519261,0.27461490280394119,-0.56658783752250219,-0.033233063282209353,-0.045405115497566227,-0.0047366365055471968,0.048791256129332529,0.00091406538464337524,-0.030784454784694174,0.01755762246642956,-0.031605962258717028,-0.025212031153902442,-0.00138425744043174,0.010679504907947035,-0.013301464626850581,0.0076866554661123281,0.0012986039868145751,-0.0090984115315249827,0.00066565283463214365,-0.0043118101579442403,-0.0050066720418449305,0.010874186819641987,-0.0017422388893534157,-0.0010795073783608519,0.0021248833012008344,-0.0067596794512289034,-0.0041901124503907622,0.0020192033363304017,-0.00020733950937788526,0.0043659403733919818,0.0024128642194298183,4.6379013039489996,-0.18597893749222691};
+ static const double to[BELT_D]={-1.5689479994534041,-0.28582795556636376,-0.73062044491233313,-0.19115507988616295,0.27303553875100467,-0.57136092519204373,-0.034980301603459649,-0.044689267494276062,-0.0029914012648332936,0.049201095648699456,0.0023474492811749927,-0.030515687741404226,0.015795015778977853,-0.031965280048398666,-0.025406756730206516,-0.00091894003631818471,0.011992314248262166,-0.013272990897539581,0.0077120871403984111,0.0018754240341018356,-0.01001911689987553,0.00083823834928800547,-0.0037364966658211766,-0.0050053695309575904,0.011188017656906423,-0.0011879495869547955,-0.0013746495554947911,0.0015276413168952186,-0.0066192053627829369,-0.004237345684460261,0.0022255613300740155,0.0003462943597236579,0.0037171108895752251,0.0022600524001348383,4.6368406077716475,-0.15517384923049665};
+ room_world proof={0};double theta=0,radius=66.0/72;belt_v normal;
+ CHECK(collection_circle_closest(from,(belt_v){0,0},radius,&theta,&normal)>-ROOM_PENETRATION&&collection_circle_closest(to,(belt_v){0,0},radius,&theta,&normal)>-ROOM_PENETRATION);
+ collection_test_early_uncertain=1;CHECK(collection_circle_certificate(&proof,from,to,(belt_v){0,0},(belt_v){0,0},radius,&theta,1)==-1&&proof.diag[2]==DANGO_BELT_ROOM_UNCERTAIN);collection_test_early_uncertain=0;memset(&proof,0,sizeof proof);
+ CHECK(collection_circle_certificate(&proof,from,to,(belt_v){0,0},(belt_v){0,0},radius,&theta,1)==0&&proof.diag[4]<ROOM_GEOMETRY_BUDGET&&!proof.diag[2]);
+ double witness=theta;memset(&proof,0,sizeof proof);double distance=collection_circle_closest(from,(belt_v){0,0},0,&theta,&normal),tangent_radius=distance+ROOM_PENETRATION-1e-12;
+ CHECK(collection_circle_certificate(&proof,from,from,(belt_v){0,0},(belt_v){0,0},tangent_radius,&theta,0)==-1&&proof.diag[2]==DANGO_BELT_ROOM_UNCERTAIN);
+ printf("disk pending-cell swept witness theta%.17g; unresolved tangent still refuses PASS\n",witness);return 0;
+}
+static int block_small_velocity_cone(void){
+ void* h=NULL;CHECK(!create(-8,&h));dango_belt_room_definition d=ball(4,2,1);d.ball.mass=1;CHECK(!add(h,d));room_world* w=room_lookup(h);belt_body* b=room_body(w);
+ w->items[0].ball.vx=-3.7610783853592557e-7;w->items[0].ball.vy=-3.7991604726214715e-7;w->items[0].ball.omega=-2.9850675984255716e-7;
+ collection_row rows[2];int n=0;CHECK(collection_add_row(w,b,rows,&n,0,0,-1,(belt_v){0,1},0,.9006856827038201,0,0,0,0));double angle=1.3681433937973781;
+ CHECK(collection_add_row(w,b,rows,&n,0,0,-1,(belt_v){cos(angle),sin(angle)},0,.6275949905570387,0,0,0,0));
+ int blocks=collection_test_block_accepted,iterations=0;double before=collection_ke(w,b),residual=collection_solve_rows(w,b,rows,2,&iterations);
+ CHECK(collection_test_block_accepted>blocks&&iterations<=300&&residual<2e-8&&collection_ke(w,b)<=before+1e-20);
+ for(int i=0;i<2;++i)CHECK(rows[i].body.pn>=0&&fabs(rows[i].body.pt)<=rows[i].body.mu*rows[i].body.pn);
+ CHECK(!dango_belt_room_destroy(h));puts("tiny-velocity Newton step requires subsequent exact impulse-cone projection PASS");return 0;
+}
+static int block_invalid_systems(void){
+ void* h=NULL;CHECK(!create(-8,&h)&&!add(h,ball(4,2,.4)));room_world* w=room_lookup(h);belt_body* b=room_body(w);collection_row rows[2];int n=0;
+ CHECK(collection_add_row(w,b,rows,&n,0,0,-1,(belt_v){0,1},0,0,0,0,0,0)&&collection_add_row(w,b,rows,&n,0,0,-1,(belt_v){0,-1},0,0,0,0,0,0));
+ rows[0].target=rows[1].target=1;room_world saved=*w;belt_body body=*b;collection_row before[2];memcpy(before,rows,sizeof rows);double residual=123;
+ /* Opposite normals demanding +1 both ways are inconsistent. An exact solve
+    is singular; neither regularization nor a fake residual may admit it. */
+ CHECK(!collection_block_step(w,b,rows,2,&residual)&&residual==123&&!memcmp(&saved,w,sizeof saved)&&!memcmp(&body,b,sizeof body)&&!memcmp(before,rows,sizeof rows));CHECK(collection_residual(w,b,rows,2)>=1);
+ rows[0].target=NAN;CHECK(!collection_block_step(w,b,rows,2,&residual)&&residual==123&&!memcmp(&saved,w,sizeof saved)&&!memcmp(&body,b,sizeof body));
+ CHECK(!collection_block_step(w,b,rows,COLLECTION_BLOCK_ROWS+1,&residual)&&residual==123);memcpy(rows,before,sizeof rows);int iterations;CHECK(collection_solve_rows(w,b,rows,2,&iterations)>2e-6&&iterations==300);CHECK(!dango_belt_room_destroy(h));puts("inconsistent/singular/nonfinite/oversize block fallback has no writes and cannot certify PASS");return 0;
+}
+/* Algebraic contracts use fresh legal bodies, never a frozen binary struct. */
+static int projection_properties(void){
+ void* h=NULL;CHECK(!create(0,&h)&&!add(h,ball(3,3,.4)));room_world* w=room_lookup(h);belt_body* b=room_body(w);
+ const double theta=1.7,depth=.001;const belt_v normal={.6,.8};belt_body before=*b,translated=*b;
+ translated.q[0]+=2;translated.q[34]+=2;translated.q[1]-=3;translated.q[35]-=3;
+ double z[BELT_D],zt[BELT_D],effective,et;CHECK(room_projection_direction(b,theta,normal,z,&effective)&&room_projection_direction(&translated,theta,normal,zt,&et));
+ double error=fabs(effective-et)/(1+fabs(effective));for(int j=0;j<BELT_D;++j)error=fmax(error,fabs(z[j]-zt[j])/(1+fabs(z[j])));CHECK(error<1e-8);
+ belt_v p0=belt_eval(b->q,theta,0);CHECK(room_project(w,b,theta,normal,depth));belt_v dp=belt_sub(belt_eval(b->q,theta,0),p0);
+ CHECK(fabs(belt_dot(dp,normal)-depth-2e-9)<1e-10&&!memcmp(before.v,b->v,sizeof b->v));
+ /* A mass-only Fourier point direction omits the core. The shared elastic
+    metric must couple it and the actual accepted correction must use it. */
+ double lambda=(depth+2e-9)/effective;CHECK(hypot(z[34],z[35])>1e-8);
+ CHECK(hypot(b->q[34]-before.q[34],b->q[35]-before.q[35])>1e-8);
+ CHECK(fabs(b->q[34]-before.q[34]-lambda*z[34])<1e-12&&fabs(b->q[35]-before.q[35]-lambda*z[35])<1e-12);
+ *b=before;memset(w->diag,0,sizeof w->diag);dango_ball_state prior=w->items[0].ball;
+ CHECK(collection_project_body_ball(w,b,0,theta,normal,depth));dp=belt_sub(belt_eval(b->q,theta,0),p0);
+ double dx=w->items[0].ball.x-prior.x,dy=w->items[0].ball.y-prior.y;
+ double progress=(dx-dp.x)*normal.x+(dy-dp.y)*normal.y;
+ double mx=b->mass[0]*(b->q[0]-before.q[0])+b->mass[34]*(b->q[34]-before.q[34])+w->items[0].definition.ball.mass*dx;
+ double my=b->mass[1]*(b->q[1]-before.q[1])+b->mass[35]*(b->q[35]-before.q[35])+w->items[0].definition.ball.mass*dy;
+ CHECK(fabs(progress-depth-2e-9)<1e-10&&hypot(mx,my)<1e-10&&!memcmp(before.v,b->v,sizeof b->v));
+ CHECK(w->items[0].ball.vx==prior.vx&&w->items[0].ball.vy==prior.vy&&w->items[0].ball.omega==prior.omega);
+ /* Invalid requests may update refusal telemetry, never physical state. */
+ for(int i=0;i<4;++i){double angle=i==0?NAN:theta,d=i==1?NAN:depth;belt_v n=i==2?(belt_v){INFINITY,.8}:normal;belt_body saved=*b;room_world world=*w;
+  if(i==3)b->q[4]=NAN;double q[BELT_D];memcpy(q,b->q,sizeof q);
+  CHECK(!room_project(w,b,angle,n,d)&&!memcmp(q,b->q,sizeof q)&&!memcmp(saved.v,b->v,sizeof b->v)&&!memcmp(world.items,w->items,sizeof w->items));
+  *b=saved;CHECK(!collection_project_body_ball(w,b,0,angle,i==3?(belt_v){.6,NAN}:n,d));CHECK(!memcmp(saved.q,b->q,sizeof b->q)&&!memcmp(saved.v,b->v,sizeof b->v)&&!memcmp(world.items,w->items,sizeof w->items));}
+ printf("projection static/body-ball progress %.17g massTranslation %.17g %.17g translationError %.17g velocity/no-write PASS\n",progress,mx,my,error);
+ CHECK(!dango_belt_room_destroy(h));return 0;
+}
+int main(int argc,char** argv){
+ if(argc>1&&!strcmp(argv[1],"--projection-properties"))return projection_properties();
+ if(argc>1&&!strcmp(argv[1],"--combined-actual")){int phase=0,index=2;if(argc>2&&(!strcmp(argv[2],"60")||!strcmp(argv[2],"90"))){phase=atoi(argv[2]);index++;}
+#ifdef _WIN32
+  if(argc>index+1&&!strcmp(argv[index],"--dll"))return actual_dll(argv[index+1],2,phase);
+#endif
+  return phase?combined_replay(phase,0,0,phase==60,NULL,1):(combined_replay(60,0,0,1,NULL,1)||combined_replay(90,0,0,0,NULL,1));}
+
+ if(argc>1&&!strcmp(argv[1],"--combined"))return ball_wall_shell_projection()||circle_pending_witness()||block_small_velocity_cone()||block_invalid_systems()||combined_ball_platform_case(0,1,0,0)||combined_ball_platform_case(0,0,0,0)||combined_ball_platform_case(30,0,0,0)||combined_ball_platform_case(60,0,0,0)||combined_ball_platform_case(60,0,2,1)||combined_ball_platform_case(90,0,2,0);
+ if(argc>1&&!strcmp(argv[1],"--combined-top"))return combined_ball_platform_case(60,0,2,1);
+ if(argc>1&&!strcmp(argv[1],"--combined-corner"))return combined_ball_platform_case(90,0,2,0);
+ if(argc>1&&!strcmp(argv[1],"--wall-shell"))return ball_wall_shell_projection();
+ if(argc>1&&!strcmp(argv[1],"--circle-pending"))return circle_pending_witness();
+ if(argc>1&&!strcmp(argv[1],"--block-invalid"))return block_small_velocity_cone()||block_invalid_systems();
+ if(argc>1&&!strcmp(argv[1],"--saved-platform"))return saved_platform_case(6,20)||saved_platform_case(5,90)||saved_platform_case(5,120);
+#ifdef _WIN32
+ if(argc>2&&!strcmp(argv[1],"--dll"))return actual_dll(argv[2],0,0);
+ if(argc>2&&!strcmp(argv[1],"--saved-platform-dll"))return actual_dll(argv[2],1,0);
+#endif
+ if(argc>1&&!strcmp(argv[1],"--reports"))return contact_reports();if(argc>1&&!strcmp(argv[1],"--body"))return body_ball(.4,240);if(argc>1&&!strcmp(argv[1],"--long"))return body_ball(66.0/72,3600);if(argc>1&&!strcmp(argv[1],"--thirty"))return thirty();if(argc>1&&!strcmp(argv[1],"--platform"))return body_platform();if(argc>1&&!strcmp(argv[1],"--rollback"))return rollback();if(projection_properties()||api()||empty_equivalence()||geometry()||contact_reports()||surface()||pair()||ball_walls()||body_platform()||body_ball(.4,240)||rollback())return 1;puts("R3 targeted native contracts PASS");return 0;}

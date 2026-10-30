@@ -14,6 +14,12 @@ public readonly record struct DirectionalControlIntent(
     bool Squash)
 {
     public static DirectionalControlIntent None => default;
+    public bool Stretch { get; init; }
+    /// <summary>World vertical deformation: W stretches, S compresses, both cancel.</summary>
+    public int VerticalDeformationAxis => ResolveVerticalDeformation(Stretch, Squash);
+
+    public static int ResolveVerticalDeformation(bool stretch, bool squash) =>
+        stretch == squash ? 0 : stretch ? 1 : -1;
 }
 
 public sealed record GroundSurfaceMotionProfile

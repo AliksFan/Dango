@@ -1,0 +1,115 @@
+{
+  "id": "example-warm-cat-ears",
+  "name": "\u5976\u7CD6\u732B\u8033",
+  "assetId": "596eac9e6482b80a37cc4521ebd23e9e4ffc3251238c61ad1ba7fdc3a52ecd02",
+  "pixelWidth": 512,
+  "pixelHeight": 224,
+  "projectId": "5e3e0a9414857d7efe838d757d270f5f53fb4079f2c4dbbda74b14a70d6c2ea0",
+  "projectVersion": 2,
+  "editRevision": 1,
+  "deformationMode": "skeleton",
+  "rig": null,
+  "skeleton": {
+    "pivot": {
+      "id": "P",
+      "x": 256,
+      "y": 208
+    },
+    "groups": [
+      {
+        "id": "ear-left",
+        "name": "\u5DE6\u8033",
+        "targetId": null,
+        "nodes": [
+          {
+            "id": "ear-left-0",
+            "x": 129,
+            "y": 184
+          },
+          {
+            "id": "ear-left-1",
+            "x": 105,
+            "y": 111
+          },
+          {
+            "id": "ear-left-2",
+            "x": 78,
+            "y": 34
+          }
+        ],
+        "parameters": {
+          "bend": 0.12,
+          "damping": 12,
+          "restoration": 18,
+          "gravity": 0,
+          "elasticity": 0
+        }
+      },
+      {
+        "id": "ear-right",
+        "name": "\u53F3\u8033",
+        "targetId": null,
+        "nodes": [
+          {
+            "id": "ear-right-0",
+            "x": 383,
+            "y": 184
+          },
+          {
+            "id": "ear-right-1",
+            "x": 407,
+            "y": 111
+          },
+          {
+            "id": "ear-right-2",
+            "x": 434,
+            "y": 34
+          }
+        ],
+        "parameters": {
+          "bend": 0.12,
+          "damping": 12,
+          "restoration": 18,
+          "gravity": 0,
+          "elasticity": 0
+        }
+      }
+    ],
+    "layers": [
+      {
+        "id": "ear-left-fur",
+        "groupId": "ear-left"
+      },
+      {
+        "id": "ear-left-inner",
+        "groupId": "ear-left"
+      },
+      {
+        "id": "ear-right-fur",
+        "groupId": "ear-right"
+      },
+      {
+        "id": "ear-right-inner",
+        "groupId": "ear-right"
+      }
+    ],
+    "version": 1
+  },
+  "isEquipped": true,
+  "layer": "front",
+  "order": 1,
+  "sizePercent": 160,
+  "baseAngleDegrees": 0,
+  "imagePivotX": 0.5,
+  "imagePivotY": 0.9285714285714286,
+  "bodyAnchorX": 0.5,
+  "bodyAnchorY": 0.065,
+  "connectionStrength": 100,
+  "maxConnectionTravelPercent": 10,
+  "rotationDamping": 85,
+  "lockRotation": true,
+  "returnStrength": 90,
+  "maxSwingDegrees": 12,
+  "limitSwing": true,
+  "gravityInfluence": 0
+}

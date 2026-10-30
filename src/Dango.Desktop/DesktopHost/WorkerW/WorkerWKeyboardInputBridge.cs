@@ -13,14 +13,17 @@ public static class WorkerWKeyboardCapturePolicy
 
 public sealed class DirectionalControlHeldState
 {
-    private readonly bool[] held = new bool[4];
-    private readonly bool[] suppressed = new bool[4];
+    private readonly bool[] held = new bool[Enum.GetValues<DirectionalControlKey>().Length];
+    private readonly bool[] suppressed = new bool[Enum.GetValues<DirectionalControlKey>().Length];
 
     public DirectionalControlIntent Snapshot => new(
         held[(int)DirectionalControlKey.Left],
         held[(int)DirectionalControlKey.Right],
         held[(int)DirectionalControlKey.Jump],
-        held[(int)DirectionalControlKey.Squash]);
+        held[(int)DirectionalControlKey.Squash])
+    {
+        Stretch = held[(int)DirectionalControlKey.Stretch],
+    };
 
     public void Set(DirectionalControlKey key, bool isDown)
     {
@@ -100,7 +103,7 @@ internal sealed class WorkerWKeyboardInputBridge : IDisposable
         if (hook == nint.Zero && !installationFailed)
         {
             // Do not import an already-held key from a different focused app.
-            var keys = new[] { 0x41, 0x44, 0x53, 0x20 };
+            var keys = new[] { 0x41, 0x44, 0x57, 0x53, 0x20 };
             foreach (var virtualKey in keys)
                 if (NativeMethods.IsInputKeyPressed(virtualKey) && KeyboardControlKeyPolicy.TryMap(virtualKey, settings.Scheme, out var key))
                     heldState.SuppressUntilRelease(key);

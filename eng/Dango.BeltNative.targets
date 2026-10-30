@@ -1,0 +1,24 @@
+<Project>
+  <PropertyGroup>
+    <DangoBeltBuildScript>$(MSBuildThisFileDirectory)build-belt-native.ps1</DangoBeltBuildScript>
+    <DangoBeltVerifyScript>$(MSBuildThisFileDirectory)test-belt-native-package.ps1</DangoBeltVerifyScript>
+    <DangoBeltRepositoryRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))</DangoBeltRepositoryRoot>
+    <!-- Keep CMake scratch paths short enough for MSVC FileTracker, including custom publish artifact directories. -->
+    <DangoBeltNativeDirectory>$([MSBuild]::NormalizePath('$(DangoBeltRepositoryRoot)', 'obj', 'belt-native', '$(Configuration)'))</DangoBeltNativeDirectory>
+  </PropertyGroup>
+  <!-- Evaluation-time Content participates in ProjectReference's transitive output/publish discovery. -->
+  <ItemGroup>
+    <Content Include="$(DangoBeltNativeDirectory)/dango_belt_product.dll" Link="dango_belt_product.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(DangoBeltNativeDirectory)/dango_belt_room.dll" Link="dango_belt_room.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(DangoBeltNativeDirectory)/belt-native-manifest.json" Link="belt-native-manifest.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <!-- WPF's generated local-type compilation project re-imports this file, after its parent built native inputs. -->
+  <Target Name="BuildDangoBeltNative" BeforeTargets="PrepareForBuild;GetCopyToOutputDirectoryItems;ComputeFilesToPublish"
+          Condition="'$(DesignTimeBuild)' != 'true' and !$([System.String]::Copy('$(MSBuildProjectName)').EndsWith('_wpftmp'))">
+    <Exec Condition="'$(DangoBeltModulePath)' == '' or '$(DangoBeltRoomModulePath)' == ''" Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(DangoBeltBuildScript)&quot; -OutputDirectory &quot;$(DangoBeltNativeDirectory)&quot; -Configuration &quot;$(Configuration)&quot;" />
+    <MakeDir Directories="$(DangoBeltNativeDirectory)" />
+    <Copy Condition="'$(DangoBeltModulePath)' != ''" SourceFiles="$(DangoBeltModulePath)" DestinationFiles="$(DangoBeltNativeDirectory)/dango_belt_product.dll" />
+    <Copy Condition="'$(DangoBeltRoomModulePath)' != ''" SourceFiles="$(DangoBeltRoomModulePath)" DestinationFiles="$(DangoBeltNativeDirectory)/dango_belt_room.dll" />
+    <Exec Condition="'$(DangoBeltModulePath)' != '' or '$(DangoBeltRoomModulePath)' != ''" Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(DangoBeltVerifyScript)&quot; -NativeDirectory &quot;$(DangoBeltNativeDirectory)&quot; -RepositoryRoot &quot;$(DangoBeltRepositoryRoot)&quot; -WriteManifest -ExternalOverride" />
+  </Target>
+</Project>

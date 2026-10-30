@@ -34,6 +34,7 @@ internal sealed class DesktopPetDangoWindow : Window
     private readonly Func<Point, Point> sceneToScreenPixels;
     private readonly Rect? stableViewportPixels;
     private readonly Canvas canvas = new() { IsHitTestVisible = false };
+    private readonly System.Windows.Controls.Grid root = new() { IsHitTestVisible = false };
     private readonly DeformableDangoVisual body = new() { ShowHat = false, IsHitTestVisible = false };
     private readonly DangoHatVisual hat = new() { IsHitTestVisible = false };
     private readonly DesktopPetPointerGestureBridge gesture;
@@ -42,6 +43,7 @@ internal sealed class DesktopPetDangoWindow : Window
     private bool captured;
     private bool detailedApplyTimingEnabled;
     private bool stableViewportPositioned;
+    private bool nativeDisplayReady;
     internal nint Handle { get; private set; }
     internal bool InteractionEnabled { get; private set; }
     internal bool IsPointerCaptured => captured && NativeMethods.DesktopPetCapturedWindow == Handle;
@@ -52,6 +54,7 @@ internal sealed class DesktopPetDangoWindow : Window
     internal int LastSurfaceInvalidationMessage { get; private set; }
     internal StackedPhysicsPresentationFrame? LastAppliedFrame { get; private set; }
     internal DesktopPetPointerGestureGuard? CurrentPointerGuard { get; private set; }
+    internal Func<bool>? DesktopAllowsInteraction { get; set; }
     internal DesktopPetWindowApplyTiming? LastApplyTiming { get; private set; }
     internal bool DetailedApplyTimingEnabled
     {
@@ -73,7 +76,8 @@ internal sealed class DesktopPetDangoWindow : Window
             !double.IsFinite(viewport.Right) || !double.IsFinite(viewport.Bottom)))
             throw new ArgumentException("独立团子层固定显示范围不可用。", nameof(stableViewportPixels));
         this.stableViewportPixels = stableViewportPixels;
-        gesture = new(Dispatcher, () => InteractionEnabled && HasHealthyFrame && IsVisible && IsPointerCaptured,
+        gesture = new(Dispatcher, () => InteractionEnabled && HasHealthyFrame && IsVisible && IsPointerCaptured &&
+            (DesktopAllowsInteraction?.Invoke() ?? true),
             (screen, shift) => { _ = driver?.PointerMove(screenPixelsToScene(screen), shift); },
             (screen, shift) =>
             {
@@ -92,24 +96,29 @@ internal sealed class DesktopPetDangoWindow : Window
         WindowStartupLocation = WindowStartupLocation.Manual;
         canvas.Children.Add(body);
         canvas.Children.Add(hat);
-        Content = canvas;
+        scene.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
+        scene.VerticalAlignment = System.Windows.VerticalAlignment.Top;
+        root.Children.Add(scene);
+        root.Children.Add(canvas);
+        Content = root;
         SourceInitialized += (_, _) =>
         {
-            var source = (HwndSource)PresentationSource.FromVisual(this);
+            var source = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)
+                ?? throw new InvalidOperationException("独立团子窗口尚未建立原生表面。");
             Handle = source.Handle;
             NativeMethods.ApplyDesktopPetWindowStyles(Handle);
-            NativeMethods.SetDesktopPetRegion(Handle, []);
+            NativeMethods.SetDesktopPetDisplayReady(Handle, false);
             source.AddHook(MessageHook);
         };
         IsVisibleChanged += (_, _) => { if (!IsVisible) { HasHealthyFrame = false; CurrentPointerGuard = null; CancelPointer(); } };
-        Closed += (_, _) => { CancelPointer(); gesture.Dispose(); Handle = 0; HasHealthyFrame = false; CurrentPointerGuard = null; };
+        Closed += (_, _) => { CancelPointer(); gesture.Dispose(); root.Children.Remove(scene); Handle = 0; HasHealthyFrame = false; CurrentPointerGuard = null; };
     }
 
     internal void Bind(LocalRoomSceneDriver value) => driver = value;
     internal bool HitTestScenePoint(Point point) => HasHealthyFrame && scene.IsPetHit(point);
 
     // Called by the room host immediately after Show, inside its preparation
-    // failure boundary. Motion subsequently changes only our canvas and region.
+    // failure boundary. Motion subsequently changes only our canvas contents.
     internal void PositionStableViewport()
     {
         if (stableViewportPixels is not { } viewport || stableViewportPositioned) return;
@@ -134,6 +143,9 @@ internal sealed class DesktopPetDangoWindow : Window
             LastFrameRejection = string.Empty;
             if (Handle == 0 || !IsVisible) { LastFrameRejection = "pet window missing or hidden"; return false; }
             if (!ReferenceEquals(scene.LastAppliedFrame, frame)) { LastFrameRejection = "scene frame changed"; return false; }
+            if (!scene.HasHealthyFrame || !ReferenceEquals(scene.LastAppliedRuntime, runtime) ||
+                runtime.UsesBeltRoom && !ReferenceEquals(frame, runtime.LastFrame))
+            { LastFrameRejection = "scene runtime frame changed"; return false; }
             if (frame.Bodies.Count != 1 || frame.ConstraintsReleased) { LastFrameRejection = "invalid physical frame"; return false; }
             DangoHostFrameBinding.Apply(body, hat, frame, 0, new(0, runtime.NeutralBodyGroundOffset),
                 runtime.DisplayHatAppearance, runtime.DisplayHatSize, runtime.BodyPreviewFill, runtime.EyePreviewFill,
@@ -164,6 +176,10 @@ internal sealed class DesktopPetDangoWindow : Window
                 !double.IsFinite(painted.X) || !double.IsFinite(painted.Y) || !double.IsFinite(painted.Width) || !double.IsFinite(painted.Height))
             { LastFrameRejection = "painted path bounds unavailable"; return false; }
             scene.SetDesktopPetPaintedWorldBounds(frame, new(painted.X - 2, painted.Y - 2, painted.Width + 4, painted.Height + 4));
+            var display = painted;
+            foreach (var accessory in accessories)
+                display.Union(accessory.TransformToAncestor(canvas).TransformBounds(accessory.Frame!.Bounds));
+            scene.FitDesktopPetDisplay(frame, new(display.X - 2, display.Y - 2, display.Width + 4, display.Height + 4));
             if (scene.PetScreenBounds is not { } bounds) { LastFrameRejection = "pet screen bounds unavailable"; return false; }
             // The scene's footprint also constrains body dragging. Keep that
             // existing Path contract independent from the pictures, and expand
@@ -171,9 +187,6 @@ internal sealed class DesktopPetDangoWindow : Window
             // reserve space, so measure the current material mesh instead.
             if (accessories.Length > 0)
             {
-                var display = painted;
-                foreach (var accessory in accessories)
-                    display.Union(accessory.TransformToAncestor(canvas).TransformBounds(accessory.Frame!.Bounds));
                 var displayOffset = scene.PresentationOffset;
                 var first = scene.RoomToScene(new(display.X - 2 + displayOffset.X, display.Y - 2 + displayOffset.Y));
                 var last = scene.RoomToScene(new(display.Right + 2 + displayOffset.X, display.Bottom + 2 + displayOffset.Y));
@@ -205,8 +218,9 @@ internal sealed class DesktopPetDangoWindow : Window
             // size while suppressing its property-to-HWND callbacks. Setting them
             // here again can issue additional native resizes during one frame.
             var p = scene.CurrentProjection;
-            var zero = sceneToScreenPixels(new(p.OffsetX, p.OffsetY));
-            var unit = sceneToScreenPixels(new(p.OffsetX + p.Scale, p.OffsetY + p.Scale));
+            var displayTranslation = scene.PresentationOffset;
+            var zero = sceneToScreenPixels(new(p.OffsetX + displayTranslation.X * p.Scale, p.OffsetY + displayTranslation.Y * p.Scale));
+            var unit = sceneToScreenPixels(new(p.OffsetX + (displayTranslation.X + 1) * p.Scale, p.OffsetY + (displayTranslation.Y + 1) * p.Scale));
             canvas.RenderTransform = new MatrixTransform((unit.X - zero.X) / dpi.DpiScaleX, 0, 0,
                 (unit.Y - zero.Y) / dpi.DpiScaleY, (zero.X - pixelOrigin.X) / dpi.DpiScaleX, (zero.Y - pixelOrigin.Y) / dpi.DpiScaleY);
             if (observe)
@@ -224,7 +238,11 @@ internal sealed class DesktopPetDangoWindow : Window
                 timing = timing with { SecondLayoutMilliseconds = Stopwatch.GetElapsedTime(stage, finished).TotalMilliseconds };
                 stage = finished;
             }
-            UpdateNativeRegion(dpi, paths, accessories);
+            if (!nativeDisplayReady)
+            {
+                NativeMethods.SetDesktopPetDisplayReady(Handle, true);
+                nativeDisplayReady = true;
+            }
             if (observe)
             {
                 var finished = Stopwatch.GetTimestamp();
@@ -242,7 +260,9 @@ internal sealed class DesktopPetDangoWindow : Window
                 var b = scene.RoomToScene(new(world.Right, world.Bottom));
                 return new(sceneToScreenPixels(new(a.X, a.Y)), sceneToScreenPixels(new(b.X, b.Y)));
             }
-            var guard = new DesktopPetPointerGestureGuard(ScreenRectangle(DangoHostFrameBinding.Bounds(frame, 0)),
+            var guardBounds = frame.BeltRoom is { } belt && scene.NativePetCenter is { } core
+                ? BeltBodyWorldBounds(belt, core) : DangoHostFrameBinding.Bounds(frame, 0);
+            var guard = new DesktopPetPointerGestureGuard(ScreenRectangle(guardBounds),
                 Math.Abs(unit.Y - zero.Y) * 8);
             if (!guard.IsValid) { LastFrameRejection = "pointer qualification bounds unavailable"; return false; }
             CurrentPointerGuard = guard;
@@ -266,6 +286,13 @@ internal sealed class DesktopPetDangoWindow : Window
         }
     }
 
+    internal static LogicalRect BeltBodyWorldBounds(Dango.Physics.DangoBeltRoomFrame frame, LogicalPoint core)
+    {
+        var stats = frame.Stats;
+        return new(core.X + (stats[8] - stats[0]) * 72, core.Y - (stats[11] - stats[1]) * 72,
+            (stats[10] - stats[8]) * 72, (stats[11] - stats[9]) * 72);
+    }
+
     private static IEnumerable<Path> PaintedPaths(DependencyObject visual)
     {
         if (visual is Path { IsVisible: true, Fill: not null, Data: not null } path) yield return path;
@@ -280,60 +307,9 @@ internal sealed class DesktopPetDangoWindow : Window
             foreach (var child in PaintedAccessories(VisualTreeHelper.GetChild(visual, i))) yield return child;
     }
 
-    private void UpdateNativeRegion(DpiScale dpi, IReadOnlyList<Path> paths, IReadOnlyList<AccessoryMeshVisual> accessories)
-    {
-        var polygons = new List<NativeMethods.NativePoint[]>();
-        foreach (var path in paths)
-        {
-            var geometry = path.Data ?? throw new InvalidOperationException("当前团子透明轮廓已失效。");
-            var flattened = geometry.GetFlattenedPathGeometry(.15, ToleranceType.Absolute);
-            var geometryTransform = flattened.Transform ?? System.Windows.Media.Transform.Identity;
-            var transform = path.TransformToAncestor(this);
-            foreach (var figure in flattened.Figures)
-            {
-                var points = new List<Point> { figure.StartPoint };
-                foreach (var segment in figure.Segments)
-                {
-                    if (segment is PolyLineSegment line) points.AddRange(line.Points);
-                    else if (segment is LineSegment single) points.Add(single.Point);
-                }
-                polygons.Add(points.Select(point =>
-                {
-                    var transformed = transform.Transform(geometryTransform.Transform(point));
-                    return new NativeMethods.NativePoint
-                    {
-                        X = (int)Math.Round(transformed.X * dpi.DpiScaleX),
-                        Y = (int)Math.Round(transformed.Y * dpi.DpiScaleY),
-                    };
-                }).ToArray());
-            }
-        }
-        // Window regions clip painting as well as native input. Include the
-        // current picture bounds without adding them to scene.IsPetHit or the
-        // body pointer guard; the existing HTTRANSPARENT path remains in force.
-        // One conservative quad per picture avoids per-triangle GDI objects.
-        foreach (var accessory in accessories)
-        {
-            var bounds = accessory.Frame!.Bounds;
-            var transform = accessory.TransformToAncestor(this);
-            polygons.Add(new[] { bounds.TopLeft, bounds.TopRight, bounds.BottomRight, bounds.BottomLeft }.Select(point =>
-            {
-                var transformed = transform.Transform(point);
-                return new NativeMethods.NativePoint
-                {
-                    X = (int)Math.Round(transformed.X * dpi.DpiScaleX),
-                    Y = (int)Math.Round(transformed.Y * dpi.DpiScaleY),
-                };
-            }).ToArray());
-        }
-        if (!polygons.Any(polygon => polygon.Length >= 3))
-            throw new InvalidOperationException("独立团子层没有可呈现的健康轮廓。");
-        NativeMethods.SetDesktopPetRegion(Handle, polygons);
-    }
-
     internal void SetInteractionEnabled(bool enabled)
     {
-        InteractionEnabled = enabled && HasHealthyFrame && IsVisible;
+        InteractionEnabled = enabled && HasHealthyFrame && IsVisible && (DesktopAllowsInteraction?.Invoke() ?? true);
         if (Handle != 0) NativeMethods.SetDesktopPetInteraction(Handle, InteractionEnabled);
         if (!InteractionEnabled) CancelPointer();
     }
@@ -351,11 +327,21 @@ internal sealed class DesktopPetDangoWindow : Window
         driver?.CancelPointer();
     }
 
+    internal void InvalidateDisplayedFrame()
+    {
+        SetInteractionEnabled(false);
+        HasHealthyFrame = false;
+        CurrentPointerGuard = null;
+        nativeDisplayReady = false;
+        if (Handle != 0) NativeMethods.SetDesktopPetDisplayReady(Handle, false);
+    }
+
     private Point MouseScreenPoint(nint parameter) => new(pixelOrigin.X + unchecked((short)((long)parameter & 0xffff)),
         pixelOrigin.Y + unchecked((short)(((long)parameter >> 16) & 0xffff)));
 
     private nint MessageHook(nint window, int message, nint w, nint l, ref bool handled)
     {
+        if (InteractionEnabled && DesktopAllowsInteraction?.Invoke() == false) SetInteractionEnabled(false);
         if (message == 0x0021) { handled = true; return 3; } // MA_NOACTIVATE
         if (message == 0x0084)
         {

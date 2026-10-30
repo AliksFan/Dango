@@ -74,7 +74,7 @@ internal sealed class WallpaperGameplayInputBridge : IDisposable
         {
             if (!ReleaseHooks()) { actions.ClearInput(); return; }
             physicalKeys.Clear(); suppressedKeys.Clear();
-            foreach (var virtualKey in new[] { 0x41, 0x44, 0x53, 0x20, 0x1B })
+            foreach (var virtualKey in new[] { 0x41, 0x44, 0x57, 0x53, 0x20, 0x1B })
                 if (platform.IsKeyPressed(virtualKey) && TryMapKey(virtualKey, out var key))
                 { physicalKeys.Add(key); suppressedKeys.Add(key); }
             keyboardHook = platform.InstallKeyboard(keyboardCallback);
@@ -319,7 +319,7 @@ internal sealed class WallpaperGameplayInputBridge : IDisposable
     private void OnShutdown(object? sender, EventArgs args) => Stop();
     private static bool TryMapKey(int virtualKey, out Key key)
     {
-        key = virtualKey switch { 0x41 => Key.A, 0x44 => Key.D, 0x53 => Key.S, 0x20 => Key.Space, 0x1B => Key.Escape, _ => Key.None };
+        key = virtualKey switch { 0x41 => Key.A, 0x44 => Key.D, 0x57 => Key.W, 0x53 => Key.S, 0x20 => Key.Space, 0x1B => Key.Escape, _ => Key.None };
         return key != Key.None;
     }
     private enum CommandKind { Key, Down, Move, Up }

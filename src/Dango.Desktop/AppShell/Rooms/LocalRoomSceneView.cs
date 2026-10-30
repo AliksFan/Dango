@@ -26,6 +26,40 @@ internal sealed partial class LocalRoomSceneView : Grid
     private readonly Canvas entityLayer = new() { IsHitTestVisible = false };
     private readonly DeformableDangoVisual body = new() { ShowHat = false, IsHitTestVisible = false };
     private readonly DangoHatVisual hat = new() { IsHitTestVisible = false };
+    private readonly System.Windows.Controls.Border nameBadge = new()
+    {
+        IsHitTestVisible = false, Visibility = Visibility.Collapsed,
+        CornerRadius = new CornerRadius(5), Padding = new Thickness(7, 3, 7, 3), BorderThickness = new Thickness(1),
+    };
+    private readonly System.Windows.Controls.TextBlock nameLabel = new()
+    {
+        FontFamily = new System.Windows.Media.FontFamily("Segoe UI, Microsoft YaHei"), FontSize = 14,
+        IsHitTestVisible = false, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 240,
+    };
+    private string? dangoName;
+    internal string? RenderedDangoName => nameBadge.Visibility == Visibility.Visible ? nameLabel.Text : null;
+    internal void SetDangoName(string? name)
+    {
+        dangoName = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+        UpdateDangoName();
+    }
+    private void UpdateDangoName()
+    {
+        nameBadge.Visibility = Visibility.Collapsed;
+        if (DesktopPetPresentationEnabled || !HasHealthyFrame || PetScreenBounds is not { } bounds || dangoName is null) return;
+        nameLabel.Text = dangoName;
+        nameBadge.Background = SystemParameters.HighContrast ? System.Windows.SystemColors.WindowBrush :
+            TryFindResource("HomeBackground") as Brush ?? new SolidColorBrush(Color.FromRgb(253, 252, 249));
+        nameLabel.Foreground = SystemParameters.HighContrast ? System.Windows.SystemColors.WindowTextBrush :
+            TryFindResource("HomeInk") as Brush ?? new SolidColorBrush(Color.FromRgb(68, 61, 52));
+        nameBadge.BorderBrush = SystemParameters.HighContrast ? System.Windows.SystemColors.WindowTextBrush :
+            TryFindResource("HomeAccent") as Brush ?? new SolidColorBrush(Color.FromRgb(136, 94, 62));
+        nameBadge.Visibility = Visibility.Visible;
+        nameBadge.Measure(new System.Windows.Size(Math.Max(1, ActualWidth), double.PositiveInfinity));
+        var size = nameBadge.DesiredSize;
+        Canvas.SetLeft(nameBadge, Math.Clamp(bounds.X + (bounds.Width - size.Width) / 2, 0, Math.Max(0, ActualWidth - size.Width)));
+        Canvas.SetTop(nameBadge, Math.Max(0, bounds.Y - size.Height - 8));
+    }
     private readonly RoomWheelAccumulator wheel = new();
     private double groundY = WorldHeight;
     private double petX = WorldWidth / 2;
@@ -40,13 +74,26 @@ internal sealed partial class LocalRoomSceneView : Grid
     private LogicalVector presentationOffset;
     private Thickness safeInsets;
     private bool inputBlocked;
+    private int desktopPetDisplayPercent = 100;
     internal RoomViewController Camera { get; } = new(WorldWidth, WorldHeight);
     internal bool WindowCameraEnabled { get; private set; }
     internal bool DesktopPetPresentationEnabled { get; private set; }
     internal StackedPhysicsPresentationFrame? LastAppliedFrame { get; private set; }
     internal StackedDangoSceneRuntime? LastAppliedRuntime { get; private set; }
     internal RoomProjection CurrentProjection => Projection;
-    private DesktopPetRoomMapping DesktopPetMapping => DesktopPetRoomMapping.Create(ActualWidth, ActualHeight, SafeInsets, groundY);
+    private DesktopPetRoomMapping DesktopPetMapping => DesktopPetRoomMapping.Create(ActualWidth, ActualHeight, SafeInsets, groundY, desktopPetDisplayPercent);
+    internal int DesktopPetDisplayPercent
+    {
+        get => desktopPetDisplayPercent;
+        set
+        {
+            if (value is < 50 or > 200) throw new ArgumentOutOfRangeException(nameof(value));
+            if (desktopPetDisplayPercent == value) return;
+            InputInvalidated?.Invoke();
+            desktopPetDisplayPercent = value;
+            UpdateProjection(0);
+        }
+    }
     internal LogicalRect DesktopPetSafeWorldBounds => DesktopPetMapping.SafeWorldBounds;
     internal LogicalRect DesktopPetWorldSurface => DesktopPetMapping.Surface;
     internal LogicalPoint? NativePetCenter { get; private set; }
@@ -108,6 +155,10 @@ internal sealed partial class LocalRoomSceneView : Grid
         entityLayer.Children.Add(body);
         entityLayer.Children.Add(hat);
         Children.Add(entityLayer);
+        nameBadge.Child = nameLabel;
+        var names = new Canvas { IsHitTestVisible = false };
+        names.Children.Add(nameBadge);
+        Children.Add(names);
         SizeChanged += (_, _) => { InputInvalidated?.Invoke(); ClearWheel(); UpdateProjection(0); };
         MouseLeave += (_, _) => ClearWheel();
         MouseLeftButtonDown += (_, _) => Focus();
@@ -133,8 +184,11 @@ internal sealed partial class LocalRoomSceneView : Grid
     internal void EnableDesktopPetPresentation()
     {
         DesktopPetPresentationEnabled = true;
+        Background = System.Windows.Media.Brushes.Transparent;
+        IsHitTestVisible = false;
+        UpdateDangoName();
         Focusable = false;
-        // Keep the validation visual, but never paint a second body into the wallpaper.
+        // Keep frame qualification in the pet's visual tree without painting another body.
         entityLayer.Visibility = Visibility.Collapsed;
         UpdateProjection(0);
     }
@@ -175,7 +229,11 @@ internal sealed partial class LocalRoomSceneView : Grid
     {
         if (ActualWidth <= 0 || ActualHeight <= 0 || frame.Bodies.Count != 1 || frame.ConstraintsReleased ||
             runtime.LastError is not null || !frame.Bodies[0].IsVisible ||
-            frame.Bodies[0].FallbackReason != PhysicsPresentationFallbackReason.None || runtime.LocalGroundY is not { } floor)
+            frame.Bodies[0].FallbackReason != PhysicsPresentationFallbackReason.None || runtime.LocalGroundY is not { } floor ||
+            runtime.UsesBeltRoom && (frame.BeltRoom is not { Fault: 0 } belt ||
+                !ReferenceEquals(frame, runtime.LastFrame) || runtime.LastBeltRoomFrame is not { } current ||
+                belt.OwnerEpoch != current.OwnerEpoch || belt.Generation != current.Generation || belt.Tick != current.Tick ||
+                belt.SceneRevision != current.SceneRevision || belt.ConfigurationRevision != current.ConfigurationRevision))
         {
             InvalidateInputFrame();
             return false;
@@ -199,6 +257,7 @@ internal sealed partial class LocalRoomSceneView : Grid
         UpdateProjection(WindowCameraEnabled || previousFrame == 0 ? 0 : now - previousFrame,
             advanceCamera: !WindowCameraEnabled);
         previousFrame = now;
+        runtime.ConfigureBeltSleepPresentationScale(Projection.Scale);
         var displayedBounds = runtime.AccessoriesEnabled
             ? Dango.Desktop.Accessories.AccessoryHostBinding.DisplayBounds(frame, 0, runtime)
             : WanderVisibleBounds.Get(frame.Bodies[0], DangoHostFrameBinding.Bounds(frame, 0), runtime.DisplayHatSize);
@@ -211,6 +270,7 @@ internal sealed partial class LocalRoomSceneView : Grid
         wheel.Expire(now);
         InvalidateVisual();
         HasHealthyFrame = true;
+        UpdateDangoName();
         LastAppliedFrame = frame;
         LastAppliedRuntime = runtime;
         FrameApplied?.Invoke();
@@ -250,6 +310,18 @@ internal sealed partial class LocalRoomSceneView : Grid
         visibleWorldBounds = bounds;
         UpdatePetScreenBounds();
     }
+
+    internal void FitDesktopPetDisplay(StackedPhysicsPresentationFrame frame, LogicalRect bounds)
+    {
+        if (!DesktopPetPresentationEnabled || !ReferenceEquals(frame, LastAppliedFrame) ||
+            bounds.Width <= 0 || bounds.Height <= 0 || !double.IsFinite(bounds.X) || !double.IsFinite(bounds.Y) ||
+            !double.IsFinite(bounds.Width) || !double.IsFinite(bounds.Height))
+            throw new InvalidOperationException("当前桌宠显示包络不可用。");
+        // A presentation translation keeps the complete scaled artwork in view.
+        // Pointer inversion uses the same offset; physical height/floor never move.
+        presentationOffset = DesktopPetMapping.FitDisplayOffset(bounds);
+        UpdatePetScreenBounds();
+    }
     internal LogicalPoint ScreenToWorld(Point sceneDip) => Projection.ScreenToWorld(new(sceneDip.X, sceneDip.Y));
     internal LogicalPoint ScreenToPetWorld(Point sceneDip)
     {
@@ -261,7 +333,8 @@ internal sealed partial class LocalRoomSceneView : Grid
         if (!HasHealthyFrame || InputBlocked || bodyWorldBounds is not { } bounds ||
             !double.IsFinite(sceneDip.X) || !double.IsFinite(sceneDip.Y)) return false;
         var point = ScreenToPetWorld(sceneDip);
-        if (!DesktopPetPresentationEnabled) return bounds.Contains(point);
+        if (!DesktopPetPresentationEnabled && LastAppliedFrame?.Bodies[0].Diagnostics.Backend != PhysicsPresentationBackend.ContinuousBelt)
+            return bounds.Contains(point);
         if (body.FindName("BodyPath") is not System.Windows.Shapes.Path { Data: { } geometry } ||
             body.FindName("GaitBodyLayer") is not FrameworkElement layer || layer.RenderTransform.Inverse is not { } inverse) return false;
         return geometry.FillContains(inverse.Transform(new Point(point.X - bounds.X, point.Y - bounds.Y)));
@@ -270,7 +343,7 @@ internal sealed partial class LocalRoomSceneView : Grid
     internal LogicalPoint ClampDesktopPetPointer(LogicalPoint point, LogicalVector grabOffset)
     {
         if (!DesktopPetPresentationEnabled || NativePetCenter is not { } center || visibleWorldBounds is not { } visible) return point;
-        var safe = DesktopPetSafeWorldBounds;
+        var safe = DesktopPetSafeWorldBounds.Translate(new(-presentationOffset.X, -presentationOffset.Y));
         var left = safe.X - (visible.X - center.X);
         var right = safe.Right - (visible.Right - center.X);
         var top = safe.Y - (visible.Y - center.Y);
@@ -294,6 +367,7 @@ internal sealed partial class LocalRoomSceneView : Grid
         Dango.Desktop.Accessories.AccessoryHostBinding.Hide(body);
         InputInvalidated?.Invoke();
         HasHealthyFrame = false;
+        UpdateDangoName();
         LastAppliedFrame = null;
         LastAppliedRuntime = null;
         bodyWorldBounds = null;
@@ -347,14 +421,17 @@ internal sealed partial class LocalRoomSceneView : Grid
 
     private void UpdatePetScreenBounds()
     {
-        if (visibleWorldBounds is not { } visible) { PetScreenBounds = null; return; }
+        LastAppliedRuntime?.ConfigureBeltSleepPresentationScale(Projection.Scale);
+        if (visibleWorldBounds is not { } visible) { PetScreenBounds = null; UpdateDangoName(); return; }
         visible = visible.Translate(presentationOffset);
         var topLeft = Projection.WorldToScreen(new(visible.X, visible.Y));
         PetScreenBounds = new(topLeft.X, topLeft.Y, visible.Width * Projection.Scale, visible.Height * Projection.Scale);
+        UpdateDangoName();
     }
 
     protected override void OnRender(DrawingContext dc)
     {
+        if (DesktopPetPresentationEnabled) return;
         base.OnRender(dc);
         var edges = EnvironmentEdges;
         var left = Math.Clamp(edges.Left, 0, ActualWidth);

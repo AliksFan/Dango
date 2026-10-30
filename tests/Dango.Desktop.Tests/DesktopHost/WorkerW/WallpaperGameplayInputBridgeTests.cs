@@ -16,6 +16,42 @@ public sealed class WallpaperGameplayInputBridgeTests
         new LogicalRect(-1920, 0, 1920, 1080), 1, true, false);
 
     [STATestMethod]
+    public void StretchAndSquashDownUpReachTheQualifiedRoomOwner()
+    {
+        var platform = new FakePlatform(); var sink = new Sink();
+        using var bridge = Create(platform, sink); bridge.Start();
+        platform.EmitKey(Key.W, true); platform.EmitKey(Key.S, true);
+        platform.EmitKey(Key.W, false); platform.EmitKey(Key.S, false);
+        bridge.FlushPendingInput();
+        CollectionAssert.AreEqual(new[]
+        {
+            (Key.W, true, false), (Key.S, true, false),
+            (Key.W, false, false), (Key.S, false, false),
+        }, sink.Keys.ToArray());
+        Assert.AreEqual(4, platform.KeyNext);
+    }
+
+    [STATestMethod]
+    public void StretchFocusLossClearsAndSuppressesRepeatsUntilRelease()
+    {
+        var platform = new FakePlatform(); var sink = new Sink();
+        using var bridge = Create(platform, sink); bridge.Start();
+        platform.EmitKey(Key.W, true); bridge.FlushPendingInput();
+        Assert.AreEqual(1, sink.Keys.Count);
+        platform.Environment = new(true, false, false, true, false);
+        bridge.RevalidateActiveInput(); bridge.FlushPendingInput();
+        Assert.IsTrue(sink.ClearCount > 0);
+        platform.Environment = new(true, true, false, true, false);
+        platform.EmitKey(Key.W, true); bridge.FlushPendingInput();
+        Assert.AreEqual(1, sink.Keys.Count);
+        platform.EmitKey(Key.W, false); platform.EmitKey(Key.W, true); bridge.FlushPendingInput();
+        Assert.AreEqual(2, sink.Keys.Count);
+        Assert.AreEqual((Key.W, true, false), sink.Keys[1]);
+        bridge.Stop();
+        Assert.IsFalse(bridge.IsListening);
+    }
+
+    [STATestMethod]
     public void KeyboardAndPointerOnlyApplyAfterCommandRequalificationAndAlwaysPassTheHook()
     {
         var platform = new FakePlatform(); var sink = new Sink();
@@ -143,11 +179,13 @@ public sealed class WallpaperGameplayInputBridgeTests
     }
 
     [STATestMethod]
-    public void AlreadyHeldKeyAtStartIsSuppressedAndShiftIsAllowedOnlyForPointer()
+    [DataRow(Key.A)]
+    [DataRow(Key.W)]
+    public void AlreadyHeldKeyAtStartIsSuppressedAndShiftIsAllowedOnlyForPointer(Key held)
     {
-        var platform = new FakePlatform { HeldAtStart = Key.A }; var sink = new Sink();
+        var platform = new FakePlatform { HeldAtStart = held }; var sink = new Sink();
         using var bridge = Create(platform, sink); bridge.Start();
-        platform.EmitKey(Key.A, true); platform.EmitKey(Key.D, true, modifier: true);
+        platform.EmitKey(held, true); platform.EmitKey(Key.D, true, modifier: true);
         bridge.FlushPendingInput(); Assert.AreEqual(0, sink.Keys.Count);
         platform.EmitMouse(0x0201, shift: true); bridge.FlushPendingInput();
         Assert.AreEqual(1, sink.DownCount); Assert.IsTrue(sink.LastShift); Assert.IsTrue(platform.PointerAllowsShift);

@@ -30,13 +30,7 @@ public partial class ControlCenterWindow : Window
     private readonly Action? saveSettings;
     private readonly List<ThemePropertyOverride> highContrastOverrides = [];
     private readonly DispatcherTimer hostStatusTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
-    private readonly DispatcherTimer sizeMenuFocusTimer = new(DispatcherPriority.Input)
-    {
-        Interval = TimeSpan.FromMilliseconds(75),
-    };
     private DependencyPropertyDescriptor? sizeMenuOpenDescriptor;
-    private int sizeMenuFocusAttempts;
-    private bool sizeMenuFocusExplicitlyRequested;
     private VerificationSession? verificationSession;
     private IReadOnlyList<VerificationItemViewModel> verificationItems = [];
     private bool allowClose;
@@ -70,19 +64,7 @@ public partial class ControlCenterWindow : Window
         ConfirmSceneReinitialization = ConfirmSettingsSceneReinitialization;
         refreshingHostState = true;
         InitializeComponent();
-        sizeMenuFocusTimer.Tick += (_, _) =>
-        {
-            sizeMenuFocusTimer.Stop();
-            var restoreRequested = sizeMenuFocusExplicitlyRequested || IsOwnProcessInForeground();
-            sizeMenuFocusExplicitlyRequested = false;
-            if (!IsVisible || !restoreRequested || ProductHome.IsKeyboardFocusWithin) return;
-            ProductHome.RestoreKeyboardFocus();
-            if (!ProductHome.IsKeyboardFocusWithin && ++sizeMenuFocusAttempts < 3)
-            {
-                sizeMenuFocusExplicitlyRequested = restoreRequested;
-                sizeMenuFocusTimer.Start();
-            }
-        };
+        InitializeControlFocusRules();
         sizeMenuOpenDescriptor = DependencyPropertyDescriptor.FromProperty(
             System.Windows.Controls.ContextMenu.IsOpenProperty, typeof(System.Windows.Controls.ContextMenu));
         sizeMenuOpenDescriptor?.AddValueChanged(WindowSizeMenu, OnWindowSizeMenuOpenStateChanged);
@@ -162,40 +144,19 @@ public partial class ControlCenterWindow : Window
     private void OnPortraitMenuItemClick(object sender, RoutedEventArgs e) =>
         SelectWindowPreset(ControlCenterWindowPreset.Portrait);
 
-    private void OnWindowSizeMenuClosed(object sender, RoutedEventArgs e) => ScheduleSizeMenuFocusRestore();
+    private void OnWindowSizeMenuClosed(object sender, RoutedEventArgs e) => ScheduleControlFocusRestore();
 
     private void OnWindowSizeMenuPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == System.Windows.Input.Key.Escape)
-            sizeMenuFocusExplicitlyRequested = true;
+            ScheduleControlFocusRestore();
     }
 
     private void OnWindowSizeMenuOpenStateChanged(object? sender, EventArgs e)
     {
-        if (!WindowSizeMenu.IsOpen) ScheduleSizeMenuFocusRestore();
+        ProductHome.SetBeltWindowMenuOpen(WindowSizeMenu.IsOpen);
+        if (!WindowSizeMenu.IsOpen) ScheduleControlFocusRestore();
     }
-
-    private void ScheduleSizeMenuFocusRestore(bool explicitSelection = false)
-    {
-        sizeMenuFocusTimer.Stop();
-        sizeMenuFocusAttempts = 0;
-        sizeMenuFocusExplicitlyRequested |= explicitSelection;
-        sizeMenuFocusTimer.Start();
-    }
-
-    private static bool IsOwnProcessInForeground()
-    {
-        var foreground = GetForegroundWindow();
-        if (foreground == IntPtr.Zero) return false;
-        _ = GetWindowThreadProcessId(foreground, out var processId);
-        return processId == (uint)Environment.ProcessId;
-    }
-
-    [DllImport("user32.dll", ExactSpelling = true)]
-    private static extern IntPtr GetForegroundWindow();
-
-    [DllImport("user32.dll", ExactSpelling = true)]
-    private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
 
     private void OnCloseWindowClick(object sender, RoutedEventArgs e) => Close();
 
@@ -218,7 +179,7 @@ public partial class ControlCenterWindow : Window
         ProductHome.SetWindowPreset(preset);
         UpdateWindowSizeMenu();
         WindowSizeMenu.IsOpen = false;
-        ScheduleSizeMenuFocusRestore(explicitSelection: true);
+        ScheduleControlFocusRestore();
         ApplyWindowPresetSize(fitWorkingArea: new WindowInteropHelper(this).Handle != IntPtr.Zero);
         saveSettings?.Invoke();
         RefreshHostState();
@@ -343,7 +304,7 @@ public partial class ControlCenterWindow : Window
     private void OnClosed(object? sender, EventArgs e)
     {
         hostStatusTimer.Stop();
-        sizeMenuFocusTimer.Stop();
+        DisposeControlFocusRules();
         sizeMenuOpenDescriptor?.RemoveValueChanged(WindowSizeMenu, OnWindowSizeMenuOpenStateChanged);
         SystemParameters.StaticPropertyChanged -= OnSystemParametersChanged;
         RestoreThemeOverrides();

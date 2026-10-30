@@ -4,8 +4,6 @@ param(
     [ValidateNotNullOrEmpty()]
     [string]$RunName,
 
-    [Parameter(Mandatory)]
-    [ValidateNotNullOrEmpty()]
     [string]$PhysicsModulePath
 )
 
@@ -45,7 +43,7 @@ function Get-PackageFileRecord([string]$Root, [string]$Path) {
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $nativeInputs = & (Join-Path $PSScriptRoot 'test-desktop-publish-inputs.ps1') -PhysicsModulePath $PhysicsModulePath -RepositoryRoot $repoRoot
 Import-Module (Join-Path $PSScriptRoot 'local-install\Dango.LocalInstall.psm1') -Force
-$settingsContract = 'dango-desktop-settings-v4-preset-sidecar-v1'
+$settingsContract = 'dango-desktop-settings-v4-roster-v2-startup-v1'
 $settingsSourceHashes = Get-DangoSettingsSourceContract -RepositoryRoot $repoRoot -SettingsContract $settingsContract
 $projectPath = Join-Path $repoRoot 'src\Dango.Desktop\Dango.Desktop.csproj'
 $oldLibraryPath = Join-Path $repoRoot 'src\Dango.Desktop\runtimes\win-x64\native\dango_box2d.dll'
@@ -53,7 +51,7 @@ $licensePath = Join-Path $repoRoot 'eng\native\box2d\LICENSE.box2d.txt'
 $dependencyManifestPath = Join-Path $repoRoot 'eng\native\box2d\dependency.json'
 
 $moduleFullPath = $nativeInputs.PhysicsModulePath
-Assert-Sha256 $moduleFullPath $acceptedModuleHash 'Accepted physics module input'
+if ($moduleFullPath) { Assert-Sha256 $moduleFullPath $acceptedModuleHash 'Accepted physics module input' }
 Assert-Sha256 $oldLibraryPath $acceptedBox2DHash 'Protected Box2D source library'
 if (-not (Test-Path -LiteralPath $licensePath -PathType Leaf)) { throw "Required license is missing: $licensePath" }
 if (-not (Test-Path -LiteralPath $dependencyManifestPath -PathType Leaf)) { throw "Required dependency manifest is missing: $dependencyManifestPath" }
@@ -76,10 +74,16 @@ if (Test-Path -LiteralPath $outputRoot) {
 New-Item -ItemType Directory -Path $outputRoot -ErrorAction Stop | Out-Null
 
 try {
+    $compatibilityArguments = @()
+    if ($moduleFullPath) { $compatibilityArguments += "-p:DangoPhysicsModulePath=$moduleFullPath" }
     & dotnet publish $projectPath -c Release -r win-x64 --self-contained true `
-        --artifacts-path $buildRoot -o $packageRoot "-p:DangoPhysicsModulePath=$moduleFullPath" `
+        --artifacts-path $buildRoot -o $packageRoot @compatibilityArguments `
         '-p:DebugType=None' '-p:DebugSymbols=false'
     if ($LASTEXITCODE -ne 0) { throw "Desktop publish failed: $LASTEXITCODE" }
+
+    $beltInputs = & (Join-Path $PSScriptRoot 'test-belt-native-package.ps1') -NativeDirectory $packageRoot -RepositoryRoot $repoRoot
+    $beltManifest = Get-Content -LiteralPath $beltInputs.ManifestPath -Raw | ConvertFrom-Json
+    if ($beltManifest.origin -cne 'source-build') { throw 'Formal publishing requires native modules built from the current source.' }
 
     $packageModulePath = Join-Path $packageRoot 'dango_physics_module.dll'
     $packageBox2DPath = Join-Path $packageRoot 'dango_box2d.dll'
@@ -88,14 +92,14 @@ try {
     $executablePath = Join-Path $packageRoot 'Dango.Desktop.exe'
 
     if (-not (Test-Path -LiteralPath $executablePath -PathType Leaf)) { throw 'Published package is missing Dango.Desktop.exe.' }
-    Assert-Sha256 $packageModulePath $acceptedModuleHash 'Packaged physics module'
+    if ($moduleFullPath) { Assert-Sha256 $packageModulePath $acceptedModuleHash 'Packaged physics module' }
     Assert-Sha256 $packageBox2DPath $acceptedBox2DHash 'Packaged Box2D library'
     if (-not (Test-Path -LiteralPath $packageLicensePath -PathType Leaf)) { throw 'Published package is missing Box2D license.' }
     if (-not (Test-Path -LiteralPath $packageDependencyManifestPath -PathType Leaf)) { throw 'Published package is missing Box2D dependency manifest.' }
     Assert-Sha256 $packageLicensePath $licenseHash 'Packaged Box2D license'
     Assert-Sha256 $packageDependencyManifestPath $dependencyManifestHash 'Packaged Box2D dependency manifest'
     Assert-Sha256 $oldLibraryPath $acceptedBox2DHash 'Protected Box2D source library after publish'
-    Assert-Sha256 $moduleFullPath $acceptedModuleHash 'Accepted physics module input after publish'
+    if ($moduleFullPath) { Assert-Sha256 $moduleFullPath $acceptedModuleHash 'Accepted physics module input after publish' }
     $null = Get-DangoSettingsSourceContract -RepositoryRoot $repoRoot -SettingsContract $settingsContract
 
     $manifestPath = Join-Path $packageRoot 'package-manifest.json'
@@ -110,6 +114,7 @@ try {
         sourceDirty = $sourceDirty
         runtime = 'win-x64'
         selfContained = $true
+        beltNativeContract = 'dango-belt-native-v1'
         settingsContract = $settingsContract
         settingsSourceHashes = $settingsSourceHashes
         files = $records

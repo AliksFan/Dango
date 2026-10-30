@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><TargetFramework>net10.0</TargetFramework><IsPackable>false</IsPackable><IsTestProject>true</IsTestProject></PropertyGroup>
   <ItemGroup>
+    <Compile Include="../Support/LocalServerProcess.cs" Link="Support/LocalServerProcess.cs" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
     <PackageReference Include="MSTest.TestAdapter" Version="4.3.3" />
     <PackageReference Include="MSTest.TestFramework" Version="4.3.3" />
