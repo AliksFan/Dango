@@ -1,6 +1,6 @@
 # Dango 开源准备
 
-2026-10-30，作者批准 GitHub、MIT、Windows 单人预览版路线，并授权实施本地开源准备。本轮形成可审阅的源码和发行候选；远端公开、推送、标签及 Release 上传在候选审阅后单独执行。
+2026-10-30，作者批准 GitHub、MIT、Windows 单人预览版路线，并在确认沿用原仓库的方案后，明确授权更新远端 main、公开仓库及发布预览。原仓库现已公开，首个公开版本为 v0.1.0-preview.2。
 
 ## 公开范围
 
@@ -8,6 +8,13 @@
 - 作者已确认 Direction A、动作图和 AI 方向草稿的素材与参考输入具有使用、再分发权利；具体来源和 AI 生成物范围见[素材清单](assets.md)。
 - 首发定位为 Windows x64 本地单人预览。联机、云同步和完整产品首版仍按各自实际状态说明。
 - 沿用原仓库 AliksFan/Dango，保留其既有远端分支和历史。以经过筛选的源码树追加正常提交，不把本地未推送的研究历史引入公开 main；源码下载 ZIP 本身不含 Git 历史。
+
+## 公开结果
+
+- 原仓库：[AliksFan/Dango](https://github.com/AliksFan/Dango)，MIT；原有远端分支和历史保留。
+- 预览版：[v0.1.0-preview.2](https://github.com/AliksFan/Dango/releases/tag/v0.1.0-preview.2)，含 Windows ZIP、源码 ZIP、SHA256、源码逐文件清单和构建信息。
+- 发布提交：`2ffc082eb7c32c910fdf9f4aa2cc017a7ec01352`；[远端 CI](https://github.com/AliksFan/Dango/actions/runs/41000304860) 已通过。
+- GitHub Private vulnerability reporting 已启用；仓库、Release 和全部 5 个附件均已通过匿名访问检查。
 
 ## 已落实的仓库入口
 
@@ -58,10 +65,10 @@ dotnet test tests/Dango.Protocol.Tests/Dango.Protocol.Tests.csproj -c Release
 
 源码输出位于 `artifacts/open-source/<new-source-run>/`，包括 ZIP、SHA256 和机器清单。预览 ZIP 按既有封装脚本输出。构建和封装不启动应用或安装运行时，不把 `publicReleaseApproved` 或 `applicationTestsRun` 改成已通过。
 
-## 发布前的剩余工作
+## 验证边界与后续维护
 
 - 干净克隆的自包含发布、预览 ZIP、源码快照独立构建及逐文件校验已完成，见[本轮验证](../verification/2026-10-30-opensource-preparation.md)。
 - 完整解决方案仍受既有 SignalR 10.0.11 的 `NU1903` 告警影响；Windows 单人发行不引用该同步客户端。未升级依赖或压制告警，不能把白名单通过称为全仓通过。
 - 桌面前台、真实键鼠、DPI、长时运行等继续保留[预览版限制](../releases/0.1.0-preview.2/release-notes.md)。离屏示例不代替人工验收。
-- GitHub Actions 配置需在最终公开目标上实际运行；本地通过不等于远端 CI 已通过。
-- 确定公共仓库目标、审阅公开联系方式、启用 Private vulnerability reporting、确认源码与发行物后，再批准推送和上传。当前没有更改远端可见性、推送、标签、Release 或日常安装。
+- 发布提交的 GitHub Actions 已通过；新增代码仍应按改动范围重新运行 CI。
+- 原仓库已按明确授权切换为公开并发布预览；远端 main 通过正常追加提交更新，无强推、删除旧分支或改写已有远端历史。本地原 main、研究工作区和日常安装保持原状；后续公开开发应从新的 origin/main 建立分支，避免补推未审阅的本地研究历史。
